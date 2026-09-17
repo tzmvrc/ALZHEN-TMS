@@ -26,6 +26,34 @@ body {
   background: #eef4fb;
 }
 
+.dotted-surface {
+  background-color: #f7faff;
+  background-image: radial-gradient(circle, rgba(96, 132, 175, 0.14) 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+
+.min-h-screen.bg-slate-50 {
+  background-color: #f7faff;
+  background-image: radial-gradient(circle, rgba(96, 132, 175, 0.14) 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+
+/* The driver workflow uses larger type and touch targets for quick phone use. */
+body:has(input[type='file']) .text-xs {
+  font-size: 0.9375rem;
+  line-height: 1.35rem;
+}
+
+body:has(input[type='file']) .text-sm {
+  font-size: 1rem;
+  line-height: 1.5rem;
+}
+
+body:has(input[type='file']) button,
+body:has(input[type='file']) input {
+  min-height: 48px;
+}
+
 button,
 input,
 select {

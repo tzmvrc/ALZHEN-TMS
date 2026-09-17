@@ -6,7 +6,6 @@ import logo from "../../assets/logo.png";
 
 export default function LoginPage() {
   const navigate = useNavigate();
-  const [remember, setRemember] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -15,7 +14,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex min-h-screen w-full bg-[#eef4fb] p-0 sm:p-4 lg:p-6">
+    <div className="dotted-surface flex min-h-screen w-full p-0 sm:p-4 lg:p-6">
       {/* ───────── Left: Photo Panel ───────── */}
       <div className="relative hidden overflow-hidden rounded-l-2xl lg:flex lg:w-1/2 lg:flex-col">
         {/* Background photo */}
@@ -57,8 +56,8 @@ export default function LoginPage() {
       </div>
 
       {/* ───────── Right: Login Form ───────── */}
-      <div className="flex w-full flex-col justify-center bg-white px-6 py-12 sm:rounded-2xl sm:px-12 lg:w-1/2 lg:rounded-l-none lg:px-16 xl:px-24">
-        <div className="mx-auto w-full max-w-md">
+      <div className="dotted-surface relative flex w-full flex-col justify-center px-6 py-12 sm:rounded-2xl sm:px-12 lg:w-1/2 lg:rounded-l-none lg:px-16 xl:px-24">
+        <div className="relative z-10 mx-auto w-full max-w-md rounded-2xl bg-white/90 p-6 shadow-[0_8px_30px_rgba(71,104,143,0.08)] backdrop-blur-sm sm:p-8">
           <h1 className="text-3xl font-bold text-slate-900 xl:text-4xl">
             Welcome Back!
           </h1>
@@ -119,25 +118,6 @@ export default function LoginPage() {
               </div>
             </div>
 
-            {/* Remember + Forgot */}
-            <div className="flex items-center justify-between">
-              <label className="flex items-center gap-2 text-sm text-slate-600">
-                <input
-                  type="checkbox"
-                  checked={remember}
-                  onChange={(e) => setRemember(e.target.checked)}
-                  className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900"
-                />
-                Remember Me
-              </label>
-              <button
-                type="button"
-                className="text-sm text-slate-500 transition hover:text-slate-900"
-              >
-                Forgot Password?
-              </button>
-            </div>
-
             {/* Submit */}
             <button
               type="submit"
@@ -148,25 +128,17 @@ export default function LoginPage() {
           </form>
 
           {/* Divider */}
-          <div className="my-6 flex items-center gap-4">
-            <span className="h-px flex-1 bg-slate-200" />
-            <span className="text-xs text-slate-400">Need help?</span>
-            <span className="h-px flex-1 bg-slate-200" />
+          <div className="my-8 flex items-center gap-4">
+            <span className="h-px flex-1 bg-slate-100" />
+            <span className="text-xs font-medium text-slate-400">Support</span>
+            <span className="h-px flex-1 bg-slate-100" />
           </div>
-
-          {/* Contact IT (replaces Google button) */}
-          <button
-            type="button"
-            className="flex w-full items-center justify-center gap-2 rounded-full border border-slate-200 bg-white py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-          >
-            Contact your system administrator
-          </button>
 
           <p className="mt-6 text-center text-sm text-slate-500">
             Having trouble signing in?{" "}
             <button
               type="button"
-              className="font-medium text-slate-900 underline underline-offset-2"
+              className="font-semibold text-blue-600 hover:text-blue-700 underline underline-offset-4 transition-colors"
             >
               Get help
             </button>
