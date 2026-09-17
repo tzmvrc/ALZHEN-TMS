@@ -1,3 +1,4 @@
+// src/components/ui/Input.tsx
 import type { InputHTMLAttributes } from "react";
 
 type InputProps = InputHTMLAttributes<HTMLInputElement> & {
@@ -6,10 +7,14 @@ type InputProps = InputHTMLAttributes<HTMLInputElement> & {
 
 export function Input({ label, className = "", ...props }: InputProps) {
   return (
-    <label className="block text-sm font-medium text-slate-200">
-      {label && <span className="mb-2 block">{label}</span>}
+    <label className="block">
+      {label && (
+        <span className="mb-1.5 block text-sm font-medium text-slate-700">
+          {label}
+        </span>
+      )}
       <input
-        className={`w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-white placeholder:text-slate-500 focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-500/40 ${className}`}
+        className={`w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-900 ${className}`}
         {...props}
       />
     </label>

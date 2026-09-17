@@ -1,0 +1,1 @@
+export const toneClasses = { blue: "bg-[#eaf2ff] text-[#2456c7]", emerald: "bg-[#eafaf2] text-[#1d8b5d]", amber: "bg-[#fff3dc] text-[#a45d0c]", violet: "bg-[#efeafc] text-[#5a3aa6]", rose: "bg-[#fce8ec] text-[#ac2d4d]" } as const;
