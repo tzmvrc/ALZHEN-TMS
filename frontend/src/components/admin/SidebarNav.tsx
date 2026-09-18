@@ -37,9 +37,10 @@ export default function SidebarNav({
           item.id === activeId
             ? "bg-[#eaf2ff] text-[#2563d9] shadow-sm"
             : "text-slate-500 hover:bg-[#f2f6fb] hover:text-slate-900"
-        }`}
-      >
-        <span className="flex h-4 w-4 items-center justify-center">{item.icon}</span>
+        }`}>
+        <span className="flex h-4 w-4 items-center justify-center">
+          {item.icon}
+        </span>
         {item.label}
       </button>
     ));
@@ -52,17 +53,25 @@ export default function SidebarNav({
         </div>
         <div>
           <p className="text-sm font-bold text-slate-900">{brandName}</p>
-          <p className="text-[10px] uppercase tracking-wider text-slate-500">{brandSubtitle}</p>
+          <p className="text-[10px] uppercase tracking-wider text-slate-500">
+            {brandSubtitle}
+          </p>
         </div>
       </div>
 
-      <div className="mb-5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 shadow-sm">Operations workspace</div>
-      <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Main menu</p>
+      <div className="mb-5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 shadow-sm">
+        Operations workspace
+      </div>
+      <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+        Main menu
+      </p>
       <nav aria-label="Operations navigation" className="space-y-1">
         {renderItems(general)}
       </nav>
 
-      <p className="mb-2 mt-7 px-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Workspace</p>
+      <p className="mb-2 mt-7 px-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+        Workspace
+      </p>
       <nav aria-label="Support navigation" className="space-y-1">
         {renderItems(support)}
       </nav>
@@ -73,7 +82,9 @@ export default function SidebarNav({
             {userInitial}
           </div>
           <div className="min-w-0">
-            <p className="truncate text-sm font-semibold text-slate-900">{userName}</p>
+            <p className="truncate text-sm font-semibold text-slate-900">
+              {userName}
+            </p>
             <p className="truncate text-xs text-slate-500">{userRole}</p>
           </div>
         </div>
@@ -82,8 +93,7 @@ export default function SidebarNav({
       <button
         type="button"
         onClick={onLogout}
-        className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white/50 px-3 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-white"
-      >
+        className="mt-4 flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white/50 px-3 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-white">
         <LogOut className="h-4 w-4" />
         Logout
       </button>

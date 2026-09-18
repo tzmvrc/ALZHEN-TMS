@@ -3,6 +3,7 @@ import { supabaseAdmin } from "../config/supabase.js";
 export type ProfileRow = {
   id: string;
   role: string;
+  is_admin: boolean;
   created_at: string;
   updated_at: string;
   first_name: string | null;

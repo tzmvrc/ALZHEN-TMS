@@ -9,12 +9,6 @@ export async function authMiddleware(
   try {
     const authHeader = req.headers.authorization;
 
-    console.log("Authorization header present:", Boolean(authHeader));
-    console.log(
-      "Authorization header format valid:",
-      !!authHeader && authHeader.toLowerCase().startsWith("bearer "),
-    );
-
     if (!authHeader || !authHeader.toLowerCase().startsWith("bearer ")) {
       return res.status(401).json({
         success: false,
@@ -23,7 +17,6 @@ export async function authMiddleware(
     }
 
     const token = authHeader.replace(/^Bearer\s+/i, "").trim();
-    console.log("Token length:", token.length);
 
     if (!token) {
       return res.status(401).json({
