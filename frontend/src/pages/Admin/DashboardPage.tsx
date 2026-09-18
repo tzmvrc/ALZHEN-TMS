@@ -47,10 +47,10 @@ export default function DashboardPage({
   if (loading) return <div className="flex min-h-screen items-center justify-center bg-slate-50"><div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-200 border-t-blue-600" /></div>;
 
   return (
-    <div className="dotted-surface min-h-screen w-full font-sans text-slate-900">
+    <div className="dotted-surface min-h-screen w-full text-slate-900">
       <div className="flex min-h-screen w-full overflow-hidden">
         <SidebarNav general={data.nav.general} support={data.nav.support} activeId={activeId} onNavigate={handleNavigate} onLogout={onLogout} userName={data.user.name} userInitial={data.user.name.charAt(0).toUpperCase()} />
-        <div className="min-w-0 flex-1 overflow-y-auto lg:ml-[244px]">
+        <div className="min-w-0 flex-1 overflow-y-auto lg:ml-[260px]">
           <TopBar activeLabel={activeLabel} onSearch={(query) => { setSearchQuery(query); onSearch(query); }} />
           <main className="p-4 sm:p-6 md:p-8 lg:p-10">
             {activeId === "overview" ? (

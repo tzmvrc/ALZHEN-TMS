@@ -14,8 +14,8 @@ export const defaultDashboardData: DashboardData = {
     ],
     support: [
       { id: "alerts", label: "Alerts", icon: <AlertTriangle className="h-4 w-4" /> },
-      { id: "billing", label: "Billing (phase 2)", icon: <CreditCard className="h-4 w-4" /> },
-      { id: "payables", label: "Payables (phase 2)", icon: <FileText className="h-4 w-4" /> },
+      { id: "billing", label: "Billing", icon: <CreditCard className="h-4 w-4" /> },
+      { id: "payables", label: "Payables", icon: <FileText className="h-4 w-4" /> },
       { id: "compliance", label: "Data controls", icon: <ShieldCheck className="h-4 w-4" /> },
       { id: "settings", label: "Settings", icon: <Settings className="h-4 w-4" /> },
     ],

@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   ArrowRight,
   Bell,
@@ -13,21 +13,25 @@ import {
   Truck,
 } from "lucide-react";
 import {
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  CartesianGrid,
+  CategoryScale,
+  Chart,
+  Filler,
+  Legend,
+  LineController,
+  LinearScale,
+  LineElement,
+  PointElement,
   Tooltip,
-  ResponsiveContainer
-} from "recharts";
+} from "chart.js";
 import type { DashboardData, DispatchRecord, IncidentRecord, SalesPoint } from "../../types/dashboard";
 import { toneClasses } from "./dashboardStyles";
+
+Chart.register(CategoryScale, Filler, Legend, LineController, LinearScale, LineElement, PointElement, Tooltip);
 
 export function TopBar({ activeLabel, onSearch }: { activeLabel: string; onSearch: (query: string) => void }) {
   const [search, setSearch] = useState("");
   return (
-    <header className="sticky top-0 z-20 border-b border-slate-100 bg-white px-8 py-4">
+    <header className="sticky top-4 z-20 mx-4 rounded-2xl border border-white/80 bg-white/90 px-4 py-3 shadow-[0_14px_35px_rgba(42,76,120,0.1)] backdrop-blur-xl sm:px-6 sm:py-4 lg:mx-6">
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-3 text-sm text-slate-400">
           <span className="hidden sm:inline">Operations</span>
@@ -78,6 +82,64 @@ export function KpiCard({ label, value, change, tone, icon }: { label: string; v
 }
 
 export function RevenueChart({ data }: { data: SalesPoint[] }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    if (!canvasRef.current) return;
+
+    Chart.getChart(canvasRef.current)?.destroy();
+
+    const chart = new Chart(canvasRef.current, {
+      type: "line",
+      data: {
+        labels: data.map((point) => point.label),
+        datasets: [
+          {
+            label: "Revenue",
+            data: data.map((point) => point.primary),
+            borderColor: "#2563eb",
+            backgroundColor: "rgba(37, 99, 235, 0.12)",
+            borderWidth: 2,
+            pointBackgroundColor: "#2563eb",
+            pointBorderColor: "#ffffff",
+            pointBorderWidth: 2,
+            pointRadius: 3,
+            pointHoverRadius: 5,
+            fill: true,
+            tension: 0.35,
+          },
+        ],
+      },
+      options: {
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            displayColors: false,
+            callbacks: {
+              label: (context) => `Revenue: ${context.formattedValue}`,
+            },
+          },
+        },
+        scales: {
+          x: {
+            grid: { display: false },
+            border: { display: false },
+            ticks: { color: "#94a3b8", font: { size: 12 } },
+          },
+          y: {
+            beginAtZero: true,
+            grid: { color: "#f1f5f9", drawTicks: false },
+            border: { display: false },
+            ticks: { color: "#94a3b8", padding: 8, font: { size: 12 } },
+          },
+        },
+      },
+    });
+
+    return () => chart.destroy();
+  }, [data]);
+
   return (
     <div className="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm">
       <div className="mb-6 flex items-center justify-between">
@@ -90,41 +152,8 @@ export function RevenueChart({ data }: { data: SalesPoint[] }) {
           <button className="rounded-lg border border-slate-100 px-3 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50">Yearly</button>
         </div>
       </div>
-      <div className="h-64 w-full">
-        <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={data}>
-            <defs>
-              <linearGradient id="colorRev" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#2563eb" stopOpacity={0.3}/>
-                <stop offset="95%" stopColor="#2563eb" stopOpacity={0}/>
-              </linearGradient>
-            </defs>
-            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-            <XAxis
-              dataKey="label"
-              axisLine={false}
-              tickLine={false}
-              tick={{fill: '#94a3b8', fontSize: 12}}
-              dy={10}
-            />
-            <YAxis
-              axisLine={false}
-              tickLine={false}
-              tick={{fill: '#94a3b8', fontSize: 12}}
-            />
-            <Tooltip
-              contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)'}}
-            />
-            <Area
-              type="monotone"
-              dataKey="primary"
-              stroke="#2563eb"
-              strokeWidth={2}
-              fillOpacity={1}
-              fill="url(#colorRev)"
-            />
-          </AreaChart>
-        </ResponsiveContainer>
+      <div className="relative h-64 w-full">
+        <canvas ref={canvasRef} aria-label="Revenue trend chart" role="img" />
       </div>
     </div>
   );

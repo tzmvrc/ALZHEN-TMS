@@ -45,7 +45,7 @@ export default function SidebarNav({
     ));
 
   return (
-    <aside className="fixed inset-y-0 left-0 z-30 hidden h-screen w-[244px] shrink-0 flex-col border-r border-[#e4edf7] bg-white px-4 py-5 lg:flex">
+    <aside className="fixed inset-y-4 left-4 z-30 hidden h-[calc(100vh-2rem)] w-[228px] shrink-0 flex-col rounded-[28px] border border-white/80 bg-white/90 px-4 py-5 shadow-[0_18px_50px_rgba(42,76,120,0.12)] backdrop-blur-xl lg:flex">
       <div className="mb-7 flex items-center gap-3 px-3">
         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 shadow-sm">
           <Truck className="h-4 w-4 text-white" />
