@@ -14,7 +14,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="dotted-surface flex min-h-screen w-full p-0 sm:p-4 lg:p-6">
+    <div className="flex min-h-screen w-full bg-[#f7faff]  p-0 sm:p-4 lg:p-6">
       {/* ───────── Left: Photo Panel ───────── */}
       <div className="relative hidden overflow-hidden rounded-l-2xl lg:flex lg:w-1/2 lg:flex-col">
         {/* Background photo */}
@@ -25,20 +25,6 @@ export default function LoginPage() {
         />
         {/* Dark tint so text stays readable */}
         <div className="absolute inset-0 bg-black/40" />
-
-        {/* Top bar: brand + back link */}
-        <div className="relative z-10 flex items-center justify-between p-8">
-          <div className="flex items-center gap-2">
-            <img
-              src={logo}
-              alt=""
-              className="h-8 w-8 object-contain"
-            />
-            <span className="text-sm font-semibold text-white">
-              Alzhen Trucking
-            </span>
-          </div>
-        </div>
 
         {/* Bottom copy */}
         <div className="relative z-10 mt-auto p-8 xl:p-12">
@@ -56,14 +42,19 @@ export default function LoginPage() {
       </div>
 
       {/* ───────── Right: Login Form ───────── */}
-      <div className="dotted-surface relative flex w-full flex-col justify-center px-6 py-12 sm:rounded-2xl sm:px-12 lg:w-1/2 lg:rounded-l-none lg:px-16 xl:px-24">
-        <div className="relative z-10 mx-auto w-full max-w-md rounded-2xl bg-white/90 p-6 shadow-[0_8px_30px_rgba(71,104,143,0.08)] backdrop-blur-sm sm:p-8">
-          <h1 className="text-3xl font-bold text-slate-900 xl:text-4xl">
-            Welcome Back!
-          </h1>
-          <p className="mt-2 text-sm text-slate-500">
-            Sign in to continue to your Alzhen workspace.
-          </p>
+      <div className=" relative flex w-full flex-col justify-center px-6 py-12 sm:rounded-2xl border border-[#dbe2e9] dotted-surface sm:px-12 lg:w-1/2 lg:rounded-l-none lg:px-16 xl:px-24">
+        <div className=" relative z-10 mx-auto w-full max-w-md overflow-hidden rounded-2xl border border-[#dbe2e9] bg-[#f7faff] p-6 shadow-[0_8px_30px_rgba(71,104,143,0.08)] sm:p-8">
+          {/* <img
+            src={logo}
+            alt=""
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 m-auto h-64 w-64 select-none object-contain opacity-[0.045]"
+          /> */}
+          <div className="relative z-10 text-center">
+            <img src={logo} alt="Alzhen Trucking" className="mx-auto mb-4 h-12 w-12 rounded-xl object-contain" />
+            <h1 className="text-3xl font-black text-slate-900 xl:text-4xl">Welcome Back!</h1>
+            <p className="mt-2 text-sm text-slate-500">Sign in to continue to your Alzhen workspace.</p>
+          </div>
 
           <form onSubmit={handleSubmit} className="mt-8 space-y-5">
             {/* Email */}

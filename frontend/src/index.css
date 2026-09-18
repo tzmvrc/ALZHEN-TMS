@@ -28,14 +28,15 @@ body {
 
 .dotted-surface {
   background-color: #f7faff;
-  background-image: radial-gradient(circle, rgba(96, 132, 175, 0.14) 1px, transparent 1px);
-  background-size: 22px 22px;
+  background-image: url('/src/assets/dotted.svg');
+  background-size: 19px 19px;
 }
+
 
 .min-h-screen.bg-slate-50 {
   background-color: #f7faff;
-  background-image: radial-gradient(circle, rgba(96, 132, 175, 0.14) 1px, transparent 1px);
-  background-size: 22px 22px;
+  background-image: radial-gradient(circle, rgba(74, 112, 160, 0.42) 0.9px, transparent 0.9px);
+  background-size: 11px 11px;
 }
 
 /* The driver workflow uses larger type and touch targets for quick phone use. */
