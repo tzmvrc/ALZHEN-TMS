@@ -1,8 +1,16 @@
 import type { ReactNode } from "react";
 import { Navigate, useLocation } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
+import { getRoleBasedHomePath, useAuth } from "../context/AuthContext";
 
-export default function ProtectedRoute({ children }: { children: ReactNode }) {
+type ProtectedRouteProps = {
+  children: ReactNode;
+  loginPath?: string;
+};
+
+export default function ProtectedRoute({
+  children,
+  loginPath = "/login",
+}: ProtectedRouteProps) {
   const { user, profile, loading } = useAuth();
   const location = useLocation();
 
@@ -15,25 +23,33 @@ export default function ProtectedRoute({ children }: { children: ReactNode }) {
   }
 
   if (!user) {
-    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
-  }
-
-  if (location.pathname === "/dashboard" && profile?.role !== "ADMIN") {
     return (
-      <Navigate
-        to={profile?.role === "TRUCKER" ? "/driver" : "/login"}
-        replace
-      />
+      <Navigate to={loginPath} replace state={{ from: location.pathname }} />
     );
   }
 
-  if (location.pathname === "/driver" && profile?.role !== "TRUCKER") {
-    return (
-      <Navigate
-        to={profile?.role === "ADMIN" ? "/dashboard" : "/login"}
-        replace
-      />
-    );
+  if (location.pathname === "/" && profile?.role === "TRUCKER") {
+    return <Navigate to={getRoleBasedHomePath(profile?.role)} replace />;
+  }
+
+  if (location.pathname === "/trucker" && profile?.role !== "TRUCKER") {
+    return <Navigate to={getRoleBasedHomePath(profile?.role)} replace />;
+  }
+
+  if (location.pathname === "/login" && profile) {
+    return <Navigate to={getRoleBasedHomePath(profile.role)} replace />;
+  }
+
+  if (location.pathname === "/trucker/login" && profile) {
+    return <Navigate to={getRoleBasedHomePath(profile.role)} replace />;
+  }
+
+  if (loginPath === "/trucker/login" && profile?.role !== "TRUCKER") {
+    return <Navigate to={getRoleBasedHomePath(profile?.role)} replace />;
+  }
+
+  if (loginPath === "/login" && profile?.role === "TRUCKER") {
+    return <Navigate to={getRoleBasedHomePath(profile.role)} replace />;
   }
 
   return <>{children}</>;

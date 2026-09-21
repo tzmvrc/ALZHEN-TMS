@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -33,6 +34,8 @@ export type AuthSessionResponse = {
   profile: AuthProfile;
 };
 
+export type AllowedPortalRole = "ADMIN" | "STAFF" | "TRUCKER";
+
 type AuthContextValue = {
   user: AuthUser | null;
   profile: AuthProfile | null;
@@ -40,10 +43,25 @@ type AuthContextValue = {
   loading: boolean;
   isAuthenticated: boolean;
   isAdmin: boolean;
-  login: (email: string, password: string) => Promise<AuthSessionResponse>;
+  login: (
+    email: string,
+    password: string,
+    allowedRole?: AllowedPortalRole,
+  ) => Promise<AuthSessionResponse>;
   logout: () => Promise<void>;
   refreshSession: () => Promise<void>;
+  clearSessionState: () => void;
+  suspendSessionSync: () => void;
+  resumeSessionSync: () => void;
 };
+
+export function getRoleBasedHomePath(role?: string | null): string {
+  return role === "TRUCKER" ? "/trucker" : "/";
+}
+
+export function getRoleBasedLoginPath(role?: string | null): string {
+  return role === "TRUCKER" ? "/trucker/login" : "/login";
+}
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
@@ -52,14 +70,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<AuthProfile | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const authSyncLockedRef = useRef(false);
 
-  const clearSession = useCallback(() => {
+  const clearSessionState = useCallback(() => {
     setUser(null);
     setProfile(null);
     setAccessToken(null);
+    setLoading(false);
+  }, []);
+
+  const clearSession = useCallback(() => {
+    clearSessionState();
+  }, [clearSessionState]);
+
+  const suspendSessionSync = useCallback(() => {
+    authSyncLockedRef.current = true;
+  }, []);
+
+  const resumeSessionSync = useCallback(() => {
+    authSyncLockedRef.current = false;
   }, []);
 
   const refreshSession = useCallback(async () => {
+    if (authSyncLockedRef.current) {
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -73,7 +109,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       if (!session?.access_token) {
-        clearSession();
+        clearSessionState();
         return;
       }
 
@@ -92,42 +128,68 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setAccessToken(session.access_token);
     } catch (error) {
       console.error("Failed to refresh auth session:", error);
-      clearSession();
+      clearSessionState();
       await supabase.auth.signOut().catch(() => undefined);
     } finally {
       setLoading(false);
     }
-  }, [clearSession]);
+  }, [clearSessionState]);
 
-  const login = useCallback(async (email: string, password: string) => {
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+  const login = useCallback(
+    async (
+      email: string,
+      password: string,
+      allowedRole?: AllowedPortalRole,
+    ) => {
+      authSyncLockedRef.current = true;
 
-    if (error || !data.session || !data.user) {
-      throw new Error(error?.message ?? "Unable to sign in.");
-    }
+      try {
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
 
-    const response = await apiGet<{
-      success: boolean;
-      message?: string;
-      data: AuthSessionResponse;
-    }>("/auth/me", data.session.access_token);
+        if (error || !data.session || !data.user) {
+          throw new Error(error?.message ?? "Unable to sign in.");
+        }
 
-    if (!response.success || !response.data) {
-      throw new Error(
-        response.message ?? "Unable to fetch profile information.",
-      );
-    }
+        const response = await apiGet<{
+          success: boolean;
+          message?: string;
+          data: AuthSessionResponse;
+        }>("/auth/me", data.session.access_token);
 
-    setUser(response.data.authUser);
-    setProfile(response.data.profile);
-    setAccessToken(data.session.access_token);
-    setLoading(false);
+        if (!response.success || !response.data) {
+          throw new Error(
+            response.message ?? "Unable to fetch profile information.",
+          );
+        }
 
-    return response.data;
-  }, []);
+        const profileRole = response.data.profile.role;
+
+        if (allowedRole && profileRole !== allowedRole) {
+          try {
+            await supabase.auth.signOut();
+          } catch {
+            // Wrong portal account is rejected without redirecting the user.
+          }
+
+          clearSessionState();
+          throw new Error("Invalid account or login credentials.");
+        }
+
+        setUser(response.data.authUser);
+        setProfile(response.data.profile);
+        setAccessToken(data.session.access_token);
+        setLoading(false);
+
+        return response.data;
+      } finally {
+        authSyncLockedRef.current = false;
+      }
+    },
+    [clearSessionState],
+  );
 
   const logout = useCallback(async () => {
     setLoading(true);
@@ -172,9 +234,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (authSyncLockedRef.current) {
+        return;
+      }
+
       if (!session?.access_token) {
-        clearSession();
-        setLoading(false);
+        clearSessionState();
         return;
       }
 
@@ -184,7 +249,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       subscription.unsubscribe();
     };
-  }, [clearSession, refreshSession]);
+  }, [clearSessionState, refreshSession]);
 
   const value = useMemo<AuthContextValue>(
     () => ({
@@ -197,8 +262,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       login,
       logout,
       refreshSession,
+      clearSessionState,
+      suspendSessionSync,
+      resumeSessionSync,
     }),
-    [accessToken, loading, login, logout, profile, refreshSession, user],
+    [
+      accessToken,
+      clearSessionState,
+      loading,
+      login,
+      logout,
+      profile,
+      refreshSession,
+      suspendSessionSync,
+      resumeSessionSync,
+      user,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -21,10 +21,7 @@ export default function AdminRoute({ children }: { children: ReactNode }) {
 
   if (!isAdminOnly) {
     return (
-      <Navigate
-        to={profile?.role === "TRUCKER" ? "/driver" : "/dashboard"}
-        replace
-      />
+      <Navigate to={profile?.role === "TRUCKER" ? "/trucker" : "/"} replace />
     );
   }
 

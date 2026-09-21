@@ -1,8 +1,16 @@
 import type { ReactNode } from "react";
 import { Navigate } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
+import { getRoleBasedHomePath, useAuth } from "../context/AuthContext";
 
-export default function PublicRoute({ children }: { children: ReactNode }) {
+type PublicRouteProps = {
+  children: ReactNode;
+  redirectTo?: string;
+};
+
+export default function PublicRoute({
+  children,
+  redirectTo,
+}: PublicRouteProps) {
   const { user, profile, loading } = useAuth();
 
   if (loading) {
@@ -14,7 +22,10 @@ export default function PublicRoute({ children }: { children: ReactNode }) {
   }
 
   if (user) {
-    const destination = profile?.role === "TRUCKER" ? "/driver" : "/dashboard";
+    const destination =
+      redirectTo && profile?.role !== "TRUCKER"
+        ? redirectTo
+        : getRoleBasedHomePath(profile?.role);
     return <Navigate to={destination} replace />;
   }
 

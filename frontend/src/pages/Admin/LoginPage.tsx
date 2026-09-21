@@ -4,7 +4,7 @@ import { Eye, EyeOff } from "lucide-react";
 import loginBackground from "../../assets/loginBG.jpg";
 import logo from "../../assets/logo.png";
 import { useToast } from "../../components/ui/Toast";
-import { useAuth } from "../../context/AuthContext";
+import { getRoleBasedHomePath, useAuth } from "../../context/AuthContext";
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -42,34 +42,51 @@ export default function LoginPage() {
     setSubmitting(true);
 
     try {
-      const session = await login(trimmedEmail, trimmedPassword);
-      const nextPath =
-        session.profile.role === "TRUCKER" ? "/driver" : "/dashboard";
+      const session = await login(trimmedEmail, trimmedPassword, "ADMIN");
+      const nextPath = getRoleBasedHomePath(session.profile.role);
 
       addToast({
-        title: "Login successful.",
+        title: `Welcome back, ${session.profile.first_name}!`,
         description:
           session.profile.role === "TRUCKER"
-            ? "Redirecting to the driver portal…"
-            : "Redirecting to the dashboard…",
+            ? "Redirecting to the trucker portal…"
+            : "You're successfully signed in.",
         variant: "success",
         duration: 2500,
       });
       navigate(nextPath);
     } catch (error) {
-      const message = error instanceof Error ? error.message.toLowerCase() : "";
+      const message =
+        error instanceof Error ? error.message : "Something went wrong.";
+
+      if (message === "Invalid account or login credentials.") {
+        setEmail("");
+        setPassword("");
+        addToast({
+          title: message,
+          description:
+            "Check your credentials and try again, or contact IT support if the issue persists.",
+          variant: "error",
+          duration: 4500,
+        });
+        return;
+      }
+
+      const lowerMessage = message.toLowerCase();
 
       const description =
-        /invalid login|invalid credentials|email or password/.test(message)
+        /invalid login|invalid credentials|email or password/.test(lowerMessage)
           ? "Invalid email or password."
-          : /network|fetch|failed to fetch|server/.test(message)
+          : /network|fetch|failed to fetch|server/.test(lowerMessage)
             ? "Unable to connect to the server. Please try again."
-            : message.includes("valid email")
+            : lowerMessage.includes("valid email")
               ? "Please enter a valid email address."
               : "Something went wrong. Please try again.";
 
       addToast({
         title: description,
+        description:
+          "Check your credentials and try again, or contact IT support if the issue persists.",
         variant: "error",
         duration: 4000,
       });
@@ -214,7 +231,7 @@ export default function LoginPage() {
             Need access or locked out?{" "}
             <button
               type="button"
-              className="font-semibold text-slate-900 underline underline-offset-4 transition-colors hover:text-slate-600">
+              className="font-semibold cursor-pointer text-slate-900 underline underline-offset-4 transition-colors hover:text-slate-600">
               Contact IT Admin
             </button>
           </p>

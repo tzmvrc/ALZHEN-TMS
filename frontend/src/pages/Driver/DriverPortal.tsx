@@ -48,7 +48,7 @@ export default function DriverPortal() {
         duration: 2500,
       });
       setShowLogoutConfirm(false);
-      window.location.assign("/login");
+      window.location.assign("/trucker/login");
     } catch (error) {
       addToast({
         title: "Unable to log out completely. Please try again.",

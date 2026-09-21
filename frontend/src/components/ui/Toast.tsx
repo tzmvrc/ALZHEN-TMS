@@ -79,7 +79,9 @@ function ToastViewport({
   onDismiss: (id: number) => void;
 }) {
   return (
-    <div className="pointer-events-none fixed inset-x-3 bottom-4 z-50 flex max-w-full justify-center sm:inset-x-auto sm:right-4 sm:bottom-6 sm:justify-end">
+    <div
+      className="pointer-events-none fixed inset-x-3 top-3 z-50 flex max-w-full justify-center sm:inset-x-0 sm:top-4 sm:justify-center"
+      style={{ paddingTop: "max(12px, env(safe-area-inset-top))" }}>
       <div className="flex w-full max-w-sm flex-col gap-3 sm:w-[360px]">
         {toasts.map((toast) => (
           <ToastCard key={toast.id} toast={toast} onDismiss={onDismiss} />
@@ -140,8 +142,8 @@ function ToastCard({
   return (
     <div
       className={`pointer-events-auto flex items-start gap-3 rounded-2xl border p-3 shadow-[0_8px_24px_rgba(15,23,42,0.12)] backdrop-blur-sm ${config.wrapper} ${isLeaving ? "animate-toast-out" : "animate-toast-in"}`}
-      role="status"
-      aria-live="polite">
+      role={toast.variant === "error" ? "alert" : "status"}
+      aria-live={toast.variant === "error" ? "assertive" : "polite"}>
       <div
         className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${config.iconWrap}`}>
         <Icon className="h-4 w-4" />

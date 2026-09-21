@@ -2,15 +2,84 @@ import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { Eye, EyeOff } from "lucide-react";
 import logo from "../../assets/logo.png";
+import { useToast } from "../../components/ui/Toast";
+import { getRoleBasedHomePath, useAuth } from "../../context/AuthContext";
 
 export default function DriverLoginPage() {
   const navigate = useNavigate();
   const [showPassword, setShowPassword] = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const { addToast } = useToast();
+  const { login } = useAuth();
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    // In a real app, this would be an auth call
-    navigate("/driver");
+
+    const trimmedEmail = email.trim();
+    const trimmedPassword = password.trim();
+
+    if (!trimmedEmail || !trimmedPassword) {
+      addToast({
+        title: "Please enter your email and password.",
+        variant: "error",
+        duration: 3500,
+      });
+      return;
+    }
+
+    setSubmitting(true);
+
+    try {
+      const session = await login(trimmedEmail, trimmedPassword, "TRUCKER");
+      const nextPath = getRoleBasedHomePath(session.profile.role);
+
+      addToast({
+        title: `Welcome back, ${session.profile.first_name}!`,
+        description:
+          session.profile.role === "TRUCKER"
+            ? "Redirecting to the trucker portal…"
+            : "You're successfully signed in.",
+        variant: "success",
+        duration: 2500,
+      });
+      navigate(nextPath);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Something went wrong.";
+
+      if (message === "Invalid account or login credentials.") {
+        setEmail("");
+        setPassword("");
+        addToast({
+          title: message,
+          description:
+            "Check your credentials and try again, or contact IT support if the issue persists.",
+          variant: "error",
+          duration: 4500,
+        });
+        return;
+      }
+
+      const lowerMessage = message.toLowerCase();
+
+      const description =
+        /invalid login|invalid credentials|email or password/.test(lowerMessage)
+          ? "Invalid email or password."
+          : /network|fetch|failed to fetch|server/.test(lowerMessage)
+            ? "Unable to connect to the server. Please try again."
+            : "Something went wrong. Please try again.";
+
+      addToast({
+        title: description,
+        description: "Please check your credentials and try again.",
+        variant: "error",
+        duration: 4000,
+      });
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -52,7 +121,7 @@ export default function DriverLoginPage() {
             </span>
 
             <h1 className="text-[1.75rem] font-black tracking-tight text-slate-900 sm:text-3xl">
-              Welcome back, driver
+              Welcome back, trucker!
             </h1>
             <p className="mt-2 text-sm text-slate-500">
               Sign in to view your assigned trips and send updates.
@@ -64,18 +133,19 @@ export default function DriverLoginPage() {
             {/* Driver ID */}
             <div>
               <label
-                htmlFor="username"
-                className="mb-2 block text-[11px] font-semibold uppercase tracking-wider text-slate-500"
-              >
-                Driver ID or Email
+                htmlFor="email"
+                className="mb-2 block text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                Work Email
               </label>
               <input
-                id="username"
-                name="username"
-                type="text"
-                autoComplete="username"
+                id="email"
+                name="email"
+                type="email"
+                autoComplete="email"
                 required
-                placeholder="Enter your ID"
+                placeholder="name@example.com"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
                 className="w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-900 focus:ring-1 focus:ring-slate-900"
               />
             </div>
@@ -84,8 +154,7 @@ export default function DriverLoginPage() {
             <div>
               <label
                 htmlFor="password"
-                className="mb-2 block text-[11px] font-semibold uppercase tracking-wider text-slate-500"
-              >
+                className="mb-2 block text-[11px] font-semibold uppercase tracking-wider text-slate-500">
                 Password
               </label>
               <div className="relative">
@@ -96,14 +165,15 @@ export default function DriverLoginPage() {
                   autoComplete="current-password"
                   required
                   placeholder="••••••••"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
                   className="w-full rounded-lg border border-slate-200 bg-white px-4 py-3 pr-11 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-900 focus:ring-1 focus:ring-slate-900"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword((v) => !v)}
                   aria-label={showPassword ? "Hide password" : "Show password"}
-                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 transition hover:text-slate-700"
-                >
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 transition hover:text-slate-700">
                   {showPassword ? (
                     <EyeOff className="h-6 w-6" />
                   ) : (
@@ -116,9 +186,9 @@ export default function DriverLoginPage() {
             {/* Submit */}
             <button
               type="submit"
-              className="mt-2 w-full cursor-pointer rounded-lg bg-slate-900 py-3.5 text-sm font-semibold text-white transition hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:ring-offset-2"
-            >
-              Login to Portal
+              disabled={submitting}
+              className="mt-2 w-full cursor-pointer rounded-lg bg-slate-900 py-3.5 text-sm font-semibold text-white transition hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-70">
+              {submitting ? "Signing in…" : "Login to Portal"}
             </button>
           </form>
 
@@ -127,8 +197,7 @@ export default function DriverLoginPage() {
             Having trouble signing in?{" "}
             <button
               type="button"
-              className="font-semibold text-slate-900 underline underline-offset-4 transition-colors hover:text-slate-600"
-            >
+              className="font-semibold text-slate-900 underline underline-offset-4 transition-colors hover:text-slate-600">
               Contact Dispatch Office
             </button>
           </p>
