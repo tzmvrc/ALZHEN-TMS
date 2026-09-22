@@ -39,7 +39,7 @@ export default function DriverLoginPage() {
         title: `Welcome back, ${session.profile.first_name}!`,
         description:
           session.profile.role === "TRUCKER"
-            ? "Redirecting to the trucker portal…"
+            ? "You're successfully signed in."
             : "You're successfully signed in.",
         variant: "success",
         duration: 2500,
@@ -83,14 +83,14 @@ export default function DriverLoginPage() {
   };
 
   return (
-    <div className="flex min-h-screen w-full bg-[#f7faff] p-0 sm:p-4">
-      {/* ───────── Full-screen dotted panel (like admin login) ───────── */}
-      <div className="dotted-surface relative flex w-full flex-col justify-start border border-[#dbe2e9] px-6 py-12 sm:rounded-2xl sm:px-10 sm:py-16">
-        <div className="relative z-10 mx-auto flex w-full max-w-sm flex-col">
+    <div className="w-full bg-[#f7faff] sm:h-dvh sm:p-4">
+      {/* ───────── Full-viewport dotted panel ───────── */}
+      <div className="dotted-surface relative flex min-h-dvh w-full flex-col border border-[#dbe2e9] px-4 pb-4 pt-4 sm:h-full sm:min-h-0 sm:rounded-2xl sm:px-10 sm:py-8">
+        <div className="relative z-10 mx-auto flex w-full max-w-sm flex-col pt-1 sm:pt-0">
           {/* Header */}
           <div className="text-center">
             {/* Logo tile */}
-            <div className="relative mx-auto mb-3 h-[100px] w-[100px]">
+            <div className="relative mx-auto mb-2 h-[82px] w-[82px] sm:mb-3 sm:h-[100px] sm:w-[100px]">
               {/* soft glow — locked to same size as tile */}
               <div className="pointer-events-none absolute inset-0 -z-10 rounded-full bg-blue-500/10 blur-xl" />
 
@@ -105,7 +105,7 @@ export default function DriverLoginPage() {
             </div>
 
             {/* Brand row */}
-            <div className="mb-4 flex flex-col items-center gap-1">
+            <div className="mb-2 flex flex-col items-center gap-1 sm:mb-4">
               <p className="text-sm font-bold tracking-wide text-slate-900">
                 ALZHEN
               </p>
@@ -115,26 +115,26 @@ export default function DriverLoginPage() {
             </div>
 
             {/* Badge */}
-            <span className="mb-4 inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white/70 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-slate-500 backdrop-blur-sm">
+            <span className="mb-2.5 inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white/70 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-slate-500 backdrop-blur-sm sm:mb-4">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
               Driver Access
             </span>
 
-            <h1 className="text-[1.75rem] font-black tracking-tight text-slate-900 sm:text-3xl">
+            <h1 className="text-[1.35rem] font-black tracking-tight text-slate-900 sm:text-3xl">
               Welcome back, trucker!
             </h1>
-            <p className="mt-2 text-sm text-slate-500">
+            <p className="mt-2 text-[11px] text-slate-500 sm:text-sm">
               Sign in to view your assigned trips and send updates.
             </p>
           </div>
 
           {/* Form */}
-          <form onSubmit={handleSubmit} className="mt-10 space-y-5">
+          <form onSubmit={handleSubmit} className="mt-4 space-y-3 sm:mt-8 sm:space-y-5">
             {/* Driver ID */}
             <div>
               <label
                 htmlFor="email"
-                className="mb-2 block text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-slate-500">
                 Work Email
               </label>
               <input
@@ -146,7 +146,7 @@ export default function DriverLoginPage() {
                 placeholder="name@example.com"
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
-                className="w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-900 focus:ring-1 focus:ring-slate-900"
+                className="w-full rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-900 focus:ring-1 focus:ring-slate-900"
               />
             </div>
 
@@ -154,7 +154,7 @@ export default function DriverLoginPage() {
             <div>
               <label
                 htmlFor="password"
-                className="mb-2 block text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-slate-500">
                 Password
               </label>
               <div className="relative">
@@ -167,7 +167,7 @@ export default function DriverLoginPage() {
                   placeholder="••••••••"
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
-                  className="w-full rounded-lg border border-slate-200 bg-white px-4 py-3 pr-11 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-900 focus:ring-1 focus:ring-slate-900"
+                  className="w-full rounded-lg border border-slate-200 bg-white px-4 py-2.5 pr-11 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-900 focus:ring-1 focus:ring-slate-900"
                 />
                 <button
                   type="button"
@@ -175,9 +175,9 @@ export default function DriverLoginPage() {
                   aria-label={showPassword ? "Hide password" : "Show password"}
                   className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 transition hover:text-slate-700">
                   {showPassword ? (
-                    <EyeOff className="h-6 w-6" />
+                    <EyeOff className="h-5 w-5" />
                   ) : (
-                    <Eye className="h-6 w-6" />
+                    <Eye className="h-5 w-5" />
                   )}
                 </button>
               </div>
@@ -187,13 +187,13 @@ export default function DriverLoginPage() {
             <button
               type="submit"
               disabled={submitting}
-              className="mt-2 w-full cursor-pointer rounded-lg bg-slate-900 py-3.5 text-sm font-semibold text-white transition hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-70">
+              className="mt-1 w-full cursor-pointer rounded-lg bg-slate-900 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-70 sm:py-3.5">
               {submitting ? "Signing in…" : "Login to Portal"}
             </button>
           </form>
 
           {/* Footer */}
-          <p className="mt-10 text-center text-sm text-slate-500">
+          <p className="mt-4 text-center text-[11px] text-slate-500 sm:mt-8 sm:text-sm">
             Having trouble signing in?{" "}
             <button
               type="button"
