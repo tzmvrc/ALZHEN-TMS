@@ -129,7 +129,9 @@ export default function DriverLoginPage() {
           </div>
 
           {/* Form */}
-          <form onSubmit={handleSubmit} className="mt-4 space-y-3 sm:mt-8 sm:space-y-5">
+          <form
+            onSubmit={handleSubmit}
+            className="mt-4 space-y-3 sm:mt-8 sm:space-y-5">
             {/* Driver ID */}
             <div>
               <label
