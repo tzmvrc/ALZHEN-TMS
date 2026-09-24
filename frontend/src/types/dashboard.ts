@@ -12,7 +12,6 @@ export interface KpiItem {
   change: string;
   trend: Trend;
   tone: Tone;
-  /** Optional — if omitted, a derived sparkline is used */
   sparkline?: number[];
   icon?: ReactNode;
 }
@@ -32,7 +31,6 @@ export interface SalesPoint {
   label: string;
   primary: number;
   secondary: number;
-  /** Optional bar height 0–100 for the vertical column behind the line */
   bar?: number;
 }
 
@@ -67,6 +65,25 @@ export interface DispatchRecord {
   hub: string;
   driver: string;
   amount: string;
+  imageUrl?: string;
+  latitude?: number;
+  longitude?: number;
+  // Map / fleet card extras
+  origin?: string;
+  destination?: string;
+  originCoord?: [number, number];
+  destCoord?: [number, number];
+  currentCoord?: [number, number];
+  progressPct?: number;
+}
+
+export interface MonitoringPoint {
+  id: string;
+  label: string;
+  region: string;
+  status: DispatchStatus;
+  latitude: number;
+  longitude: number;
 }
 
 export interface IncidentRecord {
@@ -90,12 +107,43 @@ export interface SnapshotRecord {
   change: string;
 }
 
+export interface HubPin {
+  id: string;
+  name: string;
+  lat: number;
+  lng: number;
+}
+
+export interface LoadingStats {
+  trucksLoading: number;
+  avgLoadPct: number;
+  totalVolume: string;
+  totalWeight: string;
+  volumeBars: number[];
+  weightBars: number[];
+}
+
+export interface TimelineEvent {
+  id: string;
+  time: string;
+  message: string;
+  tone: "blue" | "emerald" | "amber" | "violet" | "rose";
+}
+
 export interface OperationsData {
   dispatches: DispatchRecord[];
   incidents: IncidentRecord[];
   regionalSummary: RegionalSummary[];
   snapshots: SnapshotRecord[];
   issueClusters: { label: string; value: string }[];
+  hubs?: HubPin[];
+  loadingStats?: LoadingStats;
+  timeline?: TimelineEvent[];
+  donutSlices?: DonutSlice[];
+  monitoring?: {
+    mapUrl?: string;
+    points?: MonitoringPoint[];
+  };
 }
 
 export interface DashboardData {

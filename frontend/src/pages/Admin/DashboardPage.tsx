@@ -1,12 +1,24 @@
 import { useMemo, useState } from "react";
-import SidebarNav from "../../components/admin/SidebarNav";
-import { PageIntro, TopBar } from "../../components/admin/DashboardPrimitives";
+import SidebarNav, {
+  type NavEntry,
+  type NavItemWithBadge,
+  type WorkspaceName,
+} from "../../components/admin/SidebarNav";
+import { TopBar } from "../../components/admin/DashboardPrimitives";
 import ConfirmDialog from "../../components/ui/ConfirmDialog";
-import { useToast } from "../../components/ui/Toast";
 import { useAuth } from "../../context/AuthContext";
+import {
+  FileCheck2,
+  HelpCircle,
+  LayoutDashboard,
+  Mail,
+  Truck,
+  WalletCards,
+} from "lucide-react";
 import type { DashboardData } from "../../types/dashboard";
 import OverviewView from "./views/OverviewView";
 import ResourceView from "./views/ResourceView";
+import ClientWebsiteWorkspace from "./ClientWebsiteWorkspace";
 import { defaultDashboardData } from "./data/defaultDashboardData";
 
 export interface DashboardPageProps {
@@ -21,51 +33,123 @@ export default function DashboardPage({
   data = defaultDashboardData,
   loading = false,
   onNavigate = () => {},
-  onLogout = () => {},
-  onSearch = () => {},
+  onLogout
 }: DashboardPageProps) {
-  const { profile, logout } = useAuth();
-  const { addToast } = useToast();
-  const [activeId, setActiveId] = useState(data.nav.activeId);
-  const [searchQuery, setSearchQuery] = useState("");
+  const { logout } = useAuth();
+  const [workspace, setWorkspace] = useState<WorkspaceName>("Operations Admin");
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [logoutLoading, setLogoutLoading] = useState(false);
+  const [activeId, setActiveId] = useState(data.nav.activeId);
+  const [searchQuery] = useState("");
+
+  /* ---------------------------------------------------------------- */
+  /* Build sidebar entries                                             */
+  /* ---------------------------------------------------------------- */
+  const navEntries: NavEntry[] = useMemo(() => {
+    const general = Object.fromEntries(
+      data.nav.general.map((item) => [item.id, item]),
+    );
+    const support = Object.fromEntries(
+      data.nav.support.map((item) => [item.id, item]),
+    );
+
+    const custom = (id: string, label: string) => ({ id, label });
+
+    const withDefaults = (
+      id: string,
+      label: string,
+      icon: React.ReactNode,
+      children: (NavItemWithBadge | undefined)[],
+    ): NavEntry | null => {
+      const resolved = children.filter(
+        (child): child is NavItemWithBadge => Boolean(child),
+      );
+      if (resolved.length === 0) return null;
+      return { id, label, icon, children: resolved };
+    };
+
+    const entries: (NavEntry | null)[] = [
+      // Home — flat item
+      general.overview
+        ? {
+            id: "overview",
+            label: "Home",
+            icon: <LayoutDashboard className="h-4 w-4" />,
+          }
+        : null,
+
+      // Requests — flat item
+      general.requests
+        ? {
+            ...general.requests,
+            icon: <Mail className="h-4 w-4" />,
+          }
+        : null,
+
+      // Trips — group
+      withDefaults("trips", "Trips", <Truck className="h-4 w-4" />, [
+        general.dispatches,
+        custom("dispatch-planning", "New Trip"),
+        general.monitoring,
+      ]),
+
+      // Deliveries — group
+      withDefaults(
+        "deliveries",
+        "Deliveries",
+        <FileCheck2 className="h-4 w-4" />,
+        [
+          custom("delivery-list", "Delivery List"),
+          general.pod,
+          custom("returns", "Returns & Pull-Outs"),
+        ],
+      ),
+
+      // Issues — group
+      withDefaults("issues", "Issues", <HelpCircle className="h-4 w-4" />, [
+        custom("report-issue", "Report an Issue"),
+        support.alerts,
+        custom("resolved-issues", "Resolved"),
+      ]),
+
+      // Billing — group
+      withDefaults("billing", "Billing", <WalletCards className="h-4 w-4" />, [
+        support.billing,
+        support.payables,
+        custom("rates-fuel", "Rates & Fuel"),
+      ]),
+
+      // Store calling — flat
+      general["store-calling"] ? { ...general["store-calling"] } : null,
+
+      // Reports — flat
+      general.reports ? { ...general.reports } : null,
+
+      // Data controls — flat
+      support.compliance ? { ...support.compliance } : null,
+    ];
+
+    return entries.filter(Boolean) as NavEntry[];
+  }, [data.nav]);
+
+  /* ---------------------------------------------------------------- */
+  /* Flatten for active label lookup                                   */
+  /* ---------------------------------------------------------------- */
   const navItems = useMemo(
-    () => [...data.nav.general, ...data.nav.support],
-    [data.nav.general, data.nav.support],
+    () =>
+      navEntries.flatMap((entry) =>
+        "children" in entry && Array.isArray(entry.children)
+          ? entry.children
+          : [entry],
+      ),
+    [navEntries],
   );
   const activeLabel =
     navItems.find((item) => item.id === activeId)?.label ?? "Overview";
-  const displayName =
-    profile?.first_name && profile?.last_name
-      ? `${profile.first_name} ${profile.last_name}`
-      : (profile?.first_name ?? "User");
-  const displayRole = profile?.role ?? "ADMIN";
 
-  const handleConfirmLogout = async () => {
-    setLogoutLoading(true);
-
-    try {
-      await logout();
-      addToast({
-        title: "Logged out successfully.",
-        variant: "success",
-        duration: 2500,
-      });
-      onLogout();
-      setShowLogoutConfirm(false);
-      window.location.assign("/login");
-    } catch (error) {
-      addToast({
-        title: "Unable to log out completely. Please try again.",
-        variant: "error",
-        duration: 3500,
-      });
-    } finally {
-      setLogoutLoading(false);
-    }
-  };
-
+  /* ---------------------------------------------------------------- */
+  /* Search filtering                                                  */
+  /* ---------------------------------------------------------------- */
   const filteredData = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
     if (!query) return data;
@@ -87,46 +171,99 @@ export default function DashboardPage({
     };
   }, [data, searchQuery]);
 
+  /* ---------------------------------------------------------------- */
+  /* Handlers                                                          */
+  /* ---------------------------------------------------------------- */
   const handleNavigate = (id: string) => {
     setActiveId(id);
     onNavigate(id);
   };
 
-  if (loading)
+  const handleConfirmLogout = async () => {
+    setLogoutLoading(true);
+    try {
+      await (onLogout ?? logout)();
+      setShowLogoutConfirm(false);
+    } finally {
+      setLogoutLoading(false);
+    }
+  };
+
+  /* ---------------------------------------------------------------- */
+  /* Loading                                                           */
+  /* ---------------------------------------------------------------- */
+  if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-200 border-t-blue-600" />
+      <div className="flex min-h-screen items-center justify-center bg-[#fafafa]">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-200 border-t-slate-900" />
       </div>
     );
+  }
 
+  /* ---------------------------------------------------------------- */
+  /* Client Website workspace                                          */
+  /* ---------------------------------------------------------------- */
+  if (workspace === "Client Website") {
+    return (
+      <>
+        <ClientWebsiteWorkspace
+          userName={data.user.name}
+          onWorkspaceChange={setWorkspace}
+          onLogout={() => setShowLogoutConfirm(true)}
+        />
+        <ConfirmDialog
+          open={showLogoutConfirm}
+          title="Log out?"
+          description="Are you sure you want to log out?"
+          confirmDisabled={logoutLoading}
+          isConfirming={logoutLoading}
+          onCancel={() => setShowLogoutConfirm(false)}
+          onConfirm={() => void handleConfirmLogout()}
+        />
+      </>
+    );
+  }
+
+  /* ---------------------------------------------------------------- */
+  /* Operations Admin workspace                                        */
+  /* ---------------------------------------------------------------- */
   return (
-    <div className="dotted-surface min-h-screen w-full text-slate-900">
-      <div className="flex min-h-screen w-full overflow-hidden">
+    <div className="min-h-screen w-full dotted-surface text-slate-900">
+      <div className="flex min-h-screen w-full">
         <SidebarNav
-          general={data.nav.general}
-          support={data.nav.support}
+          entries={navEntries}
           activeId={activeId}
           onNavigate={handleNavigate}
           onLogout={() => setShowLogoutConfirm(true)}
-          userName={displayName}
-          userRole={displayRole}
-          userInitial={displayName.charAt(0).toUpperCase()}
+          workspace={workspace}
+          onWorkspaceChange={setWorkspace}
+          userName={data.user.name}
+          userInitial={data.user.name.charAt(0).toUpperCase()}
         />
-        <div className="min-w-0 flex-1 overflow-y-auto lg:ml-[260px]">
+
+        <div className="min-w-0 flex-1 lg:pl-[288px] dotted-surface">
           <TopBar
             activeLabel={activeLabel}
-            onSearch={(query) => {
-              setSearchQuery(query);
-              onSearch(query);
-            }}
+            onNotifications={() => handleNavigate("alerts")}
+            onProfile={() => handleNavigate("settings")}
+            onSettings={() => handleNavigate("settings")}
+            onHelp={() => handleNavigate("compliance")}
+            userName={data.user.name}
+            userInitial={data.user.name.charAt(0).toUpperCase()}
+            notificationCount={0}
           />
-          <main className="p-4 sm:p-6 md:p-8 lg:p-10">
+
+          <main className="min-h-[calc(100vh-3rem)] px-6 py-2 lg:px-6">
             {activeId === "overview" ? (
               <>
-                <PageIntro
-                  title="Dispatch command center"
-                  subtitle="Monitor billing, delivery, POD, and exception activity across Luzon, Visayas, and Mindanao."
-                />
+                <div className="mb-6 flex items-center justify-between">
+                  <h1 className="text-lg font-semibold text-slate-900">
+                    Operations overview
+                  </h1>
+                  <span className="text-xs text-slate-500">
+                    Last updated: Today, 14:32 PM
+                  </span>
+                </div>
                 <OverviewView data={filteredData} />
               </>
             ) : (
@@ -138,10 +275,8 @@ export default function DashboardPage({
 
       <ConfirmDialog
         open={showLogoutConfirm}
-        title="Log out"
+        title="Log out?"
         description="Are you sure you want to log out?"
-        cancelLabel="Cancel"
-        confirmLabel="Log out"
         confirmDisabled={logoutLoading}
         isConfirming={logoutLoading}
         onCancel={() => setShowLogoutConfirm(false)}

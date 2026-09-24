@@ -1,26 +1,82 @@
-@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap");
 @import "tailwindcss";
+/* ================= Leaflet base ================= */
+@import "leaflet/dist/leaflet.css";
 
-:root {
+.leaflet-container {
   font-family: "Plus Jakarta Sans", sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
-  color: #111827;
-  background-color: #eef4fb;
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  background: #eef4fb;
 }
 
-html,
-body,
-#root {
-  margin: 0;
-  min-height: 100%;
-  min-height: 100dvh;
-  font-family: "Plus Jakarta Sans", sans-serif;
+.leaflet-control-attribution {
+  font-size: 9px !important;
+  background: rgba(255, 255, 255, 0.8) !important;
 }
+
+/* ================= Truck marker ================= */
+.truck-marker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 9999px;
+  color: #fff;
+  font-size: 15px;
+  border: 2px solid #fff;
+  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.25);
+}
+
+.truck-marker--in-progress { background: #10b981; }
+.truck-marker--delayed     { background: #f59e0b; }
+.truck-marker--completed   { background: #3b82f6; }
+
+.hub-marker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  background: #0f172a;
+  color: #fff;
+  font-size: 13px;
+  border: 2px solid #fff;
+  box-shadow: 0 3px 8px rgba(15, 23, 42, 0.3);
+}
+
+/* ================= Route polyline dash animation ================= */
+.route-line {
+  stroke-dasharray: 8 8;
+  animation: route-dash 1.4s linear infinite;
+}
+
+@keyframes route-dash {
+  to { stroke-dashoffset: -16; }
+}
+
+/* ================= Timeline dot pulse ================= */
+.timeline-dot {
+  position: relative;
+}
+.timeline-dot::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border-radius: 9999px;
+  background: currentColor;
+  opacity: 0.25;
+  animation: timeline-pulse 2s ease-in-out infinite;
+}
+@keyframes timeline-pulse {
+  0%, 100% { transform: scale(0.9); opacity: 0.25; }
+  50%      { transform: scale(1.25); opacity: 0.05; }
+}
+
+/* ================= Sparkline bar grow ================= */
+.spark-bar {
+  transition: height 400ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
 
 body {
   min-height: 100dvh;
