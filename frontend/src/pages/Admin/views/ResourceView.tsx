@@ -1,20 +1,18 @@
 // src/pages/Admin/views/ResourceView.tsx
 import type { DashboardData } from "../../../types/dashboard";
 import {
-  DispatchTable,
   IncidentPanel,
   SectionHeader,
   PageIntro,
   ChecklistPanel,
   SettingsPanel,
-  TripIntakePanel,
   PodWorkflowPanel,
-  MonitoringPanel,
-  StoreCallingPanel,
-  ReportsPanel,
 } from "../../../components/admin/DashboardPrimitives";
+import ReportDataView from "../../../components/admin/ReportDataView";
 import TruckCardGrid from "../../../components/admin/TruckCardGrid";
 import RequestsView from "./RequestsView";
+import DatabaseExplorerView from "./DatabaseExplorerView";
+import TripDetailView from "./TripDetailView";
 
 const titleMap: Record<string, [string, string]> = {
   "request-inbox": ["Request inbox", "Review incoming client emails and dispatch requests"],
@@ -25,7 +23,7 @@ const titleMap: Record<string, [string, string]> = {
   "dispatch-planning": ["Dispatch planning", "Convert approved requests into scheduled trips"],
   billing: ["Billing", "Phase 2: accounting PODs and invoice preparation"],
   pod: ["POD workflow", "Collect, verify, and organize proof of delivery"],
-  monitoring: ["Live monitoring", "Track delivery progress, waiting time, and FOU risk"],
+  monitoring: ["Dispatch monitoring", "Review dispatch status, delivery progress, and store stops"],
   "store-calling": ["Store calling", "Prepare stores for incoming deliveries"],
   "warehouse-timings": ["Warehouse timings", "Track arrival, loading, departure, and unloading timestamps"],
   transmittals: ["Transmittals", "Track signed transmittals and courier waybills"],
@@ -37,6 +35,7 @@ const titleMap: Record<string, [string, string]> = {
   "warehouse-directory": ["Warehouse directory", "Manage hubs, warehouse codes, and contacts"],
   "dealer-directory": ["Dealer directory", "Manage customers, branches, addresses, and contacts"],
   reports: ["Reports", "Export dispatch, delivery, and POD status"],
+  database: ["Database", "Browse Supabase tables and report views"],
   payables: ["Payables", "Phase 2: payable trips and cash advances"],
   compliance: ["Data controls", "POD, trip, and document controls"],
   alerts: ["Alerts", "Open delivery exceptions and aging"],
@@ -52,79 +51,6 @@ const labels: Record<string, string[]> = {
   messages: ["Thread", "Related trip", "Last update", "Owner", "Status"],
   calendar: ["Event", "Location", "Date", "Related trip", "Status"],
 };
-
-/* ---------------------------------------------------------------- */
-/* Warehouse overview KPI strip (used on the Trips page)             */
-/* ---------------------------------------------------------------- */
-function WarehouseOverview({ data }: { data: DashboardData }) {
-  const trips = data.operations.dispatches;
-  const trucksInside = trips.filter(
-    (t) => t.status === "In Progress" || t.progressPct === 100,
-  ).length;
-  const unassigned = Math.max(trips.length - 3, 0);
-  const activeLoading = trips.filter((t) => t.status === "In Progress").length;
-  const ready = trips.filter((t) => (t.progressPct ?? 0) >= 80).length;
-
-  const items = [
-    {
-      label: "Trucks inside",
-      value: String(trucksInside).padStart(2, "0"),
-      sub: "Active status",
-      icon: "🚚",
-    },
-    {
-      label: "Unassigned shipments",
-      value: String(unassigned).padStart(2, "0"),
-      sub: "Pending status",
-      icon: "📦",
-    },
-    {
-      label: "Active loading docks",
-      value: `${activeLoading}/10`,
-      sub: "60% total usage",
-      icon: "🏭",
-    },
-    {
-      label: "Dispatch ready",
-      value: String(ready).padStart(2, "0"),
-      sub: "Ready for today",
-      icon: "✅",
-    },
-  ];
-
-  return (
-    <div className="mb-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="mb-4 flex items-center justify-between">
-        <div>
-          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
-            Warehouse overview
-          </p>
-        </div>
-        <span className="text-[11px] text-slate-400">
-          Last updated: Today, 14:32 PM
-        </span>
-      </div>
-
-      <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-        {items.map((item) => (
-          <div
-            key={item.label}
-            className="border-slate-100 sm:border-r sm:pr-5 sm:last:border-r-0"
-          >
-            <div className="flex items-center gap-2 text-[11px] font-medium text-slate-500">
-              <span className="text-sm">{item.icon}</span>
-              {item.label}
-            </div>
-            <p className="mt-2 text-2xl font-bold text-slate-900">
-              {item.value}
-            </p>
-            <p className="mt-0.5 text-[11px] text-slate-400">{item.sub}</p>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 /* ---------------------------------------------------------------- */
 /* Generic fallback table for un-specialized resource IDs            */
@@ -253,35 +179,40 @@ function GenericResourceTable({
 export default function ResourceView({
   id,
   data,
+  onNavigate,
 }: {
   id: string;
   data: DashboardData;
+  onNavigate?: (id: string) => void;
 }) {
-  const [title, subtitle] = titleMap[id] ?? [
-    "Operations",
-    "Logistics workspace",
-  ];
+  const [tripDetailPrefix, tripDetailId, tripReturnView] = id.split(":");
+  const isTripDetail = tripDetailPrefix === "trip-detail" && Boolean(tripDetailId);
+  const [title, subtitle] = isTripDetail
+    ? ["Trip details", "Dispatch, route, stops, products, and recorded activity"]
+    : titleMap[id] ?? ["Operations", "Logistics workspace"];
+  const isPrototype = !isTripDetail && ![
+    "dispatches",
+    "monitoring",
+    "store-calling",
+    "reports",
+    "database",
+  ].includes(id);
 
   return (
     <>
       <PageIntro title={title} subtitle={subtitle} />
+      {isPrototype && <PrototypeNotice />}
 
-      {/* ============ REQUESTS (inbox-style approval workflow) ============ */}
+      {/* ============ REQUESTS (prototype workflow) ============ */}
       {id === "requests" && <RequestsView />}
 
-      {/* ============ TRIPS / WAREHOUSE OPERATIONS ============ */}
+      {/* ============ TRIP BOOKING REPORT ============ */}
       {id === "dispatches" && (
-        <div className="space-y-6">
-          <WarehouseOverview data={data} />
-          <TruckCardGrid rows={data.operations.dispatches} />
-          <div className="space-y-6">
-            <TripIntakePanel />
-            <DispatchTable
-              rows={data.operations.dispatches}
-              title="Master trip register"
-            />
-          </div>
-        </div>
+        <ReportDataView
+          initialReport="trip-booking"
+          showReportPicker={false}
+          onOpenTrip={(tripId) => onNavigate?.(`trip-detail:${tripId}:${id}`)}
+        />
       )}
 
       {/* ============ FLEET ============ */}
@@ -300,14 +231,31 @@ export default function ResourceView({
       {/* ============ OTHER PAGES ============ */}
       {id === "pod" && <PodWorkflowPanel rows={data.operations.dispatches} />}
       {id === "monitoring" && (
-        <MonitoringPanel
-          rows={data.operations.dispatches}
-          incidents={data.operations.incidents}
-          monitoring={data.operations.monitoring}
+        <ReportDataView
+          initialReport="dispatch-monitoring"
+          showReportPicker={false}
+          onOpenTrip={(tripId) => onNavigate?.(`trip-detail:${tripId}:${id}`)}
         />
       )}
-      {id === "store-calling" && <StoreCallingPanel />}
-      {id === "reports" && <ReportsPanel />}
+      {id === "store-calling" && (
+        <ReportDataView
+          initialReport="store-calling"
+          showReportPicker={false}
+          onOpenTrip={(tripId) => onNavigate?.(`trip-detail:${tripId}:${id}`)}
+        />
+      )}
+      {id === "reports" && (
+        <ReportDataView
+          onOpenTrip={(tripId) => onNavigate?.(`trip-detail:${tripId}:${id}`)}
+        />
+      )}
+      {id === "database" && <DatabaseExplorerView />}
+      {isTripDetail && (
+        <TripDetailView
+          tripId={tripDetailId}
+          onBack={() => onNavigate?.(tripReturnView || "dispatches")}
+        />
+      )}
       {id === "alerts" && (
         <IncidentPanel
           rows={data.operations.incidents}
@@ -318,18 +266,27 @@ export default function ResourceView({
       {id === "compliance" && <ChecklistPanel />}
 
       {/* ============ FALLBACK ============ */}
-      {![
+      {!isTripDetail && ![
         "requests",
         "dispatches",
         "pod",
         "monitoring",
         "store-calling",
         "reports",
+        "database",
         "alerts",
         "settings",
         "compliance",
         "fleet",
       ].includes(id) && <GenericResourceTable id={id} data={data} />}
     </>
+  );
+}
+
+function PrototypeNotice() {
+  return (
+    <p className="mb-4 border-l-2 border-amber-500 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+      Prototype area. Displayed data and changes are not connected to the backend.
+    </p>
   );
 }

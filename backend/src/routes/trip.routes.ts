@@ -3,6 +3,7 @@ import { authMiddleware } from "../middleware/auth.middleware.js";
 import { requireRole } from "../middleware/role.middleware.js";
 import {
   getTrip,
+  getTripByDispatch,
   getTripHistory,
   getTripLineItemsById,
   getTripStopsById,
@@ -12,6 +13,12 @@ import {
 const router = Router();
 
 router.get("/", authMiddleware, requireRole("ADMIN", "STAFF"), listTrips);
+router.get(
+  "/dispatch/:dispatchNumber",
+  authMiddleware,
+  requireRole("ADMIN", "STAFF"),
+  getTripByDispatch,
+);
 router.get("/:id", authMiddleware, requireRole("ADMIN", "STAFF"), getTrip);
 router.get(
   "/:id/stops",

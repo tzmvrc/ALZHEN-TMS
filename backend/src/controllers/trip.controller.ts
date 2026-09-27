@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import {
   getTripById,
+  getTripByDispatchNumber,
   getTripEvents,
   getTripLineItems,
   getTripList,
@@ -38,6 +39,27 @@ export async function getTrip(req: Request, res: Response) {
       return sendError(res, 404, message, "TRIP_NOT_FOUND");
     }
     return sendError(res, 400, message, "TRIP_QUERY_FAILED");
+  }
+}
+
+export async function getTripByDispatch(req: Request, res: Response) {
+  try {
+    const dispatchNumber = Array.isArray(req.params.dispatchNumber)
+      ? req.params.dispatchNumber[0]
+      : (req.params.dispatchNumber ?? "");
+    const result = await getTripByDispatchNumber(dispatchNumber);
+    return sendSuccess(res, 200, "Trip resolved successfully", result);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to resolve trip";
+    if (message === "Trip not found") {
+      return sendError(res, 404, message, "TRIP_NOT_FOUND");
+    }
+    return sendError(
+      res,
+      message.startsWith("Invalid") ? 400 : 500,
+      message,
+      "TRIP_LOOKUP_FAILED",
+    );
   }
 }
 

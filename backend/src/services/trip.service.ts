@@ -124,6 +124,26 @@ export async function getTripById(id: string) {
   };
 }
 
+export async function getTripByDispatchNumber(dispatchNumberInput: string) {
+  const dispatchNumber = dispatchNumberInput.trim();
+  if (!dispatchNumber || dispatchNumber.length > 100) {
+    throw new Error("Invalid dispatch number");
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("trips")
+    .select("id, dispatch_number")
+    .eq("dispatch_number", dispatchNumber)
+    .maybeSingle();
+
+  if (error) {
+    console.error("Trip dispatch lookup error:", { dispatchNumber, error });
+    throw new Error("Unable to resolve dispatch number");
+  }
+  if (!data) throw new Error("Trip not found");
+  return data;
+}
+
 export async function getTripStops(id: string) {
   if (!isValidUuid(id)) {
     throw new Error("Invalid trip id");

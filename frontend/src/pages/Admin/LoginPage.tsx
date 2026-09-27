@@ -42,7 +42,7 @@ export default function LoginPage() {
     setSubmitting(true);
 
     try {
-      const session = await login(trimmedEmail, trimmedPassword, "ADMIN");
+      const session = await login(trimmedEmail, trimmedPassword);
       const nextPath = getRoleBasedHomePath(session.profile.role);
 
       addToast({
@@ -157,7 +157,7 @@ export default function LoginPage() {
               Operations Sign In
             </h1>
             <p className="mt-2 text-sm text-slate-500">
-              Authorized personnel only. Use your Alzhen admin credentials to
+              Authorized personnel only. Use your Alzhen operations credentials to
               continue.
             </p>
           </div>

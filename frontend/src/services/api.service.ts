@@ -4,6 +4,16 @@ export type ApiResponse<T> = {
   data?: T;
 };
 
+export class ApiError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
 const API_BASE_URL =
   import.meta.env.VITE_API_URL ?? "http://localhost:5000/api";
 
@@ -39,26 +49,28 @@ async function request<T>(
 
   if (!response.ok) {
     if (response.status === 401) {
-      throw new Error(
+      throw new ApiError(
         payload?.message ?? "Your session has expired. Please log in again.",
+        response.status,
       );
     }
 
     if (response.status === 403) {
-      throw new Error(
+      throw new ApiError(
         payload?.message ?? "You are not authorized to access this resource.",
+        response.status,
       );
     }
 
     if (response.status === 404) {
-      throw new Error(payload?.message ?? "Resource not found.");
+      throw new ApiError(payload?.message ?? "Resource not found.", response.status);
     }
 
     if (response.status >= 500) {
-      throw new Error("Something went wrong. Please try again later.");
+      throw new ApiError("Something went wrong. Please try again later.", response.status);
     }
 
-    throw new Error(payload?.message ?? "Request failed");
+    throw new ApiError(payload?.message ?? "Request failed", response.status);
   }
 
   return (payload ?? ({} as T)) as T;

@@ -12,6 +12,7 @@ import {
   HelpCircle,
   LayoutDashboard,
   Mail,
+  Database,
   Truck,
   WalletCards,
 } from "lucide-react";
@@ -35,7 +36,11 @@ export default function DashboardPage({
   onNavigate = () => {},
   onLogout
 }: DashboardPageProps) {
-  const { logout } = useAuth();
+  const { logout, profile, user } = useAuth();
+  const displayName =
+    [profile?.first_name, profile?.last_name].filter(Boolean).join(" ") ||
+    user?.email ||
+    data.user.name;
   const [workspace, setWorkspace] = useState<WorkspaceName>("Operations Admin");
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [logoutLoading, setLogoutLoading] = useState(false);
@@ -127,10 +132,14 @@ export default function DashboardPage({
 
       // Data controls — flat
       support.compliance ? { ...support.compliance } : null,
+
+      profile?.role === "ADMIN"
+        ? { id: "database", label: "Database", icon: <Database className="h-4 w-4" /> }
+        : null,
     ];
 
     return entries.filter(Boolean) as NavEntry[];
-  }, [data.nav]);
+  }, [data.nav, profile?.role]);
 
   /* ---------------------------------------------------------------- */
   /* Flatten for active label lookup                                   */
@@ -144,8 +153,9 @@ export default function DashboardPage({
       ),
     [navEntries],
   );
-  const activeLabel =
-    navItems.find((item) => item.id === activeId)?.label ?? "Overview";
+  const activeLabel = activeId.startsWith("trip-detail:")
+    ? "Trip details"
+    : navItems.find((item) => item.id === activeId)?.label ?? "Overview";
 
   /* ---------------------------------------------------------------- */
   /* Search filtering                                                  */
@@ -207,7 +217,7 @@ export default function DashboardPage({
     return (
       <>
         <ClientWebsiteWorkspace
-          userName={data.user.name}
+          userName={displayName}
           onWorkspaceChange={setWorkspace}
           onLogout={() => setShowLogoutConfirm(true)}
         />
@@ -237,8 +247,8 @@ export default function DashboardPage({
           onLogout={() => setShowLogoutConfirm(true)}
           workspace={workspace}
           onWorkspaceChange={setWorkspace}
-          userName={data.user.name}
-          userInitial={data.user.name.charAt(0).toUpperCase()}
+          userName={displayName}
+          userInitial={displayName.charAt(0).toUpperCase()}
         />
 
         <div className="min-w-0 flex-1 lg:pl-[288px] dotted-surface">
@@ -248,26 +258,29 @@ export default function DashboardPage({
             onProfile={() => handleNavigate("settings")}
             onSettings={() => handleNavigate("settings")}
             onHelp={() => handleNavigate("compliance")}
-            userName={data.user.name}
-            userInitial={data.user.name.charAt(0).toUpperCase()}
+            userName={displayName}
+            userInitial={displayName.charAt(0).toUpperCase()}
             notificationCount={0}
           />
 
           <main className="min-h-[calc(100vh-3rem)] px-6 py-2 lg:px-6">
             {activeId === "overview" ? (
               <>
-                <div className="mb-6 flex items-center justify-between">
+                <div className="mb-6">
                   <h1 className="text-lg font-semibold text-slate-900">
                     Operations overview
                   </h1>
-                  <span className="text-xs text-slate-500">
-                    Last updated: Today, 14:32 PM
-                  </span>
                 </div>
-                <OverviewView data={filteredData} />
+                <OverviewView
+                  onOpenTrip={(tripId) => setActiveId(`trip-detail:${tripId}:overview`)}
+                />
               </>
             ) : (
-              <ResourceView id={activeId} data={filteredData} />
+              <ResourceView
+                id={activeId}
+                data={filteredData}
+                onNavigate={handleNavigate}
+              />
             )}
           </main>
         </div>

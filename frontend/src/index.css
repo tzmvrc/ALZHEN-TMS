@@ -4,7 +4,7 @@
 
 .leaflet-container {
   font-family: "Plus Jakarta Sans", sans-serif;
-  background: #eef4fb;
+  background: #f4f7f7;
 }
 
 .leaflet-control-attribution {
@@ -44,10 +44,24 @@
   box-shadow: 0 3px 8px rgba(15, 23, 42, 0.3);
 }
 
+.store-marker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 2px solid #fff;
+  border-radius: 8px;
+  background: #d17a22;
+  color: #fff;
+  font-size: 15px;
+  box-shadow: 0 3px 9px rgba(15, 23, 42, 0.28);
+}
+
 /* ================= Route polyline dash animation ================= */
 .route-line {
-  stroke-dasharray: 8 8;
-  animation: route-dash 1.4s linear infinite;
+  stroke-dasharray: 12 16;
+  animation: route-dash 2.8s linear infinite;
 }
 
 @keyframes route-dash {

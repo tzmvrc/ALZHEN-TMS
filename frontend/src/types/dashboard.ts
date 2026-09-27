@@ -53,14 +53,16 @@ export interface NavItem {
   href?: string;
 }
 
-export type DispatchStatus = "Completed" | "In Progress" | "Delayed";
+export type DispatchStatus = "Completed" | "In Progress" | "Delayed" | "Other";
 export type IncidentSeverity = "High" | "Medium" | "Low";
 
 export interface DispatchRecord {
   id: string;
+  displayId?: string;
   route: string;
   tripType: "Regular" | "Stock Transfer";
   status: DispatchStatus;
+  statusText?: string;
   eta: string;
   hub: string;
   driver: string;

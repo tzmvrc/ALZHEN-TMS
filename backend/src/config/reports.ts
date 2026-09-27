@@ -240,6 +240,7 @@ export const REPORT_DEFINITIONS: Record<string, ReportDefinition> = {
     filterableColumns: [
       "loading_date_from",
       "loading_date_to",
+      "dispatch_number",
       "trip_status",
       "delivery_status",
       "warehouse_code",
@@ -251,6 +252,7 @@ export const REPORT_DEFINITIONS: Record<string, ReportDefinition> = {
     filters: [
       { key: "loading_date_from", field: "loading_date", operator: "gte" },
       { key: "loading_date_to", field: "loading_date", operator: "lte" },
+      { key: "dispatch_number", field: "dispatch_number", operator: "eq" },
       { key: "trip_status", field: "trip_status", operator: "eq" },
       { key: "delivery_status", field: "delivery_status", operator: "eq" },
       { key: "warehouse_code", field: "warehouse_code", operator: "eq" },

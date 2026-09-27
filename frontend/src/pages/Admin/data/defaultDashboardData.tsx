@@ -22,7 +22,7 @@ export const defaultDashboardData: DashboardData = {
       { id: "requests", label: "Requests", icon: <Mail className="h-4 w-4" /> },
       { id: "dispatches", label: "Trips", icon: <Truck className="h-4 w-4" /> },
       { id: "pod", label: "POD workflow", icon: <Upload className="h-4 w-4" /> },
-      { id: "monitoring", label: "Live monitoring", icon: <MapPinned className="h-4 w-4" /> },
+      { id: "monitoring", label: "Dispatch monitoring", icon: <MapPinned className="h-4 w-4" /> },
       { id: "store-calling", label: "Store calling", icon: <Users className="h-4 w-4" /> },
       { id: "reports", label: "Reports", icon: <Wallet className="h-4 w-4" /> },
     ],

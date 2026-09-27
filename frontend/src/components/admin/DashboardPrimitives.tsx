@@ -457,6 +457,7 @@ export function StatusOverviewPanel({ rows = [] }: { rows?: DispatchRecord[] }) 
     Completed: rows.filter((r) => r.status === "Completed").length,
     "In Progress": rows.filter((r) => r.status === "In Progress").length,
     Delayed: rows.filter((r) => r.status === "Delayed").length,
+    Other: rows.filter((r) => r.status === "Other").length,
   };
   const total = rows.length || 1;
 
@@ -465,7 +466,9 @@ export function StatusOverviewPanel({ rows = [] }: { rows?: DispatchRecord[] }) 
       ? "bg-blue-500"
       : s === "In Progress"
         ? "bg-emerald-500"
-        : "bg-amber-500";
+        : s === "Delayed"
+          ? "bg-amber-500"
+          : "bg-slate-400";
 
   return (
     <CardShell>
@@ -529,10 +532,12 @@ export function ActivityPanel({ rows = [] }: { rows?: DispatchRecord[] }) {
 function FleetTripCard({
   trip,
   onSelect,
+  onViewTrip,
   selected,
 }: {
   trip: DispatchRecord;
   onSelect?: (id: string) => void;
+  onViewTrip?: (id: string) => void;
   selected?: boolean;
 }) {
   const progress = trip.progressPct ?? 0;
@@ -544,29 +549,30 @@ function FleetTripCard({
         : "bg-emerald-500";
 
   return (
-    <button
-      type="button"
-      onClick={() => onSelect?.(trip.id)}
-      className={`w-full cursor-pointer rounded-xl border bg-white p-4 text-left transition ${
+    <div className={`rounded-xl border bg-white transition ${
         selected
           ? "border-blue-400 ring-2 ring-blue-200"
           : "border-slate-100 hover:border-slate-200 hover:shadow-sm"
-      }`}
-    >
-      <div className="flex items-center justify-between">
+      }`}>
+      <button
+        type="button"
+        onClick={() => onSelect?.(trip.id)}
+        className="w-full cursor-pointer p-4 text-left"
+      >
+        <div className="flex items-center justify-between">
         <span className="text-xs font-semibold text-slate-800">
-          {trip.id} · ETA {trip.eta}
+          {trip.displayId ?? trip.id} · ETA {trip.eta}
         </span>
         <span
           className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${statusPill(
             trip.status,
           )}`}
         >
-          {trip.status}
+            {trip.statusText ?? trip.status}
         </span>
-      </div>
+        </div>
 
-      <div className="mt-4 flex items-center gap-3 text-[11px] text-slate-500">
+        <div className="mt-4 flex items-center gap-3 text-[11px] text-slate-500">
         <div className="flex flex-col items-center">
           <span className="text-base leading-none">🚚</span>
           <span className="mt-1 max-w-[70px] truncate">
@@ -592,25 +598,38 @@ function FleetTripCard({
             {trip.destination ?? "Destination"}
           </span>
         </div>
+        </div>
+      </button>
+      <div className="flex justify-end border-t border-slate-100 px-3 py-1.5">
+        <button
+          type="button"
+          onClick={() => onViewTrip?.(trip.id)}
+          className="inline-flex min-h-8 items-center gap-1 rounded-md px-2 text-[11px] font-semibold text-cyan-800 hover:bg-cyan-50"
+        >
+          Trip details
+          <ArrowUpRight aria-hidden="true" className="h-3.5 w-3.5" />
+        </button>
       </div>
-    </button>
+    </div>
   );
 }
 
 export function FleetBoardPanel({
   rows = [],
   onSelectTrip,
+  onViewTrip,
   selectedTripId,
   className = "",
 }: {
   rows?: DispatchRecord[];
   onSelectTrip?: (id: string) => void;
+  onViewTrip?: (id: string) => void;
   selectedTripId?: string | null;
   className?: string;
 }) {
   const [activeTab, setActiveTab] = useState<
     "all" | "in-progress" | "completed" | "delayed"
-  >("all");
+    | "other">("all");
   const tabs = [
     { id: "all" as const, label: "All", count: rows.length },
     {
@@ -628,11 +647,17 @@ export function FleetBoardPanel({
       label: "Completed",
       count: rows.filter((trip) => trip.status === "Completed").length,
     },
+    {
+      id: "other" as const,
+      label: "Other",
+      count: rows.filter((trip) => trip.status === "Other").length,
+    },
   ];
   const statusPriority: Record<DispatchRecord["status"], number> = {
     "In Progress": 0,
     Delayed: 1,
     Completed: 2,
+    Other: 3,
   };
   const filteredRows = rows
     .filter(
@@ -685,6 +710,7 @@ export function FleetBoardPanel({
             key={trip.id}
             trip={trip}
             onSelect={onSelectTrip}
+            onViewTrip={onViewTrip}
             selected={trip.id === selectedTripId}
           />
         ))}
@@ -937,6 +963,20 @@ export function TruckGridView({ rows = [] }: { rows?: DispatchRecord[] }) {
 /* ================================================================ */
 /* LoadingStatusPanel                                                */
 /* ================================================================ */
+function SparkRow({ bars, color }: { bars: number[]; color: string }) {
+  return (
+    <div className="flex h-10 items-end gap-1">
+      {bars.map((bar, index) => (
+        <div
+          key={index}
+          className="spark-bar w-2 rounded-t"
+          style={{ height: `${bar}%`, backgroundColor: color, opacity: 0.85 }}
+        />
+      ))}
+    </div>
+  );
+}
+
 export function LoadingStatusPanel({
   stats,
 }: {
@@ -957,18 +997,6 @@ export function LoadingStatusPanel({
     volumeBars: [42, 55, 38, 62, 48, 71, 58, 66],
     weightBars: [30, 48, 42, 55, 60, 52, 68, 62],
   };
-
-  const SparkRow = ({ bars, color }: { bars: number[]; color: string }) => (
-    <div className="flex h-10 items-end gap-1">
-      {bars.map((b, i) => (
-        <div
-          key={i}
-          className="spark-bar w-2 rounded-t"
-          style={{ height: `${b}%`, backgroundColor: color, opacity: 0.85 }}
-        />
-      ))}
-    </div>
-  );
 
   return (
     <CardShell>
@@ -1048,14 +1076,18 @@ export function TripStatusDonut({
   const cy = size / 2;
   const circumference = 2 * Math.PI * radius;
 
-  let offset = 0;
-  const arcs = slices.map((s) => {
-    const frac = s.value / total;
-    const dash = frac * circumference;
-    const arc = { ...s, dash, offset };
-    offset += dash;
-    return arc;
-  });
+  const arcs = slices.reduce<
+    { total: number; arcs: (typeof slices)[number][] extends never[] ? never[] : Array<(typeof slices)[number] & { dash: number; offset: number }> }
+  >(
+    (accumulator, slice) => {
+      const dash = (slice.value / total) * circumference;
+      return {
+        total: accumulator.total + dash,
+        arcs: [...accumulator.arcs, { ...slice, dash, offset: accumulator.total }],
+      };
+    },
+    { total: 0, arcs: [] },
+  ).arcs;
 
   return (
     <CardShell>
@@ -1147,15 +1179,14 @@ export function ActivityTimeline({
       <div className="mb-4 flex items-center justify-between">
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
-            Live feed
+            Trip events
           </p>
           <h2 className="mt-0.5 text-sm font-semibold text-slate-900">
             Activity timeline
           </h2>
         </div>
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold text-emerald-700">
-          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />
-          Live
+        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-semibold text-slate-600">
+          Latest
         </span>
       </div>
 

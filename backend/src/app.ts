@@ -6,6 +6,7 @@ import authRoutes from "./routes/auth.routes.js";
 import userRoutes from "./routes/user.routes.js";
 import reportRoutes from "./routes/report.routes.js";
 import tripRoutes from "./routes/trip.routes.js";
+import databaseBrowserRoutes from "./routes/database-browser.routes.js";
 import { errorMiddleware } from "./middleware/error.middleware.js";
 
 dotenv.config();
@@ -19,6 +20,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/reports", reportRoutes);
 app.use("/api/trips", tripRoutes);
+app.use("/api/database", databaseBrowserRoutes);
 
 app.get("/", (_req, res) => {
   res.json({ message: "ALZHEN TMS backend is running" });
