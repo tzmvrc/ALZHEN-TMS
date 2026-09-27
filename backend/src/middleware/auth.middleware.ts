@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from "express";
-import { supabaseAuth } from "../config/supabase.js";
+import { supabaseAdmin, supabaseAuth } from "../config/supabase.js";
 
 export async function authMiddleware(
   req: Request,
@@ -43,7 +43,28 @@ export async function authMiddleware(
       });
     }
 
-    req.user = user;
+    const { data: profile, error: profileError } = await supabaseAdmin
+      .from("profiles")
+      .select("id, role, is_admin, first_name, last_name")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    if (profileError) {
+      console.error("Profile lookup error:", {
+        userId: user.id,
+        code: profileError.code,
+        message: profileError.message,
+      });
+      return res.status(500).json({
+        success: false,
+        message: "User profile could not be loaded",
+      });
+    }
+
+    req.user = {
+      ...user,
+      role: profile?.role ?? "UNKNOWN",
+    };
 
     next();
   } catch (error) {

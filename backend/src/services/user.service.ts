@@ -1,5 +1,8 @@
 import { supabaseAdmin } from "../config/supabase.js";
-import { createUserProfile } from "../models/user.model.js";
+import {
+  createDriverForProfile,
+  createUserProfile,
+} from "../models/user.model.js";
 
 export class UserServiceError extends Error {
   statusCode: number;
@@ -45,6 +48,36 @@ function normalizeRole(value: unknown): "ADMIN" | "TRUCKER" {
   }
 
   throw new UserServiceError("Role must be ADMIN or TRUCKER.", 400);
+}
+
+async function rollbackCreatedUser(userId: string, profileId?: string) {
+  if (profileId) {
+    const { error: profileDeleteError } = await supabaseAdmin
+      .from("profiles")
+      .delete()
+      .eq("id", profileId);
+
+    if (profileDeleteError) {
+      console.error("Supabase profile rollback failed:", {
+        userId,
+        profileId,
+        code: profileDeleteError.code,
+        message: profileDeleteError.message,
+      });
+    }
+  }
+
+  const { error: authDeleteError } =
+    await supabaseAdmin.auth.admin.deleteUser(userId);
+
+  if (authDeleteError) {
+    console.error("Supabase auth user rollback failed:", {
+      userId,
+      code: authDeleteError.code,
+      message: authDeleteError.message,
+      status: authDeleteError.status,
+    });
+  }
 }
 
 export async function createUserAccount(input: CreateUserAccountInput) {
@@ -134,6 +167,45 @@ export async function createUserAccount(input: CreateUserAccountInput) {
       profile_picture_path: null,
     });
 
+    let driver = null;
+
+    if (role === "TRUCKER") {
+      try {
+        driver = await createDriverForProfile({
+          first_name: firstName,
+          last_name: lastName,
+          profile_id: profile.id,
+          trucking_company_id: null,
+          contact_number: null,
+          license_number: null,
+          status: "ACTIVE",
+          notes: null,
+        });
+      } catch (error) {
+        console.error(
+          "TRUCKER driver creation failed after profile creation:",
+          {
+            userId: newUserId,
+            profileId: profile.id,
+            email,
+            role,
+            error,
+          },
+        );
+
+        await rollbackCreatedUser(newUserId, profile.id);
+
+        if (error instanceof UserServiceError) {
+          throw error;
+        }
+
+        throw new UserServiceError(
+          "Unable to create the trucker driver record at this time.",
+          500,
+        );
+      }
+    }
+
     return {
       user: {
         id: newUserId,
@@ -150,29 +222,22 @@ export async function createUserAccount(input: CreateUserAccountInput) {
         created_at: profile.created_at,
         updated_at: profile.updated_at,
       },
+      driver,
     };
   } catch (error) {
-    const deletion = await supabaseAdmin.auth.admin.deleteUser(newUserId);
-
-    if (deletion.error) {
-      console.error("Supabase auth user rollback failed:", {
-        userId: newUserId,
-        code: deletion.error.code,
-        message: deletion.error.message,
-        status: deletion.error.status,
-      });
-    }
-
     if (error instanceof UserServiceError) {
       throw error;
     }
 
-    console.error("Profile creation failed after auth user creation:", {
+    console.error("User creation failed after auth user creation:", {
       userId: newUserId,
       role,
       isAdmin: normalizedIsAdmin,
       email,
+      error,
     });
+
+    await rollbackCreatedUser(newUserId);
 
     throw new UserServiceError(
       "Unable to create the user profile at this time.",
