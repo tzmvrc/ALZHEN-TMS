@@ -6,6 +6,7 @@ import authRoutes from "./routes/auth.routes.js";
 import userRoutes from "./routes/user.routes.js";
 import reportRoutes from "./routes/report.routes.js";
 import tripRoutes from "./routes/trip.routes.js";
+import truckerRoutes from "./routes/trucker.routes.js";
 import databaseBrowserRoutes from "./routes/database-browser.routes.js";
 import { errorMiddleware } from "./middleware/error.middleware.js";
 
@@ -20,6 +21,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/reports", reportRoutes);
 app.use("/api/trips", tripRoutes);
+app.use("/api/truckers", truckerRoutes);
 app.use("/api/database", databaseBrowserRoutes);
 
 app.get("/", (_req, res) => {

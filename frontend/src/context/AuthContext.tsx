@@ -49,7 +49,7 @@ type AuthContextValue = {
     allowedRole?: AllowedPortalRole,
   ) => Promise<AuthSessionResponse>;
   logout: () => Promise<void>;
-  refreshSession: () => Promise<void>;
+  refreshSession: (options?: { silent?: boolean }) => Promise<void>;
   clearSessionState: () => void;
   suspendSessionSync: () => void;
   resumeSessionSync: () => void;
@@ -71,6 +71,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const authSyncLockedRef = useRef(false);
+  const lastRefreshAtRef = useRef(0);
 
   const clearSessionState = useCallback(() => {
     setUser(null);
@@ -91,49 +92,64 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     authSyncLockedRef.current = false;
   }, []);
 
-  const refreshSession = useCallback(async () => {
-    if (authSyncLockedRef.current) {
-      return;
-    }
+  const refreshSession = useCallback(
+    async (options: { silent?: boolean } = {}) => {
+      const { silent = false } = options;
 
-    setLoading(true);
-
-    try {
-      const {
-        data: { session },
-        error,
-      } = await supabase.auth.getSession();
-
-      if (error) {
-        throw error;
-      }
-
-      if (!session?.access_token) {
-        clearSessionState();
+      if (authSyncLockedRef.current) {
         return;
       }
 
-      const response = await apiGet<{
-        success: boolean;
-        message?: string;
-        data: AuthSessionResponse;
-      }>("/auth/me", session.access_token);
+      const now = Date.now();
+      if (now - lastRefreshAtRef.current < 15000 && user) {
+        return;
+      }
+      lastRefreshAtRef.current = now;
 
-      if (!response.success || !response.data) {
-        throw new Error(response.message ?? "Unable to load account profile");
+      if (!silent && !user) {
+        setLoading(true);
       }
 
-      setUser(response.data.authUser);
-      setProfile(response.data.profile);
-      setAccessToken(session.access_token);
-    } catch (error) {
-      console.error("Failed to refresh auth session:", error);
-      clearSessionState();
-      await supabase.auth.signOut().catch(() => undefined);
-    } finally {
-      setLoading(false);
-    }
-  }, [clearSessionState]);
+      try {
+        const {
+          data: { session },
+          error,
+        } = await supabase.auth.getSession();
+
+        if (error) {
+          throw error;
+        }
+
+        if (!session?.access_token) {
+          clearSessionState();
+          return;
+        }
+
+        const response = await apiGet<{
+          success: boolean;
+          message?: string;
+          data: AuthSessionResponse;
+        }>("/auth/me", session.access_token);
+
+        if (!response.success || !response.data) {
+          throw new Error(response.message ?? "Unable to load account profile");
+        }
+
+        setUser(response.data.authUser);
+        setProfile(response.data.profile);
+        setAccessToken(session.access_token);
+      } catch (error) {
+        console.error("Failed to refresh auth session:", error);
+        clearSessionState();
+        await supabase.auth.signOut().catch(() => undefined);
+      } finally {
+        if (!silent) {
+          setLoading(false);
+        }
+      }
+    },
+    [clearSessionState, user],
+  );
 
   const login = useCallback(
     async (
@@ -229,7 +245,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [accessToken, clearSession]);
 
   useEffect(() => {
-    void refreshSession();
+    void refreshSession({ silent: false });
+
+    const handleFocusOrVisible = () => {
+      if (document.visibilityState === "visible" || document.hasFocus()) {
+        const elapsed = Date.now() - lastRefreshAtRef.current;
+        if (elapsed > 30000) {
+          void refreshSession({ silent: true });
+        }
+      }
+    };
 
     const {
       data: { subscription },
@@ -243,11 +268,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      void refreshSession();
+      void refreshSession({ silent: false });
     });
+
+    window.addEventListener("focus", handleFocusOrVisible);
+    document.addEventListener("visibilitychange", handleFocusOrVisible);
 
     return () => {
       subscription.unsubscribe();
+      window.removeEventListener("focus", handleFocusOrVisible);
+      document.removeEventListener("visibilitychange", handleFocusOrVisible);
     };
   }, [clearSessionState, refreshSession]);
 

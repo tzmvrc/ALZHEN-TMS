@@ -10,8 +10,13 @@ import {
   type TripEvent,
   type TripPage,
 } from "../../../services/trip.service";
-import LiveTripMap, { type TripEventTrack } from "../../../components/admin/LiveTripMap";
-import { fetchReportRows, type ReportRow } from "../../../services/report.service";
+import LiveTripMap, {
+  type TripEventTrack,
+} from "../../../components/admin/LiveTripMap";
+import {
+  fetchReportRows,
+  type ReportRow,
+} from "../../../services/report.service";
 import {
   ActivityTimeline,
   FleetBoardPanel,
@@ -74,12 +79,17 @@ function toFleetRow(
     bookingDetails.find((row) => row.warehouse_name)?.warehouse_name ??
       bookingDetails.find((row) => row.warehouse_code)?.warehouse_code,
   );
-  const stores = [...new Set(
-    bookingDetails.map((row) => textValue(row.store_name)).filter(Boolean),
-  )];
+  const stores = [
+    ...new Set(
+      bookingDetails.map((row) => textValue(row.store_name)).filter(Boolean),
+    ),
+  ];
   const gpsEvents = events.filter(
-    (event) => event.latitude !== null && event.latitude !== undefined &&
-      event.longitude !== null && event.longitude !== undefined,
+    (event) =>
+      event.latitude !== null &&
+      event.latitude !== undefined &&
+      event.longitude !== null &&
+      event.longitude !== undefined,
   );
   const deliveryDate = formatDate(trip.estimated_delivery_date);
 
@@ -87,33 +97,45 @@ function toFleetRow(
     id: textValue(trip.id, textValue(trip.dispatch_number, "Trip")),
     displayId: dispatchNumber,
     route: warehouse || "Warehouse not set",
-    tripType: textValue(trip.trip_type) === "Stock Transfer" ? "Stock Transfer" : "Regular",
+    tripType:
+      textValue(trip.trip_type) === "Stock Transfer"
+        ? "Stock Transfer"
+        : "Regular",
     status: fleetStatus(rawStatus),
     statusText: rawStatus.replaceAll("_", " "),
     eta: deliveryDate || "Not set",
     hub: warehouse,
-    driver: textValue(bookingDetails.find((row) => row.driver_name)?.driver_name, "Not assigned"),
+    driver: textValue(
+      bookingDetails.find((row) => row.driver_name)?.driver_name,
+      "Not assigned",
+    ),
     amount: "",
     origin: warehouse || "Warehouse not set",
-    destination: stores.length > 0
-      ? stores.join(", ")
-      : gpsEvents.length > 0
-        ? "GPS recorded"
-        : "GPS not recorded",
+    destination:
+      stores.length > 0
+        ? stores.join(", ")
+        : gpsEvents.length > 0
+          ? "GPS recorded"
+          : "GPS not recorded",
     progressPct: fleetStatus(rawStatus) === "Completed" ? 100 : 0,
   };
 }
 
 export default function OverviewView({
   onOpenTrip,
+  onMetricNavigate,
 }: {
   onOpenTrip?: (tripId: string) => void;
+  onMetricNavigate?: (sectionId: string) => void;
 }) {
   const { accessToken, refreshSession } = useAuth();
   const navigate = useNavigate();
   const [snapshot, setSnapshot] = useState<OverviewSnapshot | null>(null);
   const [loadedKey, setLoadedKey] = useState<string | null>(null);
-  const [failure, setFailure] = useState<{ key: string; message: string } | null>(null);
+  const [failure, setFailure] = useState<{
+    key: string;
+    message: string;
+  } | null>(null);
   const [reloadCount, setReloadCount] = useState(0);
   const [focusedTripId, setFocusedTripId] = useState<string | null>(null);
   const requestKey = `${accessToken ?? "no-session"}:${reloadCount}`;
@@ -135,14 +157,18 @@ export default function OverviewView({
         let bookingRows: ReportRow[] = [];
         let bookingUnavailable = false;
         try {
-          const bookingPage = await fetchReportRows("trip-booking", accessToken, {
-            page: 1,
-            limit: 100,
-            search: "",
-            sortBy: "loading_date",
-            sortOrder: "desc",
-            filters: {},
-          });
+          const bookingPage = await fetchReportRows(
+            "trip-booking",
+            accessToken,
+            {
+              page: 1,
+              limit: 100,
+              search: "",
+              sortBy: "loading_date",
+              sortOrder: "desc",
+              filters: {},
+            },
+          );
           bookingRows = bookingPage.rows;
         } catch (cause) {
           if (cause instanceof ApiError && cause.status === 401) throw cause;
@@ -168,7 +194,10 @@ export default function OverviewView({
         const fulfilledTracks = eventResults.flatMap((result) =>
           result.status === "fulfilled" ? [result.value] : [],
         );
-        const tracks = fulfilledTracks.map(({ trip, events }) => ({ trip, events }));
+        const tracks = fulfilledTracks.map(({ trip, events }) => ({
+          trip,
+          events,
+        }));
         const events = fulfilledTracks.flatMap(({ trip, events: tripEvents }) =>
           tripEvents.map((event) => ({
             ...event,
@@ -181,7 +210,9 @@ export default function OverviewView({
           tracks,
           events,
           bookingRows,
-          eventsUnavailable: eventResults.some((result) => result.status === "rejected"),
+          eventsUnavailable: eventResults.some(
+            (result) => result.status === "rejected",
+          ),
           bookingUnavailable,
           total: allTrips.pagination.total,
           inProgress: inProgress.pagination.total,
@@ -226,12 +257,13 @@ export default function OverviewView({
   if (error) {
     return (
       <div className="flex min-h-64 flex-col items-center justify-center gap-3 rounded-lg border border-slate-200 bg-white p-6 text-center">
-        <p role="alert" className="text-sm text-rose-700">{error}</p>
+        <p role="alert" className="text-sm text-rose-700">
+          {error}
+        </p>
         <button
           type="button"
           onClick={() => setReloadCount((count) => count + 1)}
-          className="inline-flex min-h-9 items-center gap-2 rounded-md border border-slate-300 px-3 text-sm text-slate-700 hover:bg-slate-50"
-        >
+          className="inline-flex min-h-9 items-center gap-2 rounded-md border border-slate-300 px-3 text-sm text-slate-700 hover:bg-slate-50">
           <RefreshCw aria-hidden="true" className="h-4 w-4" />
           Retry
         </button>
@@ -240,9 +272,27 @@ export default function OverviewView({
   }
 
   const metrics = [
-    { label: "Total trips", value: snapshot?.total, icon: Truck },
-    { label: "In progress", value: snapshot?.inProgress, icon: Activity },
-    { label: "Completed", value: snapshot?.completed, icon: CheckCircle2 },
+    {
+      label: "Total trips",
+      value: snapshot?.total ?? 0,
+      icon: Truck,
+      sectionId: "dispatches",
+      tint: "slate",
+    },
+    {
+      label: "In progress",
+      value: snapshot?.inProgress ?? 0,
+      icon: Activity,
+      sectionId: "monitoring",
+      tint: "cyan",
+    },
+    {
+      label: "Completed",
+      value: snapshot?.completed ?? 0,
+      icon: CheckCircle2,
+      sectionId: "combined",
+      tint: "emerald",
+    },
   ];
   const dailyEventCounts = Object.entries(
     (snapshot?.events ?? []).reduce<Record<string, number>>((counts, event) => {
@@ -254,8 +304,13 @@ export default function OverviewView({
     .map(([date, count]) => ({ date, count }))
     .sort((a, b) => a.date.localeCompare(b.date))
     .slice(-7);
-  const maxDailyEventCount = Math.max(...dailyEventCounts.map((item) => item.count), 1);
-  const eventTypeCount = new Set((snapshot?.events ?? []).map((event) => event.event_type)).size;
+  const maxDailyEventCount = Math.max(
+    ...dailyEventCounts.map((item) => item.count),
+    1,
+  );
+  const eventTypeCount = new Set(
+    (snapshot?.events ?? []).map((event) => event.event_type),
+  ).size;
   const recentEvents = (snapshot?.events ?? [])
     .slice()
     .sort((a, b) => Date.parse(b.event_time) - Date.parse(a.event_time))
@@ -276,30 +331,50 @@ export default function OverviewView({
     time: localDateTime(event.event_time),
     message: `${eventLabel(event.event_type)} · ${event.dispatch_number}${event.notes ? ` · ${event.notes}` : ""}`,
     tone: /FINISHED|COMPLETED|DELIVERED/.test(event.event_type)
-      ? "emerald" as const
+      ? ("emerald" as const)
       : /ARRIVAL/.test(event.event_type)
-        ? "blue" as const
-        : "amber" as const,
+        ? ("blue" as const)
+        : ("amber" as const),
   }));
-  const gpsTripCount = (snapshot?.tracks ?? []).filter((track) =>
-    track.events.some((event) =>
-      event.latitude !== null && event.latitude !== undefined &&
-      event.longitude !== null && event.longitude !== undefined,
-    ),
-  ).length;
-
   return (
     <div className="space-y-6">
-      <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
-        {metrics.concat([{ label: "Trips with GPS", value: gpsTripCount, icon: Truck }]).map(({ label, value, icon: Icon }) => (
-          <section key={label} className="flex min-h-28 items-center justify-between rounded-lg border border-slate-200 bg-white px-5 py-4 shadow-sm">
-            <div>
-              <p className="text-xs font-medium text-slate-500">{label}</p>
-              <p className="mt-2 text-2xl font-semibold tabular-nums text-slate-900">{isLoading ? "..." : (value ?? 0).toLocaleString()}</p>
-            </div>
-            <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-50 text-blue-700"><Icon aria-hidden="true" className="h-4 w-4" /></span>
-          </section>
-        ))}
+      <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+        {metrics.map(({ label, value, icon: Icon, sectionId, tint }) => {
+          const accentClass =
+            {
+              slate: "bg-slate-100 text-slate-800",
+              cyan: "bg-cyan-100 text-cyan-700",
+              emerald: "bg-emerald-100 text-emerald-700",
+            }[tint] ?? "bg-slate-100 text-slate-700";
+
+          return (
+            <button
+              key={label}
+              type="button"
+              onClick={() => onMetricNavigate?.(sectionId)}
+              className="group relative flex min-h-32 items-center justify-between overflow-hidden rounded-2xl border border-slate-200 bg-white px-5 py-4 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md">
+              <div className="relative z-10">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+                  {label}
+                </p>
+                <p className="mt-3 text-3xl font-semibold tabular-nums text-slate-900">
+                  {isLoading ? "..." : value.toLocaleString()}
+                </p>
+                <p className="mt-2 text-xs text-slate-500">
+                  {label === "Total trips"
+                    ? "All recorded trips"
+                    : label === "In progress"
+                      ? "Currently active"
+                      : "Finished and closed"}
+                </p>
+              </div>
+              <span
+                className={`pointer-events-none absolute -right-3 top-1/2 flex h-20 w-20 -translate-y-1/2 items-center justify-center rounded-full opacity-20 transition-transform duration-200 group-hover:scale-105 ${accentClass}`}>
+                <Icon aria-hidden="true" className="h-12 w-12" />
+              </span>
+            </button>
+          );
+        })}
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[1.6fr_1fr] xl:grid-rows-[590px]">
@@ -313,14 +388,17 @@ export default function OverviewView({
           rows={fleetRows}
           selectedTripId={focusedTripId}
           onSelectTrip={(tripId) =>
-            setFocusedTripId((current) => current === tripId ? null : tripId)
+            setFocusedTripId((current) => (current === tripId ? null : tripId))
           }
           onViewTrip={onOpenTrip}
           className="h-[590px] min-h-0"
         />
       </div>
       {snapshot?.bookingUnavailable && (
-        <p className="-mt-3 text-xs text-amber-800">Warehouse and store labels are unavailable; trip and GPS data remain visible.</p>
+        <p className="-mt-3 text-xs text-amber-800">
+          Warehouse and store labels are unavailable; trip and GPS data remain
+          visible.
+        </p>
       )}
 
       <div className="grid gap-6 xl:grid-cols-2">
@@ -328,33 +406,67 @@ export default function OverviewView({
         <section className="rounded-lg border border-slate-200 bg-white p-5">
           <header className="mb-3 flex items-start justify-between gap-4">
             <div>
-              <h2 className="text-sm font-semibold text-slate-900">Event volume by date</h2>
-              <p className="mt-0.5 text-xs text-slate-500">Latest recorded events for recent trips</p>
+              <h2 className="text-sm font-semibold text-slate-900">
+                Event volume by date
+              </h2>
+              <p className="mt-0.5 text-xs text-slate-500">
+                Latest recorded events for recent trips
+              </p>
             </div>
             <div className="text-right">
-              <p className="text-lg font-semibold tabular-nums text-slate-900">{isLoading ? "..." : (snapshot?.events.length ?? 0)}</p>
-              <p className="text-[10px] text-slate-500">{eventTypeCount} event types</p>
+              <p className="text-lg font-semibold tabular-nums text-slate-900">
+                {isLoading ? "..." : (snapshot?.events.length ?? 0)}
+              </p>
+              <p className="text-[10px] text-slate-500">
+                {eventTypeCount} event types
+              </p>
             </div>
           </header>
-          {snapshot?.eventsUnavailable && <p className="mb-3 text-xs text-amber-800">Some trip events could not be loaded.</p>}
-          {isLoading ? <p className="py-6 text-center text-sm text-slate-500">Loading event data...</p> : dailyEventCounts.length === 0 ? <p className="py-6 text-center text-sm text-slate-500">No trip events recorded.</p> : (
+          {snapshot?.eventsUnavailable && (
+            <p className="mb-3 text-xs text-amber-800">
+              Some trip events could not be loaded.
+            </p>
+          )}
+          {isLoading ? (
+            <p className="py-6 text-center text-sm text-slate-500">
+              Loading event data...
+            </p>
+          ) : dailyEventCounts.length === 0 ? (
+            <p className="py-6 text-center text-sm text-slate-500">
+              No trip events recorded.
+            </p>
+          ) : (
             <div className="rounded-md bg-slate-50 px-3 pt-4 pb-2">
               <div className="flex h-36 items-end gap-2 border-b border-slate-200 sm:gap-3">
                 {dailyEventCounts.map(({ date, count }, index) => (
-                  <div key={date} className="flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-1.5">
-                    <span className="text-[10px] font-semibold tabular-nums text-slate-600">{count}</span>
+                  <div
+                    key={date}
+                    className="flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-1.5">
+                    <span className="text-[10px] font-semibold tabular-nums text-slate-600">
+                      {count}
+                    </span>
                     <div
                       title={`${count} events on ${date}`}
                       className="spark-bar w-full max-w-10 rounded-t-sm bg-cyan-700"
-                      style={{ height: `${Math.max((count / maxDailyEventCount) * 96, 5)}px`, opacity: 0.65 + (index / Math.max(dailyEventCounts.length, 1)) * 0.35 }}
+                      style={{
+                        height: `${Math.max((count / maxDailyEventCount) * 96, 5)}px`,
+                        opacity:
+                          0.65 +
+                          (index / Math.max(dailyEventCounts.length, 1)) * 0.35,
+                      }}
                     />
                     <span className="mb-1 truncate text-[9px] text-slate-500">
-                      {new Date(`${date}T12:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                      {new Date(`${date}T12:00:00`).toLocaleDateString(
+                        undefined,
+                        { month: "short", day: "numeric" },
+                      )}
                     </span>
                   </div>
                 ))}
               </div>
-              <p className="pt-2 text-[10px] text-slate-500">Events grouped by database event date</p>
+              <p className="pt-2 text-[10px] text-slate-500">
+                Events grouped by database event date
+              </p>
             </div>
           )}
         </section>
@@ -364,4 +476,3 @@ export default function OverviewView({
     </div>
   );
 }
-

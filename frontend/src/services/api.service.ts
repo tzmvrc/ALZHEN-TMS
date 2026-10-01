@@ -76,8 +76,41 @@ async function request<T>(
   return (payload ?? ({} as T)) as T;
 }
 
+const responseCache = new Map<string, { expiresAt: number; value: unknown }>();
+
+export function invalidateApiCache(prefix?: string) {
+  if (!prefix) {
+    responseCache.clear();
+    return;
+  }
+
+  for (const key of [...responseCache.keys()]) {
+    if (key.includes(prefix)) {
+      responseCache.delete(key);
+    }
+  }
+}
+
 export async function apiGet<T>(endpoint: string, token?: string): Promise<T> {
   return request<T>(endpoint, { method: "GET" }, token);
+}
+
+export async function apiGetCached<T>(
+  endpoint: string,
+  token?: string,
+  ttlMs = 5 * 60 * 1000,
+): Promise<T> {
+  const cacheKey = `${token ?? "anon"}:${endpoint}`;
+  const now = Date.now();
+  const cached = responseCache.get(cacheKey);
+
+  if (cached && cached.expiresAt > now) {
+    return cached.value as T;
+  }
+
+  const value = await request<T>(endpoint, { method: "GET" }, token);
+  responseCache.set(cacheKey, { expiresAt: now + ttlMs, value });
+  return value;
 }
 
 export async function apiPost<T>(

@@ -1,4 +1,5 @@
 // src/pages/Admin/views/ResourceView.tsx
+import { useState } from "react";
 import type { DashboardData } from "../../../types/dashboard";
 import {
   IncidentPanel,
@@ -13,40 +14,103 @@ import TruckCardGrid from "../../../components/admin/TruckCardGrid";
 import RequestsView from "./RequestsView";
 import DatabaseExplorerView from "./DatabaseExplorerView";
 import TripDetailView from "./TripDetailView";
+import TruckersView from "./TruckersView";
 
 const titleMap: Record<string, [string, string]> = {
-  "request-inbox": ["Request inbox", "Review incoming client emails and dispatch requests"],
-  "request-import": ["Import requests", "Prepare structured request data from client files"],
-  "request-history": ["Request history", "Review submitted client requests and processing status"],
+  "request-inbox": [
+    "Request inbox",
+    "Review incoming client emails and dispatch requests",
+  ],
+  "request-import": [
+    "Import requests",
+    "Prepare structured request data from client files",
+  ],
+  "request-history": [
+    "Request history",
+    "Review submitted client requests and processing status",
+  ],
   requests: ["Requests", "Dispatch requests parsed from incoming TCL emails"],
-  dispatches: ["Warehouse operations", "Monitor trips, loading progress, and fleet readiness"],
-  "dispatch-planning": ["Dispatch planning", "Convert approved requests into scheduled trips"],
+  dispatches: [
+    "All trips",
+    "Monitor trips, loading progress, and fleet readiness",
+  ],
+  deliveries: [
+    "Deliveries",
+    "Track delivery progress and last-mile completion",
+  ],
+  "dispatch-planning": [
+    "Dispatch planning",
+    "Convert approved requests into scheduled trips",
+  ],
   billing: ["Billing", "Phase 2: accounting PODs and invoice preparation"],
-  pod: ["POD workflow", "Collect, verify, and organize proof of delivery"],
-  monitoring: ["Dispatch monitoring", "Review dispatch status, delivery progress, and store stops"],
+  pod: ["POD", "Collect, verify, and organize proof of delivery"],
+  monitoring: [
+    "Dispatch monitoring",
+    "Review dispatch status, delivery progress, and store stops",
+  ],
   "store-calling": ["Store calling", "Prepare stores for incoming deliveries"],
-  "warehouse-timings": ["Warehouse timings", "Track arrival, loading, departure, and unloading timestamps"],
-  transmittals: ["Transmittals", "Track signed transmittals and courier waybills"],
-  backloads: ["Backload tracker", "Track returned cargo, serial discrepancies, and reasons"],
-  offloads: ["Offload tracker", "Track cargo removed from trips and resolution status"],
-  rates: ["Rates matrix", "Manage route, truck-size, markup, and surcharge references"],
-  "fuel-cash": ["Fuel & cash advances", "Track fuel prices, manpower, transfer fees, and advances"],
-  "fleet-directory": ["Fleet directory", "Manage carriers, drivers, plates, and truck types"],
-  "warehouse-directory": ["Warehouse directory", "Manage hubs, warehouse codes, and contacts"],
-  "dealer-directory": ["Dealer directory", "Manage customers, branches, addresses, and contacts"],
+  "warehouse-timings": [
+    "Warehouse timings",
+    "Track arrival, loading, departure, and unloading timestamps",
+  ],
+  transmittals: [
+    "Transmittals",
+    "Track signed transmittals and courier waybills",
+  ],
+  backloads: [
+    "Backload tracker",
+    "Track returned cargo, serial discrepancies, and reasons",
+  ],
+  offloads: [
+    "Offload tracker",
+    "Track cargo removed from trips and resolution status",
+  ],
+  rates: [
+    "Rates matrix",
+    "Manage route, truck-size, markup, and surcharge references",
+  ],
+  "fuel-cash": [
+    "Fuel & cash advances",
+    "Track fuel prices, manpower, transfer fees, and advances",
+  ],
+  "fleet-directory": [
+    "Fleet directory",
+    "Manage carriers, drivers, plates, and truck types",
+  ],
+  "warehouse-directory": [
+    "Warehouse directory",
+    "Manage hubs, warehouse codes, and contacts",
+  ],
+  "dealer-directory": [
+    "Dealer directory",
+    "Manage customers, branches, addresses, and contacts",
+  ],
   reports: ["Reports", "Export dispatch, delivery, and POD status"],
   database: ["Database", "Browse Supabase tables and report views"],
   payables: ["Payables", "Phase 2: payable trips and cash advances"],
   compliance: ["Data controls", "POD, trip, and document controls"],
   alerts: ["Alerts", "Open delivery exceptions and aging"],
   settings: ["Settings", "Dashboard and integration preferences"],
+  truckers: ["Truckers", "Operations roster and driver management"],
+  "cash-tracker": ["Cash Tracker", "Coming soon"],
+  "rates-fuel": ["Rates & Fuel", "Coming soon"],
+  invoices: ["Invoices", "Coming soon"],
+  combined: ["Combined", "Dispatch, trip, delivery, and store data overview"],
+  dispatch: ["Dispatch Report", "Operational dispatch and route detail"],
+  "trip-booking": ["Trip Booking", "Trip allocation and booking detail"],
 };
 
 const labels: Record<string, string[]> = {
   billing: ["Invoice", "Trip", "Route", "Net amount", "Status"],
   pod: ["Control no.", "Trip", "Receiver", "Received date", "Status"],
   fleet: ["Vehicle", "Carrier", "Assigned trip", "Hub", "Status"],
-  customers: ["Customer", "Location", "Active trips", "Last delivery", "Status"],
+  customers: [
+    "Customer",
+    "Location",
+    "Active trips",
+    "Last delivery",
+    "Status",
+  ],
   reports: ["Report", "Period", "Records", "Owner", "Status"],
   messages: ["Thread", "Related trip", "Last update", "Owner", "Status"],
   calendar: ["Event", "Location", "Date", "Related trip", "Status"],
@@ -120,14 +184,12 @@ function GenericResourceTable({
         <div className="flex gap-2">
           <button
             type="button"
-            className="rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-600"
-          >
+            className="rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-600">
             Filter
           </button>
           <button
             type="button"
-            className="rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-600"
-          >
+            className="rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-600">
             Sort
           </button>
         </div>
@@ -139,8 +201,7 @@ function GenericResourceTable({
               {headings.map((heading) => (
                 <th
                   key={heading}
-                  className="pb-4 pr-6 text-[11px] font-medium uppercase tracking-wider"
-                >
+                  className="pb-4 pr-6 text-[11px] font-medium uppercase tracking-wider">
                   {heading}
                 </th>
               ))}
@@ -150,8 +211,7 @@ function GenericResourceTable({
             {records.map((record, index) => (
               <tr
                 key={`${id}-${index}`}
-                className="border-b border-slate-100 transition-colors last:border-none hover:bg-slate-50/50"
-              >
+                className="border-b border-slate-100 transition-colors last:border-none hover:bg-slate-50/50">
                 {record.map((value, valueIndex) => (
                   <td
                     key={`${id}-${index}-${valueIndex}`}
@@ -159,8 +219,7 @@ function GenericResourceTable({
                       valueIndex === 0
                         ? "font-medium text-slate-800"
                         : "text-slate-600"
-                    }`}
-                  >
+                    }`}>
                     {value}
                   </td>
                 ))}
@@ -180,23 +239,58 @@ export default function ResourceView({
   id,
   data,
   onNavigate,
+  tripScope,
+  onTripScopeChange,
+  onReportScopeChange,
+  billingScope,
+  onBillingScopeChange,
 }: {
   id: string;
   data: DashboardData;
   onNavigate?: (id: string) => void;
+  tripScope?: "dispatches" | "monitoring" | "deliveries";
+  onTripScopeChange?: (
+    value: "dispatches" | "monitoring" | "deliveries",
+  ) => void;
+  onReportScopeChange?: (
+    value:
+      | "combined"
+      | "dispatch-monitoring"
+      | "dispatch"
+      | "trip-booking"
+      | "store-calling",
+  ) => void;
+  billingScope?: "rates-fuel" | "invoices" | "payables" | "cash-tracker";
+  onBillingScopeChange?: (
+    value: "rates-fuel" | "invoices" | "payables" | "cash-tracker",
+  ) => void;
 }) {
   const [tripDetailPrefix, tripDetailId, tripReturnView] = id.split(":");
-  const isTripDetail = tripDetailPrefix === "trip-detail" && Boolean(tripDetailId);
+  const isTripDetail =
+    tripDetailPrefix === "trip-detail" && Boolean(tripDetailId);
   const [title, subtitle] = isTripDetail
-    ? ["Trip details", "Dispatch, route, stops, products, and recorded activity"]
-    : titleMap[id] ?? ["Operations", "Logistics workspace"];
-  const isPrototype = !isTripDetail && ![
-    "dispatches",
-    "monitoring",
-    "store-calling",
-    "reports",
-    "database",
-  ].includes(id);
+    ? [
+        "Trip details",
+        "Dispatch, route, stops, products, and recorded activity",
+      ]
+    : (titleMap[id] ?? ["Operations", "Logistics workspace"]);
+  const isPrototype =
+    !isTripDetail &&
+    ![
+      "dispatches",
+      "deliveries",
+      "monitoring",
+      "store-calling",
+      "reports",
+      "combined",
+      "dispatch",
+      "trip-booking",
+      "database",
+      "truckers",
+      "cash-tracker",
+      "rates-fuel",
+      "invoices",
+    ].includes(id);
 
   return (
     <>
@@ -206,13 +300,20 @@ export default function ResourceView({
       {/* ============ REQUESTS (prototype workflow) ============ */}
       {id === "requests" && <RequestsView />}
 
-      {/* ============ TRIP BOOKING REPORT ============ */}
       {id === "dispatches" && (
-        <ReportDataView
-          initialReport="trip-booking"
-          showReportPicker={false}
-          onOpenTrip={(tripId) => onNavigate?.(`trip-detail:${tripId}:${id}`)}
-        />
+        <>
+          <TripsPageHeader />
+          <TripsFilterBar
+            scope="all"
+            selectedScope={tripScope ?? "dispatches"}
+            onScopeChange={onTripScopeChange}
+          />
+          <ReportDataView
+            initialReport="trip-booking"
+            showReportPicker={false}
+            onOpenTrip={(tripId) => onNavigate?.(`trip-detail:${tripId}:${id}`)}
+          />
+        </>
       )}
 
       {/* ============ FLEET ============ */}
@@ -230,12 +331,33 @@ export default function ResourceView({
 
       {/* ============ OTHER PAGES ============ */}
       {id === "pod" && <PodWorkflowPanel rows={data.operations.dispatches} />}
+      {id === "deliveries" && (
+        <>
+          <TripsFilterBar
+            scope="deliveries"
+            selectedScope={tripScope ?? "deliveries"}
+            onScopeChange={onTripScopeChange}
+          />
+          <ReportDataView
+            initialReport="dispatch-monitoring"
+            showReportPicker={false}
+            onOpenTrip={(tripId) => onNavigate?.(`trip-detail:${tripId}:${id}`)}
+          />
+        </>
+      )}
       {id === "monitoring" && (
-        <ReportDataView
-          initialReport="dispatch-monitoring"
-          showReportPicker={false}
-          onOpenTrip={(tripId) => onNavigate?.(`trip-detail:${tripId}:${id}`)}
-        />
+        <>
+          <TripsFilterBar
+            scope="monitoring"
+            selectedScope={tripScope ?? "monitoring"}
+            onScopeChange={onTripScopeChange}
+          />
+          <ReportDataView
+            initialReport="dispatch-monitoring"
+            showReportPicker={false}
+            onOpenTrip={(tripId) => onNavigate?.(`trip-detail:${tripId}:${id}`)}
+          />
+        </>
       )}
       {id === "store-calling" && (
         <ReportDataView
@@ -247,7 +369,57 @@ export default function ResourceView({
       {id === "reports" && (
         <ReportDataView
           onOpenTrip={(tripId) => onNavigate?.(`trip-detail:${tripId}:${id}`)}
+          onReportScopeChange={onReportScopeChange}
         />
+      )}
+      {id === "combined" && (
+        <ReportDataView
+          initialReport="combined"
+          onOpenTrip={(tripId) => onNavigate?.(`trip-detail:${tripId}:${id}`)}
+          onReportScopeChange={onReportScopeChange}
+        />
+      )}
+      {id === "dispatch" && (
+        <ReportDataView
+          initialReport="dispatch"
+          onOpenTrip={(tripId) => onNavigate?.(`trip-detail:${tripId}:${id}`)}
+          onReportScopeChange={onReportScopeChange}
+        />
+      )}
+      {id === "trip-booking" && (
+        <ReportDataView
+          initialReport="trip-booking"
+          onOpenTrip={(tripId) => onNavigate?.(`trip-detail:${tripId}:${id}`)}
+          onReportScopeChange={onReportScopeChange}
+        />
+      )}
+      {id === "truckers" && <TruckersView />}
+      {id === "cash-tracker" && (
+        <>
+          <BillingFilterBar
+            value={billingScope ?? "cash-tracker"}
+            onChange={onBillingScopeChange}
+          />
+          <PlaceholderPage title="Cash Tracker" />
+        </>
+      )}
+      {id === "rates-fuel" && (
+        <>
+          <BillingFilterBar
+            value={billingScope ?? "rates-fuel"}
+            onChange={onBillingScopeChange}
+          />
+          <PlaceholderPage title="Rates & Fuel" />
+        </>
+      )}
+      {id === "invoices" && (
+        <>
+          <BillingFilterBar
+            value={billingScope ?? "invoices"}
+            onChange={onBillingScopeChange}
+          />
+          <PlaceholderPage title="Invoices" />
+        </>
       )}
       {id === "database" && <DatabaseExplorerView />}
       {isTripDetail && (
@@ -266,27 +438,251 @@ export default function ResourceView({
       {id === "compliance" && <ChecklistPanel />}
 
       {/* ============ FALLBACK ============ */}
-      {!isTripDetail && ![
-        "requests",
-        "dispatches",
-        "pod",
-        "monitoring",
-        "store-calling",
-        "reports",
-        "database",
-        "alerts",
-        "settings",
-        "compliance",
-        "fleet",
-      ].includes(id) && <GenericResourceTable id={id} data={data} />}
+      {!isTripDetail &&
+        ![
+          "requests",
+          "dispatches",
+          "deliveries",
+          "pod",
+          "monitoring",
+          "store-calling",
+          "reports",
+          "combined",
+          "dispatch",
+          "trip-booking",
+          "database",
+          "alerts",
+          "settings",
+          "compliance",
+          "fleet",
+          "truckers",
+          "cash-tracker",
+          "rates-fuel",
+          "invoices",
+        ].includes(id) && <GenericResourceTable id={id} data={data} />}
     </>
+  );
+}
+
+function TripsPageHeader() {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <>
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold text-slate-900">Trips</h2>
+        </div>
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="inline-flex items-center gap-2 rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-700">
+          <span className="text-base leading-none">＋</span>
+          Add Trip
+        </button>
+      </div>
+
+      {open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/30 p-4">
+          <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-5 shadow-xl">
+            <h3 className="text-lg font-semibold text-slate-900">Add Trip</h3>
+            <p className="mt-3 text-sm text-slate-600">Form coming soon.</p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                className="rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+function TripsFilterBar({
+  scope,
+  selectedScope,
+  onScopeChange,
+}: {
+  scope: "all" | "monitoring" | "deliveries";
+  selectedScope?: "dispatches" | "monitoring" | "deliveries";
+  onScopeChange?: (value: "dispatches" | "monitoring" | "deliveries") => void;
+}) {
+  const [status, setStatus] = useState("all");
+  const [tripType, setTripType] = useState("all");
+  const [warehouse, setWarehouse] = useState("");
+  const [dateRange, setDateRange] = useState("custom");
+  const [query, setQuery] = useState("");
+
+  const common = (
+    <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 bg-slate-50 px-4 py-3">
+      <label className="flex items-center gap-2 text-xs font-medium text-slate-600">
+        View
+        <select
+          value={selectedScope ?? (scope === "all" ? "dispatches" : scope)}
+          onChange={(event) => {
+            const nextValue = event.target.value as
+              | "dispatches"
+              | "monitoring"
+              | "deliveries";
+            onScopeChange?.(nextValue);
+          }}
+          className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-700 outline-none focus:border-slate-500">
+          <option value="dispatches">All Trips</option>
+          <option value="monitoring">Dispatch Monitoring</option>
+          <option value="deliveries">Deliveries</option>
+        </select>
+      </label>
+      {scope === "all" && (
+        <>
+          <label className="text-xs text-slate-600">
+            Status
+            <select
+              value={status}
+              onChange={(e) => setStatus(e.target.value)}
+              className="ml-2 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs">
+              <option value="all">All</option>
+              <option value="in_progress">In Progress</option>
+              <option value="completed">Completed</option>
+            </select>
+          </label>
+          <label className="text-xs text-slate-600">
+            Trip Type
+            <select
+              value={tripType}
+              onChange={(e) => setTripType(e.target.value)}
+              className="ml-2 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs">
+              <option value="all">All</option>
+              <option value="regular">Regular</option>
+              <option value="stock_transfer">Stock Transfer</option>
+            </select>
+          </label>
+        </>
+      )}
+      {scope === "monitoring" && (
+        <>
+          <label className="text-xs text-slate-600">
+            Trip Status
+            <select
+              value={status}
+              onChange={(e) => setStatus(e.target.value)}
+              className="ml-2 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs">
+              <option value="all">All</option>
+              <option value="in_progress">In Progress</option>
+              <option value="completed">Completed</option>
+            </select>
+          </label>
+        </>
+      )}
+      <label className="text-xs text-slate-600">
+        Warehouse
+        <input
+          value={warehouse}
+          onChange={(e) => setWarehouse(e.target.value)}
+          placeholder="All"
+          className="ml-2 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs"
+        />
+      </label>
+      <label className="text-xs text-slate-600">
+        Date Range
+        <select
+          value={dateRange}
+          onChange={(e) => setDateRange(e.target.value)}
+          className="ml-2 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs">
+          <option value="custom">Custom</option>
+          <option value="today">Today</option>
+          <option value="week">This Week</option>
+        </select>
+      </label>
+      {scope === "all" && (
+        <label className="ml-auto text-xs text-slate-600">
+          Search
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search trips"
+            className="ml-2 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs"
+          />
+        </label>
+      )}
+      {scope === "deliveries" && (
+        <>
+          <label className="text-xs text-slate-600">
+            Driver
+            <input
+              placeholder="Any"
+              className="ml-2 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs"
+            />
+          </label>
+          <label className="text-xs text-slate-600">
+            Delivery Status
+            <select className="ml-2 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs">
+              <option value="all">All</option>
+              <option value="assigned">Assigned</option>
+              <option value="delivered">Delivered</option>
+            </select>
+          </label>
+        </>
+      )}
+    </div>
+  );
+
+  return common;
+}
+
+function BillingFilterBar({
+  value,
+  onChange,
+}: {
+  value: "rates-fuel" | "invoices" | "payables" | "cash-tracker";
+  onChange?: (
+    value: "rates-fuel" | "invoices" | "payables" | "cash-tracker",
+  ) => void;
+}) {
+  return (
+    <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+      <label className="flex items-center gap-2 text-xs font-medium text-slate-600">
+        Billing View
+        <select
+          value={value}
+          onChange={(event) => {
+            const nextValue = event.target.value as
+              | "rates-fuel"
+              | "invoices"
+              | "payables"
+              | "cash-tracker";
+            onChange?.(nextValue);
+          }}
+          className="rounded-md border border-slate-300 bg-slate-50 px-2 py-1.5 text-xs text-slate-700 outline-none focus:border-slate-500">
+          <option value="rates-fuel">Rates & Fuel</option>
+          <option value="invoices">Invoices</option>
+          <option value="payables">Payables</option>
+          <option value="cash-tracker">Cash Tracker</option>
+        </select>
+      </label>
+    </div>
+  );
+}
+
+function PlaceholderPage({ title }: { title: string }) {
+  return (
+    <div className="flex min-h-[40vh] items-center justify-center rounded-xl border border-dashed border-slate-200 bg-white">
+      <div className="text-center">
+        <h3 className="text-xl font-semibold text-slate-900">{title}</h3>
+        <p className="mt-2 text-sm text-slate-500">Coming soon</p>
+      </div>
+    </div>
   );
 }
 
 function PrototypeNotice() {
   return (
     <p className="mb-4 border-l-2 border-amber-500 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-      Prototype area. Displayed data and changes are not connected to the backend.
+      Prototype area. Displayed data and changes are not connected to the
+      backend.
     </p>
   );
 }

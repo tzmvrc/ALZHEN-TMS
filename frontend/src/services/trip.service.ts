@@ -1,4 +1,4 @@
-import { apiGet, type ApiResponse } from "./api.service";
+import { apiGetCached, type ApiResponse } from "./api.service";
 
 export type TripRecord = Record<string, unknown> & {
   id?: string;
@@ -58,7 +58,7 @@ export async function fetchTrips(
   if (options.status) params.set("status", options.status);
   if (options.search?.trim()) params.set("search", options.search.trim());
 
-  const response = await apiGet<ApiResponse<TripPage>>(
+  const response = await apiGetCached<ApiResponse<TripPage>>(
     `/trips?${params.toString()}`,
     token,
   );
@@ -72,7 +72,7 @@ export async function fetchTripEvents(
   token: string,
   tripId: string,
 ): Promise<TripEvent[]> {
-  const response = await apiGet<ApiResponse<TripEvent[]>>(
+  const response = await apiGetCached<ApiResponse<TripEvent[]>>(
     `/trips/${encodeURIComponent(tripId)}/events`,
     token,
   );
@@ -87,7 +87,7 @@ async function fetchTripChildren(
   tripId: string,
   resource: "stops" | "line-items",
 ): Promise<TripChildRecord[]> {
-  const response = await apiGet<ApiResponse<TripChildRecord[]>>(
+  const response = await apiGetCached<ApiResponse<TripChildRecord[]>>(
     `/trips/${encodeURIComponent(tripId)}/${resource}`,
     token,
   );
@@ -101,7 +101,7 @@ export async function fetchTripDetail(
   token: string,
   tripId: string,
 ): Promise<TripDetail> {
-  const response = await apiGet<ApiResponse<TripDetail>>(
+  const response = await apiGetCached<ApiResponse<TripDetail>>(
     `/trips/${encodeURIComponent(tripId)}`,
     token,
   );
@@ -115,7 +115,7 @@ export async function fetchTripByDispatchNumber(
   token: string,
   dispatchNumber: string,
 ): Promise<{ id: string; dispatch_number: string }> {
-  const response = await apiGet<ApiResponse<{ id: string; dispatch_number: string }>>(
+  const response = await apiGetCached<ApiResponse<{ id: string; dispatch_number: string }>>(
     `/trips/dispatch/${encodeURIComponent(dispatchNumber)}`,
     token,
   );

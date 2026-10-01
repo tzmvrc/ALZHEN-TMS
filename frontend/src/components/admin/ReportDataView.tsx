@@ -1,6 +1,19 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowUpRight, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, LayoutGrid, MapPin, Package, Search, Table2, Truck, UserRound } from "lucide-react";
+import {
+  ArrowUpRight,
+  CalendarDays,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  LayoutGrid,
+  MapPin,
+  Package,
+  Search,
+  Table2,
+  Truck,
+  UserRound,
+} from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { ApiError } from "../../services/api.service";
 import {
@@ -21,7 +34,9 @@ const reportKeys = Object.keys(REPORTS) as ReportKey[];
 function displayValue(value: unknown, type: string): string {
   if (value === null || value === undefined || value === "") return "";
   if (typeof value === "number") {
-    return new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(value);
+    return new Intl.NumberFormat(undefined, {
+      maximumFractionDigits: 2,
+    }).format(value);
   }
   if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}T/.test(value)) {
     const date = new Date(value);
@@ -39,9 +54,12 @@ function rowKey(row: ReportRow, index: number): string {
 }
 
 function rowText(row: ReportRow, ...keys: string[]): string {
-  const value = keys.map((key) => row[key]).find(
-    (candidate) => candidate !== null && candidate !== undefined && candidate !== "",
-  );
+  const value = keys
+    .map((key) => row[key])
+    .find(
+      (candidate) =>
+        candidate !== null && candidate !== undefined && candidate !== "",
+    );
   return value === undefined ? "" : String(value);
 }
 
@@ -79,56 +97,110 @@ function ReportVisualCards({
   onOpenTrip?: (row: ReportRow) => void;
 }) {
   const titleFor = (key: string) =>
-    columns.find((column) => column.key === key)?.title ?? key.replaceAll("_", " ");
+    columns.find((column) => column.key === key)?.title ??
+    key.replaceAll("_", " ");
 
   return (
     <div className="grid gap-3 p-3 lg:grid-cols-2">
       {rows.map((row, index) => {
-        const identity = rowText(row, "dispatch_number", "store_call_id", "trip_id") || `Record ${index + 1}`;
-        const statusTags = reportKey === "store-calling"
-          ? [
-              ["Call", rowText(row, "status")],
-              ["Confirmation", rowText(row, "confirmation_status")],
-            ] as const
-          : [
-              ["Trip", rowText(row, "trip_status", "status")],
-              ["Delivery", rowText(row, "delivery_status")],
-              ["Letter", rowText(row, "letter_status")],
-            ] as const;
-        const primaryStatus = statusTags.find(([, value]) => value)?.[1] || "Status not recorded";
-        const from = rowText(row, "warehouse_name", "ship_from", "warehouse_code", "wh_code");
+        const identity =
+          rowText(row, "dispatch_number", "store_call_id", "trip_id") ||
+          `Record ${index + 1}`;
+        const statusTags =
+          reportKey === "store-calling"
+            ? ([
+                ["Call", rowText(row, "status")],
+                ["Confirmation", rowText(row, "confirmation_status")],
+              ] as const)
+            : ([
+                ["Trip", rowText(row, "trip_status", "status")],
+                ["Delivery", rowText(row, "delivery_status")],
+                ["Letter", rowText(row, "letter_status")],
+              ] as const);
+        const primaryStatus =
+          statusTags.find(([, value]) => value)?.[1] || "Status not recorded";
+        const from = rowText(
+          row,
+          "warehouse_name",
+          "ship_from",
+          "warehouse_code",
+          "wh_code",
+        );
         const to = rowText(row, "store_name", "ship_to", "customer_name");
-        const date = rowText(row, "loading_date", "date_assigned", "date_of_contact");
+        const date = rowText(
+          row,
+          "loading_date",
+          "date_assigned",
+          "date_of_contact",
+        );
         const plate = rowText(row, "plate_number");
         const driver = rowText(row, "driver_name", "assigned_to");
-        const product = rowText(row, "product_name", "product_model", "model_code", "sku");
+        const product = rowText(
+          row,
+          "product_name",
+          "product_model",
+          "model_code",
+          "sku",
+        );
         const shownKeys = new Set([
-          "dispatch_number", "store_call_id", "trip_id", "trip_status", "delivery_status",
-          "confirmation_status", "status", "letter_status", "warehouse_name", "ship_from",
-          "warehouse_code", "wh_code", "store_name", "ship_to", "customer_name",
-          "loading_date", "date_assigned", "date_of_contact", "plate_number", "driver_name",
-          "assigned_to", "product_name", "product_model", "model_code", "sku",
+          "dispatch_number",
+          "store_call_id",
+          "trip_id",
+          "trip_status",
+          "delivery_status",
+          "confirmation_status",
+          "status",
+          "letter_status",
+          "warehouse_name",
+          "ship_from",
+          "warehouse_code",
+          "wh_code",
+          "store_name",
+          "ship_to",
+          "customer_name",
+          "loading_date",
+          "date_assigned",
+          "date_of_contact",
+          "plate_number",
+          "driver_name",
+          "assigned_to",
+          "product_name",
+          "product_model",
+          "model_code",
+          "sku",
         ]);
-        const extraColumns = columns.filter((column) => !shownKeys.has(column.key));
+        const extraColumns = columns.filter(
+          (column) => !shownKeys.has(column.key),
+        );
 
         return (
-          <article key={rowKey(row, index)} className={`min-w-0 rounded-lg border border-slate-200 border-l-4 bg-white transition-colors hover:border-slate-300 ${statusAccent(primaryStatus)}`}>
+          <article
+            key={rowKey(row, index)}
+            className={`min-w-0 rounded-lg border border-slate-200 border-l-4 bg-white transition-colors hover:border-slate-300 ${statusAccent(primaryStatus)}`}>
             <header className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 px-4 py-3">
               <div className="min-w-0">
                 <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
                   {reportKey === "store-calling" ? "Store call" : "Dispatch"}
                 </p>
-                <h3 className="mt-1 truncate font-mono text-sm font-bold text-cyan-950" title={identity}>
-                  <span className="rounded bg-cyan-50 px-1.5 py-1">{identity}</span>
+                <h3
+                  className="mt-1 truncate font-mono text-sm font-bold text-cyan-950"
+                  title={identity}>
+                  <span className="rounded bg-cyan-50 px-1.5 py-1">
+                    {identity}
+                  </span>
                 </h3>
               </div>
               <div className="flex max-w-full flex-wrap justify-end gap-1.5">
-                {statusTags.filter(([, value]) => Boolean(value)).map(([label, value]) => (
-                  <span key={label} className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-semibold ring-1 ring-inset ${statusStyle(value)}`}>
-                    <span className="opacity-70">{label}</span>
-                    {value.replaceAll("_", " ")}
-                  </span>
-                ))}
+                {statusTags
+                  .filter(([, value]) => Boolean(value))
+                  .map(([label, value]) => (
+                    <span
+                      key={label}
+                      className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-semibold ring-1 ring-inset ${statusStyle(value)}`}>
+                      <span className="opacity-70">{label}</span>
+                      {value.replaceAll("_", " ")}
+                    </span>
+                  ))}
               </div>
             </header>
 
@@ -139,25 +211,58 @@ function ReportVisualCards({
                 </span>
                 <div className="min-w-0">
                   <p className="text-[10px] font-semibold uppercase tracking-wide text-cyan-900">
-                    {reportKey === "store-calling" ? "Store and origin" : "Route"}
+                    {reportKey === "store-calling"
+                      ? "Store and origin"
+                      : "Route"}
                   </p>
                   <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-sm">
-                    <span className="font-medium text-slate-800">{from || "Origin not recorded"}</span>
-                    {to && <><span className="text-cyan-700">to</span><span className="font-semibold text-slate-900">{to}</span></>}
+                    <span className="font-medium text-slate-800">
+                      {from || "Origin not recorded"}
+                    </span>
+                    {to && (
+                      <>
+                        <span className="text-cyan-700">to</span>
+                        <span className="font-semibold text-slate-900">
+                          {to}
+                        </span>
+                      </>
+                    )}
                   </div>
                   {Boolean(row.province || row.city) && (
-                    <p className="mt-1 text-xs text-slate-600">{[row.city, row.province].filter(Boolean).join(", ")}</p>
+                    <p className="mt-1 text-xs text-slate-600">
+                      {[row.city, row.province].filter(Boolean).join(", ")}
+                    </p>
                   )}
                 </div>
               </div>
 
               <div className="rounded-md border border-slate-100 bg-slate-50/70 p-3">
-                <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-500">Schedule and assignment</p>
+                <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                  Schedule and assignment
+                </p>
                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                <VisualFact icon={CalendarDays} label="Date" value={displayValue(date, "date") || "Not recorded"} />
-                <VisualFact icon={Truck} label="Truck" value={plate || "Not assigned"} />
-                <VisualFact icon={UserRound} label={reportKey === "store-calling" ? "Assigned to" : "Driver"} value={driver || "Not assigned"} />
-                <VisualFact icon={Truck} label="Carrier" value={rowText(row, "trucking_company") || "Not recorded"} />
+                  <VisualFact
+                    icon={CalendarDays}
+                    label="Date"
+                    value={displayValue(date, "date") || "Not recorded"}
+                  />
+                  <VisualFact
+                    icon={Truck}
+                    label="Truck"
+                    value={plate || "Not assigned"}
+                  />
+                  <VisualFact
+                    icon={UserRound}
+                    label={
+                      reportKey === "store-calling" ? "Assigned to" : "Driver"
+                    }
+                    value={driver || "Not assigned"}
+                  />
+                  <VisualFact
+                    icon={Truck}
+                    label="Carrier"
+                    value={rowText(row, "trucking_company") || "Not recorded"}
+                  />
                 </div>
               </div>
 
@@ -167,8 +272,12 @@ function ReportVisualCards({
                     <Package aria-hidden="true" className="h-4 w-4" />
                   </span>
                   <div className="min-w-0">
-                    <p className="text-[10px] font-semibold uppercase tracking-wide text-emerald-900">Cargo / product</p>
-                    <p className="mt-0.5 break-words text-sm font-medium text-slate-800">{product}</p>
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-emerald-900">
+                      Cargo / product
+                    </p>
+                    <p className="mt-0.5 break-words text-sm font-medium text-slate-800">
+                      {product}
+                    </p>
                   </div>
                 </div>
               )}
@@ -181,8 +290,13 @@ function ReportVisualCards({
                   <dl className="mt-2 grid gap-x-4 gap-y-2 sm:grid-cols-2">
                     {extraColumns.map((column) => (
                       <div key={column.key} className="min-w-0">
-                        <dt className="text-[10px] font-semibold uppercase text-slate-500">{titleFor(column.key)}</dt>
-                        <dd className="mt-0.5 break-words text-xs text-slate-700">{displayValue(row[column.key], column.type) || "Not recorded"}</dd>
+                        <dt className="text-[10px] font-semibold uppercase text-slate-500">
+                          {titleFor(column.key)}
+                        </dt>
+                        <dd className="mt-0.5 break-words text-xs text-slate-700">
+                          {displayValue(row[column.key], column.type) ||
+                            "Not recorded"}
+                        </dd>
                       </div>
                     ))}
                   </dl>
@@ -194,8 +308,7 @@ function ReportVisualCards({
                   <button
                     type="button"
                     onClick={() => onOpenTrip(row)}
-                    className="inline-flex min-h-9 items-center gap-1.5 rounded-md bg-cyan-800 px-3 text-xs font-semibold text-white transition-colors hover:bg-cyan-900"
-                  >
+                    className="inline-flex min-h-9 items-center gap-1.5 rounded-md bg-cyan-800 px-3 text-xs font-semibold text-white transition-colors hover:bg-cyan-900">
                     View trip details
                     <ArrowUpRight aria-hidden="true" className="h-3.5 w-3.5" />
                   </button>
@@ -220,10 +333,17 @@ function VisualFact({
 }) {
   return (
     <div className="flex min-w-0 items-start gap-2">
-      <Icon aria-hidden="true" className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-500" />
+      <Icon
+        aria-hidden="true"
+        className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-500"
+      />
       <div className="min-w-0">
-        <p className="text-[10px] font-semibold uppercase text-slate-500">{label}</p>
-        <p className="mt-0.5 break-words text-xs font-medium text-slate-800">{value}</p>
+        <p className="text-[10px] font-semibold uppercase text-slate-500">
+          {label}
+        </p>
+        <p className="mt-0.5 break-words text-xs font-medium text-slate-800">
+          {value}
+        </p>
       </div>
     </div>
   );
@@ -233,15 +353,17 @@ export default function ReportDataView({
   initialReport = "combined",
   showReportPicker = true,
   onOpenTrip,
+  onReportScopeChange,
 }: {
   initialReport?: ReportKey;
   showReportPicker?: boolean;
   onOpenTrip?: (tripId: string) => void;
+  onReportScopeChange?: (value: ReportKey) => void;
 }) {
   const { accessToken, refreshSession } = useAuth();
   const navigate = useNavigate();
   const [reportKey, setReportKey] = useState<ReportKey>(initialReport);
-  const [viewMode, setViewMode] = useState<"visual" | "table">("visual");
+  const [viewMode, setViewMode] = useState<"visual" | "table">("table");
   const [columns, setColumns] = useState<ReportColumn[]>([]);
   const [rows, setRows] = useState<ReportRow[]>([]);
   const [pagination, setPagination] = useState<Pagination | null>(null);
@@ -249,7 +371,9 @@ export default function ReportDataView({
   const [search, setSearch] = useState("");
   const [appliedSearch, setAppliedSearch] = useState("");
   const [filterDraft, setFilterDraft] = useState<Record<string, string>>({});
-  const [appliedFilters, setAppliedFilters] = useState<Record<string, string>>({});
+  const [appliedFilters, setAppliedFilters] = useState<Record<string, string>>(
+    {},
+  );
   const [sortBy, setSortBy] = useState(getSortableFields(initialReport)[0]);
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [loadedQueryKey, setLoadedQueryKey] = useState<string | null>(null);
@@ -258,7 +382,9 @@ export default function ReportDataView({
     message: string;
   } | null>(null);
   const [retryVersion, setRetryVersion] = useState(0);
-  const [detailLookupMessage, setDetailLookupMessage] = useState<string | null>(null);
+  const [detailLookupMessage, setDetailLookupMessage] = useState<string | null>(
+    null,
+  );
   const activeSortBy = getSortableFields(reportKey).includes(sortBy)
     ? sortBy
     : getSortableFields(reportKey)[0];
@@ -307,10 +433,10 @@ export default function ReportDataView({
           key: queryKey,
           message:
             cause instanceof ApiError && cause.status === 403
-            ? "You are not authorized to view this report."
-            : cause instanceof Error
-              ? cause.message
-              : "Unable to load this report.",
+              ? "You are not authorized to view this report."
+              : cause instanceof Error
+                ? cause.message
+                : "Unable to load this report.",
         });
       } finally {
         if (active) setLoadedQueryKey(queryKey);
@@ -355,8 +481,10 @@ export default function ReportDataView({
 
   function changeReport(value: string) {
     if (!reportKeys.includes(value as ReportKey)) return;
+    const nextReport = value as ReportKey;
+    onReportScopeChange?.(nextReport);
     setPage(1);
-    setReportKey(value as ReportKey);
+    setReportKey(nextReport);
     setColumns([]);
     setRows([]);
     setPagination(null);
@@ -376,7 +504,9 @@ export default function ReportDataView({
 
     const dispatchNumber = row.dispatch_number;
     if (typeof dispatchNumber !== "string" || !dispatchNumber) {
-      setDetailLookupMessage("This row does not include a trip ID or dispatch number, so its trip details cannot be opened.");
+      setDetailLookupMessage(
+        "This row does not include a trip ID or dispatch number, so its trip details cannot be opened.",
+      );
       return;
     }
 
@@ -428,24 +558,28 @@ export default function ReportDataView({
                 id="report-select"
                 value={reportKey}
                 onChange={(event) => changeReport(event.target.value)}
-                className="min-h-10 appearance-none rounded-md border border-slate-300 bg-white py-2 pl-3 pr-9 text-sm font-medium text-slate-800 outline-none transition-colors focus:border-cyan-700 focus:ring-2 focus:ring-cyan-100"
-              >
+                className="min-h-10 appearance-none rounded-md border border-slate-300 bg-white py-2 pl-3 pr-9 text-sm font-medium text-slate-800 outline-none transition-colors focus:border-cyan-700 focus:ring-2 focus:ring-cyan-100">
                 {reportKeys.map((key) => (
                   <option key={key} value={key}>
                     {REPORTS[key].title}
                   </option>
                 ))}
               </select>
-              <ChevronDown aria-hidden="true" className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+              <ChevronDown
+                aria-hidden="true"
+                className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500"
+              />
             </div>
           )}
-          <div role="group" aria-label="Report display mode" className="inline-flex h-10 items-center rounded-md border border-slate-300 bg-slate-50 p-0.5">
+          <div
+            role="group"
+            aria-label="Report display mode"
+            className="inline-flex h-10 items-center rounded-md border border-slate-300 bg-slate-50 p-0.5">
             <button
               type="button"
               aria-pressed={viewMode === "visual"}
               onClick={() => setViewMode("visual")}
-              className={`inline-flex h-9 items-center gap-1.5 rounded px-2.5 text-xs font-medium transition-colors ${viewMode === "visual" ? "bg-white text-cyan-900 shadow-sm" : "text-slate-600 hover:text-slate-900"}`}
-            >
+              className={`inline-flex h-9 items-center gap-1.5 rounded px-2.5 text-xs font-medium transition-colors ${viewMode === "visual" ? "bg-white text-cyan-900 shadow-sm" : "text-slate-600 hover:text-slate-900"}`}>
               <LayoutGrid aria-hidden="true" className="h-3.5 w-3.5" />
               Visual
             </button>
@@ -453,8 +587,7 @@ export default function ReportDataView({
               type="button"
               aria-pressed={viewMode === "table"}
               onClick={() => setViewMode("table")}
-              className={`inline-flex h-9 items-center gap-1.5 rounded px-2.5 text-xs font-medium transition-colors ${viewMode === "table" ? "bg-white text-cyan-900 shadow-sm" : "text-slate-600 hover:text-slate-900"}`}
-            >
+              className={`inline-flex h-9 items-center gap-1.5 rounded px-2.5 text-xs font-medium transition-colors ${viewMode === "table" ? "bg-white text-cyan-900 shadow-sm" : "text-slate-600 hover:text-slate-900"}`}>
               <Table2 aria-hidden="true" className="h-3.5 w-3.5" />
               Table
             </button>
@@ -467,15 +600,18 @@ export default function ReportDataView({
               id="report-sort"
               value={activeSortBy}
               onChange={(event) => setSortBy(event.target.value)}
-              className="min-h-10 max-w-48 appearance-none rounded-md border border-slate-300 bg-white py-2 pl-3 pr-9 text-sm text-slate-700 outline-none transition-colors focus:border-cyan-700 focus:ring-2 focus:ring-cyan-100"
-            >
+              className="min-h-10 max-w-48 appearance-none rounded-md border border-slate-300 bg-white py-2 pl-3 pr-9 text-sm text-slate-700 outline-none transition-colors focus:border-cyan-700 focus:ring-2 focus:ring-cyan-100">
               {sortableFields.map((field) => (
                 <option key={field} value={field}>
-                  {columns.find((column) => column.key === field)?.title ?? field}
+                  {columns.find((column) => column.key === field)?.title ??
+                    field}
                 </option>
               ))}
             </select>
-            <ChevronDown aria-hidden="true" className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+            <ChevronDown
+              aria-hidden="true"
+              className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500"
+            />
           </div>
           <div className="relative">
             <select
@@ -484,16 +620,20 @@ export default function ReportDataView({
               onChange={(event) =>
                 setSortOrder(event.target.value as "asc" | "desc")
               }
-              className="min-h-10 appearance-none rounded-md border border-slate-300 bg-white py-2 pl-3 pr-9 text-sm text-slate-700 outline-none transition-colors focus:border-cyan-700 focus:ring-2 focus:ring-cyan-100"
-            >
+              className="min-h-10 appearance-none rounded-md border border-slate-300 bg-white py-2 pl-3 pr-9 text-sm text-slate-700 outline-none transition-colors focus:border-cyan-700 focus:ring-2 focus:ring-cyan-100">
               <option value="desc">Descending</option>
               <option value="asc">Ascending</option>
             </select>
-            <ChevronDown aria-hidden="true" className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+            <ChevronDown
+              aria-hidden="true"
+              className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500"
+            />
           </div>
         </div>
         <form onSubmit={submitSearch} className="flex gap-2">
-          <label className="relative min-w-0 flex-1 lg:w-64" htmlFor="report-search">
+          <label
+            className="relative min-w-0 flex-1 lg:w-64"
+            htmlFor="report-search">
             <Search
               aria-hidden="true"
               className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
@@ -508,8 +648,7 @@ export default function ReportDataView({
           </label>
           <button
             type="submit"
-            className="min-h-10 rounded-md bg-slate-900 px-4 text-sm font-medium text-white hover:bg-slate-700"
-          >
+            className="min-h-10 rounded-md bg-slate-900 px-4 text-sm font-medium text-white hover:bg-slate-700">
             Search
           </button>
         </form>
@@ -521,13 +660,11 @@ export default function ReportDataView({
         </summary>
         <form
           onSubmit={submitFilters}
-          className="grid gap-3 py-3 sm:grid-cols-2 lg:grid-cols-4"
-        >
+          className="grid gap-3 py-3 sm:grid-cols-2 lg:grid-cols-4">
           {reportFilters.map((filter) => (
             <label
               key={filter.key}
-              className="grid gap-1 text-xs font-medium text-slate-600"
-            >
+              className="grid gap-1 text-xs font-medium text-slate-600">
               {filter.label}
               <input
                 type={filter.type ?? "text"}
@@ -545,15 +682,13 @@ export default function ReportDataView({
           <div className="flex items-end gap-2 sm:col-span-2 lg:col-span-4">
             <button
               type="submit"
-              className="min-h-9 rounded-md bg-slate-900 px-3 text-xs font-medium text-white hover:bg-slate-700"
-            >
+              className="min-h-9 rounded-md bg-slate-900 px-3 text-xs font-medium text-white hover:bg-slate-700">
               Apply filters
             </button>
             <button
               type="button"
               onClick={clearFilters}
-              className="min-h-9 rounded-md border border-slate-300 px-3 text-xs font-medium text-slate-700 hover:bg-slate-50"
-            >
+              className="min-h-9 rounded-md border border-slate-300 px-3 text-xs font-medium text-slate-700 hover:bg-slate-50">
               Clear
             </button>
           </div>
@@ -561,19 +696,22 @@ export default function ReportDataView({
       </details>
 
       {detailLookupMessage && (
-        <p role="alert" className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-900">
+        <p
+          role="alert"
+          className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-900">
           {detailLookupMessage}
         </p>
       )}
 
       {activeError ? (
         <div className="flex min-h-48 flex-col items-center justify-center gap-3 p-6 text-center">
-          <p role="alert" className="text-sm text-rose-700">{activeError}</p>
+          <p role="alert" className="text-sm text-rose-700">
+            {activeError}
+          </p>
           <button
             type="button"
             onClick={() => setRetryVersion((value) => value + 1)}
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
-          >
+            className="rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
             Retry
           </button>
         </div>
@@ -587,85 +725,102 @@ export default function ReportDataView({
             )}
             {viewMode === "visual" ? (
               rows.length === 0 && !isLoading ? (
-                <p className="px-4 py-12 text-center text-sm text-slate-500">No report records found.</p>
+                <p className="px-4 py-12 text-center text-sm text-slate-500">
+                  No report records found.
+                </p>
               ) : (
                 <ReportVisualCards
                   rows={rows}
                   columns={columns}
                   reportKey={reportKey}
-                  onOpenTrip={onOpenTrip ? (row) => void openTripDetails(row) : undefined}
+                  onOpenTrip={
+                    onOpenTrip ? (row) => void openTripDetails(row) : undefined
+                  }
                 />
               )
             ) : (
-            <table className="w-full min-w-max border-collapse text-left text-sm">
-              <thead className="bg-slate-50 text-xs font-semibold text-slate-600">
-                <tr>
-                  {columns.map((column) => (
-                    <th
-                      key={column.key}
-                      scope="col"
-                      className={`whitespace-nowrap border-b border-slate-200 px-4 py-3 ${
-                        column.type === "number" ||
-                        ["quantity", "cbm", "subcon_rate_manual"].includes(column.key)
-                          ? "text-right"
-                          : "text-left"
-                      }`}
-                    >
-                      {column.title}
-                    </th>
-                  ))}
-                  {onOpenTrip && <th scope="col" className="sticky right-0 border-b border-slate-200 bg-slate-50 px-3 py-3 text-right">Details</th>}
-                </tr>
-              </thead>
-              <tbody>
-                {!isLoading && rows.length === 0 && (
+              <table className="w-full min-w-max border-collapse text-left text-sm">
+                <thead className="bg-slate-50 text-xs font-semibold text-slate-600">
                   <tr>
-                    <td
-                      colSpan={Math.max(columns.length + (onOpenTrip ? 1 : 0), 1)}
-                      className="px-4 py-12 text-center text-sm text-slate-500"
-                    >
-                      No report rows found.
-                    </td>
-                  </tr>
-                )}
-                {rows.map((row, index) => (
-                  <tr
-                    key={rowKey(row, index)}
-                    className="border-b border-slate-100 last:border-0 hover:bg-slate-50/70"
-                  >
                     {columns.map((column) => (
-                      <td
+                      <th
                         key={column.key}
-                        className={`max-w-80 px-4 py-3 text-slate-700 ${
+                        scope="col"
+                        className={`whitespace-nowrap border-b border-slate-200 px-4 py-3 ${
                           column.type === "number" ||
-                          ["quantity", "cbm", "subcon_rate_manual"].includes(column.key)
-                            ? "text-right tabular-nums"
+                          ["quantity", "cbm", "subcon_rate_manual"].includes(
+                            column.key,
+                          )
+                            ? "text-right"
                             : "text-left"
-                        }`}
-                      >
-                        <span className="block truncate" title={displayValue(row[column.key], column.type)}>
-                          {displayValue(row[column.key], column.type)}
-                        </span>
-                      </td>
+                        }`}>
+                        {column.title}
+                      </th>
                     ))}
                     {onOpenTrip && (
-                      <td className="sticky right-0 border-b border-slate-100 bg-white px-3 py-2 text-right">
-                        <button
-                          type="button"
-                          onClick={() => void openTripDetails(row)}
-                          aria-label={`View trip details for ${String(row.dispatch_number ?? row.trip_id ?? "this row")}`}
-                          title="View trip details"
-                          className="inline-flex min-h-8 items-center gap-1 rounded-md border border-slate-300 px-2 text-xs font-medium text-slate-700 hover:border-cyan-700 hover:bg-cyan-50 hover:text-cyan-900"
-                        >
-                          Details
-                          <ArrowUpRight aria-hidden="true" className="h-3.5 w-3.5" />
-                        </button>
-                      </td>
+                      <th
+                        scope="col"
+                        className="sticky right-0 border-b border-slate-200 bg-slate-50 px-3 py-3 text-right">
+                        Details
+                      </th>
                     )}
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {!isLoading && rows.length === 0 && (
+                    <tr>
+                      <td
+                        colSpan={Math.max(
+                          columns.length + (onOpenTrip ? 1 : 0),
+                          1,
+                        )}
+                        className="px-4 py-12 text-center text-sm text-slate-500">
+                        No report rows found.
+                      </td>
+                    </tr>
+                  )}
+                  {rows.map((row, index) => (
+                    <tr
+                      key={rowKey(row, index)}
+                      className="border-b border-slate-100 last:border-0 hover:bg-slate-50/70">
+                      {columns.map((column) => (
+                        <td
+                          key={column.key}
+                          className={`max-w-80 px-4 py-3 text-slate-700 ${
+                            column.type === "number" ||
+                            ["quantity", "cbm", "subcon_rate_manual"].includes(
+                              column.key,
+                            )
+                              ? "text-right tabular-nums"
+                              : "text-left"
+                          }`}>
+                          <span
+                            className="block truncate"
+                            title={displayValue(row[column.key], column.type)}>
+                            {displayValue(row[column.key], column.type)}
+                          </span>
+                        </td>
+                      ))}
+                      {onOpenTrip && (
+                        <td className="sticky right-0 border-b border-slate-100 bg-white px-3 py-2 text-right">
+                          <button
+                            type="button"
+                            onClick={() => void openTripDetails(row)}
+                            aria-label={`View trip details for ${String(row.dispatch_number ?? row.trip_id ?? "this row")}`}
+                            title="View trip details"
+                            className="inline-flex min-h-8 items-center gap-1 rounded-md border border-slate-300 px-2 text-xs font-medium text-slate-700 hover:border-cyan-700 hover:bg-cyan-50 hover:text-cyan-900">
+                            Details
+                            <ArrowUpRight
+                              aria-hidden="true"
+                              className="h-3.5 w-3.5"
+                            />
+                          </button>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             )}
           </div>
           <footer className="flex flex-col gap-3 border-t border-slate-200 px-4 py-3 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between">
@@ -680,8 +835,7 @@ export default function ReportDataView({
                 aria-label="Previous page"
                 disabled={isLoading || page <= 1}
                 onClick={() => setPage((value) => Math.max(1, value - 1))}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
-              >
+                className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40">
                 <ChevronLeft aria-hidden="true" className="h-4 w-4" />
               </button>
               <button
@@ -689,8 +843,7 @@ export default function ReportDataView({
                 aria-label="Next page"
                 disabled={isLoading || pageCount === 0 || page >= pageCount}
                 onClick={() => setPage((value) => value + 1)}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
-              >
+                className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40">
                 <ChevronRight aria-hidden="true" className="h-4 w-4" />
               </button>
             </div>

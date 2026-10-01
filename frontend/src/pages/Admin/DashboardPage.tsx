@@ -1,19 +1,18 @@
 import { useMemo, useState } from "react";
+import dottedBackground from "../../assets/dotted-bg.svg";
 import SidebarNav, {
   type NavEntry,
-  type NavItemWithBadge,
   type WorkspaceName,
 } from "../../components/admin/SidebarNav";
-import { TopBar } from "../../components/admin/DashboardPrimitives";
+import { PageSkeleton } from "../../components/admin/DashboardPrimitives";
 import ConfirmDialog from "../../components/ui/ConfirmDialog";
 import { useAuth } from "../../context/AuthContext";
 import {
-  FileCheck2,
-  HelpCircle,
+  BarChart3,
+  FileText,
   LayoutDashboard,
-  Mail,
-  Database,
   Truck,
+  Users,
   WalletCards,
 } from "lucide-react";
 import type { DashboardData } from "../../types/dashboard";
@@ -30,136 +29,97 @@ export interface DashboardPageProps {
   onSearch?: (query: string) => void;
 }
 
+const normalizeMainSection = (value: string) => {
+  if (["dispatches", "deliveries", "monitoring"].includes(value))
+    return "trips";
+  if (
+    [
+      "combined",
+      "dispatch-monitoring",
+      "dispatch",
+      "trip-booking",
+      "store-calling",
+    ].includes(value)
+  )
+    return "reports";
+  if (["rates-fuel", "invoices", "payables", "cash-tracker"].includes(value))
+    return "billing";
+  if (
+    [
+      "overview",
+      "trips",
+      "truckers",
+      "pod",
+      "reports",
+      "billing",
+      "settings",
+    ].includes(value)
+  )
+    return value;
+  return "overview";
+};
+
 export default function DashboardPage({
   data = defaultDashboardData,
   loading = false,
   onNavigate = () => {},
-  onLogout
+  onLogout,
 }: DashboardPageProps) {
   const { logout, profile, user } = useAuth();
   const displayName =
     [profile?.first_name, profile?.last_name].filter(Boolean).join(" ") ||
     user?.email ||
     data.user.name;
-  const [workspace, setWorkspace] = useState<WorkspaceName>("Operations Admin");
+  const [workspace, setWorkspace] =
+    useState<WorkspaceName>("Operational Admin");
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [logoutLoading, setLogoutLoading] = useState(false);
-  const [activeId, setActiveId] = useState(data.nav.activeId);
+  const [activeId, setActiveId] = useState(() =>
+    normalizeMainSection(data.nav.activeId),
+  );
+  const [tripView, setTripView] = useState<
+    "dispatches" | "monitoring" | "deliveries"
+  >("dispatches");
+  const [reportView, setReportView] = useState<
+    | "combined"
+    | "dispatch-monitoring"
+    | "dispatch"
+    | "trip-booking"
+    | "store-calling"
+  >("combined");
+  const [billingView, setBillingView] = useState<
+    "rates-fuel" | "invoices" | "payables" | "cash-tracker"
+  >("invoices");
   const [searchQuery] = useState("");
 
-  /* ---------------------------------------------------------------- */
-  /* Build sidebar entries                                             */
-  /* ---------------------------------------------------------------- */
-  const navEntries: NavEntry[] = useMemo(() => {
-    const general = Object.fromEntries(
-      data.nav.general.map((item) => [item.id, item]),
-    );
-    const support = Object.fromEntries(
-      data.nav.support.map((item) => [item.id, item]),
-    );
-
-    const custom = (id: string, label: string) => ({ id, label });
-
-    const withDefaults = (
-      id: string,
-      label: string,
-      icon: React.ReactNode,
-      children: (NavItemWithBadge | undefined)[],
-    ): NavEntry | null => {
-      const resolved = children.filter(
-        (child): child is NavItemWithBadge => Boolean(child),
-      );
-      if (resolved.length === 0) return null;
-      return { id, label, icon, children: resolved };
-    };
-
-    const entries: (NavEntry | null)[] = [
-      // Home — flat item
-      general.overview
-        ? {
-            id: "overview",
-            label: "Home",
-            icon: <LayoutDashboard className="h-4 w-4" />,
-          }
-        : null,
-
-      // Requests — flat item
-      general.requests
-        ? {
-            ...general.requests,
-            icon: <Mail className="h-4 w-4" />,
-          }
-        : null,
-
-      // Trips — group
-      withDefaults("trips", "Trips", <Truck className="h-4 w-4" />, [
-        general.dispatches,
-        custom("dispatch-planning", "New Trip"),
-        general.monitoring,
-      ]),
-
-      // Deliveries — group
-      withDefaults(
-        "deliveries",
-        "Deliveries",
-        <FileCheck2 className="h-4 w-4" />,
-        [
-          custom("delivery-list", "Delivery List"),
-          general.pod,
-          custom("returns", "Returns & Pull-Outs"),
-        ],
-      ),
-
-      // Issues — group
-      withDefaults("issues", "Issues", <HelpCircle className="h-4 w-4" />, [
-        custom("report-issue", "Report an Issue"),
-        support.alerts,
-        custom("resolved-issues", "Resolved"),
-      ]),
-
-      // Billing — group
-      withDefaults("billing", "Billing", <WalletCards className="h-4 w-4" />, [
-        support.billing,
-        support.payables,
-        custom("rates-fuel", "Rates & Fuel"),
-      ]),
-
-      // Store calling — flat
-      general["store-calling"] ? { ...general["store-calling"] } : null,
-
-      // Reports — flat
-      general.reports ? { ...general.reports } : null,
-
-      // Data controls — flat
-      support.compliance ? { ...support.compliance } : null,
-
-      profile?.role === "ADMIN"
-        ? { id: "database", label: "Database", icon: <Database className="h-4 w-4" /> }
-        : null,
-    ];
-
-    return entries.filter(Boolean) as NavEntry[];
-  }, [data.nav, profile?.role]);
-
-  /* ---------------------------------------------------------------- */
-  /* Flatten for active label lookup                                   */
-  /* ---------------------------------------------------------------- */
-  const navItems = useMemo(
-    () =>
-      navEntries.flatMap((entry) =>
-        "children" in entry && Array.isArray(entry.children)
-          ? entry.children
-          : [entry],
-      ),
-    [navEntries],
+  const navEntries: NavEntry[] = useMemo(
+    () => [
+      {
+        id: "overview",
+        label: "Home",
+        icon: <LayoutDashboard className="h-4 w-4" />,
+      },
+      { id: "trips", label: "Trips", icon: <Truck className="h-4 w-4" /> },
+      {
+        id: "truckers",
+        label: "Truckers",
+        icon: <Users className="h-4 w-4" />,
+      },
+      { id: "pod", label: "POD", icon: <FileText className="h-4 w-4" /> },
+      {
+        id: "reports",
+        label: "Reports",
+        icon: <BarChart3 className="h-4 w-4" />,
+      },
+      {
+        id: "billing",
+        label: "Billing",
+        icon: <WalletCards className="h-4 w-4" />,
+      },
+    ],
+    [],
   );
-  const activeLabel = activeId.startsWith("trip-detail:")
-    ? "Trip details"
-    : navItems.find((item) => item.id === activeId)?.label ?? "Overview";
 
-  /* ---------------------------------------------------------------- */
-  /* Search filtering                                                  */
-  /* ---------------------------------------------------------------- */
   const filteredData = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
     if (!query) return data;
@@ -181,12 +141,22 @@ export default function DashboardPage({
     };
   }, [data, searchQuery]);
 
-  /* ---------------------------------------------------------------- */
-  /* Handlers                                                          */
-  /* ---------------------------------------------------------------- */
   const handleNavigate = (id: string) => {
-    setActiveId(id);
-    onNavigate(id);
+    const nextSection = normalizeMainSection(id);
+    setActiveId(nextSection);
+    onNavigate(nextSection);
+  };
+
+  const handleMetricNavigate = (id: string) => {
+    const nextSection = normalizeMainSection(id);
+    if (id === "dispatches") setTripView("dispatches");
+    if (id === "monitoring") setTripView("monitoring");
+    if (id === "combined") setReportView("combined");
+    if (id === "dispatch") setReportView("dispatch");
+    if (id === "trip-booking") setReportView("trip-booking");
+    if (id === "store-calling") setReportView("store-calling");
+    setActiveId(nextSection);
+    onNavigate(nextSection);
   };
 
   const handleConfirmLogout = async () => {
@@ -199,20 +169,10 @@ export default function DashboardPage({
     }
   };
 
-  /* ---------------------------------------------------------------- */
-  /* Loading                                                           */
-  /* ---------------------------------------------------------------- */
   if (loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-[#fafafa]">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-200 border-t-slate-900" />
-      </div>
-    );
+    return <PageSkeleton />;
   }
 
-  /* ---------------------------------------------------------------- */
-  /* Client Website workspace                                          */
-  /* ---------------------------------------------------------------- */
   if (workspace === "Client Website") {
     return (
       <>
@@ -234,67 +194,118 @@ export default function DashboardPage({
     );
   }
 
-  /* ---------------------------------------------------------------- */
-  /* Operations Admin workspace                                        */
-  /* ---------------------------------------------------------------- */
   return (
-    <div className="min-h-screen w-full dotted-surface text-slate-900">
-      <div className="flex min-h-screen w-full">
-        <SidebarNav
-          entries={navEntries}
-          activeId={activeId}
-          onNavigate={handleNavigate}
-          onLogout={() => setShowLogoutConfirm(true)}
-          workspace={workspace}
-          onWorkspaceChange={setWorkspace}
-          userName={displayName}
-          userInitial={displayName.charAt(0).toUpperCase()}
-        />
+    <div className="relative min-h-screen overflow-hidden bg-[#edf4fd] text-slate-900">
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 opacity-100"
+        style={{
+          backgroundColor: "#edf4fd",
+          backgroundImage: `url(${dottedBackground})`,
+          backgroundRepeat: "repeat",
+          backgroundSize: "18px 18px",
+          backgroundPosition: "center",
+        }}
+      />
 
-        <div className="min-w-0 flex-1 lg:pl-[288px] dotted-surface">
-          <TopBar
-            activeLabel={activeLabel}
-            onNotifications={() => handleNavigate("alerts")}
-            onProfile={() => handleNavigate("settings")}
-            onSettings={() => handleNavigate("settings")}
-            onHelp={() => handleNavigate("compliance")}
+      <div className="relative z-10">
+        <div className="mx-auto max-w-[1500px] px-3 sm:px-4 lg:px-6">
+          <SidebarNav
+            entries={navEntries}
+            activeId={activeId}
+            onNavigate={handleNavigate}
+            onLogout={() => setShowLogoutConfirm(true)}
+            workspace={workspace}
+            onWorkspaceChange={setWorkspace}
             userName={displayName}
             userInitial={displayName.charAt(0).toUpperCase()}
-            notificationCount={0}
           />
-
-          <main className="min-h-[calc(100vh-3rem)] px-6 py-2 lg:px-6">
-            {activeId === "overview" ? (
-              <>
-                <div className="mb-6">
-                  <h1 className="text-lg font-semibold text-slate-900">
-                    Operations overview
-                  </h1>
-                </div>
-                <OverviewView
-                  onOpenTrip={(tripId) => setActiveId(`trip-detail:${tripId}:overview`)}
-                />
-              </>
-            ) : (
-              <ResourceView
-                id={activeId}
-                data={filteredData}
-                onNavigate={handleNavigate}
-              />
-            )}
-          </main>
         </div>
-      </div>
 
-      <ConfirmDialog
-        open={showLogoutConfirm}
-        title="Log out?"
-        description="Are you sure you want to log out?"
-        confirmDisabled={logoutLoading}
-        isConfirming={logoutLoading}
-        onCancel={() => setShowLogoutConfirm(false)}
-        onConfirm={() => void handleConfirmLogout()}
-      />
+        <main className="mx-auto min-h-[calc(100vh-4.5rem)] max-w-[1500px] px-3 py-4 sm:px-5 lg:px-6">
+          {activeId === "overview" ? (
+            <div className="w-full">
+              <div className="mb-5">
+                <h1 className="text-lg font-semibold text-slate-900">
+                  Operations overview
+                </h1>
+              </div>
+              <OverviewView
+                onOpenTrip={(tripId) =>
+                  setActiveId(`trip-detail:${tripId}:overview`)
+                }
+                onMetricNavigate={handleMetricNavigate}
+              />
+            </div>
+          ) : activeId === "trips" ? (
+            <ResourceView
+              id={tripView}
+              data={filteredData}
+              onNavigate={handleNavigate}
+              tripScope={tripView}
+              onTripScopeChange={(next) => {
+                setTripView(next);
+                setActiveId("trips");
+              }}
+            />
+          ) : activeId === "truckers" ? (
+            <ResourceView
+              id="truckers"
+              data={filteredData}
+              onNavigate={handleNavigate}
+            />
+          ) : activeId === "pod" ? (
+            <ResourceView
+              id="pod"
+              data={filteredData}
+              onNavigate={handleNavigate}
+            />
+          ) : activeId === "reports" ? (
+            <ResourceView
+              id={reportView}
+              data={filteredData}
+              onNavigate={handleNavigate}
+              onReportScopeChange={(next) => {
+                setReportView(next);
+                setActiveId("reports");
+              }}
+            />
+          ) : activeId === "billing" ? (
+            <ResourceView
+              id={billingView}
+              data={filteredData}
+              onNavigate={handleNavigate}
+              billingScope={billingView}
+              onBillingScopeChange={(next) => {
+                setBillingView(next);
+                setActiveId("billing");
+              }}
+            />
+          ) : activeId === "settings" ? (
+            <ResourceView
+              id="settings"
+              data={filteredData}
+              onNavigate={handleNavigate}
+            />
+          ) : (
+            <ResourceView
+              id={activeId}
+              data={filteredData}
+              onNavigate={handleNavigate}
+            />
+          )}
+        </main>
+
+        <ConfirmDialog
+          open={showLogoutConfirm}
+          title="Log out?"
+          description="Are you sure you want to log out?"
+          confirmDisabled={logoutLoading}
+          isConfirming={logoutLoading}
+          onCancel={() => setShowLogoutConfirm(false)}
+          onConfirm={() => void handleConfirmLogout()}
+        />
+      </div>
     </div>
   );
 }

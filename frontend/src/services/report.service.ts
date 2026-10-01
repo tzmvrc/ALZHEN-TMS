@@ -1,4 +1,4 @@
-import { apiGet, type ApiResponse } from "./api.service";
+import { apiGetCached, type ApiResponse } from "./api.service";
 
 export const REPORTS = {
   combined: { title: "Combined Report", endpoint: "/reports/combined" },
@@ -142,7 +142,7 @@ export async function fetchReportColumns(
   reportKey: ReportKey,
   token: string,
 ): Promise<ReportColumn[]> {
-  const response = await apiGet<
+  const response = await apiGetCached<
     ApiResponse<{ report: string; columns: ReportColumn[] }>
   >(`/reports/${reportKey}/columns`, token);
   return unwrap(response, "Unable to load report columns.").columns;
@@ -175,7 +175,7 @@ export async function fetchReportRows(
     if (value) params.set(filter.key, value);
   }
 
-  const response = await apiGet<ApiResponse<ReportData<ReportRow>>>(
+  const response = await apiGetCached<ApiResponse<ReportData<ReportRow>>>(
     `${REPORTS[reportKey].endpoint}?${params.toString()}`,
     token,
   );

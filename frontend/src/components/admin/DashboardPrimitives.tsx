@@ -152,6 +152,30 @@ export function PageIntro({
   );
 }
 
+export function SkeletonBlock({
+  className = "",
+}: {
+  className?: string;
+}) {
+  return <div className={`animate-pulse rounded-md bg-slate-200 ${className}`} />;
+}
+
+export function PageSkeleton() {
+  return (
+    <div className="min-h-screen bg-slate-50 p-6">
+      <div className="mx-auto max-w-5xl space-y-4">
+        <SkeletonBlock className="h-12 w-full rounded-2xl" />
+        <div className="grid gap-4 md:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, index) => (
+            <SkeletonBlock key={index} className="h-28 rounded-2xl border border-slate-200 bg-white" />
+          ))}
+        </div>
+        <SkeletonBlock className="h-72 w-full rounded-2xl border border-slate-200 bg-white" />
+      </div>
+    </div>
+  );
+}
+
 export function SectionHeader({
   eyebrow,
   title,

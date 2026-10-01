@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Navigate, useLocation } from "react-router-dom";
+import { PageSkeleton } from "./admin/DashboardPrimitives";
 import { getRoleBasedHomePath, useAuth } from "../context/AuthContext";
 
 type ProtectedRouteProps = {
@@ -14,12 +15,8 @@ export default function ProtectedRoute({
   const { user, profile, loading } = useAuth();
   const location = useLocation();
 
-  if (loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-200 border-t-blue-600" />
-      </div>
-    );
+  if (loading && !user) {
+    return <PageSkeleton />;
   }
 
   if (!user) {
