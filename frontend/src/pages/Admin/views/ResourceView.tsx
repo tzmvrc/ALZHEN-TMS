@@ -48,6 +48,10 @@ const titleMap: Record<string, [string, string]> = {
     "Dispatch monitoring",
     "Review dispatch status, delivery progress, and store stops",
   ],
+  "dispatch-monitoring": [
+    "Dispatch monitoring",
+    "Review dispatch status, delivery progress, and store stops",
+  ],
   "store-calling": ["Store calling", "Prepare stores for incoming deliveries"],
   "warehouse-timings": [
     "Warehouse timings",
@@ -280,6 +284,7 @@ export default function ResourceView({
       "dispatches",
       "deliveries",
       "monitoring",
+      "dispatch-monitoring",
       "store-calling",
       "reports",
       "combined",
@@ -291,10 +296,19 @@ export default function ResourceView({
       "rates-fuel",
       "invoices",
     ].includes(id);
+  const showPageIntro =
+    ![
+      "dispatch-monitoring",
+      "store-calling",
+      "reports",
+      "combined",
+      "dispatch",
+      "trip-booking",
+    ].includes(id) && !isTripDetail;
 
   return (
     <>
-      <PageIntro title={title} subtitle={subtitle} />
+      {showPageIntro && <PageIntro title={title} subtitle={subtitle} />}
       {isPrototype && <PrototypeNotice />}
 
       {/* ============ REQUESTS (prototype workflow) ============ */}
@@ -359,11 +373,18 @@ export default function ResourceView({
           />
         </>
       )}
+      {id === "dispatch-monitoring" && (
+        <ReportDataView
+          initialReport="dispatch-monitoring"
+          onOpenTrip={(tripId) => onNavigate?.(`trip-detail:${tripId}:${id}`)}
+          onReportScopeChange={onReportScopeChange}
+        />
+      )}
       {id === "store-calling" && (
         <ReportDataView
           initialReport="store-calling"
-          showReportPicker={false}
           onOpenTrip={(tripId) => onNavigate?.(`trip-detail:${tripId}:${id}`)}
+          onReportScopeChange={onReportScopeChange}
         />
       )}
       {id === "reports" && (
@@ -445,6 +466,7 @@ export default function ResourceView({
           "deliveries",
           "pod",
           "monitoring",
+          "dispatch-monitoring",
           "store-calling",
           "reports",
           "combined",

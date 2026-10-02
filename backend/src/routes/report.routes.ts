@@ -5,9 +5,12 @@ import {
   getCombinedReport,
   getDispatchMonitoringReport,
   getDispatchReport,
+  getPodDriveFilesReport,
+  getPodStatusReport,
   getReportColumnsByKey,
   getStoreCallingReport,
   getTripBookingReport,
+  getTripExceptionsReport,
 } from "../controllers/report.controller.js";
 
 const router = Router();
@@ -19,16 +22,16 @@ router.get(
   getCombinedReport,
 );
 router.get(
-  "/dispatch-monitoring",
-  authMiddleware,
-  requireRole("ADMIN", "STAFF"),
-  getDispatchMonitoringReport,
-);
-router.get(
   "/dispatch",
   authMiddleware,
   requireRole("ADMIN", "STAFF"),
   getDispatchReport,
+);
+router.get(
+  "/dispatch-monitoring",
+  authMiddleware,
+  requireRole("ADMIN", "STAFF"),
+  getDispatchMonitoringReport,
 );
 router.get(
   "/trip-booking",
@@ -41,6 +44,24 @@ router.get(
   authMiddleware,
   requireRole("ADMIN", "STAFF"),
   getStoreCallingReport,
+);
+router.get(
+  "/pod-status",
+  authMiddleware,
+  requireRole("ADMIN", "STAFF"),
+  getPodStatusReport,
+);
+router.get(
+  "/pod-drive-files",
+  authMiddleware,
+  requireRole("ADMIN", "STAFF"),
+  getPodDriveFilesReport,
+);
+router.get(
+  "/trip-exceptions",
+  authMiddleware,
+  requireRole("ADMIN", "STAFF"),
+  getTripExceptionsReport,
 );
 router.get(
   "/:reportKey/columns",

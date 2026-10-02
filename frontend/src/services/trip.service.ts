@@ -1,4 +1,4 @@
-import { apiGetCached, type ApiResponse } from "./api.service";
+import { apiGetCached, apiPatch, type ApiResponse } from "./api.service";
 
 export type TripRecord = Record<string, unknown> & {
   id?: string;
@@ -115,10 +115,9 @@ export async function fetchTripByDispatchNumber(
   token: string,
   dispatchNumber: string,
 ): Promise<{ id: string; dispatch_number: string }> {
-  const response = await apiGetCached<ApiResponse<{ id: string; dispatch_number: string }>>(
-    `/trips/dispatch/${encodeURIComponent(dispatchNumber)}`,
-    token,
-  );
+  const response = await apiGetCached<
+    ApiResponse<{ id: string; dispatch_number: string }>
+  >(`/trips/dispatch/${encodeURIComponent(dispatchNumber)}`, token);
   if (!response.success || !response.data) {
     throw new Error(response.message ?? "Unable to resolve dispatch number.");
   }
@@ -129,6 +128,99 @@ export function fetchTripStops(token: string, tripId: string) {
   return fetchTripChildren(token, tripId, "stops");
 }
 
+export type TripStopRecord = Record<string, unknown> & {
+  id?: string;
+  trip_id?: string | null;
+  stop_sequence?: number | string | null;
+  delivery_status?: string | null;
+};
+
 export function fetchTripLineItems(token: string, tripId: string) {
   return fetchTripChildren(token, tripId, "line-items");
+}
+
+export async function updateTripRecord(
+  token: string,
+  tripId: string,
+  updates: Record<string, unknown>,
+): Promise<void> {
+  const response = await apiPatch<ApiResponse<{ id: string }>>(
+    `/trips/${encodeURIComponent(tripId)}`,
+    updates,
+    token,
+  );
+
+  if (!response.success) {
+    throw new Error(response.message ?? "Unable to save trip update.");
+  }
+}
+
+export async function updateTripStopRecord(
+  token: string,
+  tripId: string,
+  stopId: string,
+  updates: Record<string, unknown>,
+): Promise<void> {
+  const response = await apiPatch<ApiResponse<{ id: string }>>(
+    `/trips/${encodeURIComponent(tripId)}/stops/${encodeURIComponent(stopId)}`,
+    updates,
+    token,
+  );
+
+  if (!response.success) {
+    throw new Error(response.message ?? "Unable to save stop update.");
+  }
+}
+
+export async function updateTripLineItemRecord(
+  token: string,
+  tripId: string,
+  stopId: string,
+  lineItemId: string,
+  updates: Record<string, unknown>,
+): Promise<void> {
+  const response = await apiPatch<ApiResponse<{ id: string }>>(
+    `/trips/${encodeURIComponent(tripId)}/stops/${encodeURIComponent(stopId)}/line-items/${encodeURIComponent(lineItemId)}`,
+    updates,
+    token,
+  );
+
+  if (!response.success) {
+    throw new Error(response.message ?? "Unable to save line item update.");
+  }
+}
+
+export async function updateTripAssignmentRecord(
+  token: string,
+  tripId: string,
+  assignmentId: string,
+  updates: Record<string, unknown>,
+): Promise<void> {
+  const response = await apiPatch<ApiResponse<{ id: string }>>(
+    `/trips/${encodeURIComponent(tripId)}/assignments/${encodeURIComponent(assignmentId)}`,
+    updates,
+    token,
+  );
+
+  if (!response.success) {
+    throw new Error(
+      response.message ?? "Unable to save trip assignment update.",
+    );
+  }
+}
+
+export async function updateStoreCallRecord(
+  token: string,
+  storeCallId: string,
+  updates: Record<string, unknown>,
+): Promise<void> {
+  const response = await apiPatch<ApiResponse<{ id: string }>>(
+    `/store-calls/${encodeURIComponent(storeCallId)}`,
+    updates,
+    token,
+  );
+
+  if (!response.success) {
+    throw new Error(response.message ?? "Unable to save store call update.");
+  }
 }

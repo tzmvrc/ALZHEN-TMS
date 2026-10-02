@@ -1,11 +1,20 @@
 import { Request, Response } from "express";
 import {
-  getTripById,
+  createTripLineItemRecord,
+  createTripRecord,
+  createTripStopRecord,
+  deleteTripLineItemRecord,
+  deleteTripRecord,
+  deleteTripStopRecord,
   getTripByDispatchNumber,
+  getTripById,
   getTripEvents,
   getTripLineItems,
   getTripList,
   getTripStops,
+  updateTripLineItemRecord,
+  updateTripRecord,
+  updateTripStopRecord,
 } from "../services/trip.service.js";
 import { sendError, sendSuccess } from "../utils/api-response.js";
 
@@ -50,7 +59,8 @@ export async function getTripByDispatch(req: Request, res: Response) {
     const result = await getTripByDispatchNumber(dispatchNumber);
     return sendSuccess(res, 200, "Trip resolved successfully", result);
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to resolve trip";
+    const message =
+      error instanceof Error ? error.message : "Unable to resolve trip";
     if (message === "Trip not found") {
       return sendError(res, 404, message, "TRIP_NOT_FOUND");
     }
@@ -60,6 +70,85 @@ export async function getTripByDispatch(req: Request, res: Response) {
       message,
       "TRIP_LOOKUP_FAILED",
     );
+  }
+}
+
+export async function createTrip(req: Request, res: Response) {
+  try {
+    const result = await createTripRecord(req.body, req.user, req.profile);
+    return sendSuccess(res, 201, "Trip created successfully", result);
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Unable to create trip";
+    if (message === "Dispatch number already exists.") {
+      return sendError(res, 409, message, "TRIP_DISPATCH_EXISTS");
+    }
+    return sendError(
+      res,
+      message.toLowerCase().includes("invalid") ||
+        message.toLowerCase().includes("required") ||
+        message.toLowerCase().includes("must") ||
+        message.toLowerCase().includes("already exists")
+        ? 400
+        : 500,
+      message,
+      "TRIP_CREATE_FAILED",
+    );
+  }
+}
+
+export async function updateTrip(req: Request, res: Response) {
+  try {
+    const tripId = Array.isArray(req.params.id)
+      ? req.params.id[0]
+      : (req.params.id ?? "");
+    const result = await updateTripRecord(
+      tripId,
+      req.body,
+      req.user,
+      req.profile,
+    );
+    return sendSuccess(res, 200, "Trip updated successfully", result);
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Unable to update trip";
+    if (message === "Trip not found") {
+      return sendError(res, 404, message, "TRIP_NOT_FOUND");
+    }
+    if (message === "Dispatch number already exists.") {
+      return sendError(res, 409, message, "TRIP_DISPATCH_EXISTS");
+    }
+    return sendError(
+      res,
+      message.toLowerCase().includes("invalid") ||
+        message.toLowerCase().includes("required") ||
+        message.toLowerCase().includes("must") ||
+        message.toLowerCase().includes("already exists")
+        ? 400
+        : 500,
+      message,
+      "TRIP_UPDATE_FAILED",
+    );
+  }
+}
+
+export async function deleteTrip(req: Request, res: Response) {
+  try {
+    const tripId = Array.isArray(req.params.id)
+      ? req.params.id[0]
+      : (req.params.id ?? "");
+    const result = await deleteTripRecord(tripId);
+    return sendSuccess(res, 200, "Trip deleted successfully", result);
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Unable to delete trip";
+    if (message === "Trip not found") {
+      return sendError(res, 404, message, "TRIP_NOT_FOUND");
+    }
+    if (message.includes("related records") || message.includes("not safe")) {
+      return sendError(res, 409, message, "TRIP_DELETE_BLOCKED");
+    }
+    return sendError(res, 400, message, "TRIP_DELETE_FAILED");
   }
 }
 
@@ -77,6 +166,119 @@ export async function getTripStopsById(req: Request, res: Response) {
       return sendError(res, 404, message, "TRIP_NOT_FOUND");
     }
     return sendError(res, 400, message, "TRIP_QUERY_FAILED");
+  }
+}
+
+export async function createTripStop(req: Request, res: Response) {
+  try {
+    const tripId = Array.isArray(req.params.id)
+      ? req.params.id[0]
+      : (req.params.id ?? "");
+    const result = await createTripStopRecord(tripId, req.body ?? {});
+    return sendSuccess(res, 201, "Trip stop created successfully", result);
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Unable to create trip stop";
+    if (message === "Trip not found") {
+      return sendError(res, 404, message, "TRIP_NOT_FOUND");
+    }
+    if (
+      message.includes("already exists") ||
+      message.includes("blocked by existing operational records") ||
+      message.includes("reference is invalid")
+    ) {
+      return sendError(res, 409, message, "TRIP_STOP_CONFLICT");
+    }
+    return sendError(
+      res,
+      message.includes("Invalid") ||
+        message.includes("must be") ||
+        message.includes("field") ||
+        message.includes("required")
+        ? 400
+        : 500,
+      message,
+      "TRIP_STOP_CREATE_FAILED",
+    );
+  }
+}
+
+export async function updateTripStop(req: Request, res: Response) {
+  try {
+    const tripId = Array.isArray(req.params.id)
+      ? req.params.id[0]
+      : (req.params.id ?? "");
+    const stopId = Array.isArray(req.params.stopId)
+      ? req.params.stopId[0]
+      : (req.params.stopId ?? "");
+
+    const result = await updateTripStopRecord(tripId, stopId, req.body ?? {});
+    return sendSuccess(res, 200, "Trip stop updated successfully", result);
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Unable to update trip stop";
+    if (message === "Trip not found") {
+      return sendError(res, 404, message, "TRIP_NOT_FOUND");
+    }
+    if (
+      message === "Stop not found" ||
+      message === "Stop does not belong to this trip"
+    ) {
+      return sendError(res, 404, message, "TRIP_STOP_NOT_FOUND");
+    }
+    if (
+      message.includes("already exists") ||
+      message.includes("sequence already exists")
+    ) {
+      return sendError(res, 409, message, "TRIP_STOP_CONFLICT");
+    }
+    return sendError(
+      res,
+      message.includes("Invalid") ||
+        message.includes("must be") ||
+        message.includes("field") ||
+        message.includes("required")
+        ? 400
+        : 500,
+      message,
+      "TRIP_STOP_UPDATE_FAILED",
+    );
+  }
+}
+
+export async function deleteTripStop(req: Request, res: Response) {
+  try {
+    const tripId = Array.isArray(req.params.id)
+      ? req.params.id[0]
+      : (req.params.id ?? "");
+    const stopId = Array.isArray(req.params.stopId)
+      ? req.params.stopId[0]
+      : (req.params.stopId ?? "");
+
+    const result = await deleteTripStopRecord(tripId, stopId);
+    return sendSuccess(res, 200, "Trip stop deleted successfully", result);
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Unable to delete trip stop";
+    if (message === "Trip not found") {
+      return sendError(res, 404, message, "TRIP_NOT_FOUND");
+    }
+    if (
+      message === "Stop not found" ||
+      message === "Stop not found for this trip" ||
+      message === "Stop does not belong to this trip"
+    ) {
+      return sendError(res, 404, message, "TRIP_STOP_NOT_FOUND");
+    }
+    if (message.includes("blocked by existing operational records")) {
+      return sendError(res, 409, message, "TRIP_STOP_DELETE_BLOCKED");
+    }
+    return sendError(
+      res,
+      message.includes("Invalid") || message.includes("must be") ? 400 : 500,
+      message,
+      "TRIP_STOP_DELETE_FAILED",
+    );
   }
 }
 
@@ -101,6 +303,155 @@ export async function getTripLineItemsById(req: Request, res: Response) {
       return sendError(res, 404, message, "TRIP_NOT_FOUND");
     }
     return sendError(res, 400, message, "TRIP_QUERY_FAILED");
+  }
+}
+
+export async function createTripLineItem(req: Request, res: Response) {
+  try {
+    const tripId = Array.isArray(req.params.id)
+      ? req.params.id[0]
+      : (req.params.id ?? "");
+    const stopId = Array.isArray(req.params.stopId)
+      ? req.params.stopId[0]
+      : (req.params.stopId ?? "");
+
+    const result = await createTripLineItemRecord(
+      tripId,
+      stopId,
+      req.body ?? {},
+    );
+    return sendSuccess(res, 201, "Trip line item created successfully", result);
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Unable to create trip line item";
+    if (message === "Trip not found") {
+      return sendError(res, 404, message, "TRIP_NOT_FOUND");
+    }
+    if (
+      message === "Stop not found" ||
+      message === "Stop does not belong to this trip"
+    ) {
+      return sendError(res, 404, message, "TRIP_STOP_NOT_FOUND");
+    }
+    if (message === "Product not found") {
+      return sendError(res, 404, message, "PRODUCT_NOT_FOUND");
+    }
+    if (
+      message.includes("already exists") ||
+      message.includes("relationship is invalid") ||
+      message.includes("duplicate")
+    ) {
+      return sendError(res, 409, message, "TRIP_LINE_ITEM_CONFLICT");
+    }
+    return sendError(
+      res,
+      message.includes("Invalid") ||
+        message.includes("must be") ||
+        message.includes("field") ||
+        message.includes("required")
+        ? 400
+        : 500,
+      message,
+      "TRIP_LINE_ITEM_CREATE_FAILED",
+    );
+  }
+}
+
+export async function updateTripLineItem(req: Request, res: Response) {
+  try {
+    const tripId = Array.isArray(req.params.id)
+      ? req.params.id[0]
+      : (req.params.id ?? "");
+    const stopId = Array.isArray(req.params.stopId)
+      ? req.params.stopId[0]
+      : (req.params.stopId ?? "");
+    const lineItemId = Array.isArray(req.params.lineItemId)
+      ? req.params.lineItemId[0]
+      : (req.params.lineItemId ?? "");
+
+    const result = await updateTripLineItemRecord(
+      tripId,
+      stopId,
+      lineItemId,
+      req.body ?? {},
+    );
+    return sendSuccess(res, 200, "Trip line item updated successfully", result);
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Unable to update trip line item";
+    if (message === "Trip not found") {
+      return sendError(res, 404, message, "TRIP_NOT_FOUND");
+    }
+    if (
+      message === "Stop not found" ||
+      message === "Stop does not belong to this trip" ||
+      message === "Line item not found" ||
+      message === "Line item does not belong to this trip" ||
+      message === "Line item does not belong to this stop"
+    ) {
+      return sendError(res, 404, message, "TRIP_LINE_ITEM_NOT_FOUND");
+    }
+    if (message.includes("already exists") || message.includes("duplicate")) {
+      return sendError(res, 409, message, "TRIP_LINE_ITEM_CONFLICT");
+    }
+    return sendError(
+      res,
+      message.includes("Invalid") ||
+        message.includes("must be") ||
+        message.includes("field") ||
+        message.includes("required")
+        ? 400
+        : 500,
+      message,
+      "TRIP_LINE_ITEM_UPDATE_FAILED",
+    );
+  }
+}
+
+export async function deleteTripLineItem(req: Request, res: Response) {
+  try {
+    const tripId = Array.isArray(req.params.id)
+      ? req.params.id[0]
+      : (req.params.id ?? "");
+    const stopId = Array.isArray(req.params.stopId)
+      ? req.params.stopId[0]
+      : (req.params.stopId ?? "");
+    const lineItemId = Array.isArray(req.params.lineItemId)
+      ? req.params.lineItemId[0]
+      : (req.params.lineItemId ?? "");
+
+    const result = await deleteTripLineItemRecord(tripId, stopId, lineItemId);
+    return sendSuccess(res, 200, "Trip line item deleted successfully", result);
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Unable to delete trip line item";
+    if (message === "Trip not found") {
+      return sendError(res, 404, message, "TRIP_NOT_FOUND");
+    }
+    if (
+      message === "Stop not found" ||
+      message === "Stop does not belong to this trip" ||
+      message === "Line item not found" ||
+      message === "Line item does not belong to this trip" ||
+      message === "Line item does not belong to this stop"
+    ) {
+      return sendError(res, 404, message, "TRIP_LINE_ITEM_NOT_FOUND");
+    }
+    if (message.includes("blocked by existing dependent records")) {
+      return sendError(res, 409, message, "TRIP_LINE_ITEM_DELETE_BLOCKED");
+    }
+    return sendError(
+      res,
+      message.includes("Invalid") || message.includes("must be") ? 400 : 500,
+      message,
+      "TRIP_LINE_ITEM_DELETE_FAILED",
+    );
   }
 }
 

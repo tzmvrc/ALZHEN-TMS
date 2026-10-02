@@ -222,11 +222,11 @@ export default function DashboardPage({
           />
         </div>
 
-        <main className="mx-auto min-h-[calc(100vh-4.5rem)] max-w-[1500px] px-3 py-4 sm:px-5 lg:px-6">
+        <main className="mx-auto min-h-[calc(100vh-4.5rem)] max-w-[1500px] px-3 py-3 sm:px-4 lg:px-5">
           {activeId === "overview" ? (
             <div className="w-full">
-              <div className="mb-5">
-                <h1 className="text-lg font-semibold text-slate-900">
+              <div className="mb-3">
+                <h1 className="text-base font-semibold text-slate-900">
                   Operations overview
                 </h1>
               </div>

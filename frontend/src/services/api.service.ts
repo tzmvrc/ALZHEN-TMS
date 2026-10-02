@@ -14,8 +14,73 @@ export class ApiError extends Error {
   }
 }
 
+const AUTH_SESSION_EXPIRED_PATTERNS = [
+  /bad_jwt/i,
+  /invalid jwt/i,
+  /jwt expired/i,
+  /token is expired/i,
+  /token expired/i,
+  /invalid or expired token/i,
+  /invalid token/i,
+  /session is expired/i,
+  /auth session is null/i,
+  /authentication token/i,
+];
+
 const API_BASE_URL =
   import.meta.env.VITE_API_URL ?? "http://localhost:5000/api";
+
+type SessionExpiredHandler = () => Promise<void> | void;
+
+let sessionExpiredHandler: SessionExpiredHandler | null = null;
+let sessionExpiredRequestInFlight = false;
+
+export function registerSessionExpiredHandler(handler: SessionExpiredHandler) {
+  sessionExpiredHandler = handler;
+}
+
+export function unregisterSessionExpiredHandler() {
+  sessionExpiredHandler = null;
+}
+
+async function triggerSessionExpired() {
+  if (sessionExpiredRequestInFlight) {
+    return;
+  }
+
+  sessionExpiredRequestInFlight = true;
+
+  try {
+    if (sessionExpiredHandler) {
+      await sessionExpiredHandler();
+    }
+  } finally {
+    sessionExpiredRequestInFlight = false;
+  }
+}
+
+function hasExpiredSessionSignal(status: number, payload: unknown): boolean {
+  if (status === 401) {
+    return true;
+  }
+
+  if (status !== 403) {
+    return false;
+  }
+
+  const flattened = JSON.stringify(payload ?? {})
+    .replace(/"/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!flattened) {
+    return false;
+  }
+
+  return AUTH_SESSION_EXPIRED_PATTERNS.some((pattern) =>
+    pattern.test(flattened),
+  );
+}
 
 async function request<T>(
   endpoint: string,
@@ -48,6 +113,11 @@ async function request<T>(
   } | null;
 
   if (!response.ok) {
+    if (hasExpiredSessionSignal(response.status, payload)) {
+      await triggerSessionExpired();
+      throw new ApiError("Your session has expired. Please log in again.", 401);
+    }
+
     if (response.status === 401) {
       throw new ApiError(
         payload?.message ?? "Your session has expired. Please log in again.",
@@ -63,11 +133,17 @@ async function request<T>(
     }
 
     if (response.status === 404) {
-      throw new ApiError(payload?.message ?? "Resource not found.", response.status);
+      throw new ApiError(
+        payload?.message ?? "Resource not found.",
+        response.status,
+      );
     }
 
     if (response.status >= 500) {
-      throw new ApiError("Something went wrong. Please try again later.", response.status);
+      throw new ApiError(
+        "Something went wrong. Please try again later.",
+        response.status,
+      );
     }
 
     throw new ApiError(payload?.message ?? "Request failed", response.status);
@@ -122,6 +198,36 @@ export async function apiPost<T>(
     endpoint,
     {
       method: "POST",
+      body: JSON.stringify(body),
+    },
+    token,
+  );
+}
+
+export async function apiPatch<T>(
+  endpoint: string,
+  body: unknown,
+  token?: string,
+): Promise<T> {
+  return request<T>(
+    endpoint,
+    {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    },
+    token,
+  );
+}
+
+export async function apiPut<T>(
+  endpoint: string,
+  body: unknown,
+  token?: string,
+): Promise<T> {
+  return request<T>(
+    endpoint,
+    {
+      method: "PUT",
       body: JSON.stringify(body),
     },
     token,

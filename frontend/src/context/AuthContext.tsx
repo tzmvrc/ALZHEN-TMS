@@ -8,8 +8,15 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
-import { apiGet, apiPost } from "../services/api.service";
+import {
+  apiGet,
+  apiPost,
+  registerSessionExpiredHandler,
+  unregisterSessionExpiredHandler,
+} from "../services/api.service";
+import { useToast } from "../components/ui/Toast";
 
 export type AuthProfile = {
   id: string;
@@ -66,14 +73,18 @@ export function getRoleBasedLoginPath(role?: string | null): string {
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const navigate = useNavigate();
   const [user, setUser] = useState<AuthUser | null>(null);
   const [profile, setProfile] = useState<AuthProfile | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const authSyncLockedRef = useRef(false);
   const lastRefreshAtRef = useRef(0);
+  const sessionExpiredRef = useRef(false);
+  const { addToast } = useToast();
 
   const clearSessionState = useCallback(() => {
+    sessionExpiredRef.current = false;
     setUser(null);
     setProfile(null);
     setAccessToken(null);
@@ -83,6 +94,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const clearSession = useCallback(() => {
     clearSessionState();
   }, [clearSessionState]);
+
+  const handleSessionExpired = useCallback(async () => {
+    if (sessionExpiredRef.current) {
+      return;
+    }
+
+    sessionExpiredRef.current = true;
+    authSyncLockedRef.current = true;
+    setLoading(true);
+
+    try {
+      await supabase.auth.signOut().catch(() => undefined);
+    } finally {
+      clearSessionState();
+      authSyncLockedRef.current = false;
+    }
+
+    const currentPath = window.location.pathname;
+    const loginTarget =
+      profile?.role === "TRUCKER" ? "/trucker/login" : "/login";
+
+    if (currentPath !== "/login" && currentPath !== "/trucker/login") {
+      navigate(loginTarget, { replace: true });
+    }
+
+    addToast({
+      title: "Your session has expired.",
+      description: "Please log in again to continue.",
+      variant: "error",
+      duration: 4000,
+    });
+  }, [addToast, clearSessionState, profile?.role]);
 
   const suspendSessionSync = useCallback(() => {
     authSyncLockedRef.current = true;
@@ -135,6 +178,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           throw new Error(response.message ?? "Unable to load account profile");
         }
 
+        sessionExpiredRef.current = false;
         setUser(response.data.authUser);
         setProfile(response.data.profile);
         setAccessToken(session.access_token);
@@ -194,6 +238,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           throw new Error("Invalid account or login credentials.");
         }
 
+        sessionExpiredRef.current = false;
         setUser(response.data.authUser);
         setProfile(response.data.profile);
         setAccessToken(data.session.access_token);
@@ -245,6 +290,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [accessToken, clearSession]);
 
   useEffect(() => {
+    registerSessionExpiredHandler(handleSessionExpired);
+
+    return () => {
+      unregisterSessionExpiredHandler();
+    };
+  }, [handleSessionExpired]);
+
+  useEffect(() => {
     void refreshSession({ silent: false });
 
     const handleFocusOrVisible = () => {
@@ -258,8 +311,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange((event, session) => {
       if (authSyncLockedRef.current) {
+        return;
+      }
+
+      if (event === "SIGNED_OUT") {
+        clearSessionState();
         return;
       }
 
@@ -268,7 +326,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      void refreshSession({ silent: false });
+      if (
+        event === "INITIAL_SESSION" ||
+        event === "SIGNED_IN" ||
+        event === "TOKEN_REFRESHED"
+      ) {
+        void refreshSession({ silent: false });
+      }
     });
 
     window.addEventListener("focus", handleFocusOrVisible);

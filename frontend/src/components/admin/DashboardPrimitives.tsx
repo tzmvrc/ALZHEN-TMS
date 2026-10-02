@@ -45,16 +45,15 @@ export function TopBar({
   notificationCount?: number;
 }) {
   return (
-    <header className="sticky top-4 z-20 mx-4 mb-5 rounded-2xl border border-white/80 bg-white/90 px-4 py-2 shadow-[0_14px_35px_rgba(42,76,120,0.1)] backdrop-blur-xl sm:px-6 lg:mx-6">
-      <div className="flex h-12 items-center justify-between gap-3">
+    <header className="sticky top-3 z-20 mx-3 mb-4 rounded-xl border border-white/80 bg-white/90 px-3 py-1.5 shadow-[0_10px_25px_rgba(42,76,120,0.08)] backdrop-blur-xl sm:px-4 lg:mx-5">
+      <div className="flex h-10 items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
           <h1 className="truncate text-[13px] font-semibold text-slate-900">
             {activeLabel}
           </h1>
           <button
             type="button"
-            className="hidden items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-50 sm:flex"
-          >
+            className="hidden items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-50 sm:flex">
             <Calendar className="h-3 w-3 text-slate-400" />
             {dateLabel}
           </button>
@@ -66,8 +65,7 @@ export function TopBar({
               type="button"
               aria-label="Notifications"
               onClick={onNotifications}
-              className="relative rounded-md p-1.5 text-slate-500 hover:bg-slate-100"
-            >
+              className="relative rounded-md p-1.5 text-slate-500 hover:bg-slate-100">
               <Bell className="h-4 w-4" />
               {notificationCount > 0 ? (
                 <span className="absolute right-0.5 top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-blue-600 px-1 text-[9px] font-bold text-white">
@@ -79,16 +77,14 @@ export function TopBar({
               type="button"
               aria-label="Settings"
               onClick={onSettings}
-              className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100"
-            >
+              className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100">
               <Settings className="h-4 w-4" />
             </button>
             <button
               type="button"
               aria-label="Help"
               onClick={onHelp}
-              className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100"
-            >
+              className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100">
               <HelpCircle className="h-4 w-4" />
             </button>
           </div>
@@ -99,8 +95,7 @@ export function TopBar({
               aria-label="Profile"
               onClick={onProfile}
               title={userName}
-              className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-blue-600 text-[11px] font-bold text-white ring-2 ring-white transition hover:ring-slate-200"
-            >
+              className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-blue-600 text-[11px] font-bold text-white ring-2 ring-white transition hover:ring-slate-200">
               {profileImageUrl ? (
                 <img
                   src={profileImageUrl}
@@ -130,8 +125,7 @@ function CardShell({
 }) {
   return (
     <div
-      className={`rounded-2xl border border-slate-200 bg-white p-5 shadow-sm ${className}`}
-    >
+      className={`rounded-xl border border-slate-200 bg-white p-4 shadow-sm ${className}`}>
       {children}
     </div>
   );
@@ -145,19 +139,17 @@ export function PageIntro({
   subtitle: string;
 }) {
   return (
-    <div className="mb-6">
-      <h1 className="text-lg font-semibold text-slate-900">{title}</h1>
-      <p className="mt-1 text-xs text-slate-500">{subtitle}</p>
+    <div className="mb-4">
+      <h1 className="text-base font-semibold text-slate-900">{title}</h1>
+      <p className="mt-1 text-[11px] text-slate-500">{subtitle}</p>
     </div>
   );
 }
 
-export function SkeletonBlock({
-  className = "",
-}: {
-  className?: string;
-}) {
-  return <div className={`animate-pulse rounded-md bg-slate-200 ${className}`} />;
+export function SkeletonBlock({ className = "" }: { className?: string }) {
+  return (
+    <div className={`animate-pulse rounded-md bg-slate-200 ${className}`} />
+  );
 }
 
 export function PageSkeleton() {
@@ -167,7 +159,10 @@ export function PageSkeleton() {
         <SkeletonBlock className="h-12 w-full rounded-2xl" />
         <div className="grid gap-4 md:grid-cols-3">
           {Array.from({ length: 3 }).map((_, index) => (
-            <SkeletonBlock key={index} className="h-28 rounded-2xl border border-slate-200 bg-white" />
+            <SkeletonBlock
+              key={index}
+              className="h-28 rounded-2xl border border-slate-200 bg-white"
+            />
           ))}
         </div>
         <SkeletonBlock className="h-72 w-full rounded-2xl border border-slate-200 bg-white" />
@@ -188,7 +183,7 @@ export function SectionHeader({
   onAction?: () => void;
 }) {
   return (
-    <div className="mb-4 flex items-start justify-between gap-3">
+    <div className="mb-3 flex items-start justify-between gap-3">
       <div>
         {eyebrow ? (
           <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
@@ -201,8 +196,7 @@ export function SectionHeader({
         <button
           type="button"
           onClick={onAction}
-          className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
-        >
+          className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50">
           {action}
         </button>
       ) : null}
@@ -212,14 +206,103 @@ export function SectionHeader({
 
 function statusPill(status: string) {
   const map: Record<string, string> = {
-    Completed: "bg-blue-50 text-blue-700",
-    "In Progress": "bg-emerald-50 text-emerald-700",
-    Delayed: "bg-amber-50 text-amber-700",
-    High: "bg-red-50 text-red-700",
-    Medium: "bg-amber-50 text-amber-700",
-    Low: "bg-slate-100 text-slate-600",
+    Completed: "bg-emerald-50 text-emerald-700 ring-emerald-200",
+    "In Progress": "bg-cyan-50 text-cyan-700 ring-cyan-200",
+    Delayed: "bg-amber-50 text-amber-700 ring-amber-200",
+    Pending: "bg-amber-50 text-amber-700 ring-amber-200",
+    High: "bg-red-50 text-red-700 ring-red-200",
+    Medium: "bg-amber-50 text-amber-700 ring-amber-200",
+    Low: "bg-slate-100 text-slate-600 ring-slate-200",
   };
-  return map[status] ?? "bg-slate-100 text-slate-600";
+  return map[status] ?? "bg-slate-100 text-slate-600 ring-slate-200";
+}
+
+export function StatusBadge({ value }: { value: unknown }) {
+  const raw =
+    typeof value === "string"
+      ? value.trim()
+      : value === null || value === undefined
+        ? ""
+        : String(value);
+  const normalized = raw || "Not recorded";
+  const tone = (() => {
+    const status = normalized.toLowerCase();
+    if (/completed|delivered|verified|closed|finished|success/.test(status)) {
+      return "bg-emerald-50 text-emerald-700 ring-emerald-200";
+    }
+    if (
+      /in progress|active|running|loading|pickup|assigned|processing|transit/.test(
+        status,
+      )
+    ) {
+      return "bg-cyan-50 text-cyan-700 ring-cyan-200";
+    }
+    if (
+      /pending|waiting|queued|scheduled|delayed|hold|blocked|overdue/.test(
+        status,
+      )
+    ) {
+      return "bg-amber-50 text-amber-700 ring-amber-200";
+    }
+    if (/cancel|reject|failed|error|exception|critical/.test(status)) {
+      return "bg-red-50 text-red-700 ring-red-200";
+    }
+    return "bg-slate-100 text-slate-600 ring-slate-200";
+  })();
+
+  return (
+    <span
+      className={`inline-flex items-center rounded-full px-2 py-1 text-[10px] font-semibold ring-1 ring-inset ${tone}`}>
+      {normalized.replaceAll("_", " ")}
+    </span>
+  );
+}
+
+export function TableSkeleton({
+  columns,
+  rows = 5,
+}: {
+  columns: number;
+  rows?: number;
+}) {
+  return (
+    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+      <div className="overflow-x-auto">
+        <table className="min-w-full text-left text-sm">
+          <thead className="bg-slate-50 text-[11px] uppercase tracking-[0.12em] text-slate-500">
+            <tr>
+              {Array.from({ length: columns }).map((_, columnIndex) => (
+                <th key={`header-${columnIndex}`} className="px-4 py-3">
+                  <div className="h-3 w-16 animate-pulse rounded bg-slate-200" />
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {Array.from({ length: rows }).map((_, rowIndex) => (
+              <tr key={`row-${rowIndex}`} className="border-t border-slate-100">
+                {Array.from({ length: columns }).map((__, columnIndex) => (
+                  <td
+                    key={`cell-${rowIndex}-${columnIndex}`}
+                    className="px-4 py-3">
+                    <div
+                      className={`h-4 animate-pulse rounded bg-slate-200 ${
+                        columnIndex % 3 === 0
+                          ? "w-24"
+                          : columnIndex % 3 === 1
+                            ? "w-32"
+                            : "w-20"
+                      }`}
+                    />
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
 }
 
 /* ================================================================ */
@@ -251,8 +334,7 @@ export function KpiCard({
         </div>
         {icon ? (
           <span
-            className={`flex h-9 w-9 items-center justify-center rounded-xl ${toneClasses[tone]}`}
-          >
+            className={`flex h-9 w-9 items-center justify-center rounded-xl ${toneClasses[tone]}`}>
             {icon}
           </span>
         ) : null}
@@ -292,8 +374,7 @@ export function RevenueChart({ data = [] }: { data?: SalesPoint[] }) {
         {points.map((point) => (
           <div
             key={point.label}
-            className="flex flex-1 flex-col items-center gap-2"
-          >
+            className="flex flex-1 flex-col items-center gap-2">
             <div className="flex h-44 w-full items-end justify-center gap-1">
               <div
                 className="w-2 rounded-t bg-blue-200"
@@ -413,8 +494,7 @@ export function DeliveryPerformanceChart({
                   y={y + 3}
                   textAnchor="end"
                   fontSize="10"
-                  fill="#94a3b8"
-                >
+                  fill="#94a3b8">
                   {t}
                 </text>
               </g>
@@ -430,8 +510,7 @@ export function DeliveryPerformanceChart({
                 y={H - 4}
                 textAnchor="middle"
                 fontSize="10"
-                fill="#94a3b8"
-              >
+                fill="#94a3b8">
                 {p.label}
               </text>
             );
@@ -476,7 +555,11 @@ export function DeliveryPerformanceChart({
 /* ================================================================ */
 /* StatusOverviewPanel                                               */
 /* ================================================================ */
-export function StatusOverviewPanel({ rows = [] }: { rows?: DispatchRecord[] }) {
+export function StatusOverviewPanel({
+  rows = [],
+}: {
+  rows?: DispatchRecord[];
+}) {
   const counts = {
     Completed: rows.filter((r) => r.status === "Completed").length,
     "In Progress": rows.filter((r) => r.status === "In Progress").length,
@@ -539,8 +622,7 @@ export function ActivityPanel({ rows = [] }: { rows?: DispatchRecord[] }) {
             <span
               className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${statusPill(
                 row.status,
-              )}`}
-            >
+              )}`}>
               {row.status}
             </span>
           </li>
@@ -573,7 +655,8 @@ function FleetTripCard({
         : "bg-emerald-500";
 
   return (
-    <div className={`rounded-xl border bg-white transition ${
+    <div
+      className={`rounded-xl border bg-white transition ${
         selected
           ? "border-blue-400 ring-2 ring-blue-200"
           : "border-slate-100 hover:border-slate-200 hover:shadow-sm"
@@ -581,55 +664,52 @@ function FleetTripCard({
       <button
         type="button"
         onClick={() => onSelect?.(trip.id)}
-        className="w-full cursor-pointer p-4 text-left"
-      >
+        className="w-full cursor-pointer p-4 text-left">
         <div className="flex items-center justify-between">
-        <span className="text-xs font-semibold text-slate-800">
-          {trip.displayId ?? trip.id} · ETA {trip.eta}
-        </span>
-        <span
-          className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${statusPill(
-            trip.status,
-          )}`}
-        >
+          <span className="text-xs font-semibold text-slate-800">
+            {trip.displayId ?? trip.id} · ETA {trip.eta}
+          </span>
+          <span
+            className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${statusPill(
+              trip.status,
+            )}`}>
             {trip.statusText ?? trip.status}
-        </span>
+          </span>
         </div>
 
         <div className="mt-4 flex items-center gap-3 text-[11px] text-slate-500">
-        <div className="flex flex-col items-center">
-          <span className="text-base leading-none">🚚</span>
-          <span className="mt-1 max-w-[70px] truncate">
-            {trip.origin ?? "Origin"}
-          </span>
-        </div>
+          <div className="flex flex-col items-center">
+            <span className="text-base leading-none">🚚</span>
+            <span className="mt-1 max-w-[70px] truncate">
+              {trip.origin ?? "Origin"}
+            </span>
+          </div>
 
-        <div className="relative flex-1">
-          <div className="h-[3px] w-full rounded-full bg-slate-100" />
-          <div
-            className="absolute left-0 top-0 h-[3px] rounded-full bg-slate-900"
-            style={{ width: `${progress}%` }}
-          />
-          <span
-            className={`absolute -top-[5px] h-3 w-3 rounded-full border-2 border-white shadow ${dotColor}`}
-            style={{ left: `calc(${progress}% - 6px)` }}
-          />
-        </div>
+          <div className="relative flex-1">
+            <div className="h-[3px] w-full rounded-full bg-slate-100" />
+            <div
+              className="absolute left-0 top-0 h-[3px] rounded-full bg-slate-900"
+              style={{ width: `${progress}%` }}
+            />
+            <span
+              className={`absolute -top-[5px] h-3 w-3 rounded-full border-2 border-white shadow ${dotColor}`}
+              style={{ left: `calc(${progress}% - 6px)` }}
+            />
+          </div>
 
-        <div className="flex flex-col items-center">
-          <span className="text-base leading-none">📍</span>
-          <span className="mt-1 max-w-[70px] truncate">
-            {trip.destination ?? "Destination"}
-          </span>
-        </div>
+          <div className="flex flex-col items-center">
+            <span className="text-base leading-none">📍</span>
+            <span className="mt-1 max-w-[70px] truncate">
+              {trip.destination ?? "Destination"}
+            </span>
+          </div>
         </div>
       </button>
       <div className="flex justify-end border-t border-slate-100 px-3 py-1.5">
         <button
           type="button"
           onClick={() => onViewTrip?.(trip.id)}
-          className="inline-flex min-h-8 items-center gap-1 rounded-md px-2 text-[11px] font-semibold text-cyan-800 hover:bg-cyan-50"
-        >
+          className="inline-flex min-h-8 items-center gap-1 rounded-md px-2 text-[11px] font-semibold text-cyan-800 hover:bg-cyan-50">
           Trip details
           <ArrowUpRight aria-hidden="true" className="h-3.5 w-3.5" />
         </button>
@@ -652,8 +732,8 @@ export function FleetBoardPanel({
   className?: string;
 }) {
   const [activeTab, setActiveTab] = useState<
-    "all" | "in-progress" | "completed" | "delayed"
-    | "other">("all");
+    "all" | "in-progress" | "completed" | "delayed" | "other"
+  >("all");
   const tabs = [
     { id: "all" as const, label: "All", count: rows.length },
     {
@@ -704,8 +784,7 @@ export function FleetBoardPanel({
         </div>
         <button
           type="button"
-          className="rounded-md p-1 text-slate-400 hover:bg-slate-100"
-        >
+          className="rounded-md p-1 text-slate-400 hover:bg-slate-100">
           <MoreHorizontal className="h-4 w-4" />
         </button>
       </div>
@@ -720,8 +799,7 @@ export function FleetBoardPanel({
               activeTab === tab.id
                 ? "bg-slate-900 text-white"
                 : "text-slate-500 hover:bg-slate-100 hover:text-slate-800"
-            }`}
-          >
+            }`}>
             {tab.label} <span className="ml-0.5 opacity-70">{tab.count}</span>
           </button>
         ))}
@@ -729,15 +807,15 @@ export function FleetBoardPanel({
 
       <div className="min-h-0 flex-1 overflow-y-auto pt-3">
         <div className="grid gap-3 xl:grid-cols-1">
-        {filteredRows.slice(0, 6).map((trip) => (
-          <FleetTripCard
-            key={trip.id}
-            trip={trip}
-            onSelect={onSelectTrip}
-            onViewTrip={onViewTrip}
-            selected={trip.id === selectedTripId}
-          />
-        ))}
+          {filteredRows.slice(0, 6).map((trip) => (
+            <FleetTripCard
+              key={trip.id}
+              trip={trip}
+              onSelect={onSelectTrip}
+              onViewTrip={onViewTrip}
+              selected={trip.id === selectedTripId}
+            />
+          ))}
         </div>
       </div>
     </CardShell>
@@ -786,8 +864,7 @@ export function IssuePanel({
         {data.map((item) => (
           <li
             key={item.label}
-            className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2"
-          >
+            className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2">
             <span className="text-xs font-medium text-slate-600">
               {item.label}
             </span>
@@ -853,8 +930,7 @@ export function IncidentPanel({
             {rows.map((row) => (
               <tr
                 key={row.id}
-                className="border-b border-slate-100 last:border-none hover:bg-slate-50/50"
-              >
+                className="border-b border-slate-100 last:border-none hover:bg-slate-50/50">
                 <td className="py-3 pr-4 font-medium text-slate-800">
                   {row.id}
                 </td>
@@ -864,8 +940,7 @@ export function IncidentPanel({
                   <span
                     className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${statusPill(
                       row.severity,
-                    )}`}
-                  >
+                    )}`}>
                     {row.severity}
                   </span>
                 </td>
@@ -910,8 +985,7 @@ export function DispatchTable({
             {rows.map((row) => (
               <tr
                 key={row.id}
-                className="border-b border-slate-100 last:border-none hover:bg-slate-50/50"
-              >
+                className="border-b border-slate-100 last:border-none hover:bg-slate-50/50">
                 <td className="py-3 pr-4 font-medium text-slate-800">
                   {row.id}
                 </td>
@@ -921,8 +995,7 @@ export function DispatchTable({
                   <span
                     className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${statusPill(
                       row.status,
-                    )}`}
-                  >
+                    )}`}>
                     {row.status}
                   </span>
                 </td>
@@ -956,8 +1029,7 @@ export function TruckGridView({ rows = [] }: { rows?: DispatchRecord[] }) {
             </div>
             <button
               type="button"
-              className="rounded-md p-1 text-slate-400 hover:bg-slate-100"
-            >
+              className="rounded-md p-1 text-slate-400 hover:bg-slate-100">
               <MoreHorizontal className="h-4 w-4" />
             </button>
           </div>
@@ -970,8 +1042,7 @@ export function TruckGridView({ rows = [] }: { rows?: DispatchRecord[] }) {
             <span
               className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${statusPill(
                 row.status,
-              )}`}
-            >
+              )}`}>
               {row.status}
             </span>
             <span className="text-xs font-semibold text-slate-800">
@@ -1035,8 +1106,7 @@ export function LoadingStatusPanel({
         </div>
         <button
           type="button"
-          className="rounded-md p-1 text-slate-400 hover:bg-slate-100"
-        >
+          className="rounded-md p-1 text-slate-400 hover:bg-slate-100">
           <MoreHorizontal className="h-4 w-4" />
         </button>
       </div>
@@ -1100,14 +1170,20 @@ export function TripStatusDonut({
   const cy = size / 2;
   const circumference = 2 * Math.PI * radius;
 
-  const arcs = slices.reduce<
-    { total: number; arcs: (typeof slices)[number][] extends never[] ? never[] : Array<(typeof slices)[number] & { dash: number; offset: number }> }
-  >(
+  const arcs = slices.reduce<{
+    total: number;
+    arcs: (typeof slices)[number][] extends never[]
+      ? never[]
+      : Array<(typeof slices)[number] & { dash: number; offset: number }>;
+  }>(
     (accumulator, slice) => {
       const dash = (slice.value / total) * circumference;
       return {
         total: accumulator.total + dash,
-        arcs: [...accumulator.arcs, { ...slice, dash, offset: accumulator.total }],
+        arcs: [
+          ...accumulator.arcs,
+          { ...slice, dash, offset: accumulator.total },
+        ],
       };
     },
     { total: 0, arcs: [] },
@@ -1126,8 +1202,7 @@ export function TripStatusDonut({
         </div>
         <button
           type="button"
-          className="rounded-md p-1 text-slate-400 hover:bg-slate-100"
-        >
+          className="rounded-md p-1 text-slate-400 hover:bg-slate-100">
           <MoreHorizontal className="h-4 w-4" />
         </button>
       </div>
@@ -1216,8 +1291,7 @@ export function ActivityTimeline({
 
       <div
         className="flex-1 overflow-y-auto pr-1"
-        style={{ maxHeight: height }}
-      >
+        style={{ maxHeight: height }}>
         <ol className="relative ml-2 border-l border-slate-200 pl-5">
           {events.map((e) => (
             <li key={e.id} className="relative mb-5 last:mb-0">
@@ -1252,8 +1326,7 @@ export function TripIntakePanel() {
           (label) => (
             <label
               key={label}
-              className="block text-xs font-medium text-slate-600"
-            >
+              className="block text-xs font-medium text-slate-600">
               {label}
               <input
                 className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs outline-none focus:border-slate-900"
@@ -1265,8 +1338,7 @@ export function TripIntakePanel() {
       </div>
       <button
         type="button"
-        className="mt-4 rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-700"
-      >
+        className="mt-4 rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-700">
         Create trip
       </button>
     </CardShell>
@@ -1281,8 +1353,7 @@ export function PodWorkflowPanel({ rows = [] }: { rows?: DispatchRecord[] }) {
         {rows.map((row) => (
           <li
             key={row.id}
-            className="flex items-center justify-between rounded-lg border border-slate-100 px-3 py-2"
-          >
+            className="flex items-center justify-between rounded-lg border border-slate-100 px-3 py-2">
             <div>
               <p className="text-xs font-semibold text-slate-800">{row.id}</p>
               <p className="text-[11px] text-slate-500">{row.route}</p>
@@ -1290,8 +1361,7 @@ export function PodWorkflowPanel({ rows = [] }: { rows?: DispatchRecord[] }) {
             <span
               className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${statusPill(
                 row.status,
-              )}`}
-            >
+              )}`}>
               {row.status}
             </span>
           </li>
@@ -1317,15 +1387,13 @@ export function MonitoringPanel({
           {rows.map((row) => (
             <div
               key={row.id}
-              className="rounded-xl border border-slate-100 bg-slate-50/60 p-3"
-            >
+              className="rounded-xl border border-slate-100 bg-slate-50/60 p-3">
               <p className="text-xs font-semibold text-slate-800">{row.id}</p>
               <p className="mt-1 text-[11px] text-slate-500">{row.route}</p>
               <span
                 className={`mt-2 inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold ${statusPill(
                   row.status,
-                )}`}
-              >
+                )}`}>
                 {row.status}
               </span>
             </div>

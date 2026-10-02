@@ -168,7 +168,7 @@ export default function SidebarNav({
 
   return (
     <header className="sticky top-4 z-30 mb-4">
-      <div className="mx-auto flex w-full max-w-[1500px] items-center gap-3 rounded-2xl border border-slate-200/80 bg-white/85 px-3 py-2.5 shadow-[0_12px_30px_rgba(15,23,42,0.08)] backdrop-blur-xl sm:px-4 lg:px-5">
+      <div className="mx-auto flex w-full max-w-[1500px] items-center gap-3 rounded-2xl border border-slate-200/80 bg-white/90 px-3 py-2.5 shadow-[0_12px_30px_rgba(15,23,42,0.08)] backdrop-blur-xl sm:px-4 lg:px-5">
         <div className="shrink-0">
           <WorkspaceSwitcher
             workspace={workspace}
@@ -178,7 +178,7 @@ export default function SidebarNav({
 
         <nav
           aria-label="Main navigation"
-          className="flex flex-1 items-center justify-center gap-5 overflow-hidden px-2">
+          className="flex flex-1 items-center justify-center gap-2 overflow-hidden rounded-xl bg-slate-100 p-1.5">
           {items.map((entry) => {
             const active = entry.id === activeId;
             const accent = accentClasses[entry.id] ?? accentClasses.overview;
@@ -190,15 +190,15 @@ export default function SidebarNav({
                 onClick={() => onNavigate(entry.id)}
                 aria-current={active ? "page" : undefined}
                 title={entry.label}
-                className={`group relative inline-flex h-11 items-center justify-center rounded-xl border border-transparent px-2.5 transition-all duration-200 ${
+                className={`group relative inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-transparent px-3.5 transition-all duration-200 ${
                   active
-                    ? `${accent.active} ${accent.glow}`
-                    : `${accent.inactive} border-transparent text-slate-600`
+                    ? `${accent.active} ${accent.glow} shadow-sm`
+                    : `${accent.inactive} border-transparent text-slate-600 hover:text-slate-900`
                 }`}>
-                <span className="pointer-events-none [&>svg]:h-4.5 [&>svg]:w-4.5">
+                <span className="pointer-events-none [&>svg]:h-4 [&>svg]:w-4">
                   {entry.icon}
                 </span>
-                <span className="pointer-events-none absolute left-1/2 top-full z-20 mt-2 -translate-x-1/2 whitespace-nowrap rounded-md border border-slate-200 bg-slate-900 px-2 py-1 text-[11px] font-medium text-white opacity-0 shadow-lg transition-all duration-200 group-hover:translate-y-0 group-hover:opacity-100 group-focus-visible:opacity-100">
+                <span className="pointer-events-none hidden text-[11.5px] font-semibold tracking-[0.02em] sm:inline-block">
                   {entry.label}
                 </span>
                 <span

@@ -8,7 +8,10 @@ export const REPORTS = {
   },
   dispatch: { title: "Dispatch Report", endpoint: "/reports/dispatch" },
   "trip-booking": { title: "Trip Booking", endpoint: "/reports/trip-booking" },
-  "store-calling": { title: "Store Calling", endpoint: "/reports/store-calling" },
+  "store-calling": {
+    title: "Store Calling",
+    endpoint: "/reports/store-calling",
+  },
 } as const;
 
 export type ReportKey = keyof typeof REPORTS;
@@ -45,6 +48,8 @@ const sortFields: Record<ReportKey, string[]> = {
     "customer_name",
     "warehouse_code",
     "plate_number",
+    "quantity",
+    "cbm",
   ],
   "dispatch-monitoring": [
     "loading_date",
@@ -84,12 +89,12 @@ const sortFields: Record<ReportKey, string[]> = {
 
 const reportFilters: Record<ReportKey, ReportFilter[]> = {
   combined: [
-    { key: "loading_date_from", label: "Loading date from", type: "date" },
-    { key: "loading_date_to", label: "Loading date to", type: "date" },
+    { key: "date_from", label: "Loading date from", type: "date" },
+    { key: "date_to", label: "Loading date to", type: "date" },
     { key: "delivery_status", label: "Delivery status" },
     { key: "trip_status", label: "Trip status" },
     { key: "warehouse_code", label: "Warehouse code" },
-    { key: "customer_id", label: "Customer ID" },
+    { key: "customer_name", label: "Customer" },
     { key: "plate_number", label: "Plate number" },
     { key: "letter_status", label: "Letter status" },
   ],

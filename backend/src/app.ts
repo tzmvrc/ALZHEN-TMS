@@ -7,7 +7,11 @@ import userRoutes from "./routes/user.routes.js";
 import reportRoutes from "./routes/report.routes.js";
 import tripRoutes from "./routes/trip.routes.js";
 import truckerRoutes from "./routes/trucker.routes.js";
+import lookupRoutes from "./routes/lookup.routes.js";
 import databaseBrowserRoutes from "./routes/database-browser.routes.js";
+import documentRoutes from "./routes/document.routes.js";
+import storeCallRoutes from "./routes/store-call.routes.js";
+import dropdownOptionRoutes from "./routes/dropdown-option.routes.js";
 import { errorMiddleware } from "./middleware/error.middleware.js";
 
 import websiteContentRoutes from "./routes/clientwebsite.routes.js";
@@ -23,8 +27,12 @@ app.use("/api", healthRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/reports", reportRoutes);
+app.use("/api/lookups", lookupRoutes);
 app.use("/api/trips", tripRoutes);
 app.use("/api/truckers", truckerRoutes);
+app.use("/api/documents", documentRoutes);
+app.use("/api/store-calls", storeCallRoutes);
+app.use("/api/dropdown-options", dropdownOptionRoutes);
 app.use("/api/database", databaseBrowserRoutes);
 
 app.get("/", (_req, res) => {
