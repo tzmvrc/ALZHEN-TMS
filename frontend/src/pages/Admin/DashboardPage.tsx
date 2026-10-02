@@ -18,7 +18,7 @@ import {
 import type { DashboardData } from "../../types/dashboard";
 import OverviewView from "./views/OverviewView";
 import ResourceView from "./views/ResourceView";
-import ClientWebsiteWorkspace from "./ClientWebsiteWorkspace";
+import ClientWebsiteWorkspace from "./clientwebsite";
 import { defaultDashboardData } from "./data/defaultDashboardData";
 
 export interface DashboardPageProps {
