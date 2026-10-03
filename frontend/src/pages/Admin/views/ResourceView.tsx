@@ -1,5 +1,5 @@
 // src/pages/Admin/views/ResourceView.tsx
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { DashboardData } from "../../../types/dashboard";
 import {
   IncidentPanel,
@@ -270,6 +270,17 @@ export default function ResourceView({
   ) => void;
 }) {
   const [tripDetailPrefix, tripDetailId, tripReturnView] = id.split(":");
+  /* Trip opened from a table/visual card. Held locally so it works even if the
+     parent does not route "trip-detail:<id>" ids, and so the list underneath
+     keeps its page, search and filters while the trip is open. */
+  const [localTripId, setLocalTripId] = useState<string | null>(null);
+  useEffect(() => {
+    setLocalTripId(null);
+  }, [id]);
+  const openTrip = (tripId: string) => {
+    setLocalTripId(tripId);
+    window.scrollTo({ top: 0 });
+  };
   const isTripDetail =
     tripDetailPrefix === "trip-detail" && Boolean(tripDetailId);
   const [title, subtitle] = isTripDetail
@@ -309,8 +320,11 @@ export default function ResourceView({
       "trip-booking",
     ].includes(id) && !isTripDetail;
 
+  const showLocalTrip = !isTripDetail && localTripId !== null;
+
   return (
     <>
+      <div hidden={showLocalTrip}>
       {showPageIntro && <PageIntro title={title} subtitle={subtitle} />}
       {isPrototype && <PrototypeNotice />}
 
@@ -328,7 +342,7 @@ export default function ResourceView({
           <ReportDataView
             initialReport="trip-booking"
             showReportPicker={false}
-            onOpenTrip={(tripId) => onNavigate?.(`trip-detail:${tripId}:${id}`)}
+            onOpenTrip={openTrip}
           />
         </>
       )}
@@ -359,7 +373,7 @@ export default function ResourceView({
           <ReportDataView
             initialReport="dispatch-monitoring"
             showReportPicker={false}
-            onOpenTrip={(tripId) => onNavigate?.(`trip-detail:${tripId}:${id}`)}
+            onOpenTrip={openTrip}
           />
         </>
       )}
@@ -374,48 +388,48 @@ export default function ResourceView({
           <ReportDataView
             initialReport="dispatch-monitoring"
             showReportPicker={false}
-            onOpenTrip={(tripId) => onNavigate?.(`trip-detail:${tripId}:${id}`)}
+            onOpenTrip={openTrip}
           />
         </>
       )}
       {id === "dispatch-monitoring" && (
         <ReportDataView
           initialReport="dispatch-monitoring"
-          onOpenTrip={(tripId) => onNavigate?.(`trip-detail:${tripId}:${id}`)}
+          onOpenTrip={openTrip}
           onReportScopeChange={onReportScopeChange}
         />
       )}
       {id === "store-calling" && (
         <ReportDataView
           initialReport="store-calling"
-          onOpenTrip={(tripId) => onNavigate?.(`trip-detail:${tripId}:${id}`)}
+          onOpenTrip={openTrip}
           onReportScopeChange={onReportScopeChange}
         />
       )}
       {id === "reports" && (
         <ReportDataView
-          onOpenTrip={(tripId) => onNavigate?.(`trip-detail:${tripId}:${id}`)}
+          onOpenTrip={openTrip}
           onReportScopeChange={onReportScopeChange}
         />
       )}
       {id === "combined" && (
         <ReportDataView
           initialReport="combined"
-          onOpenTrip={(tripId) => onNavigate?.(`trip-detail:${tripId}:${id}`)}
+          onOpenTrip={openTrip}
           onReportScopeChange={onReportScopeChange}
         />
       )}
       {id === "dispatch" && (
         <ReportDataView
           initialReport="dispatch"
-          onOpenTrip={(tripId) => onNavigate?.(`trip-detail:${tripId}:${id}`)}
+          onOpenTrip={openTrip}
           onReportScopeChange={onReportScopeChange}
         />
       )}
       {id === "trip-booking" && (
         <ReportDataView
           initialReport="trip-booking"
-          onOpenTrip={(tripId) => onNavigate?.(`trip-detail:${tripId}:${id}`)}
+          onOpenTrip={openTrip}
           onReportScopeChange={onReportScopeChange}
         />
       )}
@@ -487,6 +501,13 @@ export default function ResourceView({
           "rates-fuel",
           "invoices",
         ].includes(id) && <GenericResourceTable id={id} data={data} />}
+      </div>
+      {showLocalTrip && localTripId && (
+        <TripDetailView
+          tripId={localTripId}
+          onBack={() => setLocalTripId(null)}
+        />
+      )}
     </>
   );
 }

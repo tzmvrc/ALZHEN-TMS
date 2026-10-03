@@ -453,9 +453,9 @@ function ReportVisualCards({
                 <button
                   type="button"
                   onClick={() => onOpenTrip(tripId)}
-                  aria-label={`View trip ${identity}`}
+                  aria-label={`View details for ${identity}`}
                   className="inline-flex items-center gap-1.5 rounded-full bg-[#ffd43b] px-3.5 py-1.5 text-[11px] font-semibold text-[#0b2341] transition hover:bg-[#f2c200] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0b2341]/40">
-                  View trip
+                  View details
                   <ArrowUpRight aria-hidden="true" className="h-3.5 w-3.5" />
                 </button>
               </footer>
@@ -507,7 +507,7 @@ export default function ReportDataView({
   const { accessToken, refreshSession, profile } = useAuth();
   const navigate = useNavigate();
   const [reportKey, setReportKey] = useState<ReportKey>(initialReport);
-  const [viewMode, setViewMode] = useState<"visual" | "table">("table");
+  const [viewMode, setViewMode] = useState<"visual" | "table">("visual");
   const [columns, setColumns] = useState<ReportColumn[]>([]);
   const [rows, setRows] = useState<ReportRow[]>([]);
   const [pagination, setPagination] = useState<Pagination | null>(null);
@@ -1448,6 +1448,13 @@ export default function ReportDataView({
                         {column.title}
                       </th>
                     ))}
+                    {_onOpenTrip && (
+                      <th
+                        scope="col"
+                        className="sticky right-0 whitespace-nowrap border-b border-slate-100 bg-[#f2f6fa] px-4 py-3 text-right">
+                        Details
+                      </th>
+                    )}
                   </tr>
                 </thead>
                 <tbody>
@@ -1462,6 +1469,7 @@ export default function ReportDataView({
                   )}
                   {rows.map((row, index) => {
                     const currentRowKey = rowKey(row, index);
+                    const rowTripId = rowText(row, "trip_id");
                     return (
                       <tr
                         key={currentRowKey}
@@ -1725,6 +1733,22 @@ export default function ReportDataView({
                             </td>
                           );
                         })}
+                        {_onOpenTrip && (
+                          <td className="sticky right-0 bg-white px-4 py-3 text-right">
+                            {rowTripId ? (
+                              <button
+                                type="button"
+                                onClick={() => _onOpenTrip(rowTripId)}
+                                aria-label={`View details for ${rowText(row, "dispatch_number") || rowTripId}`}
+                                className="inline-flex items-center gap-1.5 rounded-full bg-[#ffd43b] px-3.5 py-1.5 text-[11px] font-semibold text-[#0b2341] transition hover:bg-[#f2c200] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0b2341]/40">
+                                View details
+                                <ArrowUpRight aria-hidden="true" className="h-3.5 w-3.5" />
+                              </button>
+                            ) : (
+                              <span className="text-[11px] text-slate-300">—</span>
+                            )}
+                          </td>
+                        )}
                       </tr>
                     );
                   })}
