@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import {
+  ArrowUpRight,
+  Building2,
   CalendarDays,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   LayoutGrid,
-  MapPin,
   Package,
   Search,
   Table2,
@@ -136,226 +137,304 @@ function statusStyle(value: string): string {
     return "bg-amber-50 text-amber-800 ring-amber-200";
   }
   if (/progress|transit|active|assigned/.test(status)) {
-    return "bg-cyan-50 text-cyan-900 ring-cyan-200";
+    return "bg-[#e6f0f9] text-[#1d5f94] ring-[#b9d4ea]";
   }
   return "bg-slate-100 text-slate-700 ring-slate-200";
 }
 
-function statusAccent(value: string): string {
-  const classes = statusStyle(value);
-  if (classes.includes("emerald")) return "border-l-emerald-500";
-  if (classes.includes("amber")) return "border-l-amber-500";
-  if (classes.includes("cyan")) return "border-l-cyan-600";
-  return "border-l-slate-400";
+function statusDot(value: string): string {
+  const status = value.toLowerCase();
+  if (/complete|delivered|confirmed|contacted|ready/.test(status)) {
+    return "bg-emerald-500";
+  }
+  if (/delay|incident|cancel|reject|backload|offload/.test(status)) {
+    return "bg-amber-500";
+  }
+  if (/progress|transit|active|assigned/.test(status)) return "bg-[#2678b9]";
+  return "bg-slate-400";
+}
+
+function firstValue(rows: ReportRow[], ...keys: string[]): string {
+  for (const row of rows) {
+    const value = rowText(row, ...keys);
+    if (value) return value;
+  }
+  return "";
+}
+
+function uniqueValues(rows: ReportRow[], ...keys: string[]): string[] {
+  const seen = new Set<string>();
+  for (const row of rows) {
+    const value = rowText(row, ...keys);
+    if (value) seen.add(value);
+  }
+  return [...seen];
+}
+
+/* The trip reports return one row per line item. In Visual mode we show one
+   card per trip, so rows that share a trip_id are folded together. */
+function groupRows(rows: ReportRow[], byTrip: boolean): ReportRow[][] {
+  const groups = new Map<string, ReportRow[]>();
+  rows.forEach((row, index) => {
+    const tripId = rowText(row, "trip_id");
+    const key = byTrip && tripId ? `trip:${tripId}` : `row:${index}`;
+    const list = groups.get(key);
+    if (list) list.push(row);
+    else groups.set(key, [row]);
+  });
+  return [...groups.values()];
 }
 
 function ReportVisualCards({
   rows,
   columns,
   reportKey,
+  onOpenTrip,
 }: {
   rows: ReportRow[];
   columns: ReportColumn[];
   reportKey: ReportKey;
+  onOpenTrip?: (tripId: string) => void;
 }) {
+  const isStoreCall = reportKey === "store-calling";
+  const groups = groupRows(rows, !isStoreCall);
   const titleFor = (key: string) =>
     columns.find((column) => column.key === key)?.title ??
     key.replaceAll("_", " ");
 
+  const shownKeys = new Set([
+    "dispatch_number",
+    "store_call_id",
+    "trip_id",
+    "trip_status",
+    "delivery_status",
+    "confirmation_status",
+    "status",
+    "letter_status",
+    "warehouse_name",
+    "ship_from",
+    "warehouse_code",
+    "wh_code",
+    "store_name",
+    "ship_to",
+    "customer_name",
+    "loading_date",
+    "date_assigned",
+    "date_of_contact",
+    "plate_number",
+    "driver_name",
+    "assigned_to",
+    "product_name",
+    "product_model",
+    "model_code",
+    "sku",
+    "trucking_company",
+    "city",
+    "province",
+  ]);
+  const extraColumns = columns.filter((column) => !shownKeys.has(column.key));
+
   return (
-    <div className="grid gap-3 p-3 lg:grid-cols-2">
-      {rows.map((row, index) => {
+    <div className="grid gap-4 bg-[#f2f6fa] p-4 md:grid-cols-2 2xl:grid-cols-3">
+      {groups.map((group, index) => {
+        const row = group[0];
         const identity =
-          rowText(row, "dispatch_number", "store_call_id", "trip_id") ||
+          firstValue(group, "dispatch_number", "store_call_id", "trip_id") ||
           `Record ${index + 1}`;
-        const statusTags =
-          reportKey === "store-calling"
-            ? ([
-                ["Call", rowText(row, "status")],
-                ["Confirmation", rowText(row, "confirmation_status")],
-              ] as const)
-            : ([
-                ["Trip", rowText(row, "trip_status", "status")],
-                ["Delivery", rowText(row, "delivery_status")],
-                ["Letter", rowText(row, "letter_status")],
-              ] as const);
+        const tripId = rowText(row, "trip_id");
+        const statusTags: Array<readonly [string, string]> = isStoreCall
+          ? [
+              ["Call", firstValue(group, "status")],
+              ["Confirmation", firstValue(group, "confirmation_status")],
+            ]
+          : [
+              ["Trip", firstValue(group, "trip_status", "status")],
+              ["Delivery", firstValue(group, "delivery_status")],
+              ["Letter", firstValue(group, "letter_status")],
+            ];
         const primaryStatus =
           statusTags.find(([, value]) => value)?.[1] || "Status not recorded";
-        const from = rowText(
-          row,
+        const otherTags = statusTags.filter(
+          ([, value]) => Boolean(value) && value !== primaryStatus,
+        );
+        const from = firstValue(
+          group,
           "warehouse_name",
           "ship_from",
           "warehouse_code",
           "wh_code",
         );
-        const to = rowText(row, "store_name", "ship_to", "customer_name");
-        const date = rowText(
-          row,
-          "loading_date",
-          "date_assigned",
-          "date_of_contact",
-        );
-        const plate = rowText(row, "plate_number");
-        const driver = rowText(row, "driver_name", "assigned_to");
-        const product = rowText(
-          row,
-          "product_name",
-          "product_model",
-          "model_code",
-          "sku",
-        );
-        const shownKeys = new Set([
-          "dispatch_number",
-          "store_call_id",
-          "trip_id",
-          "trip_status",
-          "delivery_status",
-          "confirmation_status",
-          "status",
-          "letter_status",
-          "warehouse_name",
-          "ship_from",
-          "warehouse_code",
-          "wh_code",
+        const stores = uniqueValues(
+          group,
           "store_name",
           "ship_to",
           "customer_name",
+        );
+        const destination =
+          stores.length === 0
+            ? ""
+            : stores.length === 1
+              ? stores[0]
+              : `${stores[0]} +${stores.length - 1} more`;
+        const place = [
+          firstValue(group, "city"),
+          firstValue(group, "province"),
+        ]
+          .filter(Boolean)
+          .join(", ");
+        const date = firstValue(
+          group,
           "loading_date",
           "date_assigned",
           "date_of_contact",
-          "plate_number",
-          "driver_name",
-          "assigned_to",
+        );
+        const plate = firstValue(group, "plate_number");
+        const driver = firstValue(group, "driver_name", "assigned_to");
+        const carrier = firstValue(group, "trucking_company");
+        const products = uniqueValues(
+          group,
           "product_name",
           "product_model",
           "model_code",
           "sku",
-        ]);
-        const extraColumns = columns.filter(
-          (column) => !shownKeys.has(column.key),
         );
+        const showExtras = group.length === 1 && extraColumns.length > 0;
 
         return (
           <article
-            key={rowKey(row, index)}
-            className={`min-w-0 rounded-lg border border-slate-200 border-l-4 bg-white transition-colors hover:border-slate-300 ${statusAccent(primaryStatus)}`}>
-            <header className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 px-4 py-3">
+            key={`${identity}-${index}`}
+            className="flex min-w-0 flex-col rounded-3xl bg-white shadow-[0_1px_2px_rgba(11,35,65,0.04),0_8px_24px_-16px_rgba(11,35,65,0.16)]">
+            <header className="flex items-start justify-between gap-3 px-4 pt-4">
               <div className="min-w-0">
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-                  {reportKey === "store-calling" ? "Store call" : "Dispatch"}
+                <p className="text-[11px] font-medium text-slate-400">
+                  {isStoreCall ? "Store call" : "Dispatch"}
                 </p>
                 <h3
-                  className="mt-1 truncate font-mono text-sm font-bold text-cyan-950"
+                  className="mt-0.5 truncate text-[15px] font-bold tracking-tight text-[#0b2341]"
                   title={identity}>
-                  <span className="rounded bg-cyan-50 px-1.5 py-1">
-                    {identity}
-                  </span>
+                  {identity}
                 </h3>
               </div>
-              <div className="flex max-w-full flex-wrap justify-end gap-1.5">
-                {statusTags
-                  .filter(([, value]) => Boolean(value))
-                  .map(([label, value]) => (
-                    <span
-                      key={label}
-                      className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-semibold ring-1 ring-inset ${statusStyle(value)}`}>
-                      <span className="opacity-70">{label}</span>
-                      {value.replaceAll("_", " ")}
-                    </span>
-                  ))}
-              </div>
+              <span
+                className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ring-inset ${statusStyle(primaryStatus)}`}>
+                <span
+                  aria-hidden="true"
+                  className={`h-1.5 w-1.5 rounded-full ${statusDot(primaryStatus)}`}
+                />
+                {primaryStatus.replaceAll("_", " ")}
+              </span>
             </header>
 
+            {otherTags.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 px-4 pt-2.5">
+                {otherTags.map(([label, value]) => (
+                  <span
+                    key={label}
+                    className="inline-flex items-center gap-1 rounded-full bg-[#f2f6fa] px-2 py-0.5 text-[10px] font-medium text-slate-600">
+                    <span className="text-slate-400">{label}</span>
+                    {value.replaceAll("_", " ")}
+                  </span>
+                ))}
+              </div>
+            )}
+
             <div className="space-y-3 p-4">
-              <div className="flex min-w-0 items-start gap-2.5 rounded-md bg-cyan-50/70 p-3">
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-white text-cyan-800 shadow-sm">
-                  <MapPin aria-hidden="true" className="h-4 w-4" />
-                </span>
-                <div className="min-w-0">
-                  <p className="text-[10px] font-semibold uppercase tracking-wide text-cyan-900">
-                    {reportKey === "store-calling"
-                      ? "Store and origin"
-                      : "Route"}
-                  </p>
-                  <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-sm">
-                    <span className="font-medium text-slate-800">
-                      {from || "Origin not recorded"}
-                    </span>
-                    {to && (
-                      <>
-                        <span className="text-cyan-700">to</span>
-                        <span className="font-semibold text-slate-900">
-                          {to}
-                        </span>
-                      </>
-                    )}
-                  </div>
-                  {Boolean(row.province || row.city) && (
-                    <p className="mt-1 text-xs text-slate-600">
-                      {[row.city, row.province].filter(Boolean).join(", ")}
+              <div className="rounded-2xl bg-[#f2f6fa] p-3.5">
+                <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3">
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-medium text-slate-400">
+                      Origin
                     </p>
-                  )}
+                    <p
+                      className="truncate text-[13px] font-semibold text-[#0b2341]"
+                      title={from}>
+                      {from || "Not recorded"}
+                    </p>
+                  </div>
+                  <span aria-hidden="true" className="flex w-24 items-center">
+                    <span
+                      className={`h-2 w-2 shrink-0 rounded-full ${statusDot(primaryStatus)}`}
+                    />
+                    <span className="h-px flex-1 border-t border-dashed border-slate-300" />
+                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white text-[#0b2341] shadow-sm">
+                      <Truck className="h-3.5 w-3.5" />
+                    </span>
+                    <span className="h-px flex-1 border-t border-dashed border-slate-300" />
+                    <span className="h-2 w-2 shrink-0 rounded-full border-2 border-slate-300 bg-white" />
+                  </span>
+                  <div className="min-w-0 text-right">
+                    <p className="text-[10px] font-medium text-slate-400">
+                      {isStoreCall ? "Store" : "Destination"}
+                    </p>
+                    <p
+                      className="truncate text-[13px] font-semibold text-[#0b2341]"
+                      title={stores.join(", ")}>
+                      {destination || "Not recorded"}
+                    </p>
+                  </div>
                 </div>
+                {place && (
+                  <p className="mt-2 truncate text-right text-[11px] text-slate-500">
+                    {place}
+                  </p>
+                )}
               </div>
 
-              <div className="rounded-md border border-slate-100 bg-slate-50/70 p-3">
-                <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-                  Schedule and assignment
-                </p>
-                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                  <VisualFact
-                    icon={CalendarDays}
-                    label="Date"
-                    value={displayValue(date, "date") || "Not recorded"}
-                  />
-                  <VisualFact
-                    icon={Truck}
-                    label="Truck"
-                    value={plate || "Not assigned"}
-                  />
-                  <VisualFact
-                    icon={UserRound}
-                    label={
-                      reportKey === "store-calling" ? "Assigned to" : "Driver"
-                    }
-                    value={driver || "Not assigned"}
-                  />
-                  <VisualFact
-                    icon={Truck}
-                    label="Carrier"
-                    value={rowText(row, "trucking_company") || "Not recorded"}
-                  />
-                </div>
+              <div className="grid grid-cols-2 gap-3">
+                <VisualFact
+                  icon={CalendarDays}
+                  label="Date"
+                  value={displayValue(date, "date") || "Not recorded"}
+                />
+                <VisualFact
+                  icon={Truck}
+                  label="Truck"
+                  value={plate || "Not assigned"}
+                />
+                <VisualFact
+                  icon={UserRound}
+                  label={isStoreCall ? "Assigned to" : "Driver"}
+                  value={driver || "Not assigned"}
+                />
+                <VisualFact
+                  icon={Building2}
+                  label="Carrier"
+                  value={carrier || "Not recorded"}
+                />
               </div>
 
-              {product && (
-                <div className="flex items-start gap-2.5 rounded-md border border-emerald-100 bg-emerald-50/50 p-3">
-                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-white text-emerald-800 shadow-sm">
+              {products.length > 0 && (
+                <div className="flex items-start gap-2.5 rounded-2xl bg-[#fff8dc] p-3">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-white text-[#0b2341]">
                     <Package aria-hidden="true" className="h-4 w-4" />
                   </span>
                   <div className="min-w-0">
-                    <p className="text-[10px] font-semibold uppercase tracking-wide text-emerald-900">
-                      Cargo / product
+                    <p className="text-[10px] font-medium text-[#8a6d00]">
+                      Cargo
+                      {group.length > 1 ? ` · ${group.length} line items` : ""}
                     </p>
-                    <p className="mt-0.5 wrap-break-word text-sm font-medium text-slate-800">
-                      {product}
+                    <p className="mt-0.5 break-words text-[13px] font-medium text-[#0b2341]">
+                      {products.slice(0, 2).join(", ")}
+                      {products.length > 2
+                        ? ` +${products.length - 2} more`
+                        : ""}
                     </p>
                   </div>
                 </div>
               )}
 
-              {extraColumns.length > 0 && (
-                <details className="border-t border-slate-100 pt-2">
-                  <summary className="cursor-pointer py-1 text-xs font-medium text-cyan-900 hover:text-cyan-700">
+              {showExtras && (
+                <details className="rounded-2xl border border-slate-100 px-3 py-1">
+                  <summary className="cursor-pointer py-1.5 text-xs font-medium text-[#1d5f94] hover:text-[#0b2341]">
                     More record information ({extraColumns.length})
                   </summary>
-                  <dl className="mt-2 grid gap-x-4 gap-y-2 sm:grid-cols-2">
+                  <dl className="grid gap-x-4 gap-y-2 pb-2 pt-1 sm:grid-cols-2">
                     {extraColumns.map((column) => (
                       <div key={column.key} className="min-w-0">
-                        <dt className="text-[10px] font-semibold uppercase text-slate-500">
+                        <dt className="text-[10px] font-medium text-slate-400">
                           {titleFor(column.key)}
                         </dt>
-                        <dd className="mt-0.5 wrap-break-word text-xs text-slate-700">
+                        <dd className="mt-0.5 break-words text-xs text-slate-700">
                           {displayValue(row[column.key], column.type) ||
                             "Not recorded"}
                         </dd>
@@ -365,6 +444,22 @@ function ReportVisualCards({
                 </details>
               )}
             </div>
+
+            {tripId && onOpenTrip && (
+              <footer className="mt-auto flex items-center justify-between gap-2 border-t border-slate-100 px-4 py-3">
+                <span className="truncate text-[11px] text-slate-400">
+                  {stores.length > 1 ? `${stores.length} stores` : ""}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => onOpenTrip(tripId)}
+                  aria-label={`View trip ${identity}`}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-[#ffd43b] px-3.5 py-1.5 text-[11px] font-semibold text-[#0b2341] transition hover:bg-[#f2c200] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0b2341]/40">
+                  View trip
+                  <ArrowUpRight aria-hidden="true" className="h-3.5 w-3.5" />
+                </button>
+              </footer>
+            )}
           </article>
         );
       })}
@@ -382,16 +477,15 @@ function VisualFact({
   value: string;
 }) {
   return (
-    <div className="flex min-w-0 items-start gap-2">
-      <Icon
-        aria-hidden="true"
-        className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-500"
-      />
+    <div className="flex min-w-0 items-center gap-2.5">
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[#e6f0f9] text-[#2678b9]">
+        <Icon aria-hidden="true" className="h-4 w-4" />
+      </span>
       <div className="min-w-0">
-        <p className="text-[10px] font-semibold uppercase text-slate-500">
-          {label}
-        </p>
-        <p className="mt-0.5 wrap-break-word text-xs font-medium text-slate-800">
+        <p className="text-[10px] font-medium text-slate-400">{label}</p>
+        <p
+          className="truncate text-xs font-semibold text-[#0b2341]"
+          title={value}>
           {value}
         </p>
       </div>
@@ -953,15 +1047,15 @@ export default function ReportDataView({
   }
 
   return (
-    <section className="overflow-hidden rounded-lg border border-slate-200 bg-white">
-      <div className="flex flex-col gap-3 border-b border-slate-200 p-4 lg:flex-row lg:items-center lg:justify-between">
+    <section className="overflow-hidden rounded-[28px] bg-white shadow-[0_1px_2px_rgba(11,35,65,0.04),0_10px_30px_-18px_rgba(11,35,65,0.14)]">
+      <div className="flex flex-col gap-3 p-5 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex flex-wrap items-center gap-3">
           {showReportPicker ? (
             <label className="sr-only" htmlFor="report-select">
               Select report
             </label>
           ) : (
-            <h2 className="text-sm font-semibold text-slate-900">
+            <h2 className="text-[17px] font-semibold tracking-tight text-[#0b2341]">
               {REPORTS[reportKey].title}
             </h2>
           )}
@@ -971,7 +1065,7 @@ export default function ReportDataView({
                 id="report-select"
                 value={reportKey}
                 onChange={(event) => changeReport(event.target.value)}
-                className="min-h-10 appearance-none rounded-md border border-slate-300 bg-white py-2 pl-3 pr-9 text-sm font-medium text-slate-800 outline-none transition-colors focus:border-cyan-700 focus:ring-2 focus:ring-cyan-100">
+                className="min-h-10 appearance-none rounded-full border border-slate-200 bg-[#f2f6fa] py-2 pl-3 pr-9 text-sm font-medium text-slate-800 outline-none transition-colors focus:border-[#2678b9] focus:ring-2 focus:ring-[#cfe1f1]">
                 {reportKeys.map((key) => (
                   <option key={key} value={key}>
                     {REPORTS[key].title}
@@ -987,12 +1081,12 @@ export default function ReportDataView({
           <div
             role="group"
             aria-label="Report display mode"
-            className="inline-flex h-10 items-center rounded-md border border-slate-300 bg-slate-50 p-0.5">
+            className="inline-flex h-10 items-center rounded-full bg-[#f2f6fa] p-1">
             <button
               type="button"
               aria-pressed={viewMode === "visual"}
               onClick={() => setViewMode("visual")}
-              className={`inline-flex h-9 items-center gap-1.5 rounded px-2.5 text-xs font-medium transition-colors ${viewMode === "visual" ? "bg-white text-cyan-900 shadow-sm" : "text-slate-600 hover:text-slate-900"}`}>
+              className={`inline-flex h-8 items-center gap-1.5 rounded-full px-3.5 text-xs font-semibold transition-colors ${viewMode === "visual" ? "bg-[#0b2341] text-white shadow-sm" : "text-slate-500 hover:text-[#0b2341]"}`}>
               <LayoutGrid aria-hidden="true" className="h-3.5 w-3.5" />
               Visual
             </button>
@@ -1000,7 +1094,7 @@ export default function ReportDataView({
               type="button"
               aria-pressed={viewMode === "table"}
               onClick={() => setViewMode("table")}
-              className={`inline-flex h-9 items-center gap-1.5 rounded px-2.5 text-xs font-medium transition-colors ${viewMode === "table" ? "bg-white text-cyan-900 shadow-sm" : "text-slate-600 hover:text-slate-900"}`}>
+              className={`inline-flex h-8 items-center gap-1.5 rounded-full px-3.5 text-xs font-semibold transition-colors ${viewMode === "table" ? "bg-[#0b2341] text-white shadow-sm" : "text-slate-500 hover:text-[#0b2341]"}`}>
               <Table2 aria-hidden="true" className="h-3.5 w-3.5" />
               Table
             </button>
@@ -1013,7 +1107,7 @@ export default function ReportDataView({
               id="report-sort"
               value={activeSortBy}
               onChange={(event) => setSortBy(event.target.value)}
-              className="min-h-10 max-w-48 appearance-none rounded-md border border-slate-300 bg-white py-2 pl-3 pr-9 text-sm text-slate-700 outline-none transition-colors focus:border-cyan-700 focus:ring-2 focus:ring-cyan-100">
+              className="min-h-10 max-w-48 appearance-none rounded-full border border-slate-200 bg-[#f2f6fa] py-2 pl-3 pr-9 text-sm text-slate-700 outline-none transition-colors focus:border-[#2678b9] focus:ring-2 focus:ring-[#cfe1f1]">
               {sortableFields.map((field) => (
                 <option key={field} value={field}>
                   {columns.find((column) => column.key === field)?.title ??
@@ -1033,7 +1127,7 @@ export default function ReportDataView({
               onChange={(event) =>
                 setSortOrder(event.target.value as "asc" | "desc")
               }
-              className="min-h-10 appearance-none rounded-md border border-slate-300 bg-white py-2 pl-3 pr-9 text-sm text-slate-700 outline-none transition-colors focus:border-cyan-700 focus:ring-2 focus:ring-cyan-100">
+              className="min-h-10 appearance-none rounded-full border border-slate-200 bg-[#f2f6fa] py-2 pl-3 pr-9 text-sm text-slate-700 outline-none transition-colors focus:border-[#2678b9] focus:ring-2 focus:ring-[#cfe1f1]">
               <option value="desc">Descending</option>
               <option value="asc">Ascending</option>
             </select>
@@ -1046,7 +1140,7 @@ export default function ReportDataView({
             <button
               type="button"
               onClick={openOptionManager}
-              className="min-h-9 rounded-md border border-slate-300 px-3 text-xs font-medium text-slate-700 hover:bg-slate-50">
+              className="min-h-9 rounded-full border border-slate-200 px-3.5 text-xs font-medium text-slate-700 hover:bg-[#f2f6fa]">
               Manage options
             </button>
           )}
@@ -1064,12 +1158,12 @@ export default function ReportDataView({
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Search report"
-              className="min-h-10 w-full rounded-md border border-slate-300 bg-white pl-9 pr-3 text-sm outline-none placeholder:text-slate-400 focus:border-slate-500"
+              className="min-h-10 w-full rounded-full border border-slate-200 bg-[#f2f6fa] pl-9 pr-3 text-sm outline-none placeholder:text-slate-400 focus:border-slate-500"
             />
           </label>
           <button
             type="submit"
-            className="min-h-10 rounded-md bg-slate-900 px-4 text-sm font-medium text-white hover:bg-slate-700">
+            className="min-h-10 rounded-full bg-[#ffd43b] px-5 text-sm font-semibold text-[#0b2341] transition hover:bg-[#f2c200]">
             Search
           </button>
         </form>
@@ -1159,7 +1253,7 @@ export default function ReportDataView({
                   <button
                     type="submit"
                     disabled={optionManagerBusy}
-                    className="min-h-9 rounded-md bg-slate-900 px-3 text-xs font-medium text-white hover:bg-slate-700 disabled:opacity-50">
+                    className="min-h-9 rounded-md bg-[#0b2341] px-4 text-xs font-medium text-white hover:bg-[#16345a] disabled:opacity-50">
                     Add option
                   </button>
                 </form>
@@ -1252,7 +1346,7 @@ export default function ReportDataView({
         </div>
       )}
 
-      <details className="border-b border-slate-200 px-4 py-2">
+      <details className="border-y border-slate-100 px-5 py-2">
         <summary className="cursor-pointer py-1 text-xs font-medium text-slate-600">
           Filters
         </summary>
@@ -1280,7 +1374,7 @@ export default function ReportDataView({
           <div className="flex items-end gap-2 sm:col-span-2 lg:col-span-4">
             <button
               type="submit"
-              className="min-h-9 rounded-md bg-slate-900 px-3 text-xs font-medium text-white hover:bg-slate-700">
+              className="min-h-9 rounded-md bg-[#0b2341] px-4 text-xs font-medium text-white hover:bg-[#16345a]">
               Apply filters
             </button>
             <button
@@ -1325,6 +1419,7 @@ export default function ReportDataView({
                   rows={rows}
                   columns={columns}
                   reportKey={reportKey}
+                  onOpenTrip={_onOpenTrip}
                 />
               )
             ) : isLoading ? (
@@ -1336,13 +1431,13 @@ export default function ReportDataView({
               </div>
             ) : (
               <table className="w-full min-w-max border-collapse text-left text-sm">
-                <thead className="bg-slate-50 text-xs font-semibold text-slate-600">
+                <thead className="bg-[#f2f6fa] text-xs font-semibold text-slate-600">
                   <tr>
                     {columns.map((column) => (
                       <th
                         key={column.key}
                         scope="col"
-                        className={`whitespace-nowrap border-b border-slate-200 px-4 py-3 ${
+                        className={`whitespace-nowrap border-b border-slate-100 px-4 py-3 ${
                           column.type === "number" ||
                           ["quantity", "cbm", "subcon_rate_manual"].includes(
                             column.key,
@@ -1370,7 +1465,7 @@ export default function ReportDataView({
                     return (
                       <tr
                         key={currentRowKey}
-                        className="border-b border-slate-100 last:border-0 hover:bg-slate-50/70">
+                        className="border-b border-slate-100 last:border-0 hover:bg-[#f2f6fa]/70">
                         {columns.map((column) => {
                           const editableTarget = getEditableCellTarget(
                             row,
@@ -1496,7 +1591,7 @@ export default function ReportDataView({
                                         setEditingCell(null);
                                       }
                                     }}
-                                    className="min-w-[130px] rounded-md border border-cyan-300 bg-white px-2 py-1 text-sm font-medium text-slate-800 shadow-sm outline-none ring-2 ring-cyan-100">
+                                    className="min-w-[130px] rounded-md border border-[#9cc3e3] bg-white px-2 py-1 text-sm font-medium text-slate-800 shadow-sm outline-none ring-2 ring-[#cfe1f1]">
                                     {editingCell.definition.editor ===
                                     "boolean" ? (
                                       <>
@@ -1540,9 +1635,15 @@ export default function ReportDataView({
                                 ) : (
                                   <input
                                     autoFocus
-                                    type={editingCell.editor}
+                                    type={
+                                      editingCell.definition.editor ===
+                                      "datetime"
+                                        ? "datetime-local"
+                                        : editingCell.definition.editor
+                                    }
                                     step={
-                                      editingCell.editor === "number" &&
+                                      editingCell.definition.editor ===
+                                        "number" &&
                                       editingCell.field === "page_no"
                                         ? "1"
                                         : "any"
@@ -1573,12 +1674,12 @@ export default function ReportDataView({
                                         setEditingCell(null);
                                       }
                                     }}
-                                    className="min-w-[120px] rounded-md border border-cyan-300 bg-white px-2 py-1 text-sm font-medium text-slate-800 shadow-sm outline-none ring-2 ring-cyan-100"
+                                    className="min-w-[120px] rounded-md border border-[#9cc3e3] bg-white px-2 py-1 text-sm font-medium text-slate-800 shadow-sm outline-none ring-2 ring-[#cfe1f1]"
                                   />
                                 )
                               ) : isEditable ? (
                                 <div className="flex items-center justify-between gap-2">
-                                  {editableTarget?.editor === "dropdown" ? (
+                                  {editableTarget?.editor === "status" ? (
                                     <StatusBadge
                                       value={
                                         dropdownOptions.find(
@@ -1631,7 +1732,7 @@ export default function ReportDataView({
               </table>
             )}
           </div>
-          <footer className="flex flex-col gap-3 border-t border-slate-200 px-4 py-3 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between">
+          <footer className="flex flex-col gap-3 border-t border-slate-100 px-5 py-3 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between">
             <span>
               {pagination
                 ? `${pagination.total.toLocaleString()} rows · Page ${pagination.page} of ${pagination.totalPages}`
@@ -1643,7 +1744,7 @@ export default function ReportDataView({
                 aria-label="Previous page"
                 disabled={isLoading || page <= 1}
                 onClick={() => setPage((value) => Math.max(1, value - 1))}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40">
+                className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 text-slate-700 hover:bg-[#f2f6fa] disabled:cursor-not-allowed disabled:opacity-40">
                 <ChevronLeft aria-hidden="true" className="h-4 w-4" />
               </button>
               <button
@@ -1651,7 +1752,7 @@ export default function ReportDataView({
                 aria-label="Next page"
                 disabled={isLoading || pageCount === 0 || page >= pageCount}
                 onClick={() => setPage((value) => value + 1)}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40">
+                className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 text-slate-700 hover:bg-[#f2f6fa] disabled:cursor-not-allowed disabled:opacity-40">
                 <ChevronRight aria-hidden="true" className="h-4 w-4" />
               </button>
             </div>

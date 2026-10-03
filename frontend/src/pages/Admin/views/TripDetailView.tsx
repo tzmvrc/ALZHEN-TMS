@@ -5,7 +5,6 @@ import {
   CheckCircle2,
   MapPin,
   Package,
-  Truck,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../../context/AuthContext";
@@ -168,7 +167,7 @@ export default function TripDetailView({
 
   if (error) {
     return (
-      <div className="flex min-h-72 flex-col items-center justify-center gap-4 rounded-lg border border-slate-200 bg-white p-8 text-center">
+      <div className="flex min-h-72 flex-col items-center justify-center gap-4 rounded-[28px] bg-white shadow-[0_1px_2px_rgba(11,35,65,0.04),0_10px_30px_-18px_rgba(11,35,65,0.14)] p-8 text-center">
         <p role="alert" className="text-sm text-rose-700">{error}</p>
         <div className="flex gap-2">
           <button type="button" onClick={onBack} className="min-h-9 rounded-md border border-slate-300 px-3 text-sm text-slate-700">Back to trips</button>
@@ -200,13 +199,13 @@ export default function TripDetailView({
             type="button"
             aria-label="Back to trips"
             onClick={onBack}
-            className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+            className="mt-0.5 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white text-[#0b2341] shadow-[0_1px_2px_rgba(11,35,65,0.08)] transition hover:bg-[#ffd43b]"
           >
             <ArrowLeft aria-hidden="true" className="h-4 w-4" />
           </button>
           <div className="min-w-0">
-            <p className="text-[10px] font-semibold uppercase text-cyan-800">Trip details</p>
-            <h2 className="truncate text-xl font-semibold text-slate-900">
+            <p className="text-[10px] font-semibold uppercase text-[#1d5f94]">Trip details</p>
+            <h2 className="truncate text-2xl font-extrabold tracking-tight text-[#0b2341]">
               {isLoading ? "Loading trip..." : dispatchNumber}
             </h2>
             <p className="mt-0.5 text-xs text-slate-500">
@@ -239,25 +238,29 @@ export default function TripDetailView({
           { label: "Stops", value: String(detail?.stops.length ?? 0), icon: MapPin },
           { label: "Line items", value: String(detail?.lineItems.length ?? reportRows.length), icon: Package },
         ].map(({ label, value, icon: Icon }) => (
-          <section key={label} className="flex min-h-24 items-center justify-between rounded-lg border border-slate-200 bg-white px-4 py-3">
+          <section key={label} className="flex min-h-24 items-center justify-between rounded-[28px] bg-white shadow-[0_1px_2px_rgba(11,35,65,0.04),0_10px_30px_-18px_rgba(11,35,65,0.14)] px-4 py-3">
             <div>
               <p className="text-xs text-slate-500">{label}</p>
               <p className="mt-1 text-sm font-semibold text-slate-900">{isLoading ? "..." : value}</p>
             </div>
-            <Icon aria-hidden="true" className="h-4 w-4 text-cyan-800" />
+            <Icon aria-hidden="true" className="h-4 w-4 text-[#1d5f94]" />
           </section>
         ))}
       </div>
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1.25fr)_minmax(340px,0.9fr)]">
-        <section className="overflow-hidden rounded-lg border border-slate-200 bg-white">
-          <header className="border-b border-slate-200 px-4 py-3">
+        <section className="overflow-hidden rounded-[28px] bg-white shadow-[0_1px_2px_rgba(11,35,65,0.04),0_10px_30px_-18px_rgba(11,35,65,0.14)]">
+          <header className="border-b border-slate-100 px-5 py-4">
             <h3 className="text-sm font-semibold text-slate-900">Truck and driver</h3>
             <p className="mt-0.5 text-xs text-slate-500">Assignment from the trip booking data</p>
           </header>
           <div className="grid gap-4 p-4 sm:grid-cols-2">
             <div className="flex items-start gap-3">
-              <span className="flex h-9 w-9 items-center justify-center rounded-md bg-cyan-50 text-cyan-800"><Truck aria-hidden="true" className="h-4 w-4" /></span>
+              <span className="flex h-12 w-16 shrink-0 items-center justify-center rounded-md border border-slate-200 bg-blue-50 text-blue-700">
+                <span role="img" aria-label="Truck" className="truck-emoji-right text-2xl leading-none">
+                  🚚
+                </span>
+              </span>
               <div>
                 <p className="text-[10px] font-semibold uppercase text-slate-500">Truck</p>
                 <p className="mt-1 text-sm font-medium text-slate-900">{getBookingValue(reportRows, "plate_number")}</p>
@@ -273,7 +276,7 @@ export default function TripDetailView({
               </div>
             </div>
           </div>
-          <div className="border-t border-slate-200 px-4 py-3">
+          <div className="border-t border-slate-100 px-5 py-3">
             <p className="text-[10px] font-semibold uppercase text-slate-500">Route</p>
             <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
               <span className="rounded-md bg-slate-100 px-2.5 py-1.5 font-medium text-slate-800">
@@ -286,15 +289,15 @@ export default function TripDetailView({
             </div>
           </div>
           {Boolean(trip?.remarks) && (
-            <p className="border-t border-slate-200 px-4 py-3 text-sm text-slate-600">{String(trip?.remarks)}</p>
+            <p className="border-t border-slate-100 px-5 py-3 text-sm text-slate-600">{String(trip?.remarks)}</p>
           )}
         </section>
 
         <LiveTripMap tracks={mapTrack} focusTripId={tripId} eventLoadError={false} height={340} />
       </div>
 
-      <section className="overflow-hidden rounded-lg border border-slate-200 bg-white">
-        <header className="border-b border-slate-200 px-4 py-3">
+      <section className="overflow-hidden rounded-[28px] bg-white shadow-[0_1px_2px_rgba(11,35,65,0.04),0_10px_30px_-18px_rgba(11,35,65,0.14)]">
+        <header className="border-b border-slate-100 px-5 py-4">
           <h3 className="text-sm font-semibold text-slate-900">Stops and stores</h3>
           <p className="mt-0.5 text-xs text-slate-500">Store details and delivery timing</p>
         </header>
@@ -311,7 +314,7 @@ export default function TripDetailView({
               return (
                 <li key={String(stop.id ?? stop.trip_stop_id ?? `${tripId}-${index}`)} className="grid gap-4 px-4 py-4 md:grid-cols-[minmax(0,1fr)_repeat(3,minmax(0,0.7fr))]">
                   <div className="flex min-w-0 gap-3">
-                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-cyan-50 text-xs font-semibold text-cyan-900">{String(sequence ?? index + 1)}</span>
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#e6f0f9] text-xs font-semibold text-[#0b2341]">{String(sequence ?? index + 1)}</span>
                     <div className="min-w-0">
                       <p className="truncate text-sm font-semibold text-slate-900">{valueText(firstMatch.store_name, valueText(stop.store_id, "Store not recorded"))}</p>
                       <p className="mt-0.5 truncate text-xs text-slate-500">{valueText(firstMatch.customer_name, valueText(stop.customer_id, "Customer not recorded"))}</p>
@@ -328,8 +331,8 @@ export default function TripDetailView({
         )}
       </section>
 
-      <section className="overflow-hidden rounded-lg border border-slate-200 bg-white">
-        <header className="border-b border-slate-200 px-4 py-3">
+      <section className="overflow-hidden rounded-[28px] bg-white shadow-[0_1px_2px_rgba(11,35,65,0.04),0_10px_30px_-18px_rgba(11,35,65,0.14)]">
+        <header className="border-b border-slate-100 px-5 py-4">
           <h3 className="text-sm font-semibold text-slate-900">Products and line items</h3>
           <p className="mt-0.5 text-xs text-slate-500">Product details from trip booking rows</p>
         </header>
@@ -361,7 +364,7 @@ export default function TripDetailView({
         </div>
       </section>
 
-      <section className="rounded-lg border border-slate-200 bg-white p-4">
+      <section className="rounded-[28px] bg-white shadow-[0_1px_2px_rgba(11,35,65,0.04),0_10px_30px_-18px_rgba(11,35,65,0.14)] p-4">
         <header className="mb-4 flex items-center justify-between">
           <div>
             <h3 className="text-sm font-semibold text-slate-900">Trip event timeline</h3>
@@ -375,7 +378,7 @@ export default function TripDetailView({
           <ol className="relative ml-2 border-l border-slate-200 pl-5">
             {orderedEvents.map((event) => (
               <li key={event.id} className="relative mb-5 last:mb-0">
-                <span className="timeline-dot absolute -left-[27px] top-1 h-3 w-3 rounded-full bg-cyan-700 text-cyan-700" />
+                <span className="timeline-dot absolute -left-[27px] top-1 h-3 w-3 rounded-full bg-[#2678b9] text-[#2678b9]" />
                 <p className="text-[11px] font-semibold text-slate-500">{dateText(event.event_time, true)}</p>
                 <p className="mt-0.5 text-sm font-medium capitalize text-slate-800">{event.event_type.replaceAll("_", " ")}</p>
                 {event.notes && <p className="mt-1 text-xs text-slate-600">{event.notes}</p>}

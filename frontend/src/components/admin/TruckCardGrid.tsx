@@ -212,7 +212,7 @@ function TruckCard({
   const styles = statusStyles[m.bucket] ?? statusStyles["Not Started"];
 
   return (
-    <div className="group flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:border-slate-300 hover:shadow-md">
+    <div className="group flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
       {/* Top section */}
       <div className="p-4">
         {/* Status pill */}

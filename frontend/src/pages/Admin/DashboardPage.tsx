@@ -1,5 +1,4 @@
 import { useMemo, useState } from "react";
-import dottedBackground from "../../assets/dotted-bg.svg";
 import SidebarNav, {
   type NavEntry,
   type WorkspaceName,
@@ -195,14 +194,14 @@ export default function DashboardPage({
   }
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[#edf4fd] text-slate-900">
+    <div className="relative min-h-screen overflow-hidden bg-[#f2f4f5] text-slate-900">
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-0 opacity-100"
         style={{
-          backgroundColor: "#edf4fd",
-          backgroundImage: `url(${dottedBackground})`,
-          backgroundRepeat: "repeat",
+          backgroundColor: "#f2f4f5",
+          backgroundImage:
+            "radial-gradient(circle, rgba(11, 35, 65, 0.1) 0.8px, transparent 0.8px)",
           backgroundSize: "18px 18px",
           backgroundPosition: "center",
         }}
@@ -225,11 +224,7 @@ export default function DashboardPage({
         <main className="mx-auto min-h-[calc(100vh-4.5rem)] max-w-[1500px] px-3 py-3 sm:px-4 lg:px-5">
           {activeId === "overview" ? (
             <div className="w-full">
-              <div className="mb-3">
-                <h1 className="text-base font-semibold text-slate-900">
-                  Operations overview
-                </h1>
-              </div>
+              <h1 className="sr-only">Operations overview</h1>
               <OverviewView
                 onOpenTrip={(tripId) =>
                   setActiveId(`trip-detail:${tripId}:overview`)

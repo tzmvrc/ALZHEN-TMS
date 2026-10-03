@@ -58,59 +58,49 @@
   box-shadow: 0 3px 9px rgba(15, 23, 42, 0.28);
 }
 
-/* ================= Route polyline dash animation ================= */
-.route-line {
-  stroke-dasharray: 12 16;
-  animation: route-dash 2.8s linear infinite;
-}
-
-@keyframes route-dash {
-  to { stroke-dashoffset: -16; }
-}
-
-/* ================= Timeline dot pulse ================= */
-.timeline-dot {
-  position: relative;
-}
-.timeline-dot::after {
-  content: "";
-  position: absolute;
-  inset: -4px;
-  border-radius: 9999px;
-  background: currentColor;
-  opacity: 0.25;
-  animation: timeline-pulse 2s ease-in-out infinite;
-}
-@keyframes timeline-pulse {
-  0%, 100% { transform: scale(0.9); opacity: 0.25; }
-  50%      { transform: scale(1.25); opacity: 0.05; }
-}
-
-/* ================= Sparkline bar grow ================= */
-.spark-bar {
-  transition: height 400ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-
 body {
   min-height: 100dvh;
-  background: #eef4fb;
+  background: #f2f4f5;
 }
 
 .dotted-surface {
-  background-color: #f7faff;
-  background-image: url("/src/assets/dotted.svg");
-  background-size: 19px 19px;
+  background-color: #f4f5f5;
+  background-image: radial-gradient(
+    circle,
+    rgba(11, 35, 65, 0.11) 0.8px,
+    transparent 0.8px
+  );
+  background-size: 18px 18px;
 }
 
 .min-h-screen.bg-slate-50 {
-  background-color: #f7faff;
+  background-color: #f4f5f5;
   background-image: radial-gradient(
     circle,
-    rgba(74, 112, 160, 0.42) 0.9px,
+    rgba(11, 35, 65, 0.1) 0.8px,
     transparent 0.9px
   );
-  background-size: 11px 11px;
+  background-size: 18px 18px;
+}
+
+button.bg-slate-900:not(:disabled) {
+  border-color: #ffd43b;
+  background-color: #ffd43b;
+  color: #0b2341;
+}
+
+button.bg-slate-900:not(:disabled):hover {
+  border-color: #f0c32c;
+  background-color: #f0c32c;
+  color: #0b2341;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid #d9ad00;
+  outline-offset: 2px;
 }
 
 /* The driver workflow uses larger type and touch targets for quick phone use. */
@@ -133,6 +123,17 @@ button,
 input,
 select {
   font: inherit;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @keyframes toast-in {
@@ -168,4 +169,123 @@ select {
 ::selection {
   color: #1d4ed8;
   background: #dbeafe;
+}
+
+/* ── Leaflet markers ───────────────────────────────────────── */
+.truck-marker,
+.store-marker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.15);
+  font-size: 16px;
+  background: #fff;
+  border: 2px solid #fff;
+}
+
+.truck-marker--in-progress {
+  border-color: #10b981;
+  background: #ecfdf5;
+}
+
+.truck-marker--completed {
+  border-color: #3b82f6;
+  background: #eff6ff;
+}
+
+.truck-marker--delayed {
+  border-color: #f59e0b;
+  background: #fffbeb;
+}
+
+.store-marker {
+  border-color: #cbd5e1;
+  background: #fff;
+  font-size: 14px;
+}
+
+.truck-marker {
+  position: relative;
+  background: white;
+}
+
+.truck-marker-emoji {
+  display: block;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.truck-emoji-right {
+  display: inline-block;
+  transform: scaleX(-1);
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.truck-marker--in-progress {
+  border-color: #2563eb;
+  background: #eff6ff;
+}
+
+.truck-marker--completed {
+  border-color: #16a34a;
+  background: #f0fdf4;
+}
+
+.trip-route-track {
+  height: 2px;
+  background-image: repeating-linear-gradient(
+    90deg,
+    #94a3b8 0,
+    #94a3b8 5px,
+    transparent 5px,
+    transparent 10px
+  );
+}
+
+.route-line {
+  stroke-dasharray: 10 8;
+  animation: route-dash 2.8s linear infinite;
+}
+
+.fleet-progress-line {
+  transition: width 700ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.fleet-progress-marker {
+  transition: left 700ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes route-dash {
+  to { stroke-dashoffset: -36; }
+}
+
+.fleet-tabs {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.fleet-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.admin-island-nav {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.admin-island-nav::-webkit-scrollbar {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .route-line {
+    animation: none !important;
+  }
+
+  .fleet-progress-line,
+  .fleet-progress-marker {
+    transition: none !important;
+  }
 }

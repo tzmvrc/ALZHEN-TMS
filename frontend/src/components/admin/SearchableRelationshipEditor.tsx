@@ -11,6 +11,7 @@ type SearchableRelationshipEditorProps = {
   kind: RelationshipKind;
   value: string;
   storeId?: string;
+  disabled?: boolean;
   onChange: (value: string) => void;
   onSelect: (option: RelationshipOption) => void;
   onCommitBlur: () => void;
@@ -22,6 +23,7 @@ export default function SearchableRelationshipEditor({
   kind,
   value,
   storeId,
+  disabled = false,
   onChange,
   onSelect,
   onCommitBlur,
@@ -145,7 +147,7 @@ export default function SearchableRelationshipEditor({
             onMouseDown={(event) => event.preventDefault()}
             onMouseEnter={() => setActiveIndex(index)}
             onClick={() => selectOption(option)}
-            className={`block w-full px-3 py-2 text-left ${index === activeIndex ? "bg-cyan-50" : "hover:bg-slate-50"}`}>
+            className={`block w-full px-3 py-2 text-left ${index === activeIndex ? "bg-[#e6f0f9]" : "hover:bg-slate-50"}`}>
             <span className="block truncate text-sm font-medium text-slate-800">
               {option.label}
             </span>
@@ -165,13 +167,14 @@ export default function SearchableRelationshipEditor({
       <input
         ref={inputRef}
         autoFocus
+        disabled={disabled}
         role="combobox"
         aria-autocomplete="list"
         aria-expanded={isOpen}
         aria-controls={listId}
         aria-activedescendant={isOpen ? `${listId}-${activeIndex}` : undefined}
         value={value}
-        onFocus={() => setIsOpen(true)}
+        onFocus={() => !disabled && setIsOpen(true)}
         onChange={(event) => {
           onChange(event.target.value);
           setIsOpen(true);
@@ -181,7 +184,7 @@ export default function SearchableRelationshipEditor({
           onCommitBlur();
         }}
         onKeyDown={handleKeyDown}
-        className="min-w-[170px] rounded-md border border-cyan-300 bg-white px-2 py-1 text-sm font-medium text-slate-800 shadow-sm outline-none ring-2 ring-cyan-100"
+        className="min-w-[170px] rounded-md border border-[#9cc3e3] bg-white px-2 py-1 text-sm font-medium text-slate-800 shadow-sm outline-none ring-2 ring-[#cfe1f1] disabled:cursor-wait disabled:opacity-60"
       />
       {popover && createPortal(popover, document.body)}
     </>

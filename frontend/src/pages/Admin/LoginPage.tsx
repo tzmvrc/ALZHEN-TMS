@@ -96,7 +96,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex min-h-screen w-full bg-[#f7faff] p-0 sm:p-4 lg:p-6">
+    <div className="flex min-h-screen w-full bg-[#f2f4f5] p-0 sm:p-4 lg:p-6">
       {/* ───────── Left: Photo Panel ───────── */}
       <div className="relative hidden overflow-hidden rounded-l-2xl lg:flex lg:w-1/2 lg:flex-col">
         <img
@@ -104,7 +104,7 @@ export default function LoginPage() {
           alt=""
           className="absolute inset-0 h-full w-full object-cover"
         />
-        <div className="absolute inset-0 bg-black/50" />
+        <div className="absolute inset-0 bg-[#071d37]/65" />
 
         {/* Top brand row */}
         <div className="relative z-10 flex items-center gap-3 p-10 xl:p-6">

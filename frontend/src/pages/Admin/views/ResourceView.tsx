@@ -298,6 +298,9 @@ export default function ResourceView({
     ].includes(id);
   const showPageIntro =
     ![
+      "dispatches",
+      "deliveries",
+      "monitoring",
       "dispatch-monitoring",
       "store-calling",
       "reports",
@@ -316,7 +319,7 @@ export default function ResourceView({
 
       {id === "dispatches" && (
         <>
-          <TripsPageHeader />
+          <TripsPageHeader scope="dispatches" />
           <TripsFilterBar
             scope="all"
             selectedScope={tripScope ?? "dispatches"}
@@ -347,6 +350,7 @@ export default function ResourceView({
       {id === "pod" && <PodWorkflowPanel rows={data.operations.dispatches} />}
       {id === "deliveries" && (
         <>
+          <TripsPageHeader scope="deliveries" showAdd={false} />
           <TripsFilterBar
             scope="deliveries"
             selectedScope={tripScope ?? "deliveries"}
@@ -361,6 +365,7 @@ export default function ResourceView({
       )}
       {id === "monitoring" && (
         <>
+          <TripsPageHeader scope="monitoring" showAdd={false} />
           <TripsFilterBar
             scope="monitoring"
             selectedScope={tripScope ?? "monitoring"}
@@ -486,35 +491,64 @@ export default function ResourceView({
   );
 }
 
-function TripsPageHeader() {
+type TripScope = "dispatches" | "monitoring" | "deliveries";
+
+const tripScopeCopy: Record<TripScope, string> = {
+  dispatches: "Every booked trip, with its route, truck, driver and cargo.",
+  monitoring: "Follow dispatches from loading to arrival.",
+  deliveries: "Check what has been delivered and what is still assigned.",
+};
+
+function TripsPageHeader({
+  scope,
+  showAdd = true,
+}: {
+  scope: TripScope;
+  showAdd?: boolean;
+}) {
   const [open, setOpen] = useState(false);
 
   return (
     <>
-      <div className="mb-4 flex items-center justify-between gap-3">
+      <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold text-slate-900">Trips</h2>
+          <h1 className="text-[28px] font-extrabold leading-tight tracking-tight text-[#0b2341]">
+            Trips
+          </h1>
+          <p className="mt-1 text-sm text-slate-500">{tripScopeCopy[scope]}</p>
         </div>
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          className="inline-flex items-center gap-2 rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-700">
-          <span className="text-base leading-none">＋</span>
-          Add Trip
-        </button>
+        {showAdd && (
+          <button
+            type="button"
+            onClick={() => setOpen(true)}
+            className="inline-flex items-center gap-2 rounded-full bg-[#ffd43b] px-4 py-2.5 text-sm font-semibold text-[#0b2341] transition hover:bg-[#f2c200] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0b2341]/40">
+            <span aria-hidden="true" className="text-base leading-none">
+              +
+            </span>
+            Add trip
+          </button>
+        )}
       </div>
 
       {open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/30 p-4">
-          <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-5 shadow-xl">
-            <h3 className="text-lg font-semibold text-slate-900">Add Trip</h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0b2341]/30 p-4 backdrop-blur-sm">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="add-trip-title"
+            className="w-full max-w-md rounded-3xl bg-white p-6 shadow-[0_24px_60px_rgba(11,35,65,0.28)]">
+            <h3
+              id="add-trip-title"
+              className="text-lg font-semibold text-[#0b2341]">
+              Add trip
+            </h3>
             <p className="mt-3 text-sm text-slate-600">Form coming soon.</p>
-            <div className="mt-5 flex justify-end gap-2">
+            <div className="mt-6 flex justify-end gap-2">
               <button
                 type="button"
                 onClick={() => setOpen(false)}
-                className="rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
-                Cancel
+                className="rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-[#f2f6fa]">
+                Close
               </button>
             </div>
           </div>
@@ -524,135 +558,149 @@ function TripsPageHeader() {
   );
 }
 
+const tripTabs: { id: TripScope; label: string }[] = [
+  { id: "dispatches", label: "All trips" },
+  { id: "monitoring", label: "Dispatch monitoring" },
+  { id: "deliveries", label: "Deliveries" },
+];
+
+const filterField =
+  "h-9 rounded-full border border-slate-200 bg-[#f2f6fa] px-3 text-xs text-slate-700 outline-none transition focus:border-[#2678b9] focus:ring-2 focus:ring-[#cfe1f1]";
+const filterLabel = "grid gap-1 text-[11px] font-medium text-slate-500";
+
 function TripsFilterBar({
   scope,
   selectedScope,
   onScopeChange,
 }: {
   scope: "all" | "monitoring" | "deliveries";
-  selectedScope?: "dispatches" | "monitoring" | "deliveries";
-  onScopeChange?: (value: "dispatches" | "monitoring" | "deliveries") => void;
+  selectedScope?: TripScope;
+  onScopeChange?: (value: TripScope) => void;
 }) {
   const [status, setStatus] = useState("all");
   const [tripType, setTripType] = useState("all");
   const [warehouse, setWarehouse] = useState("");
   const [dateRange, setDateRange] = useState("custom");
   const [query, setQuery] = useState("");
+  const activeScope: TripScope =
+    selectedScope ?? (scope === "all" ? "dispatches" : scope);
 
-  const common = (
-    <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 bg-slate-50 px-4 py-3">
-      <label className="flex items-center gap-2 text-xs font-medium text-slate-600">
-        View
-        <select
-          value={selectedScope ?? (scope === "all" ? "dispatches" : scope)}
-          onChange={(event) => {
-            const nextValue = event.target.value as
-              | "dispatches"
-              | "monitoring"
-              | "deliveries";
-            onScopeChange?.(nextValue);
-          }}
-          className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-700 outline-none focus:border-slate-500">
-          <option value="dispatches">All Trips</option>
-          <option value="monitoring">Dispatch Monitoring</option>
-          <option value="deliveries">Deliveries</option>
-        </select>
-      </label>
-      {scope === "all" && (
-        <>
-          <label className="text-xs text-slate-600">
-            Status
+  return (
+    <div className="mb-4 space-y-3">
+      <div
+        role="tablist"
+        aria-label="Trip views"
+        className="inline-flex max-w-full gap-1 overflow-x-auto rounded-full bg-white p-1 shadow-[0_1px_2px_rgba(11,35,65,0.06)]">
+        {tripTabs.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            role="tab"
+            aria-selected={activeScope === tab.id}
+            onClick={() => onScopeChange?.(tab.id)}
+            className={`shrink-0 rounded-full px-4 py-2 text-[13px] font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0b2341]/40 ${
+              activeScope === tab.id
+                ? "bg-[#0b2341] text-white"
+                : "text-slate-500 hover:text-[#0b2341]"
+            }`}>
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="flex flex-wrap items-end gap-3 rounded-[28px] bg-white p-4 shadow-[0_1px_2px_rgba(11,35,65,0.04),0_10px_30px_-18px_rgba(11,35,65,0.14)]">
+        {scope === "all" && (
+          <>
+            <label className={filterLabel}>
+              Status
+              <select
+                value={status}
+                onChange={(e) => setStatus(e.target.value)}
+                className={filterField}>
+                <option value="all">All</option>
+                <option value="in_progress">In progress</option>
+                <option value="completed">Completed</option>
+              </select>
+            </label>
+            <label className={filterLabel}>
+              Trip type
+              <select
+                value={tripType}
+                onChange={(e) => setTripType(e.target.value)}
+                className={filterField}>
+                <option value="all">All</option>
+                <option value="regular">Regular</option>
+                <option value="stock_transfer">Stock transfer</option>
+              </select>
+            </label>
+          </>
+        )}
+        {scope === "monitoring" && (
+          <label className={filterLabel}>
+            Trip status
             <select
               value={status}
               onChange={(e) => setStatus(e.target.value)}
-              className="ml-2 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs">
+              className={filterField}>
               <option value="all">All</option>
-              <option value="in_progress">In Progress</option>
+              <option value="in_progress">In progress</option>
               <option value="completed">Completed</option>
             </select>
           </label>
-          <label className="text-xs text-slate-600">
-            Trip Type
-            <select
-              value={tripType}
-              onChange={(e) => setTripType(e.target.value)}
-              className="ml-2 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs">
-              <option value="all">All</option>
-              <option value="regular">Regular</option>
-              <option value="stock_transfer">Stock Transfer</option>
-            </select>
-          </label>
-        </>
-      )}
-      {scope === "monitoring" && (
-        <>
-          <label className="text-xs text-slate-600">
-            Trip Status
-            <select
-              value={status}
-              onChange={(e) => setStatus(e.target.value)}
-              className="ml-2 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs">
-              <option value="all">All</option>
-              <option value="in_progress">In Progress</option>
-              <option value="completed">Completed</option>
-            </select>
-          </label>
-        </>
-      )}
-      <label className="text-xs text-slate-600">
-        Warehouse
-        <input
-          value={warehouse}
-          onChange={(e) => setWarehouse(e.target.value)}
-          placeholder="All"
-          className="ml-2 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs"
-        />
-      </label>
-      <label className="text-xs text-slate-600">
-        Date Range
-        <select
-          value={dateRange}
-          onChange={(e) => setDateRange(e.target.value)}
-          className="ml-2 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs">
-          <option value="custom">Custom</option>
-          <option value="today">Today</option>
-          <option value="week">This Week</option>
-        </select>
-      </label>
-      {scope === "all" && (
-        <label className="ml-auto text-xs text-slate-600">
-          Search
+        )}
+        <label className={filterLabel}>
+          Warehouse
           <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search trips"
-            className="ml-2 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs"
+            value={warehouse}
+            onChange={(e) => setWarehouse(e.target.value)}
+            placeholder="All"
+            className={`${filterField} w-36`}
           />
         </label>
-      )}
-      {scope === "deliveries" && (
-        <>
-          <label className="text-xs text-slate-600">
-            Driver
+        <label className={filterLabel}>
+          Date range
+          <select
+            value={dateRange}
+            onChange={(e) => setDateRange(e.target.value)}
+            className={filterField}>
+            <option value="custom">Custom</option>
+            <option value="today">Today</option>
+            <option value="week">This week</option>
+          </select>
+        </label>
+        {scope === "deliveries" && (
+          <>
+            <label className={filterLabel}>
+              Driver
+              <input
+                placeholder="Any"
+                className={`${filterField} w-36`}
+              />
+            </label>
+            <label className={filterLabel}>
+              Delivery status
+              <select className={filterField}>
+                <option value="all">All</option>
+                <option value="assigned">Assigned</option>
+                <option value="delivered">Delivered</option>
+              </select>
+            </label>
+          </>
+        )}
+        {scope === "all" && (
+          <label className={`${filterLabel} ml-auto`}>
+            Search
             <input
-              placeholder="Any"
-              className="ml-2 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search trips"
+              className={`${filterField} w-52`}
             />
           </label>
-          <label className="text-xs text-slate-600">
-            Delivery Status
-            <select className="ml-2 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs">
-              <option value="all">All</option>
-              <option value="assigned">Assigned</option>
-              <option value="delivered">Delivered</option>
-            </select>
-          </label>
-        </>
-      )}
+        )}
+      </div>
     </div>
   );
-
-  return common;
 }
 
 function BillingFilterBar({

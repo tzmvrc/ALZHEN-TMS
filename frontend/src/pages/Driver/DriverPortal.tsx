@@ -61,7 +61,7 @@ export default function DriverPortal() {
   };
 
   return (
-    <div className="dotted-surface min-h-screen bg-[#f7faff]">
+    <div className="dotted-surface min-h-screen bg-[#f2f4f5]">
       <header className="border-b border-[#dbe2e9] bg-white/80 backdrop-blur-sm">
         <div className="mx-auto flex max-w-2xl items-center justify-between px-4 py-4 sm:px-6">
           <div className="flex items-center gap-3">
@@ -125,11 +125,11 @@ export default function DriverPortal() {
           </div>
           <div className="mt-5 grid gap-3 text-sm text-slate-600 sm:grid-cols-2">
             <p className="flex items-center gap-2">
-              <MapPin className="h-4 w-4 text-blue-600" />
+              <MapPin className="h-4 w-4 text-amber-700" />
               Delivery: Robinsons Appliance - CDO
             </p>
             <p className="flex items-center gap-2">
-              <Clock3 className="h-4 w-4 text-blue-600" />
+              <Clock3 className="h-4 w-4 text-amber-700" />
               ETA: Today, 18:30
             </p>
           </div>
@@ -152,13 +152,13 @@ export default function DriverPortal() {
                 onClick={() => setStatus(step)}
                 className={`flex w-full items-center gap-3 rounded-2xl border px-3 py-3 text-left text-sm transition ${
                   index <= currentStep
-                    ? "border-blue-200 bg-blue-50 text-blue-800"
+                    ? "border-amber-300 bg-amber-50 text-slate-900"
                     : "border-slate-200 text-slate-500 hover:border-slate-300"
                 }`}>
                 <span
                   className={`flex h-7 w-7 items-center justify-center rounded-full ${
                     index <= currentStep
-                      ? "bg-blue-600 text-white"
+                      ? "bg-amber-400 text-slate-950"
                       : "bg-slate-100"
                   }`}>
                   {index < currentStep ? (
@@ -201,7 +201,7 @@ export default function DriverPortal() {
             />
           </label>
 
-          <label className="mt-3 flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-blue-300 bg-blue-50 px-4 py-4 text-sm font-medium text-blue-700 transition hover:bg-blue-100">
+          <label className="mt-3 flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-amber-400 bg-amber-50 px-4 py-4 text-sm font-medium text-slate-800 transition hover:bg-amber-100">
             <Upload className="h-4 w-4" />
             {podFile || "Choose POD photo"}
             <input

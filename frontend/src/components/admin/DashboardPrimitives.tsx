@@ -1,13 +1,28 @@
 // src/components/admin/DashboardPrimitives.tsx
 import { useState, type ReactNode } from "react";
 import {
+  Area,
+  AreaChart,
+  CartesianGrid,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+import {
   ArrowDownRight,
   ArrowUpRight,
   Bell,
   Calendar,
+  CheckCircle2,
   HelpCircle,
   MoreHorizontal,
+  MoreVertical,
   Settings,
+  Truck,
+  Zap,
 } from "lucide-react";
 import type {
   DispatchRecord,
@@ -16,7 +31,7 @@ import type {
   SalesPoint,
   SnapshotRecord,
 } from "../../types/dashboard";
-import { toneClasses, toneHex } from "./dashboardStyles";
+import { fleetTruckPhoto, toneClasses, toneHex, surface } from "./dashboardStyles";
 
 /* ================================================================ */
 /* TopBar                                                            */
@@ -125,7 +140,8 @@ function CardShell({
 }) {
   return (
     <div
-      className={`rounded-xl border border-slate-200 bg-white p-4 shadow-sm ${className}`}>
+      className={`${surface.card} ${className}`}
+    >
       {children}
     </div>
   );
@@ -139,17 +155,17 @@ export function PageIntro({
   subtitle: string;
 }) {
   return (
-    <div className="mb-4">
-      <h1 className="text-base font-semibold text-slate-900">{title}</h1>
-      <p className="mt-1 text-[11px] text-slate-500">{subtitle}</p>
+    <div className="mb-6">
+      <h1 className="text-xl font-semibold tracking-tight text-slate-900">
+        {title}
+      </h1>
+      <p className="mt-1 text-[13px] text-slate-500">{subtitle}</p>
     </div>
   );
 }
 
 export function SkeletonBlock({ className = "" }: { className?: string }) {
-  return (
-    <div className={`animate-pulse rounded-md bg-slate-200 ${className}`} />
-  );
+  return <div className={`animate-pulse rounded-md bg-slate-200 ${className}`} />;
 }
 
 export function PageSkeleton() {
@@ -171,8 +187,11 @@ export function PageSkeleton() {
   );
 }
 
+/**
+ * Card title row. `eyebrow` is still accepted so existing call sites compile,
+ * but the small caps label above the title is no longer rendered.
+ */
 export function SectionHeader({
-  eyebrow,
   title,
   action,
   onAction,
@@ -183,20 +202,14 @@ export function SectionHeader({
   onAction?: () => void;
 }) {
   return (
-    <div className="mb-3 flex items-start justify-between gap-3">
-      <div>
-        {eyebrow ? (
-          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
-            {eyebrow}
-          </p>
-        ) : null}
-        <h2 className="mt-0.5 text-sm font-semibold text-slate-900">{title}</h2>
-      </div>
+    <div className="mb-4 flex items-center justify-between gap-3">
+      <h2 className={surface.heading}>{title}</h2>
       {action ? (
         <button
           type="button"
           onClick={onAction}
-          className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50">
+          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:border-slate-300 hover:bg-slate-50"
+        >
           {action}
         </button>
       ) : null}
@@ -204,10 +217,39 @@ export function SectionHeader({
   );
 }
 
+export function CardMenuButton({ label = "More options" }: { label?: string }) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      className="rounded-md p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+    >
+      <MoreVertical className="h-4 w-4" />
+    </button>
+  );
+}
+
+export function CardHeader({
+  title,
+  right,
+  className = "mb-4",
+}: {
+  title: string;
+  right?: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={`flex items-center justify-between gap-3 ${className}`}>
+      <h2 className={surface.heading}>{title}</h2>
+      {right ?? null}
+    </div>
+  );
+}
+
 function statusPill(status: string) {
   const map: Record<string, string> = {
     Completed: "bg-emerald-50 text-emerald-700 ring-emerald-200",
-    "In Progress": "bg-cyan-50 text-cyan-700 ring-cyan-200",
+    "In Progress": "bg-blue-50 text-blue-700 ring-blue-200",
     Delayed: "bg-amber-50 text-amber-700 ring-amber-200",
     Pending: "bg-amber-50 text-amber-700 ring-amber-200",
     High: "bg-red-50 text-red-700 ring-red-200",
@@ -305,6 +347,15 @@ export function TableSkeleton({
   );
 }
 
+function statusDot(status: string) {
+  const map: Record<string, string> = {
+    Completed: "bg-emerald-500",
+    "In Progress": "bg-blue-500",
+    Delayed: "bg-amber-500",
+  };
+  return map[status] ?? "bg-slate-400";
+}
+
 /* ================================================================ */
 /* KPI Card                                                          */
 /* ================================================================ */
@@ -326,34 +377,118 @@ export function KpiCard({
   const TrendIcon = trend === "down" ? ArrowDownRight : ArrowUpRight;
   const positive = trend === "up";
   return (
-    <CardShell>
-      <div className="flex items-start justify-between">
-        <div>
-          <p className="text-xs font-medium text-slate-500">{label}</p>
-          <p className="mt-2 text-2xl font-bold text-slate-900">{value}</p>
-        </div>
+    <CardShell className="relative overflow-hidden p-5 pl-6">
+      <span
+        aria-hidden="true"
+        className="absolute inset-y-4 left-0 w-[3px] rounded-r-full"
+        style={{ backgroundColor: toneHex[tone] }}
+      />
+      <p className="flex items-center gap-2 text-[12px] font-medium text-slate-500">
         {icon ? (
-          <span
-            className={`flex h-9 w-9 items-center justify-center rounded-xl ${toneClasses[tone]}`}>
-            {icon}
-          </span>
+          <span className="text-slate-400 [&>svg]:h-4 [&>svg]:w-4">{icon}</span>
         ) : null}
-      </div>
-      <div className="mt-3 flex items-center gap-1 text-xs font-medium">
-        <TrendIcon
-          className={`h-3.5 w-3.5 ${positive ? "text-emerald-600" : "text-red-600"}`}
-        />
-        <span className={positive ? "text-emerald-600" : "text-red-600"}>
+        {label}
+      </p>
+      <div className="mt-3 flex items-center justify-between gap-2">
+        <p className="text-3xl font-semibold tabular-nums tracking-tight text-slate-900">
+          {value}
+        </p>
+        <span
+          className={`inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+            positive ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"
+          }`}
+        >
+          <TrendIcon className="h-3 w-3" />
           {change}
         </span>
-        <span className="text-slate-400">vs last period</span>
+      </div>
+      <p className="mt-1 text-[11px] text-slate-400">vs last period</p>
+    </CardShell>
+  );
+}
+
+/* One card, several metric columns, each with a coloured rail on the left */
+export type OverviewMetric = {
+  id: string;
+  label: string;
+  value: string;
+  hint: string;
+  icon: ReactNode;
+  tone: keyof typeof toneHex;
+  badge?: string;
+  badgeNote?: string;
+  onClick?: () => void;
+};
+
+export function OperationsOverviewCard({
+  title = "Operations overview",
+  updatedLabel,
+  metrics,
+}: {
+  title?: string;
+  updatedLabel?: string;
+  metrics: OverviewMetric[];
+}) {
+  return (
+    <CardShell className="p-5">
+      <CardHeader
+        title={title}
+        right={
+          <div className="flex items-center gap-2">
+            {updatedLabel ? (
+              <span className="text-[11px] text-slate-500">
+                Last updated: {updatedLabel}
+              </span>
+            ) : null}
+            <CardMenuButton />
+          </div>
+        }
+      />
+      <div className="grid gap-3 sm:grid-cols-3">
+        {metrics.map((metric) => (
+            <button
+              key={metric.id}
+              type="button"
+              onClick={metric.onClick}
+              className="group relative flex min-w-0 flex-col rounded-r-xl py-1 pl-4 pr-3 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900/20"
+            >
+              <span
+                aria-hidden="true"
+                className="absolute inset-y-0 left-0 w-[3px] rounded-full"
+                style={{ backgroundColor: toneHex[metric.tone] }}
+              />
+              <span className="flex items-center gap-2 text-[12px] font-medium text-slate-500">
+                <span className="text-slate-400 [&>svg]:h-4 [&>svg]:w-4">
+                  {metric.icon}
+                </span>
+                {metric.label}
+              </span>
+              <span className="mt-3 flex items-center justify-between gap-2">
+                <span className="text-3xl font-semibold tabular-nums tracking-tight text-slate-900">
+                  {metric.value}
+                </span>
+                {metric.badge ? (
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${toneClasses[metric.tone]}`}
+                  >
+                    {metric.badge}
+                  </span>
+                ) : null}
+              </span>
+              <span className="mt-1 flex items-center justify-between gap-2 text-[11px] text-slate-400">
+                <span>{metric.hint}</span>
+                {metric.badgeNote ? <span>{metric.badgeNote}</span> : null}
+              </span>
+            </button>
+        ))}
       </div>
     </CardShell>
   );
 }
 
 /* ================================================================ */
-/* RevenueChart (bar-style) — used by Reports later                  */
+/* ================================================================ */
+/* RevenueChart (bar-style)                                          */
 /* ================================================================ */
 export function RevenueChart({ data = [] }: { data?: SalesPoint[] }) {
   const points = data.length
@@ -368,7 +503,7 @@ export function RevenueChart({ data = [] }: { data?: SalesPoint[] }) {
       ];
 
   return (
-    <CardShell>
+    <CardShell className="p-5">
       <SectionHeader eyebrow="Revenue" title="Trip revenue trend" />
       <div className="flex h-56 items-end justify-between gap-3">
         {points.map((point) => (
@@ -400,13 +535,20 @@ export function RevenueChart({ data = [] }: { data?: SalesPoint[] }) {
 }
 
 /* ================================================================ */
-/* DeliveryPerformanceChart — kept for Reports page later            */
+/* DeliveryPerformanceChart (SVG line/area)                          */
 /* ================================================================ */
+function niceStep(raw: number) {
+  const pow = 10 ** Math.floor(Math.log10(raw));
+  const n = raw / pow;
+  return Math.max(1, (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * pow);
+}
+
 export function DeliveryPerformanceChart({
   data = [],
 }: {
   data?: SalesPoint[];
 }) {
+  const [hovered, setHovered] = useState<number | null>(null);
   const points = data.length
     ? data
     : [
@@ -420,132 +562,256 @@ export function DeliveryPerformanceChart({
       ];
 
   const W = 720;
-  const H = 260;
-  const PAD_X = 40;
-  const PAD_Y = 24;
-  const maxVal = Math.max(...points.map((p) => p.primary)) * 1.15 || 1;
+  const H = 280;
+  const PAD_L = 44;
+  const PAD_R = 16;
+  const PAD_T = 16;
+  const PAD_B = 28;
+  const innerW = W - PAD_L - PAD_R;
+  const innerH = H - PAD_T - PAD_B;
 
-  const toXY = (i: number, v: number): [number, number] => {
-    const x = PAD_X + (i / Math.max(points.length - 1, 1)) * (W - PAD_X * 2);
-    const y = H - PAD_Y - (v / maxVal) * (H - PAD_Y * 2);
-    return [x, y];
-  };
+  const rawMax = Math.max(
+    ...points.map((p) => Math.max(p.primary, p.secondary)),
+    1,
+  );
+  const tickStep = niceStep(rawMax / 5);
+  const maxVal = Math.ceil(rawMax / tickStep) * tickStep;
+  const yTicks = Array.from(
+    { length: Math.round(maxVal / tickStep) + 1 },
+    (_, i) => i * tickStep,
+  );
+
+  const toX = (i: number) =>
+    PAD_L + (i / Math.max(points.length - 1, 1)) * innerW;
+  const toY = (v: number) => PAD_T + innerH - (v / maxVal) * innerH;
 
   const buildPath = (key: "primary" | "secondary") =>
     points
-      .map((p, i) => {
-        const [x, y] = toXY(i, p[key]);
-        return `${i === 0 ? "M" : "L"} ${x} ${y}`;
-      })
+      .map((p, i) => `${i === 0 ? "M" : "L"} ${toX(i)} ${toY(p[key])}`)
       .join(" ");
 
   const primaryPath = buildPath("primary");
   const secondaryPath = buildPath("secondary");
-  const areaPath = `${primaryPath} L ${toXY(points.length - 1, 0)[0]} ${
-    H - PAD_Y
-  } L ${toXY(0, 0)[0]} ${H - PAD_Y} Z`;
+  const areaPath = `${primaryPath} L ${toX(points.length - 1)} ${toY(0)} L ${toX(0)} ${toY(0)} Z`;
 
-  const yTicks = [0, 100, 200, 300, 400, 500, 600];
+  const colW = innerW / Math.max(points.length - 1, 1);
+  const active = hovered !== null ? points[hovered] : null;
+  const TIP_W = 148;
+  const TIP_H = 70;
+  const tipX =
+    hovered !== null
+      ? Math.min(Math.max(toX(hovered) - TIP_W / 2, PAD_L), W - PAD_R - TIP_W)
+      : 0;
+  const tipY =
+    active !== null ? Math.max(PAD_T, toY(active.primary) - TIP_H - 14) : 0;
 
   return (
-    <CardShell>
-      <div className="mb-4 flex items-center justify-between">
-        <div>
-          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
-            Performance
-          </p>
-          <h2 className="mt-0.5 text-sm font-semibold text-slate-900">
-            Delivery performance
-          </h2>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-slate-600">
-            <span className="h-2 w-2 rounded-full bg-emerald-500" /> Delivered
-          </span>
-          <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-slate-600">
-            <span className="h-2 w-2 rounded-full bg-blue-500" /> Delayed
-          </span>
-        </div>
+    <CardShell className="p-5">
+      <CardHeader title="Delivery performance" />
+
+      <div
+        className={`${surface.inner} mb-4 grid grid-cols-2 divide-x divide-slate-200/80 text-[12px] font-medium text-slate-600`}
+      >
+        <span className="flex items-center justify-center gap-2 py-2">
+          <span className="h-2 w-2 rounded-full bg-emerald-500" /> Delivered
+        </span>
+        <span className="flex items-center justify-center gap-2 py-2">
+          <span className="h-2 w-2 rounded-full bg-blue-500" /> Delayed
+        </span>
       </div>
 
       <div className="overflow-x-auto">
-        <svg viewBox={`0 0 ${W} ${H}`} className="h-64 w-full min-w-[520px]">
+        <svg
+          viewBox={`0 0 ${W} ${H}`}
+          className="h-64 w-full min-w-[520px]"
+          onMouseLeave={() => setHovered(null)}
+        >
           <defs>
             <linearGradient id="dpArea" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#10b981" stopOpacity="0.22" />
+              <stop offset="0%" stopColor="#10b981" stopOpacity="0.2" />
               <stop offset="100%" stopColor="#10b981" stopOpacity="0" />
             </linearGradient>
           </defs>
 
-          {yTicks.map((t) => {
-            const y = H - PAD_Y - (t / maxVal) * (H - PAD_Y * 2);
-            return (
-              <g key={t}>
-                <line
-                  x1={PAD_X}
-                  x2={W - PAD_X}
-                  y1={y}
-                  y2={y}
-                  stroke="#eef2f7"
-                  strokeWidth="1"
-                />
-                <text
-                  x={PAD_X - 8}
-                  y={y + 3}
-                  textAnchor="end"
-                  fontSize="10"
-                  fill="#94a3b8">
-                  {t}
-                </text>
-              </g>
-            );
-          })}
-
-          {points.map((p, i) => {
-            const [x] = toXY(i, 0);
-            return (
+          {/* horizontal grid + y labels */}
+          {yTicks.map((t) => (
+            <g key={t}>
+              <line
+                x1={PAD_L}
+                x2={W - PAD_R}
+                y1={toY(t)}
+                y2={toY(t)}
+                stroke="#eef2f6"
+                strokeWidth="1"
+              />
               <text
-                key={p.label + i}
-                x={x}
-                y={H - 4}
+                x={PAD_L - 10}
+                y={toY(t) + 3}
+                textAnchor="end"
+                fontSize="10"
+                fill="#94a3b8"
+              >
+                {t}
+              </text>
+            </g>
+          ))}
+
+          {/* vertical grid + x labels */}
+          {points.map((p, i) => (
+            <g key={p.label + i}>
+              <line
+                x1={toX(i)}
+                x2={toX(i)}
+                y1={PAD_T}
+                y2={toY(0)}
+                stroke="#f1f5f9"
+                strokeWidth="1"
+              />
+              <text
+                x={toX(i)}
+                y={H - 6}
                 textAnchor="middle"
                 fontSize="10"
-                fill="#94a3b8">
+                fontWeight={hovered === i ? 700 : 400}
+                fill={hovered === i ? "#0f172a" : "#94a3b8"}
+              >
                 {p.label}
               </text>
-            );
-          })}
+            </g>
+          ))}
 
           <path d={areaPath} fill="url(#dpArea)" />
-          <path
-            d={primaryPath}
-            fill="none"
-            stroke="#10b981"
-            strokeWidth="2.5"
-            strokeLinecap="round"
-          />
           <path
             d={secondaryPath}
             fill="none"
             stroke="#3b82f6"
             strokeWidth="2"
             strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <path
+            d={primaryPath}
+            fill="none"
+            stroke="#10b981"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
           />
 
-          {points.map((p, i) => {
-            const [x, y] = toXY(i, p.primary);
-            return (
+          {points.map((p, i) => (
+            <g key={`dots-${i}`}>
               <circle
-                key={`p-${i}`}
-                cx={x}
-                cy={y}
-                r="3.5"
+                cx={toX(i)}
+                cy={toY(p.secondary)}
+                r={hovered === i ? 4.5 : 3}
+                fill="#fff"
+                stroke="#3b82f6"
+                strokeWidth="2"
+              />
+              <circle
+                cx={toX(i)}
+                cy={toY(p.primary)}
+                r={hovered === i ? 5 : 3.5}
                 fill="#fff"
                 stroke="#10b981"
                 strokeWidth="2"
               />
-            );
-          })}
+            </g>
+          ))}
+
+          {/* hover guide + tooltip */}
+          {active !== null && hovered !== null ? (
+            <g pointerEvents="none">
+              <line
+                x1={PAD_L}
+                x2={W - PAD_R}
+                y1={toY(active.primary)}
+                y2={toY(active.primary)}
+                stroke="#94a3b8"
+                strokeWidth="1"
+                strokeDasharray="2 3"
+              />
+              <rect
+                x={2}
+                y={toY(active.primary) - 9}
+                width={PAD_L - 8}
+                height={18}
+                rx={9}
+                fill="#0f172a"
+              />
+              <text
+                x={2 + (PAD_L - 8) / 2}
+                y={toY(active.primary) + 3.5}
+                textAnchor="middle"
+                fontSize="10"
+                fontWeight="600"
+                fill="#fff"
+              >
+                {active.primary}
+              </text>
+
+              <rect
+                x={tipX}
+                y={tipY}
+                width={TIP_W}
+                height={TIP_H}
+                rx={10}
+                fill="#fff"
+                stroke="#e2e8f0"
+              />
+              <text
+                x={tipX + 12}
+                y={tipY + 20}
+                fontSize="11"
+                fontWeight="600"
+                fill="#0f172a"
+              >
+                {active.label}
+              </text>
+              <circle cx={tipX + 16} cy={tipY + 38} r={3} fill="#10b981" />
+              <text x={tipX + 26} y={tipY + 42} fontSize="11" fill="#475569">
+                Delivered
+              </text>
+              <text
+                x={tipX + TIP_W - 12}
+                y={tipY + 42}
+                textAnchor="end"
+                fontSize="11"
+                fontWeight="600"
+                fill="#0f172a"
+              >
+                {active.primary}
+              </text>
+              <circle cx={tipX + 16} cy={tipY + 57} r={3} fill="#3b82f6" />
+              <text x={tipX + 26} y={tipY + 61} fontSize="11" fill="#475569">
+                Delayed
+              </text>
+              <text
+                x={tipX + TIP_W - 12}
+                y={tipY + 61}
+                textAnchor="end"
+                fontSize="11"
+                fontWeight="600"
+                fill="#0f172a"
+              >
+                {active.secondary}
+              </text>
+            </g>
+          ) : null}
+
+          {/* hit areas */}
+          {points.map((p, i) => (
+            <rect
+              key={`hit-${p.label}-${i}`}
+              x={toX(i) - colW / 2}
+              y={PAD_T}
+              width={colW}
+              height={innerH}
+              fill="transparent"
+              onMouseEnter={() => setHovered(i)}
+              onClick={() => setHovered(i)}
+            />
+          ))}
         </svg>
       </div>
     </CardShell>
@@ -553,48 +819,276 @@ export function DeliveryPerformanceChart({
 }
 
 /* ================================================================ */
-/* StatusOverviewPanel                                               */
 /* ================================================================ */
-export function StatusOverviewPanel({
-  rows = [],
-}: {
-  rows?: DispatchRecord[];
-}) {
-  const counts = {
-    Completed: rows.filter((r) => r.status === "Completed").length,
-    "In Progress": rows.filter((r) => r.status === "In Progress").length,
-    Delayed: rows.filter((r) => r.status === "Delayed").length,
-    Other: rows.filter((r) => r.status === "Other").length,
-  };
-  const total = rows.length || 1;
+/* FleetMovementPanel                                                 */
+/* ================================================================ */
+export type FleetMovementPoint = { label: string; distanceKm: number };
 
-  const colorFor = (s: string) =>
-    s === "Completed"
-      ? "bg-blue-500"
-      : s === "In Progress"
-        ? "bg-emerald-500"
-        : s === "Delayed"
-          ? "bg-amber-500"
-          : "bg-slate-400";
+export function FleetMovementPanel({
+  data,
+  isLoading,
+  activeRoutes,
+}: {
+  data: FleetMovementPoint[];
+  isLoading: boolean;
+  activeRoutes: number;
+}) {
+  const totalDistance = data.at(-1)?.distanceKm ?? 0;
 
   return (
-    <CardShell>
-      <SectionHeader eyebrow="Status" title="Trip status overview" />
-      <div className="space-y-3">
-        {Object.entries(counts).map(([status, count]) => (
-          <div key={status}>
-            <div className="flex items-center justify-between text-xs">
-              <span className="font-medium text-slate-600">{status}</span>
-              <span className="font-semibold text-slate-900">{count}</span>
-            </div>
-            <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
-              <div
-                className={`h-full rounded-full ${colorFor(status)}`}
-                style={{ width: `${(count / total) * 100}%` }}
+    <CardShell className="flex min-w-0 flex-col p-5">
+      <CardHeader
+        title="Fleet movement"
+        right={<span className="text-[10px] font-medium text-slate-500">{totalDistance.toFixed(1)} km GPS distance</span>}
+        className="mb-2"
+      />
+      {isLoading ? (
+        <p className="flex min-h-[200px] items-center justify-center text-sm text-slate-500">Loading route history...</p>
+      ) : data.length < 2 ? (
+        <p className="flex min-h-[200px] items-center justify-center px-4 text-center text-sm text-slate-500">
+          GPS movement will appear after trips record more than one location.
+        </p>
+      ) : (
+        <div className="flex flex-col">
+          <ResponsiveContainer width="100%" height={280}>
+            <AreaChart data={data} margin={{ top: 14, right: 10, left: 0, bottom: 0 }}>
+              <defs>
+                <linearGradient id="fleet-movement-fill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#2678b9" stopOpacity={0.2} />
+                  <stop offset="100%" stopColor="#2678b9" stopOpacity={0.01} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid vertical={false} stroke="#e7ecf1" strokeDasharray="3 5" />
+              <XAxis dataKey="label" tickLine={false} axisLine={{ stroke: "#dce3ea" }} tick={{ fill: "#718096", fontSize: 10 }} />
+              <YAxis allowDecimals={false} width={62} tickLine={false} axisLine={false} tick={{ fill: "#718096", fontSize: 10 }} tickFormatter={(value: number) => `${value} km`} />
+              <Tooltip
+                formatter={(value) => [`${Number(value).toFixed(1)} km`, "Recorded distance"]}
+                contentStyle={{ borderRadius: 8, borderColor: "#dce3ea", fontSize: 12 }}
               />
-            </div>
-          </div>
-        ))}
+              <Area
+                type="monotone"
+                dataKey="distanceKm"
+                stroke="#2678b9"
+                strokeWidth={2.5}
+                strokeDasharray="7 4"
+                fill="url(#fleet-movement-fill)"
+                dot={(props) => {
+                  const { cx, cy, index } = props;
+                  if (typeof cx !== "number" || typeof cy !== "number") return null;
+                  if (index === data.length - 1) {
+                    return (
+                      <g key="latest-truck" transform={`translate(${cx - 14}, ${cy - 14})`}>
+                        <circle cx="14" cy="14" r="13" fill="white" stroke="#cbd5e1" />
+                        <text className="truck-emoji-right" x="14" y="20" textAnchor="middle" fontSize="18">
+                          🚚
+                        </text>
+                      </g>
+                    );
+                  }
+                  return <circle key={`gps-point-${index}`} cx={cx} cy={cy} r="3" fill="#2678b9" stroke="white" strokeWidth="2" />;
+                }}
+                activeDot={{ r: 5, fill: "#2678b9", stroke: "#fff", strokeWidth: 2 }}
+                isAnimationActive={false}
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+          <p className="text-center text-[10px] text-slate-400">
+            Cumulative GPS distance · {activeRoutes} active routes
+          </p>
+        </div>
+      )}
+    </CardShell>
+  );
+}
+
+/* ================================================================ */
+/* EventVolumePanel                                                   */
+/* ================================================================ */
+export function OperationsActivityPanel({
+  dailyCounts,
+  totalEvents,
+  tripsUpdated,
+  stopsCompleted,
+  isLoading,
+  unavailable,
+}: {
+  dailyCounts: { date: string; count: number }[];
+  totalEvents: number;
+  tripsUpdated: number;
+  stopsCompleted: number;
+  isLoading: boolean;
+  unavailable?: boolean;
+}) {
+  const peak = dailyCounts.reduce(
+    (best, entry) => (entry.count > best.count ? entry : best),
+    dailyCounts[0] ?? { date: "", count: 0 },
+  );
+
+  const dayLabel = (date: string) =>
+    new Date(`${date}T12:00:00`).toLocaleDateString(undefined, {
+      month: "short",
+      day: "numeric",
+    });
+
+  return (
+    <CardShell className="flex min-w-0 flex-col p-5">
+      <CardHeader
+        title="Operations activity"
+        right={
+          <span className="text-[11px] font-medium text-slate-500">
+            {peak.date ? `Peak ${peak.count} · ${dayLabel(peak.date)}` : "By day"}
+          </span>
+        }
+      />
+
+      <div className="mb-3 grid grid-cols-3 divide-x divide-slate-100 rounded-lg border border-slate-200/70 bg-slate-50/50">
+        <div className="px-3 py-2.5 text-center">
+          <p className="text-xl font-bold tabular-nums text-slate-900">
+            {isLoading ? "..." : totalEvents}
+          </p>
+          <p className="text-[10px] font-medium uppercase tracking-wider text-slate-500">
+            Total events
+          </p>
+        </div>
+        <div className="px-3 py-2.5 text-center">
+          <p className="text-xl font-bold tabular-nums text-slate-900">
+            {isLoading ? "..." : tripsUpdated}
+          </p>
+          <p className="text-[10px] font-medium uppercase tracking-wider text-slate-500">
+            Trips updated
+          </p>
+        </div>
+        <div className="px-3 py-2.5 text-center">
+          <p className="text-xl font-bold tabular-nums text-slate-900">
+            {isLoading ? "..." : stopsCompleted}
+          </p>
+          <p className="text-[10px] font-medium uppercase tracking-wider text-slate-500">
+            Stops completed
+          </p>
+        </div>
+      </div>
+
+      {unavailable && (
+        <p className="mb-3 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          Some trip events could not be loaded.
+        </p>
+      )}
+
+      {isLoading ? (
+        <p className="py-10 text-center text-sm text-slate-500">
+          Loading event data...
+        </p>
+      ) : dailyCounts.length === 0 ? (
+        <p className="py-10 text-center text-sm text-slate-500">
+          No trip events recorded.
+        </p>
+      ) : (
+        <div className="flex flex-col">
+          <ResponsiveContainer width="100%" height={240}>
+            <LineChart
+              data={dailyCounts.map(({ date, count }) => ({
+                label: dayLabel(date),
+                count,
+              }))}
+              margin={{ top: 14, right: 10, left: 0, bottom: 0 }}
+            >
+              <CartesianGrid vertical={false} stroke="#e7ecf1" strokeDasharray="3 5" />
+              <XAxis dataKey="label" tickLine={false} axisLine={{ stroke: "#dce3ea" }} tick={{ fill: "#718096", fontSize: 10 }} />
+              <YAxis allowDecimals={false} width={38} tickLine={false} axisLine={false} tick={{ fill: "#718096", fontSize: 10 }} />
+              <Tooltip
+                formatter={(value) => [Number(value), "Events"]}
+                contentStyle={{ borderRadius: 8, borderColor: "#dce3ea", fontSize: 12 }}
+              />
+              <Line
+                type="monotone"
+                dataKey="count"
+                stroke="#2678b9"
+                strokeWidth={2.5}
+                dot={{ r: 4, fill: "#fff", stroke: "#2678b9", strokeWidth: 2 }}
+                activeDot={{ r: 6, fill: "#2678b9", stroke: "#fff", strokeWidth: 2 }}
+                isAnimationActive={false}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+          <p className="pt-1 text-center text-[10px] text-slate-400">
+            Events by date · last {dailyCounts.length} days
+          </p>
+        </div>
+      )}
+    </CardShell>
+  );
+}
+
+/* ================================================================ */
+/* ActivityTimelineCard                                               */
+/* ================================================================ */
+const timelineToneConfig = {
+  emerald: {
+    dot: "bg-emerald-500",
+    icon: CheckCircle2,
+  },
+  blue: {
+    dot: "bg-blue-500",
+    icon: Truck,
+  },
+  amber: {
+    dot: "bg-amber-500",
+    icon: Zap,
+  },
+} as const;
+
+export function ActivityTimelineCard({
+  events = [],
+  title = "Activity timeline",
+}: {
+  events?: {
+    id: string;
+    time: string;
+    message: string;
+    tone: keyof typeof toneHex;
+  }[];
+  title?: string;
+}) {
+  return (
+    <CardShell className="flex min-h-0 flex-col p-4">
+      <CardHeader
+        title={title}
+        right={<span className="text-[10px] font-medium text-slate-500">{events.length} events</span>}
+        className="mb-3"
+      />
+
+      <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+        {events.length === 0 ? (
+          <p className="py-8 text-center text-sm text-slate-400">No recent activity.</p>
+        ) : (
+          <ol className="space-y-2">
+            {events.map((entry) => {
+              const tone =
+                timelineToneConfig[entry.tone as keyof typeof timelineToneConfig] ??
+                timelineToneConfig.blue;
+              const Icon = tone.icon;
+              return (
+                <li
+                  key={entry.id}
+                  className="group relative grid min-w-0 grid-cols-[32px_minmax(0,1fr)] gap-2"
+                >
+                  <span className={`relative z-10 flex h-8 w-8 shrink-0 items-center justify-center self-start rounded-full border-2 border-white ring-1 ring-slate-200 ${tone.dot}`}>
+                    <Icon className="h-4 w-4 shrink-0 text-white" />
+                  </span>
+
+                  <div className="min-w-0 border-b border-slate-100 pb-2 last:border-0">
+                    <time className="block text-[10px] font-semibold tabular-nums text-slate-500">
+                      {entry.time}
+                    </time>
+                    <p className="mt-0.5 break-words text-[12px] leading-snug text-slate-700">
+                      {entry.message}
+                    </p>
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
+        )}
       </div>
     </CardShell>
   );
@@ -605,14 +1099,14 @@ export function StatusOverviewPanel({
 /* ================================================================ */
 export function ActivityPanel({ rows = [] }: { rows?: DispatchRecord[] }) {
   return (
-    <CardShell>
+    <CardShell className="p-5">
       <SectionHeader eyebrow="Activity" title="Recent trips" />
       <ul className="space-y-3">
         {rows.slice(0, 4).map((row) => (
           <li key={row.id} className="flex items-start gap-3">
-            <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-blue-500" />
+            <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-blue-500" />
             <div className="min-w-0 flex-1">
-              <p className="truncate text-xs font-semibold text-slate-800">
+              <p className="truncate text-[12px] font-semibold text-slate-800">
                 {row.id} · {row.route}
               </p>
               <p className="mt-0.5 text-[11px] text-slate-400">
@@ -633,7 +1127,7 @@ export function ActivityPanel({ rows = [] }: { rows?: DispatchRecord[] }) {
 }
 
 /* ================================================================ */
-/* FleetBoardPanel (clickable cards → focus map marker)              */
+/* FleetBoardPanel                                                   */
 /* ================================================================ */
 function FleetTripCard({
   trip,
@@ -646,74 +1140,114 @@ function FleetTripCard({
   onViewTrip?: (id: string) => void;
   selected?: boolean;
 }) {
-  const progress = trip.progressPct ?? 0;
-  const dotColor =
-    trip.status === "Completed"
-      ? "bg-blue-500"
-      : trip.status === "Delayed"
-        ? "bg-amber-500"
-        : "bg-emerald-500";
+  const progress = Math.min(Math.max(trip.progressPct ?? 0, 0), 100);
+  const statusTheme =
+    trip.status === "Delayed"
+      ? {
+          card: "border-amber-200 bg-amber-50/70",
+          route: "bg-amber-500",
+          icon: "text-amber-700",
+        }
+      : trip.status === "Completed"
+        ? {
+            card: "border-emerald-200 bg-emerald-50/70",
+            route: "bg-emerald-600",
+            icon: "text-emerald-700",
+          }
+        : trip.status === "In Progress"
+          ? {
+              card: "border-blue-200 bg-blue-50/70",
+              route: "bg-blue-600",
+              icon: "text-blue-700",
+            }
+          : {
+              card: "border-slate-200 bg-white",
+              route: "bg-slate-500",
+              icon: "text-slate-600",
+            };
 
   return (
     <div
-      className={`rounded-xl border bg-white transition ${
-        selected
-          ? "border-blue-400 ring-2 ring-blue-200"
-          : "border-slate-100 hover:border-slate-200 hover:shadow-sm"
-      }`}>
+      className={`relative min-h-[108px] rounded-xl border ${statusTheme.card} ${selected ? "ring-2 ring-blue-300" : ""}`}
+    >
       <button
         type="button"
         onClick={() => onSelect?.(trip.id)}
-        className="w-full cursor-pointer p-4 text-left">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-semibold text-slate-800">
-            {trip.displayId ?? trip.id} · ETA {trip.eta}
+        className="w-full cursor-pointer p-2 pb-1.5 text-left"
+      >
+        <div className="flex items-center justify-between gap-2">
+          <span className="min-w-0 truncate text-[12px] font-semibold text-slate-900">
+            {trip.displayId ?? trip.id}
+            <span className="mx-1.5 text-slate-300">•</span>
+            <span className="font-medium text-slate-500">ETA {trip.eta}</span>
           </span>
           <span
-            className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${statusPill(
+            className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-semibold ${statusPill(
               trip.status,
-            )}`}>
+            )}`}
+          >
+            <span
+              className={`h-1.5 w-1.5 rounded-full ${statusDot(trip.status)}`}
+            />
             {trip.statusText ?? trip.status}
           </span>
         </div>
 
-        <div className="mt-4 flex items-center gap-3 text-[11px] text-slate-500">
-          <div className="flex flex-col items-center">
-            <span className="text-base leading-none">🚚</span>
-            <span className="mt-1 max-w-[70px] truncate">
+        <div className="mt-1.5 flex items-center gap-1.5 rounded-lg border border-white/80 bg-white/75 p-1">
+          <span className="h-8 w-10 shrink-0 overflow-hidden rounded-md bg-white shadow-sm ring-1 ring-slate-200/70">
+            <img
+              src={fleetTruckPhoto}
+              alt="Alzhen fleet truck at origin"
+              className="h-full w-full object-cover object-center"
+            />
+          </span>
+
+          <div className="w-16 shrink-0 min-w-0">
+            <p className="truncate text-[10px] font-semibold text-slate-900" title={trip.origin ?? "Origin"}>
               {trip.origin ?? "Origin"}
-            </span>
+            </p>
+            <p className="text-[8px] text-slate-400">Origin</p>
           </div>
 
-          <div className="relative flex-1">
-            <div className="h-[3px] w-full rounded-full bg-slate-100" />
+          <div className="relative flex h-6 min-w-[28px] flex-1 items-center">
+            <div className="trip-route-track absolute inset-x-0 top-1/2 -translate-y-1/2" />
             <div
-              className="absolute left-0 top-0 h-[3px] rounded-full bg-slate-900"
+              className={`fleet-progress-line absolute left-0 top-1/2 h-[3px] -translate-y-1/2 rounded-full ${statusTheme.route}`}
               style={{ width: `${progress}%` }}
             />
             <span
-              className={`absolute -top-[5px] h-3 w-3 rounded-full border-2 border-white shadow ${dotColor}`}
-              style={{ left: `calc(${progress}% - 6px)` }}
-            />
-          </div>
-
-          <div className="flex flex-col items-center">
-            <span className="text-base leading-none">📍</span>
-            <span className="mt-1 max-w-[70px] truncate">
-              {trip.destination ?? "Destination"}
+              aria-hidden="true"
+              className={`fleet-progress-marker absolute top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 ${statusTheme.icon}`}
+              style={{ left: `${progress}%` }}
+            >
+              <span role="img" aria-label="Moving delivery truck" className="truck-emoji-right text-lg leading-none">
+                🚚
+              </span>
             </span>
           </div>
+
+          <div className="w-16 shrink-0 min-w-0 text-right">
+            <p className="truncate text-[10px] font-semibold text-slate-900" title={trip.destination ?? "Destination"}>
+              {trip.destination ?? "Destination"}
+            </p>
+            <p className="text-[8px] text-slate-400">Destination</p>
+          </div>
         </div>
+
+        <p className="mt-1 truncate pr-8 text-[9px] text-slate-500">
+          Driver: <span className="text-slate-500">{trip.driver}</span>
+        </p>
       </button>
-      <div className="flex justify-end border-t border-slate-100 px-3 py-1.5">
-        <button
-          type="button"
-          onClick={() => onViewTrip?.(trip.id)}
-          className="inline-flex min-h-8 items-center gap-1 rounded-md px-2 text-[11px] font-semibold text-cyan-800 hover:bg-cyan-50">
-          Trip details
-          <ArrowUpRight aria-hidden="true" className="h-3.5 w-3.5" />
-        </button>
-      </div>
+
+      <button
+        type="button"
+        onClick={() => onViewTrip?.(trip.id)}
+        aria-label={`View trip details for ${trip.displayId ?? trip.id}`}
+        title="View trip details"
+        className="absolute bottom-1.5 right-1.5 inline-flex h-7 w-7 items-center justify-center rounded-full border border-white bg-white/80 text-slate-600 hover:bg-white hover:text-slate-950"
+      >
+        <ArrowUpRight aria-hidden="true" className="h-3.5 w-3.5" />
+      </button>
     </div>
   );
 }
@@ -757,12 +1291,14 @@ export function FleetBoardPanel({
       count: rows.filter((trip) => trip.status === "Other").length,
     },
   ];
+
   const statusPriority: Record<DispatchRecord["status"], number> = {
     "In Progress": 0,
     Delayed: 1,
     Completed: 2,
     Other: 3,
   };
+
   const filteredRows = rows
     .filter(
       (trip) =>
@@ -772,35 +1308,23 @@ export function FleetBoardPanel({
     .sort((a, b) => statusPriority[a.status] - statusPriority[b.status]);
 
   return (
-    <CardShell className={`flex min-h-0 flex-col ${className}`}>
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
-            Fleet
-          </p>
-          <h2 className="mt-0.5 text-sm font-semibold text-slate-900">
-            Active fleet
-          </h2>
-        </div>
-        <button
-          type="button"
-          className="rounded-md p-1 text-slate-400 hover:bg-slate-100">
-          <MoreHorizontal className="h-4 w-4" />
-        </button>
-      </div>
+    <CardShell className={`flex min-h-0 flex-col p-4 ${className}`}>
+      <CardHeader title="Active fleet" right={<CardMenuButton />} className="mb-2" />
 
-      <div className="mt-4 flex gap-1 overflow-x-auto border-b border-slate-100 pb-2">
+      <div className="fleet-tabs flex gap-1 overflow-x-auto rounded-full bg-slate-100/80 p-1">
         {tabs.map((tab) => (
           <button
             key={tab.id}
             type="button"
             onClick={() => setActiveTab(tab.id)}
-            className={`shrink-0 rounded-md px-2.5 py-1.5 text-[10px] font-semibold transition ${
+            className={`shrink-0 rounded-full px-3 py-1.5 text-[11px] font-semibold transition ${
               activeTab === tab.id
-                ? "bg-slate-900 text-white"
-                : "text-slate-500 hover:bg-slate-100 hover:text-slate-800"
-            }`}>
-            {tab.label} <span className="ml-0.5 opacity-70">{tab.count}</span>
+                ? "bg-white text-slate-900 shadow-[0_1px_2px_rgba(15,23,42,0.1)]"
+                : "text-slate-500 hover:text-slate-800"
+            }`}
+          >
+            {tab.label}{" "}
+            <span className="ml-0.5 opacity-60">{tab.count}</span>
           </button>
         ))}
       </div>
@@ -823,22 +1347,25 @@ export function FleetBoardPanel({
 }
 
 /* ================================================================ */
+/* ================================================================ */
 /* RegionalPanel                                                     */
 /* ================================================================ */
 export function RegionalPanel({ data = [] }: { data?: RegionalSummary[] }) {
   return (
-    <CardShell>
+    <CardShell className="p-5">
       <SectionHeader eyebrow="Regions" title="Regional summary" />
-      <ul className="space-y-3">
+      <ul className="space-y-3.5">
         {data.map((item) => (
           <li key={item.region}>
-            <div className="flex items-center justify-between text-xs">
+            <div className="flex items-center justify-between text-[12px]">
               <span className="font-medium text-slate-600">{item.region}</span>
-              <span className="font-semibold text-slate-900">{item.value}</span>
+              <span className="font-semibold tabular-nums text-slate-900">
+                {item.value}
+              </span>
             </div>
-            <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+            <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
               <div
-                className="h-full rounded-full bg-blue-500"
+                className="h-full rounded-full bg-blue-500 transition-all duration-500"
                 style={{ width: `${item.share}%` }}
               />
             </div>
@@ -858,17 +1385,18 @@ export function IssuePanel({
   data?: { label: string; value: string }[];
 }) {
   return (
-    <CardShell>
+    <CardShell className="p-5">
       <SectionHeader eyebrow="Issues" title="Issue clusters" />
       <ul className="space-y-2">
         {data.map((item) => (
           <li
             key={item.label}
-            className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2">
-            <span className="text-xs font-medium text-slate-600">
+            className="flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50/50 px-3.5 py-2.5"
+          >
+            <span className="text-[12px] font-medium text-slate-600">
               {item.label}
             </span>
-            <span className="text-xs font-bold text-slate-900">
+            <span className="text-[12px] font-bold tabular-nums text-slate-900">
               {item.value}
             </span>
           </li>
@@ -883,14 +1411,19 @@ export function IssuePanel({
 /* ================================================================ */
 export function SnapshotPanel({ data = [] }: { data?: SnapshotRecord[] }) {
   return (
-    <CardShell>
+    <CardShell className="p-5">
       <SectionHeader eyebrow="Snapshots" title="Daily snapshots" />
-      <ul className="space-y-3">
+      <ul className="divide-y divide-slate-100">
         {data.map((item) => (
-          <li key={item.label} className="flex items-center justify-between">
-            <span className="text-xs text-slate-500">{item.label}</span>
+          <li
+            key={item.label}
+            className="flex items-center justify-between py-3 first:pt-0 last:pb-0"
+          >
+            <span className="text-[12px] text-slate-500">{item.label}</span>
             <div className="text-right">
-              <p className="text-sm font-bold text-slate-900">{item.value}</p>
+              <p className="text-sm font-bold tabular-nums text-slate-900">
+                {item.value}
+              </p>
               <p className="text-[10px] font-medium text-emerald-600">
                 {item.change}
               </p>
@@ -913,29 +1446,34 @@ export function IncidentPanel({
   title?: string;
 }) {
   return (
-    <CardShell>
+    <CardShell className="p-5">
       <SectionHeader eyebrow="Exceptions" title={title} action="View all" />
       <div className="overflow-x-auto">
         <table className="w-full min-w-[600px] text-left text-sm">
           <thead>
-            <tr className="border-b border-slate-200 text-[11px] uppercase tracking-wider text-slate-400">
-              <th className="pb-3 pr-4 font-medium">ID</th>
-              <th className="pb-3 pr-4 font-medium">Issue</th>
-              <th className="pb-3 pr-4 font-medium">Location</th>
-              <th className="pb-3 pr-4 font-medium">Severity</th>
-              <th className="pb-3 pr-4 font-medium">Age</th>
+            <tr className="border-b border-slate-200 text-[10px] uppercase tracking-wider text-slate-400">
+              <th className="pb-3 pr-4 font-semibold">ID</th>
+              <th className="pb-3 pr-4 font-semibold">Issue</th>
+              <th className="pb-3 pr-4 font-semibold">Location</th>
+              <th className="pb-3 pr-4 font-semibold">Severity</th>
+              <th className="pb-3 pr-4 font-semibold">Age</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((row) => (
               <tr
                 key={row.id}
-                className="border-b border-slate-100 last:border-none hover:bg-slate-50/50">
-                <td className="py-3 pr-4 font-medium text-slate-800">
+                className="border-b border-slate-100 last:border-none hover:bg-slate-50/50"
+              >
+                <td className="py-3 pr-4 text-[12px] font-medium text-slate-800">
                   {row.id}
                 </td>
-                <td className="py-3 pr-4 text-slate-600">{row.title}</td>
-                <td className="py-3 pr-4 text-slate-600">{row.location}</td>
+                <td className="py-3 pr-4 text-[12px] text-slate-600">
+                  {row.title}
+                </td>
+                <td className="py-3 pr-4 text-[12px] text-slate-600">
+                  {row.location}
+                </td>
                 <td className="py-3 pr-4">
                   <span
                     className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${statusPill(
@@ -944,7 +1482,9 @@ export function IncidentPanel({
                     {row.severity}
                   </span>
                 </td>
-                <td className="py-3 pr-4 text-slate-500">{row.age}</td>
+                <td className="py-3 pr-4 text-[12px] text-slate-500">
+                  {row.age}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -965,32 +1505,37 @@ export function DispatchTable({
   title?: string;
 }) {
   return (
-    <CardShell>
+    <CardShell className="p-5">
       <SectionHeader eyebrow="Trips" title={title} action="Export" />
       <div className="overflow-x-auto">
         <table className="w-full min-w-[720px] text-left text-sm">
           <thead>
-            <tr className="border-b border-slate-200 text-[11px] uppercase tracking-wider text-slate-400">
-              <th className="pb-3 pr-4 font-medium">Trip ID</th>
-              <th className="pb-3 pr-4 font-medium">Route</th>
-              <th className="pb-3 pr-4 font-medium">Type</th>
-              <th className="pb-3 pr-4 font-medium">Status</th>
-              <th className="pb-3 pr-4 font-medium">ETA</th>
-              <th className="pb-3 pr-4 font-medium">Hub</th>
-              <th className="pb-3 pr-4 font-medium">Driver</th>
-              <th className="pb-3 pr-4 font-medium">Amount</th>
+            <tr className="border-b border-slate-200 text-[10px] uppercase tracking-wider text-slate-400">
+              <th className="pb-3 pr-4 font-semibold">Trip ID</th>
+              <th className="pb-3 pr-4 font-semibold">Route</th>
+              <th className="pb-3 pr-4 font-semibold">Type</th>
+              <th className="pb-3 pr-4 font-semibold">Status</th>
+              <th className="pb-3 pr-4 font-semibold">ETA</th>
+              <th className="pb-3 pr-4 font-semibold">Hub</th>
+              <th className="pb-3 pr-4 font-semibold">Driver</th>
+              <th className="pb-3 pr-4 font-semibold">Amount</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((row) => (
               <tr
                 key={row.id}
-                className="border-b border-slate-100 last:border-none hover:bg-slate-50/50">
-                <td className="py-3 pr-4 font-medium text-slate-800">
+                className="border-b border-slate-100 last:border-none hover:bg-slate-50/50"
+              >
+                <td className="py-3 pr-4 text-[12px] font-medium text-slate-800">
                   {row.id}
                 </td>
-                <td className="py-3 pr-4 text-slate-600">{row.route}</td>
-                <td className="py-3 pr-4 text-slate-600">{row.tripType}</td>
+                <td className="py-3 pr-4 text-[12px] text-slate-600">
+                  {row.route}
+                </td>
+                <td className="py-3 pr-4 text-[12px] text-slate-600">
+                  {row.tripType}
+                </td>
                 <td className="py-3 pr-4">
                   <span
                     className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${statusPill(
@@ -999,10 +1544,16 @@ export function DispatchTable({
                     {row.status}
                   </span>
                 </td>
-                <td className="py-3 pr-4 text-slate-600">{row.eta}</td>
-                <td className="py-3 pr-4 text-slate-600">{row.hub}</td>
-                <td className="py-3 pr-4 text-slate-600">{row.driver}</td>
-                <td className="py-3 pr-4 font-medium text-slate-800">
+                <td className="py-3 pr-4 text-[12px] text-slate-600">
+                  {row.eta}
+                </td>
+                <td className="py-3 pr-4 text-[12px] text-slate-600">
+                  {row.hub}
+                </td>
+                <td className="py-3 pr-4 text-[12px] text-slate-600">
+                  {row.driver}
+                </td>
+                <td className="py-3 pr-4 text-[12px] font-medium tabular-nums text-slate-800">
                   {row.amount}
                 </td>
               </tr>
@@ -1021,10 +1572,15 @@ export function TruckGridView({ rows = [] }: { rows?: DispatchRecord[] }) {
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
       {rows.map((row) => (
-        <CardShell key={row.id} className="flex flex-col">
+        <CardShell
+          key={row.id}
+          className="flex flex-col p-5"
+        >
           <div className="flex items-start justify-between">
             <div>
-              <p className="text-xs font-semibold text-slate-800">{row.id}</p>
+              <p className="text-[12px] font-semibold text-slate-800">
+                {row.id}
+              </p>
               <p className="mt-0.5 text-[11px] text-slate-500">{row.route}</p>
             </div>
             <button
@@ -1045,7 +1601,7 @@ export function TruckGridView({ rows = [] }: { rows?: DispatchRecord[] }) {
               )}`}>
               {row.status}
             </span>
-            <span className="text-xs font-semibold text-slate-800">
+            <span className="text-[12px] font-semibold tabular-nums text-slate-800">
               {row.amount}
             </span>
           </div>
@@ -1060,12 +1616,15 @@ export function TruckGridView({ rows = [] }: { rows?: DispatchRecord[] }) {
 /* ================================================================ */
 function SparkRow({ bars, color }: { bars: number[]; color: string }) {
   return (
-    <div className="flex h-10 items-end gap-1">
+    <div className="flex h-12 items-end gap-1">
       {bars.map((bar, index) => (
         <div
           key={index}
-          className="spark-bar w-2 rounded-t"
-          style={{ height: `${bar}%`, backgroundColor: color, opacity: 0.85 }}
+          className="spark-bar min-w-0 flex-1 rounded-t"
+          style={{
+            height: `${bar}%`,
+            background: `linear-gradient(180deg, ${color}99 0%, ${color}1f 100%)`,
+          }}
         />
       ))}
     </div>
@@ -1093,63 +1652,60 @@ export function LoadingStatusPanel({
     weightBars: [30, 48, 42, 55, 60, 52, 68, 62],
   };
 
+  const cells = [
+    {
+      value: String(s.trucksLoading).padStart(2, "0"),
+      label: "Trucks being loaded",
+      bars: s.volumeBars,
+      color: "#10b981",
+    },
+    {
+      value: `${s.avgLoadPct}%`,
+      label: "Average load",
+      bars: s.volumeBars,
+      color: "#3b82f6",
+    },
+    {
+      value: s.totalVolume,
+      label: "Total volume today",
+      bars: s.weightBars,
+      color: "#10b981",
+    },
+    {
+      value: s.totalWeight,
+      label: "Total weight loaded",
+      bars: s.weightBars,
+      color: "#3b82f6",
+    },
+  ];
+
   return (
-    <CardShell>
-      <div className="mb-4 flex items-center justify-between">
-        <div>
-          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
-            Loading
-          </p>
-          <h2 className="mt-0.5 text-sm font-semibold text-slate-900">
-            Current loading status
-          </h2>
-        </div>
-        <button
-          type="button"
-          className="rounded-md p-1 text-slate-400 hover:bg-slate-100">
-          <MoreHorizontal className="h-4 w-4" />
-        </button>
-      </div>
+    <CardShell className="p-5">
+      <CardHeader title="Current loading status" right={<CardMenuButton />} />
 
-      <div className="grid grid-cols-2 gap-5">
-        <div>
-          <p className="text-2xl font-bold text-slate-900">
-            {String(s.trucksLoading).padStart(2, "0")}
-          </p>
-          <p className="text-[11px] text-slate-500">Trucks being loaded</p>
-          <div className="mt-3">
-            <SparkRow bars={s.volumeBars} color="#10b981" />
+      <div className="grid grid-cols-2 overflow-hidden rounded-xl border border-slate-200/80">
+        {cells.map((cell, i) => (
+          <div
+            key={cell.label}
+            className={`p-4 ${i % 2 === 0 ? "border-r border-slate-200/80" : ""} ${
+              i < 2 ? "border-b border-slate-200/80" : ""
+            }`}
+          >
+            <p className="text-2xl font-semibold tabular-nums tracking-tight text-slate-900">
+              {cell.value}
+            </p>
+            <p className="text-[11px] text-slate-500">{cell.label}</p>
+            <div className="mt-3">
+              <SparkRow bars={cell.bars} color={cell.color} />
+            </div>
           </div>
-        </div>
-
-        <div>
-          <p className="text-2xl font-bold text-slate-900">{s.avgLoadPct}%</p>
-          <p className="text-[11px] text-slate-500">Average load</p>
-          <div className="mt-3">
-            <SparkRow bars={s.volumeBars} color="#3b82f6" />
-          </div>
-        </div>
-
-        <div>
-          <p className="text-2xl font-bold text-slate-900">{s.totalVolume}</p>
-          <p className="text-[11px] text-slate-500">Total volume today</p>
-          <div className="mt-3">
-            <SparkRow bars={s.weightBars} color="#10b981" />
-          </div>
-        </div>
-
-        <div>
-          <p className="text-2xl font-bold text-slate-900">{s.totalWeight}</p>
-          <p className="text-[11px] text-slate-500">Total weight loaded</p>
-          <div className="mt-3">
-            <SparkRow bars={s.weightBars} color="#3b82f6" />
-          </div>
-        </div>
+        ))}
       </div>
     </CardShell>
   );
 }
 
+/* ================================================================ */
 /* ================================================================ */
 /* TripStatusDonut                                                   */
 /* ================================================================ */
@@ -1163,8 +1719,8 @@ export function TripStatusDonut({
   centerSub?: string;
 }) {
   const total = slices.reduce((sum, s) => sum + s.value, 0) || 1;
-  const size = 220;
-  const stroke = 22;
+  const size = 200;
+  const stroke = 12;
   const radius = (size - stroke) / 2;
   const cx = size / 2;
   const cy = size / 2;
@@ -1172,9 +1728,9 @@ export function TripStatusDonut({
 
   const arcs = slices.reduce<{
     total: number;
-    arcs: (typeof slices)[number][] extends never[]
-      ? never[]
-      : Array<(typeof slices)[number] & { dash: number; offset: number }>;
+    arcs: Array<
+      (typeof slices)[number] & { dash: number; offset: number }
+    >;
   }>(
     (accumulator, slice) => {
       const dash = (slice.value / total) * circumference;
@@ -1190,22 +1746,8 @@ export function TripStatusDonut({
   ).arcs;
 
   return (
-    <CardShell>
-      <div className="mb-4 flex items-center justify-between">
-        <div>
-          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
-            Orders
-          </p>
-          <h2 className="mt-0.5 text-sm font-semibold text-slate-900">
-            Trip status
-          </h2>
-        </div>
-        <button
-          type="button"
-          className="rounded-md p-1 text-slate-400 hover:bg-slate-100">
-          <MoreHorizontal className="h-4 w-4" />
-        </button>
-      </div>
+    <CardShell className="p-5">
+      <CardHeader title="Trip status" right={<CardMenuButton />} />
 
       <div className="flex flex-col items-center">
         <div className="relative">
@@ -1215,7 +1757,7 @@ export function TripStatusDonut({
               cy={cy}
               r={radius}
               fill="none"
-              stroke="#eef2f7"
+              stroke="#f1f5f9"
               strokeWidth={stroke}
             />
             {arcs.map((arc, i) => (
@@ -1234,22 +1776,26 @@ export function TripStatusDonut({
             ))}
           </svg>
           <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <p className="text-2xl font-bold text-slate-900">{centerLabel}</p>
+            <p className="text-3xl font-semibold tabular-nums tracking-tight text-slate-900">
+              {centerLabel}
+            </p>
             <p className="text-[11px] text-slate-400">{centerSub}</p>
           </div>
         </div>
 
-        <div className="mt-5 grid w-full grid-cols-2 gap-2 text-[11px]">
+        <div className="mt-5 flex w-full flex-wrap justify-center gap-x-7 gap-y-3 text-[11px]">
           {slices.map((s) => (
-            <div key={s.label} className="flex items-center gap-2">
-              <span
-                className="h-2 w-2 rounded-full"
-                style={{ backgroundColor: s.color }}
-              />
-              <span className="text-slate-600">{s.label}</span>
-              <span className="ml-auto font-semibold text-slate-800">
-                {Math.round((s.value / total) * 100)}%
-              </span>
+            <div key={s.label} className="min-w-[72px]">
+              <p className="flex items-center gap-1.5 font-medium text-slate-700">
+                <span
+                  className="h-2 w-2 rounded-full"
+                  style={{ backgroundColor: s.color }}
+                />
+                {s.label}
+              </p>
+              <p className="mt-0.5 pl-3.5 tabular-nums text-slate-400">
+                {Math.round((s.value / total) * 100)}% • {s.value}
+              </p>
             </div>
           ))}
         </div>
@@ -1259,7 +1805,8 @@ export function TripStatusDonut({
 }
 
 /* ================================================================ */
-/* ActivityTimeline (scrollable, taller)                             */
+/* ================================================================ */
+/* ActivityTimeline                                                  */
 /* ================================================================ */
 export function ActivityTimeline({
   events = [],
@@ -1274,24 +1821,17 @@ export function ActivityTimeline({
   height?: number;
 }) {
   return (
-    <CardShell className="flex flex-col">
-      <div className="mb-4 flex items-center justify-between">
-        <div>
-          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
-            Trip events
-          </p>
-          <h2 className="mt-0.5 text-sm font-semibold text-slate-900">
-            Activity timeline
-          </h2>
-        </div>
-        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-semibold text-slate-600">
-          Latest
-        </span>
-      </div>
+    <CardShell className="flex flex-col p-5">
+      <CardHeader
+        title="Activity timeline"
+        right={
+          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-semibold text-slate-600">
+            Latest
+          </span>
+        }
+      />
 
-      <div
-        className="flex-1 overflow-y-auto pr-1"
-        style={{ maxHeight: height }}>
+      <div className="flex-1 overflow-y-auto pr-1" style={{ maxHeight: height }}>
         <ol className="relative ml-2 border-l border-slate-200 pl-5">
           {events.map((e) => (
             <li key={e.id} className="relative mb-5 last:mb-0">
@@ -1305,7 +1845,7 @@ export function ActivityTimeline({
               <p className="text-[11px] font-semibold text-slate-400">
                 {e.time}
               </p>
-              <p className="mt-0.5 text-xs text-slate-700">{e.message}</p>
+              <p className="mt-0.5 text-[12px] text-slate-700">{e.message}</p>
             </li>
           ))}
         </ol>
@@ -1319,17 +1859,18 @@ export function ActivityTimeline({
 /* ================================================================ */
 export function TripIntakePanel() {
   return (
-    <CardShell>
+    <CardShell className="p-5">
       <SectionHeader eyebrow="New trip" title="Trip intake" />
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {["Origin", "Destination", "Truck type", "Scheduled date"].map(
           (label) => (
             <label
               key={label}
-              className="block text-xs font-medium text-slate-600">
+              className="block text-[12px] font-medium text-slate-600"
+            >
               {label}
               <input
-                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs outline-none focus:border-slate-900"
+                className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-[12px] outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10"
                 placeholder={`Enter ${label.toLowerCase()}`}
               />
             </label>
@@ -1338,7 +1879,8 @@ export function TripIntakePanel() {
       </div>
       <button
         type="button"
-        className="mt-4 rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-700">
+        className="mt-4 rounded-lg bg-slate-900 px-4 py-2 text-[12px] font-semibold text-white transition hover:bg-slate-800"
+      >
         Create trip
       </button>
     </CardShell>
@@ -1347,15 +1889,18 @@ export function TripIntakePanel() {
 
 export function PodWorkflowPanel({ rows = [] }: { rows?: DispatchRecord[] }) {
   return (
-    <CardShell>
+    <CardShell className="p-5">
       <SectionHeader eyebrow="POD" title="Proof of delivery workflow" />
       <ul className="space-y-2">
         {rows.map((row) => (
           <li
             key={row.id}
-            className="flex items-center justify-between rounded-lg border border-slate-100 px-3 py-2">
+            className="flex items-center justify-between rounded-xl border border-slate-100 px-3.5 py-2.5"
+          >
             <div>
-              <p className="text-xs font-semibold text-slate-800">{row.id}</p>
+              <p className="text-[12px] font-semibold text-slate-800">
+                {row.id}
+              </p>
               <p className="text-[11px] text-slate-500">{row.route}</p>
             </div>
             <span
@@ -1381,14 +1926,17 @@ export function MonitoringPanel({
 }) {
   return (
     <div className="space-y-6">
-      <CardShell>
+      <CardShell className="p-5">
         <SectionHeader eyebrow="Live" title="Delivery monitoring" />
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {rows.map((row) => (
             <div
               key={row.id}
-              className="rounded-xl border border-slate-100 bg-slate-50/60 p-3">
-              <p className="text-xs font-semibold text-slate-800">{row.id}</p>
+              className="rounded-xl border border-slate-200/80 bg-slate-50/50 p-3.5"
+            >
+              <p className="text-[12px] font-semibold text-slate-800">
+                {row.id}
+              </p>
               <p className="mt-1 text-[11px] text-slate-500">{row.route}</p>
               <span
                 className={`mt-2 inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold ${statusPill(
@@ -1407,9 +1955,9 @@ export function MonitoringPanel({
 
 export function StoreCallingPanel() {
   return (
-    <CardShell>
+    <CardShell className="p-5">
       <SectionHeader eyebrow="Store calling" title="Delivery call list" />
-      <p className="text-xs text-slate-500">
+      <p className="text-[12px] text-slate-500">
         Store calling workflow will appear here.
       </p>
     </CardShell>
@@ -1418,9 +1966,9 @@ export function StoreCallingPanel() {
 
 export function ReportsPanel() {
   return (
-    <CardShell>
+    <CardShell className="p-5">
       <SectionHeader eyebrow="Reports" title="Export center" />
-      <p className="text-xs text-slate-500">
+      <p className="text-[12px] text-slate-500">
         Report generation tools will appear here.
       </p>
     </CardShell>
@@ -1429,9 +1977,9 @@ export function ReportsPanel() {
 
 export function ChecklistPanel() {
   return (
-    <CardShell>
+    <CardShell className="p-5">
       <SectionHeader eyebrow="Data controls" title="Compliance checklist" />
-      <ul className="space-y-2 text-xs text-slate-600">
+      <ul className="space-y-2 text-[12px] text-slate-600">
         <li>• POD completeness audit</li>
         <li>• Trip record retention</li>
         <li>• Document access review</li>
@@ -1442,9 +1990,9 @@ export function ChecklistPanel() {
 
 export function SettingsPanel() {
   return (
-    <CardShell>
+    <CardShell className="p-5">
       <SectionHeader eyebrow="Settings" title="Dashboard preferences" />
-      <p className="text-xs text-slate-500">
+      <p className="text-[12px] text-slate-500">
         Workspace and integration settings will appear here.
       </p>
     </CardShell>

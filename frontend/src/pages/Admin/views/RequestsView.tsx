@@ -48,10 +48,10 @@ function RequestCard({
     <button
       type="button"
       onClick={onClick}
-      className={`w-full cursor-pointer rounded-xl border bg-white p-3.5 text-left transition ${
+      className={`w-full cursor-pointer rounded-xl border bg-white p-3.5 text-left ${
         selected
           ? "border-blue-400 ring-2 ring-blue-200"
-          : "border-slate-200 hover:border-slate-300 hover:shadow-sm"
+          : "border-slate-200"
       }`}
     >
       <div className="flex items-start justify-between gap-2">

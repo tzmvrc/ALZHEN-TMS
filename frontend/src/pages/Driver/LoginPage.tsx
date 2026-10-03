@@ -83,7 +83,7 @@ export default function DriverLoginPage() {
   };
 
   return (
-    <div className="w-full bg-[#f7faff] sm:h-dvh sm:p-4">
+    <div className="w-full bg-[#f2f4f5] sm:h-dvh sm:p-4">
       {/* ───────── Full-viewport dotted panel ───────── */}
       <div className="dotted-surface relative flex min-h-dvh w-full flex-col border border-[#dbe2e9] px-4 pb-4 pt-4 sm:h-full sm:min-h-0 sm:rounded-2xl sm:px-10 sm:py-8">
         <div className="relative z-10 mx-auto flex w-full max-w-sm flex-col pt-1 sm:pt-0">
@@ -92,7 +92,7 @@ export default function DriverLoginPage() {
             {/* Logo tile */}
             <div className="relative mx-auto mb-2 h-[82px] w-[82px] sm:mb-3 sm:h-[100px] sm:w-[100px]">
               {/* soft glow — locked to same size as tile */}
-              <div className="pointer-events-none absolute inset-0 -z-10 rounded-full bg-blue-500/10 blur-xl" />
+              <div className="pointer-events-none absolute inset-0 -z-10 rounded-full bg-amber-400/15 blur-xl" />
 
               {/* circular white tile — flex centers the image both axes */}
               <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-full border border-slate-200 bg-white shadow-[0_4px_16px_rgba(15,23,42,0.06)]">

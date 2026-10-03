@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Activity, CheckCircle2, RefreshCw, Truck } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import type { DispatchRecord } from "../../../types/dashboard";
 import { useAuth } from "../../../context/AuthContext";
@@ -18,10 +18,18 @@ import {
   type ReportRow,
 } from "../../../services/report.service";
 import {
-  ActivityTimeline,
-  FleetBoardPanel,
-  StatusOverviewPanel,
+  FleetMovementPanel,
+  OperationsActivityPanel,
 } from "../../../components/admin/DashboardPrimitives";
+import {
+  ActivityFeedCard,
+  FleetListCard,
+  GreetingHeader,
+  RingStatCard,
+  SpotlightTrips,
+  TripShortcutRow,
+} from "../../../components/admin/OverviewCards";
+import { toneHex } from "../../../components/admin/dashboardStyles";
 
 type OverviewSnapshot = {
   recent: TripPage["rows"];
@@ -33,6 +41,7 @@ type OverviewSnapshot = {
   total: number;
   inProgress: number;
   completed: number;
+  fetchedAt: number;
 };
 
 function formatDate(value: unknown): string {
@@ -51,6 +60,83 @@ function localDateTime(value: string): string {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
 }
 
+function eventCoordinates(event: TripEvent): [number, number] | null {
+  const latitude = Number(event.latitude);
+  const longitude = Number(event.longitude);
+  if (
+    event.latitude === null ||
+    event.latitude === undefined ||
+    event.longitude === null ||
+    event.longitude === undefined ||
+    !Number.isFinite(latitude) ||
+    !Number.isFinite(longitude) ||
+    latitude < -90 ||
+    latitude > 90 ||
+    longitude < -180 ||
+    longitude > 180
+  ) {
+    return null;
+  }
+  return [latitude, longitude];
+}
+
+function kilometersBetween(
+  first: [number, number],
+  second: [number, number],
+): number {
+  const radians = Math.PI / 180;
+  const latitudeDelta = (second[0] - first[0]) * radians;
+  const longitudeDelta = (second[1] - first[1]) * radians;
+  const haversine =
+    Math.sin(latitudeDelta / 2) ** 2 +
+    Math.cos(first[0] * radians) *
+      Math.cos(second[0] * radians) *
+      Math.sin(longitudeDelta / 2) ** 2;
+  return 6371 * 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
+}
+
+function fleetMovementSeries(tracks: TripEventTrack[]) {
+  const dailyDistance = new Map<string, number>();
+  for (const track of tracks) {
+    const gpsPoints = track.events
+      .flatMap((event) => {
+        const point = eventCoordinates(event);
+        return point ? [{ event, point }] : [];
+      })
+      .sort(
+        (first, second) =>
+          Date.parse(first.event.event_time) - Date.parse(second.event.event_time),
+      );
+
+    for (let index = 1; index < gpsPoints.length; index += 1) {
+      const previousPoint = gpsPoints[index - 1];
+      const currentPoint = gpsPoints[index];
+      const day = currentPoint.event.event_time.slice(0, 10);
+      if (!day || !Number.isFinite(Date.parse(currentPoint.event.event_time))) continue;
+      dailyDistance.set(
+        day,
+        (dailyDistance.get(day) ?? 0) +
+          kilometersBetween(previousPoint.point, currentPoint.point),
+      );
+    }
+  }
+
+  let cumulativeDistance = 0;
+  return [...dailyDistance.entries()]
+    .sort(([firstDate], [secondDate]) => firstDate.localeCompare(secondDate))
+    .slice(-7)
+    .map(([date, distance]) => {
+      cumulativeDistance += distance;
+      return {
+        label: new Date(`${date}T12:00:00`).toLocaleDateString(undefined, {
+          month: "short",
+          day: "numeric",
+        }),
+        distanceKm: Math.round(cumulativeDistance * 10) / 10,
+      };
+    });
+}
+
 function textValue(value: unknown, fallback = ""): string {
   return typeof value === "string" || typeof value === "number"
     ? String(value)
@@ -63,6 +149,18 @@ function fleetStatus(value: unknown): DispatchRecord["status"] {
   if (/DELAY/.test(status)) return "Delayed";
   if (/IN PROGRESS|ACTIVE/.test(status)) return "In Progress";
   return "Other";
+}
+
+function tripProgress(events: TripEvent[], status: unknown): number {
+  if (fleetStatus(status) === "Completed") return 100;
+  return events.reduce((progress, event) => {
+    const type = event.event_type.toUpperCase();
+    if (/DELIVER|COMPLET|UNLOAD.*FINISH/.test(type)) return Math.max(progress, 92);
+    if (/STORE|ARRIV|UNLOAD/.test(type)) return Math.max(progress, 72);
+    if (/DEPART|TRANSIT|LOAD|PICKUP/.test(type)) return Math.max(progress, 48);
+    if (/ASSIGN|DISPATCH|CREATE/.test(type)) return Math.max(progress, 22);
+    return progress;
+  }, 0);
 }
 
 function toFleetRow(
@@ -117,7 +215,7 @@ function toFleetRow(
         : gpsEvents.length > 0
           ? "GPS recorded"
           : "GPS not recorded",
-    progressPct: fleetStatus(rawStatus) === "Completed" ? 100 : 0,
+    progressPct: tripProgress(events, rawStatus),
   };
 }
 
@@ -128,7 +226,7 @@ export default function OverviewView({
   onOpenTrip?: (tripId: string) => void;
   onMetricNavigate?: (sectionId: string) => void;
 }) {
-  const { accessToken, refreshSession } = useAuth();
+  const { accessToken, refreshSession, profile } = useAuth();
   const navigate = useNavigate();
   const [snapshot, setSnapshot] = useState<OverviewSnapshot | null>(null);
   const [loadedKey, setLoadedKey] = useState<string | null>(null);
@@ -217,6 +315,7 @@ export default function OverviewView({
           total: allTrips.pagination.total,
           inProgress: inProgress.pagination.total,
           completed: completed.pagination.total,
+          fetchedAt: Date.now(),
         });
       } catch (cause) {
         if (!active) return;
@@ -271,29 +370,29 @@ export default function OverviewView({
     );
   }
 
-  const metrics = [
-    {
-      label: "Total trips",
-      value: snapshot?.total ?? 0,
-      icon: Truck,
-      sectionId: "dispatches",
-      tint: "slate",
-    },
-    {
-      label: "In progress",
-      value: snapshot?.inProgress ?? 0,
-      icon: Activity,
-      sectionId: "monitoring",
-      tint: "cyan",
-    },
-    {
-      label: "Completed",
-      value: snapshot?.completed ?? 0,
-      icon: CheckCircle2,
-      sectionId: "combined",
-      tint: "emerald",
-    },
-  ];
+  const totalTrips = snapshot?.total ?? 0;
+  const shareOfTotal = (count: number) =>
+    !isLoading && totalTrips > 0
+      ? `${Math.round((count / totalTrips) * 100)}%`
+      : undefined;
+  const display = (count: number) =>
+    isLoading ? "..." : count.toLocaleString();
+  const inProgressShare = shareOfTotal(snapshot?.inProgress ?? 0);
+  const completedShare = shareOfTotal(snapshot?.completed ?? 0);
+  const shareValue = (count: number) =>
+    !isLoading && totalTrips > 0 ? Math.round((count / totalTrips) * 100) : 0;
+  const profileName = (
+    profile as { full_name?: string | null; name?: string | null } | null
+  );
+  const greetingName =
+    (profileName?.full_name ?? profileName?.name ?? "").trim().split(/\s+/)[0] ||
+    "Admin";
+  const updatedLabel = snapshot
+    ? new Date(snapshot.fetchedAt).toLocaleTimeString([], {
+        hour: "numeric",
+        minute: "2-digit",
+      })
+    : undefined;
   const dailyEventCounts = Object.entries(
     (snapshot?.events ?? []).reduce<Record<string, number>>((counts, event) => {
       const eventDate = event.event_time.slice(0, 10);
@@ -304,17 +403,22 @@ export default function OverviewView({
     .map(([date, count]) => ({ date, count }))
     .sort((a, b) => a.date.localeCompare(b.date))
     .slice(-7);
-  const maxDailyEventCount = Math.max(
-    ...dailyEventCounts.map((item) => item.count),
-    1,
-  );
-  const eventTypeCount = new Set(
-    (snapshot?.events ?? []).map((event) => event.event_type),
+  const tripsUpdated = new Set(
+    (snapshot?.events ?? []).map((event) => event.trip_id),
+  ).size;
+  const stopsCompleted = new Set(
+    (snapshot?.events ?? [])
+      .filter((event) =>
+        /STORE_ARRIVAL|STOP.*(COMPLET|DELIVER|ARRIV)|(COMPLET|DELIVER).*STOP/i.test(
+          event.event_type,
+        ),
+      )
+      .map((event) => `${event.trip_id}:${event.trip_stop_id ?? event.id}`),
   ).size;
   const recentEvents = (snapshot?.events ?? [])
     .slice()
     .sort((a, b) => Date.parse(b.event_time) - Date.parse(a.event_time))
-    .slice(0, 8);
+    .slice(0, 10);
   const eventsByTrip = new Map<string, TripEvent[]>();
   for (const track of snapshot?.tracks ?? []) {
     eventsByTrip.set(String(track.trip.id), track.events);
@@ -326,6 +430,14 @@ export default function OverviewView({
       snapshot?.bookingRows ?? [],
     ),
   );
+  const movementData = fleetMovementSeries(snapshot?.tracks ?? []);
+  const activeGpsRoutes = (snapshot?.tracks ?? []).filter((track) => {
+    const status = fleetStatus(track.trip.status);
+    return (
+      status === "In Progress" &&
+      track.events.some((event) => eventCoordinates(event) !== null)
+    );
+  }).length;
   const timelineEvents = recentEvents.map((event) => ({
     id: `${event.trip_id}-${event.id}`,
     time: localDateTime(event.event_time),
@@ -336,136 +448,105 @@ export default function OverviewView({
         ? ("blue" as const)
         : ("amber" as const),
   }));
+
   return (
-    <div className="space-y-3">
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        {metrics.map(({ label, value, icon: Icon, sectionId, tint }) => {
-          const accentClass =
-            {
-              slate: "bg-slate-100 text-slate-800",
-              cyan: "bg-cyan-100 text-cyan-700",
-              emerald: "bg-emerald-100 text-emerald-700",
-            }[tint] ?? "bg-slate-100 text-slate-700";
-
-          return (
-            <button
-              key={label}
-              type="button"
-              onClick={() => onMetricNavigate?.(sectionId)}
-              className="group relative flex min-h-20 items-center justify-between overflow-hidden rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-left shadow-sm transition-colors hover:border-slate-300 hover:shadow-md">
-              <div className="relative z-10">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">
-                  {label}
-                </p>
-                <p className="mt-1 text-2xl font-semibold tabular-nums text-slate-900">
-                  {isLoading ? "..." : value.toLocaleString()}
-                </p>
-              </div>
-              <span
-                className={`pointer-events-none absolute -right-2 top-1/2 flex h-14 w-14 -translate-y-1/2 items-center justify-center rounded-full opacity-20 ${accentClass}`}>
-                <Icon aria-hidden="true" className="h-8 w-8" />
-              </span>
-            </button>
-          );
-        })}
-      </div>
-
-      <div className="grid gap-3 xl:grid-cols-[1.6fr_1fr] xl:grid-rows-[360px]">
-        <LiveTripMap
-          tracks={snapshot?.tracks ?? []}
-          focusTripId={focusedTripId}
-          eventLoadError={snapshot?.eventsUnavailable ?? false}
-          height={340}
+    <div className="space-y-4">
+      {/* Greeting + trip shortcuts */}
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.5fr)]">
+        <GreetingHeader
+          name={greetingName}
+          updatedLabel={updatedLabel}
+          onRefresh={() => setReloadCount((count) => count + 1)}
         />
-        <FleetBoardPanel
+        <TripShortcutRow
           rows={fleetRows}
           selectedTripId={focusedTripId}
           onSelectTrip={(tripId) =>
             setFocusedTripId((current) => (current === tripId ? null : tripId))
           }
-          onViewTrip={onOpenTrip}
-          className="h-[360px] min-h-0"
         />
       </div>
-      {snapshot?.bookingUnavailable && (
-        <p className="-mt-3 text-xs text-amber-800">
-          Warehouse and store labels are unavailable; trip and GPS data remain
-          visible.
-        </p>
-      )}
 
-      <div className="grid gap-3 xl:grid-cols-2">
-        <StatusOverviewPanel rows={fleetRows} />
-        <section className="rounded-lg border border-slate-200 bg-white p-3">
-          <header className="mb-3 flex items-start justify-between gap-4">
-            <div>
-              <h2 className="text-sm font-semibold text-slate-900">
-                Event volume by date
-              </h2>
-              <p className="mt-0.5 text-xs text-slate-500">
-                Latest recorded events for recent trips
-              </p>
-            </div>
-            <div className="text-right">
-              <p className="text-lg font-semibold tabular-nums text-slate-900">
-                {isLoading ? "..." : (snapshot?.events.length ?? 0)}
-              </p>
-              <p className="text-[10px] text-slate-500">
-                {eventTypeCount} event types
-              </p>
-            </div>
-          </header>
-          {snapshot?.eventsUnavailable && (
-            <p className="mb-3 text-xs text-amber-800">
-              Some trip events could not be loaded.
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.7fr)_minmax(320px,1fr)]">
+        {/* Main column */}
+        <div className="min-w-0 space-y-4">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <RingStatCard
+              label="All trips"
+              title="Total trips"
+              value={display(totalTrips)}
+              percent={!isLoading && totalTrips > 0 ? 100 : 0}
+              color={toneHex.navy}
+              caption="All recorded trips"
+              actionLabel="Check"
+              onAction={() => onMetricNavigate?.("dispatches")}
+            />
+            <RingStatCard
+              label="On the road"
+              title="In transit"
+              value={display(snapshot?.inProgress ?? 0)}
+              percent={shareValue(snapshot?.inProgress ?? 0)}
+              color={toneHex.brand}
+              caption={inProgressShare ? `${inProgressShare} of all trips` : "On the road"}
+              actionLabel="Check"
+              onAction={() => onMetricNavigate?.("monitoring")}
+            />
+            <RingStatCard
+              label="Delivered"
+              title="Completed"
+              value={display(snapshot?.completed ?? 0)}
+              percent={shareValue(snapshot?.completed ?? 0)}
+              color={toneHex.emerald}
+              caption={completedShare ? `${completedShare} of all trips` : "Successfully delivered"}
+              actionLabel="Check"
+              onAction={() => onMetricNavigate?.("combined")}
+            />
+          </div>
+
+          <SpotlightTrips rows={fleetRows} onViewTrip={onOpenTrip} />
+
+          <LiveTripMap
+            tracks={snapshot?.tracks ?? []}
+            focusTripId={focusedTripId}
+            eventLoadError={snapshot?.eventsUnavailable ?? false}
+            height={400}
+          />
+
+          {snapshot?.bookingUnavailable && (
+            <p className="text-xs text-amber-800">
+              Warehouse and store labels are unavailable; trip and GPS data
+              remain visible.
             </p>
           )}
-          {isLoading ? (
-            <p className="py-6 text-center text-sm text-slate-500">
-              Loading event data...
-            </p>
-          ) : dailyEventCounts.length === 0 ? (
-            <p className="py-6 text-center text-sm text-slate-500">
-              No trip events recorded.
-            </p>
-          ) : (
-            <div className="rounded-md bg-slate-50 px-3 pt-4 pb-2">
-              <div className="flex h-36 items-end gap-2 border-b border-slate-200 sm:gap-3">
-                {dailyEventCounts.map(({ date, count }, index) => (
-                  <div
-                    key={date}
-                    className="flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-1.5">
-                    <span className="text-[10px] font-semibold tabular-nums text-slate-600">
-                      {count}
-                    </span>
-                    <div
-                      title={`${count} events on ${date}`}
-                      className="spark-bar w-full max-w-10 rounded-t-sm bg-cyan-700"
-                      style={{
-                        height: `${Math.max((count / maxDailyEventCount) * 96, 5)}px`,
-                        opacity:
-                          0.65 +
-                          (index / Math.max(dailyEventCounts.length, 1)) * 0.35,
-                      }}
-                    />
-                    <span className="mb-1 truncate text-[9px] text-slate-500">
-                      {new Date(`${date}T12:00:00`).toLocaleDateString(
-                        undefined,
-                        { month: "short", day: "numeric" },
-                      )}
-                    </span>
-                  </div>
-                ))}
-              </div>
-              <p className="pt-2 text-[10px] text-slate-500">
-                Events grouped by database event date
-              </p>
-            </div>
-          )}
-        </section>
+
+          <FleetMovementPanel
+            data={movementData}
+            isLoading={isLoading}
+            activeRoutes={activeGpsRoutes}
+          />
+        </div>
+
+        {/* Side column */}
+        <div className="min-w-0 space-y-4">
+          <ActivityFeedCard events={timelineEvents} title="Recent activity" />
+          <FleetListCard
+            rows={fleetRows}
+            selectedTripId={focusedTripId}
+            onSelectTrip={(tripId) =>
+              setFocusedTripId((current) => (current === tripId ? null : tripId))
+            }
+            onViewTrip={onOpenTrip}
+          />
+          <OperationsActivityPanel
+            dailyCounts={dailyEventCounts}
+            totalEvents={snapshot?.events.length ?? 0}
+            tripsUpdated={tripsUpdated}
+            stopsCompleted={stopsCompleted}
+            isLoading={isLoading}
+            unavailable={snapshot?.eventsUnavailable}
+          />
+        </div>
       </div>
-
-      <ActivityTimeline events={timelineEvents} height={220} />
     </div>
   );
 }
