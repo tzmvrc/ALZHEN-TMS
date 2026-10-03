@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  ArrowUpRight,
   Building2,
   CalendarDays,
   ChevronDown,
@@ -10,12 +9,16 @@ import {
   LayoutGrid,
   Package,
   Search,
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
   Table2,
   Truck,
   UserRound,
+  X,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
-import { ApiError } from "../../services/api.service";
+import { ApiError, invalidateApiCache } from "../../services/api.service";
 import {
   fetchReportColumns,
   fetchReportRows,
@@ -214,12 +217,10 @@ function ReportVisualCards({
   rows,
   columns,
   reportKey,
-  onOpenTrip,
 }: {
   rows: ReportRow[];
   columns: ReportColumn[];
   reportKey: ReportKey;
-  onOpenTrip?: (tripId: string) => void;
 }) {
   const isStoreCall = reportKey === "store-calling";
   const groups = groupRows(rows, !isStoreCall);
@@ -266,7 +267,6 @@ function ReportVisualCards({
         const identity =
           firstValue(group, "dispatch_number", "store_call_id", "trip_id") ||
           `Record ${index + 1}`;
-        const tripId = rowText(row, "trip_id");
         const statusTags: Array<readonly [string, string]> = isStoreCall
           ? [
               ["Call", firstValue(group, "status")],
@@ -470,21 +470,6 @@ function ReportVisualCards({
               )}
             </div>
 
-            {tripId && onOpenTrip && (
-              <footer className="mt-auto flex items-center justify-between gap-2 border-t border-slate-100 px-4 py-3">
-                <span className="truncate text-[11px] text-slate-400">
-                  {stores.length > 1 ? `${stores.length} stores` : ""}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => onOpenTrip(tripId)}
-                  aria-label={`View details for ${identity}`}
-                  className="inline-flex items-center gap-1.5 rounded-full bg-[#ffd43b] px-3.5 py-1.5 text-[11px] font-semibold text-[#0b2341] transition hover:bg-[#f2c200] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0b2341]/40">
-                  View details
-                  <ArrowUpRight aria-hidden="true" className="h-3.5 w-3.5" />
-                </button>
-              </footer>
-            )}
           </article>
         );
       })}
@@ -521,7 +506,6 @@ function VisualFact({
 export default function ReportDataView({
   initialReport = "combined",
   showReportPicker = true,
-  onOpenTrip: _onOpenTrip,
   onReportScopeChange,
 }: {
   initialReport?: ReportKey;
@@ -532,7 +516,7 @@ export default function ReportDataView({
   const { accessToken, refreshSession, profile } = useAuth();
   const navigate = useNavigate();
   const [reportKey, setReportKey] = useState<ReportKey>(initialReport);
-  const [viewMode, setViewMode] = useState<"visual" | "table">("visual");
+  const [viewMode, setViewMode] = useState<"visual" | "table">("table");
   const [columns, setColumns] = useState<ReportColumn[]>([]);
   const [rows, setRows] = useState<ReportRow[]>([]);
   const [pagination, setPagination] = useState<Pagination | null>(null);
@@ -571,7 +555,11 @@ export default function ReportDataView({
   const cellSaveInFlight = useRef(false);
   const cancelNextBlur = useRef(false);
   const textSaveTimer = useRef<number | null>(null);
-  const activeSortBy = getSortableFields(reportKey).includes(sortBy)
+  const sortableFields =
+    columns.length > 0
+      ? columns.map((column) => column.key)
+      : getSortableFields(reportKey);
+  const activeSortBy = sortableFields.includes(sortBy)
     ? sortBy
     : getSortableFields(reportKey)[0];
   const queryKey = JSON.stringify({
@@ -594,6 +582,16 @@ export default function ReportDataView({
     },
     [],
   );
+
+  useEffect(() => {
+    setReportKey(initialReport);
+    setViewMode("table");
+    setPage(1);
+    setSearch("");
+    setAppliedSearch("");
+    setFilterDraft({});
+    setAppliedFilters({});
+  }, [initialReport]);
 
   useEffect(() => {
     if (!accessToken) return;
@@ -684,8 +682,16 @@ export default function ReportDataView({
   function submitSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setPage(1);
-    setAppliedSearch(search);
+    setAppliedSearch(search.trim());
   }
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setPage(1);
+      setAppliedSearch(search.trim());
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [search]);
 
   function submitFilters(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -705,6 +711,9 @@ export default function ReportDataView({
     onReportScopeChange?.(nextReport);
     setPage(1);
     setReportKey(nextReport);
+    setViewMode("table");
+    setSearch("");
+    setAppliedSearch("");
     setColumns([]);
     setRows([]);
     setPagination(null);
@@ -1068,6 +1077,14 @@ export default function ReportDataView({
       } else {
         setEditingCell(null);
       }
+      if (
+        appliedSearch ||
+        Object.values(appliedFilters).some((value) => value.trim()) ||
+        activeSortBy === targetCell.field
+      ) {
+        invalidateApiCache(REPORTS[reportKey].endpoint);
+        setRetryVersion((version) => version + 1);
+      }
     } catch (cause) {
       const message =
         cause instanceof ApiError
@@ -1218,7 +1235,6 @@ export default function ReportDataView({
   }
 
   const reportFilters = getReportFilters(reportKey);
-  const sortableFields = getSortableFields(reportKey);
   const canManageDropdowns =
     profile?.is_admin === true || profile?.role?.toUpperCase() === "ADMIN";
   const pageCount = pagination?.totalPages ?? 0;
@@ -1362,6 +1378,19 @@ export default function ReportDataView({
             className="min-h-10 rounded-full bg-[#ffd43b] px-5 text-sm font-semibold text-[#0b2341] transition hover:bg-[#f2c200]">
             Search
           </button>
+          {search && (
+            <button
+              type="button"
+              aria-label="Clear search"
+              onClick={() => {
+                setSearch("");
+                setAppliedSearch("");
+                setPage(1);
+              }}
+              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 text-slate-500 transition hover:bg-slate-100 hover:text-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9]">
+              <X aria-hidden="true" className="h-4 w-4" />
+            </button>
+          )}
         </form>
       </div>
 
@@ -1554,17 +1583,55 @@ export default function ReportDataView({
               key={filter.key}
               className="grid gap-1 text-xs font-medium text-slate-600">
               {filter.label}
-              <input
-                type={filter.type ?? "text"}
-                value={filterDraft[filter.key] ?? ""}
-                onChange={(event) =>
-                  setFilterDraft((current) => ({
-                    ...current,
-                    [filter.key]: event.target.value,
-                  }))
-                }
-                className="min-h-9 rounded-md border border-slate-300 px-2.5 text-sm font-normal text-slate-800 outline-none focus:border-slate-500"
-              />
+              {filter.dropdownField ? (
+                <select
+                  value={filterDraft[filter.key] ?? ""}
+                  onChange={(event) =>
+                    setFilterDraft((current) => ({
+                      ...current,
+                      [filter.key]: event.target.value,
+                    }))
+                  }
+                  className="min-h-9 rounded-md border border-slate-300 bg-white px-2.5 text-sm font-normal text-slate-800 outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-100">
+                  <option value="">All</option>
+                  {[...new Map(
+                    dropdownOptions
+                      .filter(
+                        (option) =>
+                          option.field_key === filter.dropdownField &&
+                          option.active,
+                      )
+                      .map((option) => [option.option_value, option]),
+                  ).values()].map((option) => (
+                    <option key={option.option_value} value={option.option_value}>
+                      {option.display_label}
+                    </option>
+                  ))}
+                  {filterDraft[filter.key] &&
+                    !dropdownOptions.some(
+                      (option) =>
+                        option.field_key === filter.dropdownField &&
+                        option.option_value === filterDraft[filter.key] &&
+                        option.active,
+                    ) && (
+                      <option value={filterDraft[filter.key]}>
+                        {filterDraft[filter.key]} (inactive)
+                      </option>
+                    )}
+                </select>
+              ) : (
+                <input
+                  type={filter.type ?? "text"}
+                  value={filterDraft[filter.key] ?? ""}
+                  onChange={(event) =>
+                    setFilterDraft((current) => ({
+                      ...current,
+                      [filter.key]: event.target.value,
+                    }))
+                  }
+                  className="min-h-9 rounded-md border border-slate-300 px-2.5 text-sm font-normal text-slate-800 outline-none focus:border-slate-500"
+                />
+              )}
             </label>
           ))}
           <div className="flex items-end gap-2 sm:col-span-2 lg:col-span-4">
@@ -1608,14 +1675,16 @@ export default function ReportDataView({
                 </div>
               ) : rows.length === 0 ? (
                 <p className="px-4 py-12 text-center text-sm text-slate-500">
-                  No report records found.
+                  {appliedSearch ||
+                  Object.values(appliedFilters).some((value) => value.trim())
+                    ? "No matching records found."
+                    : "No report records found."}
                 </p>
               ) : (
                 <ReportVisualCards
                   rows={rows}
                   columns={columns}
                   reportKey={reportKey}
-                  onOpenTrip={_onOpenTrip}
                 />
               )
             ) : isLoading ? (
@@ -1629,7 +1698,15 @@ export default function ReportDataView({
               <table className="w-full min-w-max border-collapse text-left text-sm">
                 <thead className="bg-[#f2f6fa] text-xs font-semibold text-slate-600">
                   <tr>
-                    {columns.map((column) => (
+                    {columns.map((column) => {
+                      const sortable = sortableFields.includes(column.key);
+                      const isActiveSort = activeSortBy === column.key;
+                      const SortIcon = !isActiveSort
+                        ? ArrowUpDown
+                        : sortOrder === "asc"
+                          ? ArrowUp
+                          : ArrowDown;
+                      return (
                       <th
                         key={column.key}
                         scope="col"
@@ -1641,16 +1718,34 @@ export default function ReportDataView({
                             ? "text-right"
                             : "text-left"
                         }`}>
-                        {column.title}
+                        {sortable ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (isActiveSort) {
+                                setSortOrder((current) =>
+                                  current === "asc" ? "desc" : "asc",
+                                );
+                              } else {
+                                setSortBy(column.key);
+                                setSortOrder("asc");
+                              }
+                              setPage(1);
+                            }}
+                            aria-label={`Sort by ${column.title}${isActiveSort ? `, currently ${sortOrder === "asc" ? "ascending" : "descending"}` : ""}`}
+                            className="inline-flex items-center gap-1.5 rounded px-1 py-0.5 text-inherit transition hover:bg-[#e6f0f9] hover:text-[#0b2341] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9]">
+                            {column.title}
+                            <SortIcon
+                              aria-hidden="true"
+                              className={`h-3.5 w-3.5 ${isActiveSort ? "text-[#d97706]" : "text-slate-400"}`}
+                            />
+                          </button>
+                        ) : (
+                          column.title
+                        )}
                       </th>
-                    ))}
-                    {_onOpenTrip && (
-                      <th
-                        scope="col"
-                        className="sticky right-0 whitespace-nowrap border-b border-slate-100 bg-[#f2f6fa] px-4 py-3 text-right">
-                        Details
-                      </th>
-                    )}
+                      );
+                    })}
                   </tr>
                 </thead>
                 <tbody>
@@ -1659,13 +1754,15 @@ export default function ReportDataView({
                       <td
                         colSpan={Math.max(columns.length, 1)}
                         className="px-4 py-12 text-center text-sm text-slate-500">
-                        No report rows found.
+                        {appliedSearch ||
+                        Object.values(appliedFilters).some((value) => value.trim())
+                          ? "No matching records found."
+                          : "No report rows found."}
                       </td>
                     </tr>
                   )}
                   {rows.map((row, index) => {
                     const currentRowKey = rowKey(row, index);
-                    const rowTripId = rowText(row, "trip_id");
                     return (
                       <tr
                         key={currentRowKey}
@@ -1785,6 +1882,10 @@ export default function ReportDataView({
                                       setEditingCell(null);
                                       setCellSaveState(null);
                                     }}
+                                    disabled={
+                                      cellSaveState?.rowKey === currentRowKey &&
+                                      cellSaveState.status === "saving"
+                                    }
                                   />
                                 ) : editingCell.definition.editor ===
                                     "status" ||
@@ -1819,6 +1920,7 @@ export default function ReportDataView({
                                       className="h-4 w-4 accent-cyan-700"
                                     />
                                   ) : (
+                                  <div className="relative inline-flex max-w-full">
                                   <select
                                     autoFocus
                                     aria-label={`Edit ${column.title}`}
@@ -1852,59 +1954,19 @@ export default function ReportDataView({
                                         setCellSaveState(null);
                                       }
                                     }}
-<<<<<<< Updated upstream
-                                    className="min-w-[130px] rounded-md border border-[#9cc3e3] bg-white px-2 py-1 text-sm font-medium text-slate-800 shadow-sm outline-none ring-2 ring-[#cfe1f1]">
-                                    {editingCell.definition.editor ===
-                                    "boolean" ? (
-                                      <>
-                                        <option value="true">Yes</option>
-                                        <option value="false">No</option>
-                                      </>
-                                    ) : (
-                                      <>
-                                        {dropdownOptions
-                                          .filter(
-                                            (option) =>
-                                              option.field_key ===
-                                                editingCell.definition
-                                                  .dropdownField &&
-                                              option.active,
-                                          )
-                                          .map((option) => (
-                                            <option
-                                              key={option.id}
-                                              value={option.option_value}>
-                                              {option.display_label}
-                                            </option>
-                                          ))}
-                                        {editingCell.value &&
-                                          !dropdownOptions.some(
-                                            (option) =>
-                                              option.field_key ===
-                                                editingCell.definition
-                                                  .dropdownField &&
-                                              option.option_value ===
-                                                editingCell.value &&
-                                              option.active,
-                                          ) && (
-                                            <option value={editingCell.value}>
-                                              {editingCell.value} (inactive)
-                                            </option>
-                                          )}
-                                      </>
-=======
-                                    className="min-w-[130px] rounded-md border border-cyan-300 bg-white px-2 py-1 text-sm font-medium text-slate-800 shadow-sm outline-none ring-2 ring-cyan-100">
-                                    {activeOptionsForCell.length === 0 && (
-                                      <option value={editingCell.value}>
-                                        {editingCell.value ||
-                                          (dropdownOptionsLoading
+
+                                    className="max-w-[min(22rem,70vw)] min-w-[130px] appearance-none rounded-lg border border-amber-300 bg-white px-3 py-2 pr-9 text-sm font-medium text-slate-800 shadow-sm outline-none transition hover:border-amber-400 focus:border-amber-500 focus:ring-2 focus:ring-amber-100 disabled:cursor-not-allowed disabled:opacity-60">
+                                    {activeOptionsForCell.length === 0 &&
+                                      !editingCell.value && (
+                                        <option value="" disabled>
+                                          {dropdownOptionsLoading
                                             ? "Loading options..."
                                             : dropdownOptionsError
                                               ? "Options unavailable"
-                                              : "No active options")}
-                                      </option>
->>>>>>> Stashed changes
-                                    )}
+                                              : "No active options"}
+                                        </option>
+                                      )}
+
                                     {dropdownOptions
                                       .filter(
                                         (option) =>
@@ -1933,21 +1995,16 @@ export default function ReportDataView({
                                         </option>
                                       )}
                                   </select>
+                                  <ChevronDown
+                                    aria-hidden="true"
+                                    className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-amber-700"
+                                  />
+                                  </div>
                                   )
                                 ) : (
                                   <input
                                     autoFocus
                                     type={
-<<<<<<< Updated upstream
-                                      editingCell.definition.editor ===
-                                      "datetime"
-                                        ? "datetime-local"
-                                        : editingCell.definition.editor
-                                    }
-                                    step={
-                                      editingCell.definition.editor ===
-                                        "number" &&
-=======
                                       editingCell.definition.editor === "number"
                                         ? "number"
                                         : editingCell.definition.editor === "date"
@@ -1958,7 +2015,7 @@ export default function ReportDataView({
                                     }
                                     step={
                                       editingCell.definition.editor === "number" &&
->>>>>>> Stashed changes
+
                                       editingCell.field === "page_no"
                                         ? "1"
                                         : "any"
@@ -2063,22 +2120,7 @@ export default function ReportDataView({
                             </td>
                           );
                         })}
-                        {_onOpenTrip && (
-                          <td className="sticky right-0 bg-white px-4 py-3 text-right">
-                            {rowTripId ? (
-                              <button
-                                type="button"
-                                onClick={() => _onOpenTrip(rowTripId)}
-                                aria-label={`View details for ${rowText(row, "dispatch_number") || rowTripId}`}
-                                className="inline-flex items-center gap-1.5 rounded-full bg-[#ffd43b] px-3.5 py-1.5 text-[11px] font-semibold text-[#0b2341] transition hover:bg-[#f2c200] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0b2341]/40">
-                                View details
-                                <ArrowUpRight aria-hidden="true" className="h-3.5 w-3.5" />
-                              </button>
-                            ) : (
-                              <span className="text-[11px] text-slate-300">—</span>
-                            )}
-                          </td>
-                        )}
+
                       </tr>
                     );
                   })}

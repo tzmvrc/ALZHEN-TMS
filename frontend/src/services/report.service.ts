@@ -1,4 +1,5 @@
 import { apiGetCached, type ApiResponse } from "./api.service";
+import type { DropdownField } from "./dropdown-option.service";
 
 export const REPORTS = {
   combined: { title: "Combined Report", endpoint: "/reports/combined" },
@@ -25,6 +26,7 @@ export type ReportFilter = {
   key: string;
   label: string;
   type?: "date" | "text";
+  dropdownField?: DropdownField;
 };
 export type Pagination = {
   page: number;
@@ -77,12 +79,11 @@ const sortFields: Record<ReportKey, string[]> = {
     "delivery_status",
   ],
   "store-calling": [
-    "loading_date",
+    "date_assigned",
     "dispatch_number",
     "customer_name",
     "status",
     "confirmation_status",
-    "date_assigned",
     "assigned_to",
   ],
 };
@@ -91,48 +92,52 @@ const reportFilters: Record<ReportKey, ReportFilter[]> = {
   combined: [
     { key: "date_from", label: "Loading date from", type: "date" },
     { key: "date_to", label: "Loading date to", type: "date" },
-    { key: "delivery_status", label: "Delivery status" },
-    { key: "trip_status", label: "Trip status" },
+    { key: "delivery_status", label: "Delivery status", dropdownField: "delivery_status" },
+    { key: "trip_status", label: "Trip status", dropdownField: "trip_status" },
     { key: "warehouse_code", label: "Warehouse code" },
     { key: "customer_name", label: "Customer" },
     { key: "plate_number", label: "Plate number" },
-    { key: "letter_status", label: "Letter status" },
+    { key: "letter_status", label: "Letter status", dropdownField: "letter_status" },
+    { key: "driver_name", label: "Driver" },
   ],
   "dispatch-monitoring": [
     { key: "date_from", label: "Loading date from", type: "date" },
     { key: "date_to", label: "Loading date to", type: "date" },
-    { key: "delivery_status", label: "Delivery status" },
-    { key: "trip_status", label: "Trip status" },
+    { key: "delivery_status", label: "Delivery status", dropdownField: "delivery_status" },
+    { key: "trip_status", label: "Trip status", dropdownField: "trip_status" },
     { key: "warehouse_code", label: "Warehouse code" },
+    { key: "customer_name", label: "Customer" },
     { key: "plate_number", label: "Plate number" },
-    { key: "letter_status", label: "Letter status" },
+    { key: "letter_status", label: "Letter status", dropdownField: "letter_status" },
+    { key: "driver_name", label: "Driver" },
   ],
   dispatch: [
     { key: "date_from", label: "Loading date from", type: "date" },
     { key: "date_to", label: "Loading date to", type: "date" },
-    { key: "delivery_status", label: "Delivery status" },
+    { key: "delivery_status", label: "Delivery status", dropdownField: "delivery_status" },
     { key: "wh_code", label: "Warehouse code" },
     { key: "customer_name", label: "Customer" },
     { key: "plate_number", label: "Plate number" },
-    { key: "letter_status", label: "Letter status" },
+    { key: "letter_status", label: "Letter status", dropdownField: "letter_status" },
+    { key: "driver_name", label: "Driver" },
   ],
   "trip-booking": [
     { key: "date_from", label: "Loading date from", type: "date" },
     { key: "date_to", label: "Loading date to", type: "date" },
     { key: "dispatch_number", label: "Dispatch number" },
-    { key: "trip_status", label: "Trip status" },
-    { key: "delivery_status", label: "Delivery status" },
+    { key: "trip_status", label: "Trip status", dropdownField: "trip_status" },
+    { key: "delivery_status", label: "Delivery status", dropdownField: "delivery_status" },
     { key: "warehouse_code", label: "Warehouse code" },
     { key: "plate_number", label: "Plate number" },
-    { key: "letter_status", label: "Letter status" },
+    { key: "letter_status", label: "Letter status", dropdownField: "letter_status" },
+    { key: "driver_name", label: "Driver" },
   ],
   "store-calling": [
-    { key: "status", label: "Status" },
-    { key: "confirmation_status", label: "Confirmation status" },
+    { key: "status", label: "Status", dropdownField: "store_call_status" },
+    { key: "confirmation_status", label: "Confirmation status", dropdownField: "confirmation_status" },
     { key: "assigned_to", label: "Assigned to" },
-    { key: "date_assigned_from", label: "Assigned date from", type: "date" },
-    { key: "date_assigned_to", label: "Assigned date to", type: "date" },
-    { key: "warehouse_code", label: "Warehouse code" },
+    { key: "date_from", label: "Assigned date from", type: "date" },
+    { key: "date_to", label: "Assigned date to", type: "date" },
   ],
 };
 
@@ -168,9 +173,7 @@ export async function fetchReportRows(
   const params = new URLSearchParams({
     page: String(options.page),
     limit: String(options.limit),
-    sort_by: sortFields[reportKey].includes(options.sortBy)
-      ? options.sortBy
-      : "",
+    sort_by: options.sortBy,
     sort_order: options.sortOrder,
   });
   if (options.search.trim()) params.set("search", options.search.trim());

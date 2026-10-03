@@ -75,14 +75,30 @@ function toDateFilterValue(value: string, endOfDay = false) {
 function applySearch(
   queryBuilder: any,
   searchValue: string | undefined,
-  searchableColumns: string[],
+  columns: ReportDefinition["columns"],
 ) {
-  if (!searchValue || searchableColumns.length === 0) {
+  if (!searchValue) {
     return queryBuilder;
   }
 
-  const clause = searchableColumns
-    .map((column) => `${column}.ilike.%${searchValue}%`)
+  const safeColumns = columns.filter((column) => !column.key.endsWith("_id"));
+  const clauses = safeColumns
+    .filter((column) => column.type === "text")
+    .map((column) => `${column.key}.ilike.%${searchValue}%`);
+  const numericSearch = searchValue.trim();
+  if (/^-?\d+(\.\d+)?$/.test(numericSearch)) {
+    clauses.push(
+      ...safeColumns
+        .filter((column) => column.type === "number")
+        .map((column) => `${column.key}.eq.${numericSearch}`),
+    );
+  }
+
+  if (clauses.length === 0) {
+    return queryBuilder;
+  }
+
+  const clause = clauses
     .join(",");
 
   return queryBuilder.or(clause);
@@ -463,7 +479,21 @@ export async function getReportData(
   for (const viewName of viewNames) {
     let builder = supabaseAdmin.from(viewName).select("*", { count: "exact" });
     builder = applyFilters(builder, definition, query);
-    builder = applySearch(builder, search, definition.searchableColumns);
+    const reportTableKeys = [
+      "combined",
+      "dispatch-monitoring",
+      "dispatch",
+      "trip-booking",
+      "store-calling",
+    ];
+    const searchColumns = reportTableKeys.includes(key)
+      ? definition.columns
+      : definition.searchableColumns.map((column) => ({
+          key: column,
+          title: column,
+          type: "text" as const,
+        }));
+    builder = applySearch(builder, search, searchColumns);
     builder = builder.order(sortBy, { ascending: sortOrder === "asc" });
     builder = builder.range(from, from + limit - 1);
     const { data, error, count } = await builder;
