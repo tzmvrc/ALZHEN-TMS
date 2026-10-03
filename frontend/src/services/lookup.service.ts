@@ -58,6 +58,9 @@ function toRelationshipOption(
           product_name: stringValue(row, "name"),
           sku: stringValue(row, "sku"),
           model_code: stringValue(row, "model_code"),
+          product_model: stringValue(row, "model_code"),
+          category: stringValue(row, "category"),
+          product_category: stringValue(row, "category"),
         },
       };
     case "warehouses":
@@ -72,6 +75,14 @@ function toRelationshipOption(
         },
       };
     case "customers":
+      return {
+        id,
+        label: stringValue(row, "name"),
+        secondary: stringValue(row, "code"),
+        values: {
+          customer_name: stringValue(row, "name"),
+        },
+      };
     case "stores":
       return {
         id,
@@ -80,11 +91,11 @@ function toRelationshipOption(
           .filter(Boolean)
           .join(" · "),
         values: {
-          customer_name: stringValue(row, "name"),
+          customer_id: stringValue(row, "customer_id"),
           store_name: stringValue(row, "name"),
           ship_to: stringValue(row, "name"),
-          code: stringValue(row, "code"),
           city: stringValue(row, "city"),
+          province: stringValue(row, "province"),
         },
       };
     case "drivers":
@@ -114,7 +125,6 @@ function toRelationshipOption(
         label: stringValue(row, "name"),
         secondary: stringValue(row, "code"),
         values: {
-          trucker_gc_name: stringValue(row, "name"),
           trucking_company: stringValue(row, "name"),
         },
       };
@@ -123,6 +133,10 @@ function toRelationshipOption(
         id,
         label: stringValue(row, "full_name") || fullName(row),
         secondary: stringValue(row, "role"),
+        values: {
+          assigned_to: stringValue(row, "full_name") || fullName(row),
+          assigned_to_name: stringValue(row, "full_name") || fullName(row),
+        },
       };
     case "store-contacts":
       return {
@@ -139,7 +153,7 @@ export async function searchRelationshipOptions(
   token: string,
   kind: RelationshipKind,
   query: string,
-  filters: { storeId?: string } = {},
+  filters: { storeId?: string; customerId?: string } = {},
 ): Promise<RelationshipOption[]> {
   const params = new URLSearchParams();
   if (query.trim()) params.set("q", query.trim());
@@ -158,16 +172,21 @@ export async function searchRelationshipOptions(
   if (kind === "store-contacts" && filters.storeId) {
     params.set("store_id", filters.storeId);
   }
+  if (kind === "stores" && filters.customerId) {
+    params.set("customer_id", filters.customerId);
+  }
   const suffix = params.size ? `?${params.toString()}` : "";
+  const endpoint = kind === "assignees" ? "/lookups/assignees" : `/lookups/${kind}`;
   const response = await apiGetCached<ApiResponse<LookupRow[]>>(
-    `/lookups/${kind}${suffix}`,
+    `${endpoint}${suffix}`,
     token,
     30_000,
   );
   if (!response.success || !response.data) {
     throw new Error(response.message ?? "Unable to load relationship options.");
   }
-  return response.data
+  return [...new Map(response.data
     .map((row) => toRelationshipOption(kind, row))
-    .filter((option): option is RelationshipOption => Boolean(option?.label));
+    .filter((option): option is RelationshipOption => Boolean(option?.label))
+    .map((option) => [option.id, option])).values()];
 }

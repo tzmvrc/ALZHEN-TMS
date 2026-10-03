@@ -13,6 +13,7 @@ import {
   getTripList,
   getTripStops,
   updateTripLineItemRecord,
+  updateTripBillingRecord as updateTripBillingRecordData,
   updateTripRecord,
   updateTripStopRecord,
 } from "../services/trip.service.js";
@@ -469,5 +470,19 @@ export async function getTripHistory(req: Request, res: Response) {
       return sendError(res, 404, message, "TRIP_NOT_FOUND");
     }
     return sendError(res, 400, message, "TRIP_QUERY_FAILED");
+  }
+}
+
+export async function updateTripBilling(req: Request, res: Response) {
+  try {
+    const tripId = Array.isArray(req.params.id) ? req.params.id[0] : (req.params.id ?? "");
+    const billingId = Array.isArray(req.params.billingId) ? req.params.billingId[0] : (req.params.billingId ?? "");
+    const result = await updateTripBillingRecordData(tripId, billingId, req.body ?? {});
+    return sendSuccess(res, 200, "Billing record updated successfully", result);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to update billing record";
+    const notFound = message === "Billing record not found" || message === "Billing record does not belong to this trip";
+    const invalid = message.includes("Invalid") || message.includes("must be") || message.includes("Only ");
+    return sendError(res, notFound ? 404 : invalid ? 400 : 500, message, "TRIP_BILLING_UPDATE_FAILED");
   }
 }

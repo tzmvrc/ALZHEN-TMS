@@ -21,6 +21,7 @@ import {
   getTripStopsById,
   listTrips,
   updateTrip,
+  updateTripBilling,
   updateTripLineItem,
   updateTripStop,
 } from "../controllers/trip.controller.js";
@@ -60,6 +61,12 @@ router.delete(
   deleteAssignment,
 );
 router.patch("/:id", authMiddleware, requireRole("ADMIN", "STAFF"), updateTrip);
+router.patch(
+  "/:id/billings/:billingId",
+  authMiddleware,
+  requireRole("ADMIN", "STAFF"),
+  updateTripBilling,
+);
 router.delete(
   "/:id",
   authMiddleware,

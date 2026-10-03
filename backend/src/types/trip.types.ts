@@ -13,7 +13,7 @@ export interface TripRecord {
   created_at: string | null;
   updated_at: string | null;
   transaction_number: string | null;
-  trip_number: string | null;
+  trip_number: number | null;
   added_to_report: boolean | null;
   letter_status: string | null;
   truck_allocated_by: string | null;
@@ -92,7 +92,7 @@ export type TripCreateInput = Partial<TripRecord> & {
   page_no?: number | null;
   remarks?: string | null;
   transaction_number?: string | null;
-  trip_number?: string | null;
+  trip_number?: number | null;
   added_to_report?: boolean | null;
   letter_status?: string | null;
   truck_allocated_by?: string | null;

@@ -14,8 +14,8 @@ import { normalizeSortOrder, normalizeText } from "../utils/validation.js";
 
 const REPORT_ROUTE_MAP = {
   combined: "v_tms_combined",
-  "dispatch-monitoring": "vw_dispatch_monitoring",
-  dispatch: "vw_dispatch_report",
+  "dispatch-monitoring": "v_dispatch_monitoring",
+  dispatch: "v_dispatch_report",
   "trip-booking": "v_trip_booking",
   "store-calling": "vw_store_calling_tracker",
   "pod-status": "vw_pod_status_tracker",
@@ -132,19 +132,31 @@ function applyFilters(
   return queryBuilder;
 }
 
-function shouldRetryLegacyView(errorMessage: string | undefined) {
+function shouldRetryLegacyView(
+  errorMessage: string | undefined,
+  reportKey: string,
+) {
   if (!errorMessage) {
     return false;
   }
 
   const relationMissingPattern =
     /(relation .* does not exist|could not find the table|table .* does not exist|view .* does not exist)/i;
-  const permissionPattern =
-    /(permission denied for (table|view|relation)|42501)/i;
+  if (relationMissingPattern.test(errorMessage)) return true;
 
-  return (
-    relationMissingPattern.test(errorMessage) ||
-    permissionPattern.test(errorMessage)
+  // The migrated v_ views must never silently fall back to a legacy vw_ view
+  // because of a permission error; that could return rows without exact IDs.
+  if (
+    ["combined", "dispatch-monitoring", "dispatch", "trip-booking"].includes(
+      reportKey,
+    )
+  ) {
+    return false;
+  }
+
+  // Keep the pre-existing fallback behavior for reports outside this change.
+  return /(permission denied for (table|view|relation)|42501)/i.test(
+    errorMessage,
   );
 }
 
@@ -160,249 +172,35 @@ function resolveViewNames(definition: ReportDefinition) {
   return [];
 }
 
-function normalizedDate(value: unknown) {
-  return typeof value === "string" ? value.slice(0, 10) : "";
-}
-
 async function attachOperationalRecordIds(rows: Record<string, unknown>[]) {
-  const rowsMissingTripId = rows.filter(
-    (row) => typeof row.trip_id !== "string" || !row.trip_id,
-  );
-  const dispatchNumbers = [
-    ...new Set(
-      rowsMissingTripId
-        .map((row) => row.dispatch_number)
-        .filter(
-          (value): value is string => typeof value === "string" && !!value,
-        ),
-    ),
-  ];
-
-  if (dispatchNumbers.length > 0) {
-    const { data: trips, error } = await supabaseAdmin
-      .from("trips")
-      .select(
-        "id, dispatch_number, trip_number, transaction_number, loading_date",
-      )
-      .in("dispatch_number", dispatchNumbers);
-
-    if (error) {
-      console.error("Report trip ID enrichment failed:", error);
-    } else {
-      for (const row of rowsMissingTripId) {
-        const candidates = (trips ?? []).filter((trip) => {
-          if (trip.dispatch_number !== row.dispatch_number) return false;
-          for (const field of ["trip_number", "transaction_number"] as const) {
-            const rowValue = row[field];
-            if (
-              rowValue !== null &&
-              rowValue !== undefined &&
-              rowValue !== ""
-            ) {
-              if (trip[field] !== rowValue) return false;
-            }
-          }
-          if (row.loading_date && trip.loading_date) {
-            return (
-              normalizedDate(row.loading_date) ===
-              normalizedDate(trip.loading_date)
-            );
-          }
-          return true;
-        });
-
-        if (candidates.length === 1) {
-          row.trip_id = candidates[0].id;
-        }
+  // Copy internal IDs with underscore prefix to standard field names for frontend compatibility
+  for (const row of rows) {
+    const aliases: Record<string, string> = {
+      trip_id: "_trip_id",
+      trip_stop_id: "_trip_stop_id",
+      trip_line_item_id: "_trip_line_item_id",
+      product_id: "_product_id",
+      trip_type_id: "_trip_type_id",
+      warehouse_id: "_warehouse_id",
+      customer_id: "_customer_id",
+      store_id: "_store_id",
+      truck_id: "_truck_id",
+      driver_id: "_driver_id",
+      trucking_company_id: "_trucking_company_id",
+      assignment_id: "_assignment_id",
+      truck_allocated_by: "_truck_allocated_by",
+      tms_done_by: "_tms_done_by",
+      billing_id: "_billing_id",
+      store_call_id: "_store_call_id",
+    };
+    for (const [publicName, internalName] of Object.entries(aliases)) {
+      if (row[publicName] == null && row[internalName] != null) {
+        row[publicName] = row[internalName];
       }
     }
   }
 
-  const tripIds = [
-    ...new Set(
-      rows
-        .map((row) => row.trip_id)
-        .filter((value): value is string => typeof value === "string"),
-    ),
-  ];
-
-  const [tripResult, assignmentResult, stopResult] = await Promise.all([
-    tripIds.length
-      ? supabaseAdmin
-          .from("trips")
-          .select("id, trip_type_id, warehouse_id")
-          .in("id", tripIds)
-      : Promise.resolve({ data: [], error: null }),
-    tripIds.length
-      ? supabaseAdmin
-          .from("trip_truck_assignments")
-          .select("id, trip_id, truck_id, driver_id, trucking_company_id")
-          .in("trip_id", tripIds)
-          .is("unassigned_at", null)
-      : Promise.resolve({ data: [], error: null }),
-    tripIds.length
-      ? supabaseAdmin
-          .from("trip_stops")
-          .select("id, trip_id, stop_sequence, customer_id, store_id")
-          .in("trip_id", tripIds)
-      : Promise.resolve({ data: [], error: null }),
-  ]);
-  if (tripResult.error) {
-    console.error(
-      "Report trip relationship enrichment failed:",
-      tripResult.error,
-    );
-  }
-  if (assignmentResult.error) {
-    console.error(
-      "Report assignment enrichment failed:",
-      assignmentResult.error,
-    );
-  }
-  if (stopResult.error) {
-    console.error("Report stop ID enrichment failed:", stopResult.error);
-  }
-
-  const tripMap = new Map(
-    (tripResult.data ?? []).map((trip) => [String(trip.id), trip]),
-  );
-  for (const row of rows) {
-    const tripId = typeof row.trip_id === "string" ? row.trip_id : "";
-    const trip = tripMap.get(tripId);
-    if (!trip) continue;
-    row.trip_type_id = trip.trip_type_id;
-    row.warehouse_id = trip.warehouse_id;
-  }
-
-  const assignments = assignmentResult.data ?? [];
-  const truckIds = [
-    ...new Set(assignments.map((item) => item.truck_id).filter(Boolean)),
-  ];
-  const driverIds = [
-    ...new Set(assignments.map((item) => item.driver_id).filter(Boolean)),
-  ];
-  const [truckResult, driverResult] = await Promise.all([
-    truckIds.length
-      ? supabaseAdmin
-          .from("trucks")
-          .select("id, plate_number")
-          .in("id", truckIds)
-      : Promise.resolve({ data: [], error: null }),
-    driverIds.length
-      ? supabaseAdmin
-          .from("drivers")
-          .select("id, first_name, last_name")
-          .in("id", driverIds)
-      : Promise.resolve({ data: [], error: null }),
-  ]);
-  const truckById = new Map(
-    (truckResult.data ?? []).map((truck) => [String(truck.id), truck]),
-  );
-  const driverById = new Map(
-    (driverResult.data ?? []).map((driver) => [String(driver.id), driver]),
-  );
-  const normalizeName = (value: unknown) =>
-    typeof value === "string" ? value.trim().toLocaleLowerCase() : "";
-
-  for (const row of rows) {
-    const tripId = typeof row.trip_id === "string" ? row.trip_id : "";
-    if (!tripId) continue;
-    let candidates = assignments.filter(
-      (assignment) => assignment.trip_id === tripId,
-    );
-    const plate = normalizeName(row.plate_number);
-    if (plate) {
-      const matching = candidates.filter(
-        (assignment) =>
-          normalizeName(
-            truckById.get(String(assignment.truck_id ?? ""))?.plate_number,
-          ) === plate,
-      );
-      if (matching.length > 0) candidates = matching;
-    }
-    const driverName = normalizeName(row.driver_name);
-    if (driverName) {
-      const matching = candidates.filter((assignment) => {
-        const driver = driverById.get(String(assignment.driver_id ?? ""));
-        return (
-          normalizeName(
-            [driver?.first_name, driver?.last_name].filter(Boolean).join(" "),
-          ) === driverName
-        );
-      });
-      if (matching.length > 0) candidates = matching;
-    }
-    if (candidates.length === 1) {
-      const assignment = candidates[0];
-      row.assignment_id = assignment.id;
-      row.driver_id = assignment.driver_id;
-      row.truck_id = assignment.truck_id;
-      row.trucking_company_id = assignment.trucking_company_id;
-    }
-  }
-
-  const stops = stopResult.data ?? [];
-  const customerIds = [
-    ...new Set(stops.map((stop) => stop.customer_id).filter(Boolean)),
-  ];
-  const storeIds = [
-    ...new Set(stops.map((stop) => stop.store_id).filter(Boolean)),
-  ];
-  const [customersResult, storesResult] = await Promise.all([
-    customerIds.length
-      ? supabaseAdmin.from("customers").select("id, name").in("id", customerIds)
-      : Promise.resolve({ data: [], error: null }),
-    storeIds.length
-      ? supabaseAdmin
-          .from("customer_stores")
-          .select("id, name")
-          .in("id", storeIds)
-      : Promise.resolve({ data: [], error: null }),
-  ]);
-  const customerNames = new Map(
-    (customersResult.data ?? []).map((item) => [
-      String(item.id),
-      String(item.name ?? ""),
-    ]),
-  );
-  const storeNames = new Map(
-    (storesResult.data ?? []).map((item) => [
-      String(item.id),
-      String(item.name ?? ""),
-    ]),
-  );
-
-  for (const row of rows) {
-    const tripId = typeof row.trip_id === "string" ? row.trip_id : "";
-    if (!tripId) continue;
-    let candidates = stops.filter((stop) => stop.trip_id === tripId);
-    if (typeof row.trip_stop_id === "string") {
-      candidates = candidates.filter((stop) => stop.id === row.trip_stop_id);
-    } else if (row.stop_sequence !== null && row.stop_sequence !== undefined) {
-      candidates = candidates.filter(
-        (stop) => String(stop.stop_sequence) === String(row.stop_sequence),
-      );
-    } else {
-      const destinations = [row.ship_to, row.store_name, row.customer_name]
-        .map(normalizeName)
-        .filter(Boolean);
-      if (destinations.length > 0) {
-        candidates = candidates.filter((stop) =>
-          [
-            storeNames.get(String(stop.store_id ?? "")),
-            customerNames.get(String(stop.customer_id ?? "")),
-          ].some((name) => destinations.includes(normalizeName(name))),
-        );
-      }
-    }
-    if (candidates.length === 1) {
-      const stop = candidates[0];
-      row.trip_stop_id = stop.id;
-      row.customer_id = stop.customer_id;
-      row.store_id = stop.store_id;
-    }
-  }
-
+  // Enrich product_id for rows that have trip_line_item_id but not product_id
   const lineItemIds = [
     ...new Set(
       rows
@@ -422,7 +220,7 @@ async function attachOperationalRecordIds(rows: Record<string, unknown>[]) {
         (lineItems ?? []).map((item) => [String(item.id), item.product_id]),
       );
       for (const row of rows) {
-        if (typeof row.trip_line_item_id === "string") {
+        if (typeof row.trip_line_item_id === "string" && !row.product_id) {
           row.product_id =
             productsByLineItem.get(row.trip_line_item_id) ?? null;
         }
@@ -430,6 +228,7 @@ async function attachOperationalRecordIds(rows: Record<string, unknown>[]) {
     }
   }
 
+  // Enrich assigned_to_name for Store Calling
   const storeCallIds = [
     ...new Set(
       rows
@@ -440,7 +239,7 @@ async function attachOperationalRecordIds(rows: Record<string, unknown>[]) {
   if (storeCallIds.length > 0) {
     const { data: storeCalls, error } = await supabaseAdmin
       .from("store_calls")
-      .select("id, assigned_to, contact_id")
+      .select("id, assigned_to, contact_id, trip_id, trip_stop_id")
       .in("id", storeCallIds);
     if (error) {
       console.error("Store-call relationship enrichment failed:", error);
@@ -470,10 +269,137 @@ async function attachOperationalRecordIds(rows: Record<string, unknown>[]) {
             .trim(),
         ]),
       );
+
+      const stopIds = [
+        ...new Set(
+          (storeCalls ?? [])
+            .map((call) => call.trip_stop_id)
+            .filter((id): id is string => typeof id === "string"),
+        ),
+      ];
+      const { data: stops, error: stopsError } = stopIds.length
+        ? await supabaseAdmin
+            .from("trip_stops")
+            .select("id, trip_id, customer_id, store_id")
+            .in("id", stopIds)
+        : { data: [], error: null };
+      if (stopsError) {
+        console.error("Store-call stop identity enrichment failed:", stopsError);
+      }
+      const stopsById = new Map(
+        (stops ?? []).map((stop) => [String(stop.id), stop]),
+      );
+
+      const tripIds = [
+        ...new Set(
+          (storeCalls ?? [])
+            .map((call) => call.trip_id)
+            .filter((id): id is string => typeof id === "string"),
+        ),
+      ];
+      const { data: assignments, error: assignmentsError } = tripIds.length
+        ? await supabaseAdmin
+            .from("trip_truck_assignments")
+            .select("id, trip_id, truck_id, driver_id, trucking_company_id")
+            .in("trip_id", tripIds)
+            .eq("assignment_type", "PRIMARY")
+        : { data: [], error: null };
+      if (assignmentsError) {
+        console.error(
+          "Store-call primary assignment identity enrichment failed:",
+          assignmentsError,
+        );
+      }
+      const assignmentsByTrip = new Map<string, typeof assignments>();
+      for (const assignment of assignments ?? []) {
+        if (typeof assignment.trip_id !== "string") continue;
+        const current = assignmentsByTrip.get(assignment.trip_id) ?? [];
+        current.push(assignment);
+        assignmentsByTrip.set(assignment.trip_id, current);
+      }
+
       for (const row of rows) {
         if (typeof row.store_call_id !== "string") continue;
         const call = callById.get(row.store_call_id);
         if (!call) continue;
+        const callTripId =
+          typeof call.trip_id === "string" ? call.trip_id : undefined;
+        const callStopId =
+          typeof call.trip_stop_id === "string" ? call.trip_stop_id : undefined;
+        const stop = callStopId ? stopsById.get(callStopId) : undefined;
+        const stopTripId =
+          typeof stop?.trip_id === "string" ? stop.trip_id : undefined;
+        if (callTripId && stopTripId && callTripId !== stopTripId) {
+          console.error("Store-call stop does not belong to its trip", {
+            storeCallId: row.store_call_id,
+            tripId: callTripId,
+            stopId: callStopId,
+          });
+          continue;
+        }
+        const exactTripId = callTripId ?? stopTripId;
+        const viewTripId =
+          typeof row._trip_id === "string"
+            ? row._trip_id
+            : typeof row.trip_id === "string"
+              ? row.trip_id
+              : undefined;
+        const viewStopId =
+          typeof row._trip_stop_id === "string"
+            ? row._trip_stop_id
+            : typeof row.trip_stop_id === "string"
+              ? row.trip_stop_id
+              : undefined;
+        if (
+          (exactTripId && viewTripId && exactTripId !== viewTripId) ||
+          (callStopId && viewStopId && callStopId !== viewStopId)
+        ) {
+          console.error("Store-call view identity conflicts with source record", {
+            storeCallId: row.store_call_id,
+            viewTripId,
+            sourceTripId: exactTripId,
+            viewStopId,
+            sourceStopId: callStopId,
+          });
+          row.assigned_to_id = call.assigned_to;
+          row.assigned_to_name =
+            typeof call.assigned_to === "string"
+              ? (profileNames.get(call.assigned_to) ?? "")
+              : "";
+          row.contact_id = call.contact_id;
+          continue;
+        }
+        if (exactTripId) {
+          row._trip_id ??= exactTripId;
+          row.trip_id ??= exactTripId;
+        }
+        if (callStopId) {
+          row._trip_stop_id ??= callStopId;
+          row.trip_stop_id ??= callStopId;
+        }
+        if (typeof stop?.customer_id === "string") {
+          row._customer_id ??= stop.customer_id;
+          row.customer_id ??= stop.customer_id;
+        }
+        if (typeof stop?.store_id === "string") {
+          row._store_id ??= stop.store_id;
+          row.store_id ??= stop.store_id;
+        }
+        if (exactTripId && !assignmentsError) {
+          const primaryAssignments = assignmentsByTrip.get(exactTripId) ?? [];
+          // A corrupted trip with multiple PRIMARY rows is ambiguous; leave it read-only.
+          if (primaryAssignments.length === 1) {
+            const assignment = primaryAssignments[0];
+            row._assignment_id ??= assignment.id;
+            row.assignment_id ??= assignment.id;
+            row._truck_id ??= assignment.truck_id;
+            row.truck_id ??= assignment.truck_id;
+            row._driver_id ??= assignment.driver_id;
+            row.driver_id ??= assignment.driver_id;
+            row._trucking_company_id ??= assignment.trucking_company_id;
+            row.trucking_company_id ??= assignment.trucking_company_id;
+          }
+        }
         row.assigned_to_id = call.assigned_to;
         row.assigned_to_name =
           typeof call.assigned_to === "string"
@@ -481,18 +407,35 @@ async function attachOperationalRecordIds(rows: Record<string, unknown>[]) {
             : "";
         row.contact_id = call.contact_id;
       }
+
+      // Store-call rows can gain exact IDs above; expose the same canonical aliases
+      // used by the cell editor without replacing any IDs already returned by a view.
+      for (const row of rows) {
+        const aliases: Record<string, string> = {
+          trip_id: "_trip_id",
+          trip_stop_id: "_trip_stop_id",
+          customer_id: "_customer_id",
+          store_id: "_store_id",
+          assignment_id: "_assignment_id",
+          truck_id: "_truck_id",
+          driver_id: "_driver_id",
+          trucking_company_id: "_trucking_company_id",
+        };
+        for (const [canonical, internal] of Object.entries(aliases)) {
+          if (row[canonical] == null && row[internal] != null) {
+            row[canonical] = row[internal];
+          }
+        }
+      }
     }
   }
 
   return rows;
 }
 
-function getReportDefinition(reportKey: string) {
+function getReportDefinition(reportKey: string): ReportDefinition {
   const definition = REPORT_DEFINITIONS[reportKey];
-  if (!definition) {
-    throw new ApiError("Report not found", 404, "REPORT_NOT_FOUND");
-  }
-
+  if (!definition) throw new ApiError("Report not found", 404, "REPORT_NOT_FOUND");
   return definition;
 }
 
@@ -501,246 +444,79 @@ export async function getReportData(
   query: ReportQueryParams = {},
 ): Promise<ReportResponse> {
   const key = reportKey.trim();
-  if (!REPORT_KEYS.includes(key)) {
-    throw new ApiError("Report not found", 404, "REPORT_NOT_FOUND");
-  }
-
+  if (!REPORT_KEYS.includes(key)) throw new ApiError("Report not found", 404, "REPORT_NOT_FOUND");
   const definition = getReportDefinition(key);
   const viewNames = resolveViewNames(definition);
-  if (viewNames.length === 0) {
-    throw new ApiError(
-      "Report view configuration is missing",
-      500,
-      "REPORT_CONFIG_ERROR",
-    );
-  }
+  if (!viewNames.length) throw new ApiError("Report view configuration is missing", 500, "REPORT_CONFIG_ERROR");
 
-  const rawPage = getQueryString(query.page) ?? "1";
-  const rawLimit = getQueryString(query.limit) ?? "50";
-  const pageValue = Number(rawPage);
-  const limitValue = Number(rawLimit);
-
-  const page =
-    Number.isFinite(pageValue) && pageValue > 0 ? Math.floor(pageValue) : 1;
-  const limit =
-    Number.isFinite(limitValue) && limitValue > 0
-      ? Math.min(Math.floor(limitValue), 500)
-      : 50;
-  const normalizedPage = page === 0 ? 1 : page;
-  const normalizedLimit = Number.isNaN(limit) || limit <= 0 ? 50 : limit;
-
-  const { from } = normalizePagination(
-    {
-      page: String(normalizedPage),
-      limit: String(normalizedLimit),
-    },
-    500,
-  );
-
-  const searchValue = normalizeText(getQueryString(query.search));
-  const sortByValue = normalizeText(getQueryString(query.sort_by));
-  const sortBy =
-    sortByValue && definition.sortableColumns.includes(sortByValue)
-      ? sortByValue
-      : definition.defaultSort;
-  const sortOrder = normalizeSortOrder(
-    getQueryString(query.sort_order),
-    definition.defaultSortOrder,
-  );
+  const rawPage = Number(getQueryString(query.page) ?? 1);
+  const rawLimit = Number(getQueryString(query.limit) ?? 50);
+  const page = Number.isFinite(rawPage) && rawPage > 0 ? Math.floor(rawPage) : 1;
+  const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(Math.floor(rawLimit), 500) : 50;
+  const { from } = normalizePagination({ page: String(page), limit: String(limit) }, 500);
+  const search = normalizeText(getQueryString(query.search));
+  const requestedSort = normalizeText(getQueryString(query.sort_by));
+  const sortBy = requestedSort && definition.sortableColumns.includes(requestedSort) ? requestedSort : definition.defaultSort;
+  const sortOrder = normalizeSortOrder(getQueryString(query.sort_order), definition.defaultSortOrder);
 
   let lastError: Error | null = null;
-  let data: Record<string, unknown>[] = [];
-  let count: number | null = null;
-
   for (const viewName of viewNames) {
-    let queryBuilder = supabaseAdmin
-      .from(viewName)
-      .select("*", { count: "exact" });
-
-    queryBuilder = applyFilters(queryBuilder, definition, query);
-    queryBuilder = applySearch(
-      queryBuilder,
-      searchValue,
-      definition.searchableColumns,
-    );
-    queryBuilder = queryBuilder.order(sortBy, {
-      ascending: sortOrder === "asc",
-    });
-    queryBuilder = queryBuilder.range(from, from + normalizedLimit - 1);
-
-    const result = await queryBuilder;
-    const { data: rows, error, count: totalCount } = result;
-
+    let builder = supabaseAdmin.from(viewName).select("*", { count: "exact" });
+    builder = applyFilters(builder, definition, query);
+    builder = applySearch(builder, search, definition.searchableColumns);
+    builder = builder.order(sortBy, { ascending: sortOrder === "asc" });
+    builder = builder.range(from, from + limit - 1);
+    const { data, error, count } = await builder;
     if (!error) {
-      data = (rows ?? []) as Record<string, unknown>[];
-      if (
-        [
-          "combined",
-          "dispatch",
-          "dispatch-monitoring",
-          "trip-booking",
-          "store-calling",
-        ].includes(key)
-      ) {
-        data = await attachOperationalRecordIds(data);
-      }
-      count = totalCount ?? rows?.length ?? 0;
+      const rows = (data ?? []) as Record<string, unknown>[];
+      const enriched = ["combined", "dispatch", "dispatch-monitoring", "trip-booking", "store-calling"].includes(key)
+        ? await attachOperationalRecordIds(rows)
+        : rows;
       return {
-        rows: data,
-        pagination: buildPaginationMeta(normalizedPage, normalizedLimit, count),
+        rows: enriched,
+        pagination: buildPaginationMeta(page, limit, count ?? rows.length),
       };
     }
-
-    const message = error.message ?? "";
-    lastError = new Error(message);
-
-    if (!shouldRetryLegacyView(message)) {
-      break;
-    }
+    lastError = new Error(error.message ?? "Report query failed");
+    if (!shouldRetryLegacyView(lastError.message, key)) break;
   }
-
-  if (lastError) {
-    console.error("Report query failed:", {
-      reportKey: key,
-      viewNames,
-      error: lastError.message,
-      query,
-    });
-    throw new ApiError(
-      "Unable to fetch report data",
-      500,
-      "REPORT_QUERY_FAILED",
-    );
-  }
-
-  return {
-    rows: data,
-    pagination: buildPaginationMeta(
-      normalizedPage,
-      normalizedLimit,
-      count ?? 0,
-    ),
-  };
+  console.error("Report query failed:", { reportKey: key, viewNames, error: lastError?.message, query });
+  throw new ApiError("Unable to fetch report data", 500, "REPORT_QUERY_FAILED");
 }
 
-export async function getCombinedReport(
-  query: ReportQueryParams = {},
-): Promise<ReportResponse> {
-  return getReportData("combined", query);
-}
-
-export async function getDispatchReport(
-  query: ReportQueryParams = {},
-): Promise<ReportResponse> {
-  return getReportData("dispatch", query);
-}
-
-export async function getDispatchMonitoringReport(
-  query: ReportQueryParams = {},
-): Promise<ReportResponse> {
-  return getReportData("dispatch-monitoring", query);
-}
-
-export async function getTripBookingReport(
-  query: ReportQueryParams = {},
-): Promise<ReportResponse> {
-  return getReportData("trip-booking", query);
-}
-
-export async function getStoreCallingReport(
-  query: ReportQueryParams = {},
-): Promise<ReportResponse> {
-  return getReportData("store-calling", query);
-}
-
-export async function getPodStatusReport(
-  query: ReportQueryParams = {},
-): Promise<ReportResponse> {
-  return getReportData("pod-status", query);
-}
-
-export async function getPodDriveFilesReport(
-  query: ReportQueryParams = {},
-): Promise<ReportResponse> {
-  return getReportData("pod-drive-files", query);
-}
-
-export async function getTripExceptionsReport(
-  query: ReportQueryParams = {},
-): Promise<ReportResponse> {
-  return getReportData("trip-exceptions", query);
-}
+export const getCombinedReport = (query: ReportQueryParams = {}) => getReportData("combined", query);
+export const getDispatchReport = (query: ReportQueryParams = {}) => getReportData("dispatch", query);
+export const getDispatchMonitoringReport = (query: ReportQueryParams = {}) => getReportData("dispatch-monitoring", query);
+export const getTripBookingReport = (query: ReportQueryParams = {}) => getReportData("trip-booking", query);
+export const getStoreCallingReport = (query: ReportQueryParams = {}) => getReportData("store-calling", query);
+export const getPodStatusReport = (query: ReportQueryParams = {}) => getReportData("pod-status", query);
+export const getPodDriveFilesReport = (query: ReportQueryParams = {}) => getReportData("pod-drive-files", query);
+export const getTripExceptionsReport = (query: ReportQueryParams = {}) => getReportData("trip-exceptions", query);
 
 export async function getReportColumns(reportKey: string) {
   const key = reportKey.trim();
-  if (!REPORT_KEYS.includes(key)) {
-    throw new ApiError("Report not found", 404, "REPORT_NOT_FOUND");
-  }
-
-  return {
-    report: key,
-    columns: REPORT_DEFINITIONS[key].columns,
-  };
+  if (!REPORT_KEYS.includes(key)) throw new ApiError("Report not found", 404, "REPORT_NOT_FOUND");
+  return { report: key, columns: REPORT_DEFINITIONS[key].columns };
 }
 
-export async function getAvailableReportKeys() {
-  return REPORT_KEYS;
-}
+export async function getAvailableReportKeys() { return REPORT_KEYS; }
 
 export function getReportRouteKey(reportKey: string) {
   const routeKey = reportKey.trim();
-  if (!(routeKey in REPORT_ROUTE_MAP)) {
-    throw new Error("Unsupported report key");
-  }
-
+  if (!(routeKey in REPORT_ROUTE_MAP)) throw new Error("Unsupported report key");
   return REPORT_ROUTE_MAP[routeKey as keyof typeof REPORT_ROUTE_MAP];
 }
 
 export function validateReportKey(reportKey: string) {
-  if (!reportKey || !REPORT_KEYS.includes(reportKey)) {
-    throw new Error("Invalid report key");
-  }
+  if (!reportKey || !REPORT_KEYS.includes(reportKey)) throw new Error("Invalid report key");
   return reportKey;
 }
 
 export function validateReportQuery(query: Record<string, unknown>) {
-  const invalidSortBy =
-    typeof query.sort_by === "string" &&
-    query.sort_by.length > 0 &&
-    !REPORT_DEFINITIONS[query.reportKey as string]?.sortableColumns.includes(
-      query.sort_by,
-    );
-
-  if (invalidSortBy) {
-    throw new Error("Invalid sort_by parameter");
-  }
-
-  const invalidSortOrder =
-    typeof query.sort_order === "string" &&
-    query.sort_order.length > 0 &&
-    !["asc", "desc"].includes(query.sort_order);
-
-  if (invalidSortOrder) {
-    throw new Error("Invalid sort_order parameter");
-  }
-
-  const invalidPage =
-    typeof query.page === "string" &&
-    (Number(query.page) <= 0 || !Number.isInteger(Number(query.page)));
-
-  if (invalidPage) {
-    throw new Error("page must be a positive integer");
-  }
-
-  const invalidLimit =
-    typeof query.limit === "string" &&
-    (Number(query.limit) <= 0 ||
-      Number(query.limit) > 500 ||
-      !Number.isInteger(Number(query.limit)));
-
-  if (invalidLimit) {
-    throw new Error("limit must be a positive integer up to 500");
-  }
-
+  const definition = REPORT_DEFINITIONS[query.reportKey as string];
+  if (typeof query.sort_by === "string" && query.sort_by && !definition?.sortableColumns.includes(query.sort_by)) throw new Error("Invalid sort_by parameter");
+  if (typeof query.sort_order === "string" && query.sort_order && !["asc", "desc"].includes(query.sort_order)) throw new Error("Invalid sort_order parameter");
+  if (typeof query.page === "string" && (Number(query.page) <= 0 || !Number.isInteger(Number(query.page)))) throw new Error("page must be a positive integer");
+  if (typeof query.limit === "string" && (Number(query.limit) <= 0 || Number(query.limit) > 500 || !Number.isInteger(Number(query.limit)))) throw new Error("limit must be a positive integer up to 500");
   return true;
 }

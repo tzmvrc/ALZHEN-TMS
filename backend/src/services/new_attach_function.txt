@@ -1,0 +1,105 @@
+async function attachOperationalRecordIds(rows: Record<string, unknown>[]) {
+  // Copy internal IDs with underscore prefix to standard field names for frontend compatibility
+  for (const row of rows) {
+    if (row._trip_id && !row.trip_id) row.trip_id = row._trip_id;
+    if (row._trip_stop_id && !row.trip_stop_id) row.trip_stop_id = row._trip_stop_id;
+    if (row._trip_line_item_id && !row.trip_line_item_id) row.trip_line_item_id = row._trip_line_item_id;
+    if (row._product_id && !row.product_id) row.product_id = row._product_id;
+    if (row._trip_type_id && !row.trip_type_id) row.trip_type_id = row._trip_type_id;
+    if (row._warehouse_id && !row.warehouse_id) row.warehouse_id = row._warehouse_id;
+    if (row._customer_id && !row.customer_id) row.customer_id = row._customer_id;
+    if (row._store_id && !row.store_id) row.store_id = row._store_id;
+    if (row._truck_id && !row.truck_id) row.truck_id = row._truck_id;
+    if (row._driver_id && !row.driver_id) row.driver_id = row._driver_id;
+    if (row._trucking_company_id && !row.trucking_company_id) row.trucking_company_id = row._trucking_company_id;
+    if (row._assignment_id && !row.assignment_id) row.assignment_id = row._assignment_id;
+    if (row._tms_done_by && !row.tms_done_by) row.tms_done_by = row._tms_done_by;
+    if (row._truck_allocated_by && !row.truck_allocated_by) row.truck_allocated_by = row._truck_allocated_by;
+    if (row._billing_id && !row.billing_id) row.billing_id = row._billing_id;
+  }
+
+  // Enrich product_id for rows that have trip_line_item_id but not product_id
+  const lineItemIds = [
+    ...new Set(
+      rows
+        .map((row) => row.trip_line_item_id)
+        .filter((id): id is string => typeof id === "string"),
+    ),
+  ];
+  if (lineItemIds.length > 0) {
+    const { data: lineItems, error } = await supabaseAdmin
+      .from("trip_line_items")
+      .select("id, product_id")
+      .in("id", lineItemIds);
+    if (error) {
+      console.error("Report line-item relationship enrichment failed:", error);
+    } else {
+      const productsByLineItem = new Map(
+        (lineItems ?? []).map((item) => [String(item.id), item.product_id]),
+      );
+      for (const row of rows) {
+        if (typeof row.trip_line_item_id === "string" && !row.product_id) {
+          row.product_id =
+            productsByLineItem.get(row.trip_line_item_id) ?? null;
+        }
+      }
+    }
+  }
+
+  // Enrich assigned_to_name for Store Calling
+  const storeCallIds = [
+    ...new Set(
+      rows
+        .map((row) => row.store_call_id)
+        .filter((id): id is string => typeof id === "string"),
+    ),
+  ];
+  if (storeCallIds.length > 0) {
+    const { data: storeCalls, error } = await supabaseAdmin
+      .from("store_calls")
+      .select("id, assigned_to, contact_id")
+      .in("id", storeCallIds);
+    if (error) {
+      console.error("Store-call relationship enrichment failed:", error);
+    } else {
+      const callById = new Map(
+        (storeCalls ?? []).map((call) => [String(call.id), call]),
+      );
+      const assignedIds = [
+        ...new Set(
+          (storeCalls ?? [])
+            .map((call) => call.assigned_to)
+            .filter((id): id is string => typeof id === "string"),
+        ),
+      ];
+      const { data: profiles } = assignedIds.length
+        ? await supabaseAdmin
+            .from("profiles")
+            .select("id, first_name, last_name")
+            .in("id", assignedIds)
+        : { data: [] };
+      const profileNames = new Map(
+        (profiles ?? []).map((profile) => [
+          String(profile.id),
+          [profile.first_name, profile.last_name]
+            .filter(Boolean)
+            .join(" ")
+            .trim(),
+        ]),
+      );
+      for (const row of rows) {
+        if (typeof row.store_call_id !== "string") continue;
+        const call = callById.get(row.store_call_id);
+        if (!call) continue;
+        row.assigned_to_id = call.assigned_to;
+        row.assigned_to_name =
+          typeof call.assigned_to === "string"
+            ? (profileNames.get(call.assigned_to) ?? "")
+            : "";
+        row.contact_id = call.contact_id;
+      }
+    }
+  }
+
+  return rows;
+}

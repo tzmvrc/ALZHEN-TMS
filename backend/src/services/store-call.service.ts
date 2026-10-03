@@ -112,7 +112,7 @@ export async function updateStoreCallRecord(
 
   const { data: existing, error: existingError } = await supabaseAdmin
     .from("store_calls")
-    .select("id")
+    .select("id, trip_id, trip_stop_id")
     .eq("id", id)
     .maybeSingle();
 
@@ -214,6 +214,49 @@ export async function updateStoreCallRecord(
   }
   if (payload.assigned_to !== undefined) {
     await assertEligibleAssignee(String(payload.assigned_to));
+  }
+  if (payload.contact_id) {
+    const stopId =
+      typeof payload.trip_stop_id === "string"
+        ? payload.trip_stop_id
+        : existing.trip_stop_id;
+    if (typeof stopId !== "string") {
+      throw new Error("Invalid relationship: contact requires a linked stop.");
+    }
+
+    const { data: stop, error: stopError } = await supabaseAdmin
+      .from("trip_stops")
+      .select("id, trip_id, store_id")
+      .eq("id", stopId)
+      .maybeSingle();
+    if (stopError) {
+      throw new Error("Unable to validate the store-call stop relationship.");
+    }
+    if (!stop) {
+      throw new Error("Invalid relationship: linked stop was not found.");
+    }
+    const tripId =
+      typeof payload.trip_id === "string" ? payload.trip_id : existing.trip_id;
+    if (typeof tripId === "string" && stop.trip_id !== tripId) {
+      throw new Error("Invalid relationship: stop does not belong to trip.");
+    }
+    if (typeof stop.store_id !== "string") {
+      throw new Error("Invalid relationship: linked stop has no store.");
+    }
+
+    const { data: contact, error: contactError } = await supabaseAdmin
+      .from("store_contacts")
+      .select("id, store_id")
+      .eq("id", payload.contact_id)
+      .maybeSingle();
+    if (contactError) {
+      throw new Error("Unable to validate the selected store contact.");
+    }
+    if (!contact || contact.store_id !== stop.store_id) {
+      throw new Error(
+        "Invalid relationship: contact does not belong to the linked store.",
+      );
+    }
   }
 
   const { data, error } = await supabaseAdmin

@@ -220,6 +220,11 @@ function buildTripPayload(
     if (!(field in input)) continue;
     const value = (input as Record<string, unknown>)[field];
 
+    if (value === null) {
+      payload[field] = null;
+      continue;
+    }
+
     if (field === "dispatch_number") {
       payload[field] = sanitizeString(value, "dispatch_number", 100);
     } else if (
@@ -240,8 +245,16 @@ function buildTripPayload(
       field === "departure_from_warehouse_at"
     ) {
       payload[field] = parseDateString(value, field);
-    } else if (field === "page_no" || field === "subcon_rate_manual") {
-      payload[field] = sanitizeNumber(value, field);
+    } else if (
+      field === "page_no" ||
+      field === "subcon_rate_manual" ||
+      field === "trip_number"
+    ) {
+      const parsed = sanitizeNumber(value, field);
+      if (field === "trip_number" && parsed !== undefined && !Number.isInteger(parsed)) {
+        throw new Error("trip_number must be an integer.");
+      }
+      payload[field] = parsed;
     } else if (field === "added_to_report") {
       payload[field] = sanitizeBoolean(value, field);
     } else if (
@@ -249,7 +262,6 @@ function buildTripPayload(
       field === "authorization_letter" ||
       field === "remarks" ||
       field === "transaction_number" ||
-      field === "trip_number" ||
       field === "letter_status" ||
       field === "lbc_tracking_number"
     ) {
@@ -1709,4 +1721,46 @@ export async function getTripEvents(id: string) {
   }
 
   return data ?? [];
+}
+
+export async function updateTripBillingRecord(
+  tripId: string,
+  billingId: string,
+  input: Record<string, unknown>,
+) {
+  if (!isValidUuid(tripId)) throw new Error("Invalid trip id");
+  if (!isValidUuid(billingId)) throw new Error("Invalid billing id");
+  const keys = Object.keys(input);
+  if (keys.length !== 1 || keys[0] !== "invoice_number") {
+    throw new Error("Only invoice_number can be updated from this report.");
+  }
+  const value = input.invoice_number;
+  if (value !== null && typeof value !== "string") {
+    throw new Error("invoice_number must be a string or null.");
+  }
+  const { data: existing, error: lookupError } = await supabaseAdmin
+    .from("billings")
+    .select("id, trip_id")
+    .eq("id", billingId)
+    .maybeSingle();
+  if (lookupError) {
+    console.error("Billing lookup failed:", lookupError);
+    throw new Error("Unable to load billing record");
+  }
+  if (!existing) throw new Error("Billing record not found");
+  if (existing.trip_id !== tripId) {
+    throw new Error("Billing record does not belong to this trip");
+  }
+  const { data, error } = await supabaseAdmin
+    .from("billings")
+    .update({ invoice_number: value })
+    .eq("id", billingId)
+    .eq("trip_id", tripId)
+    .select("id")
+    .single();
+  if (error) {
+    console.error("Billing update failed:", { tripId, billingId, error });
+    throw new Error("Unable to update billing record");
+  }
+  return data;
 }

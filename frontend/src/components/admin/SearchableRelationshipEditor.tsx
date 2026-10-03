@@ -11,7 +11,11 @@ type SearchableRelationshipEditorProps = {
   kind: RelationshipKind;
   value: string;
   storeId?: string;
+<<<<<<< Updated upstream
   disabled?: boolean;
+=======
+  customerId?: string;
+>>>>>>> Stashed changes
   onChange: (value: string) => void;
   onSelect: (option: RelationshipOption) => void;
   onCommitBlur: () => void;
@@ -23,7 +27,11 @@ export default function SearchableRelationshipEditor({
   kind,
   value,
   storeId,
+<<<<<<< Updated upstream
   disabled = false,
+=======
+  customerId,
+>>>>>>> Stashed changes
   onChange,
   onSelect,
   onCommitBlur,
@@ -44,7 +52,10 @@ export default function SearchableRelationshipEditor({
     const timer = window.setTimeout(() => {
       setLoading(true);
       setError("");
-      void searchRelationshipOptions(token, kind, value, { storeId })
+      void searchRelationshipOptions(token, kind, value, {
+        storeId,
+        customerId,
+      })
         .then((result) => {
           if (!active) return;
           setOptions(result);
@@ -68,7 +79,7 @@ export default function SearchableRelationshipEditor({
       active = false;
       window.clearTimeout(timer);
     };
-  }, [isOpen, kind, storeId, token, value]);
+  }, [customerId, isOpen, kind, storeId, token, value]);
 
   useEffect(() => {
     if (!isOpen) return;

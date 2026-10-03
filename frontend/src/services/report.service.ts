@@ -99,8 +99,8 @@ const reportFilters: Record<ReportKey, ReportFilter[]> = {
     { key: "letter_status", label: "Letter status" },
   ],
   "dispatch-monitoring": [
-    { key: "loading_date_from", label: "Loading date from", type: "date" },
-    { key: "loading_date_to", label: "Loading date to", type: "date" },
+    { key: "date_from", label: "Loading date from", type: "date" },
+    { key: "date_to", label: "Loading date to", type: "date" },
     { key: "delivery_status", label: "Delivery status" },
     { key: "trip_status", label: "Trip status" },
     { key: "warehouse_code", label: "Warehouse code" },
@@ -108,8 +108,8 @@ const reportFilters: Record<ReportKey, ReportFilter[]> = {
     { key: "letter_status", label: "Letter status" },
   ],
   dispatch: [
-    { key: "loading_date_from", label: "Loading date from", type: "date" },
-    { key: "loading_date_to", label: "Loading date to", type: "date" },
+    { key: "date_from", label: "Loading date from", type: "date" },
+    { key: "date_to", label: "Loading date to", type: "date" },
     { key: "delivery_status", label: "Delivery status" },
     { key: "wh_code", label: "Warehouse code" },
     { key: "customer_name", label: "Customer" },
@@ -117,8 +117,8 @@ const reportFilters: Record<ReportKey, ReportFilter[]> = {
     { key: "letter_status", label: "Letter status" },
   ],
   "trip-booking": [
-    { key: "loading_date_from", label: "Loading date from", type: "date" },
-    { key: "loading_date_to", label: "Loading date to", type: "date" },
+    { key: "date_from", label: "Loading date from", type: "date" },
+    { key: "date_to", label: "Loading date to", type: "date" },
     { key: "dispatch_number", label: "Dispatch number" },
     { key: "trip_status", label: "Trip status" },
     { key: "delivery_status", label: "Delivery status" },

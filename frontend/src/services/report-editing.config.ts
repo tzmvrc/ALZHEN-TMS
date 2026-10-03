@@ -7,6 +7,7 @@ export type ReportEditTarget =
   | "stop"
   | "lineItem"
   | "assignment"
+  | "billing"
   | "storeCall";
 export type ReportEditor =
   | "text"
@@ -30,6 +31,7 @@ export type ReportEditDefinition = {
     idField: string;
     labelField: string;
     storeIdField?: string;
+    customerIdField?: string;
   };
 };
 
@@ -90,7 +92,7 @@ const truckingCompany: ReportEditDefinition = {
   relationship: {
     kind: "trucking-companies",
     idField: "trucking_company_id",
-    labelField: "trucker_gc_name",
+    labelField: "trucking_company",
   },
 };
 const driver: ReportEditDefinition = {
@@ -139,6 +141,7 @@ const store: ReportEditDefinition = {
     kind: "stores",
     idField: "store_id",
     labelField: "store_name",
+    customerIdField: "customer_id",
   },
 };
 const lineProduct: ReportEditDefinition = {
@@ -152,6 +155,17 @@ const lineProduct: ReportEditDefinition = {
     idField: "product_id",
     labelField: "product_name",
   },
+};
+const productCategory: ReportEditDefinition = {
+  ...lineProduct,
+  label: "Product category",
+};
+const billingInvoice: ReportEditDefinition = {
+  label: "Invoice Number",
+  sourceEntity: "billing",
+  sourceField: "invoice_number",
+  editor: "text",
+  recordIdField: "billing_id",
 };
 const profileField = (
   label: string,
@@ -189,7 +203,7 @@ function tripField(
 function stopField(
   label: string,
   sourceField: string,
-  editor: "text" | "date" = "text",
+  editor: "text" | "number" | "date" = "text",
 ): ReportEditDefinition {
   return {
     label,
@@ -236,7 +250,7 @@ const tripScalars: Record<string, ReportEditDefinition> = {
     true,
   ),
   transaction_number: tripField("Transaction Number", "transaction_number"),
-  trip_number: tripField("Trip Number", "trip_number"),
+  trip_number: tripField("Trip Number", "trip_number", "number"),
   loading_date: tripField("Loading Date", "loading_date", "date"),
   estimated_delivery_date: tripField(
     "Estimated Delivery Date",
@@ -267,11 +281,6 @@ const tripScalars: Record<string, ReportEditDefinition> = {
     "request_received_at",
     "datetime",
   ),
-  departure_from_warehouse_at: tripField(
-    "Warehouse Departure",
-    "departure_from_warehouse_at",
-    "datetime",
-  ),
   lbc_tracking_number: tripField("LBC Tracking Number", "lbc_tracking_number"),
   page_no: tripField("Page Number", "page_no", "number"),
 };
@@ -294,6 +303,7 @@ const stopScalars: Record<string, ReportEditDefinition> = {
     editor: "datetime",
   },
   stop_remarks: stopField("Stop Remarks", "remarks"),
+  stop_sequence: stopField("Stop Sequence", "stop_sequence", "number"),
 };
 
 const lineItemScalars: Record<string, ReportEditDefinition> = {
@@ -337,6 +347,24 @@ const storeCallScalars: Record<string, ReportEditDefinition> = {
   date_assigned: storeCallField("Date Assigned", "date_assigned", "date"),
   date_of_contact: storeCallField("Date of Contact", "date_of_contact", "date"),
   store_call_remarks: storeCallField("Store Call Remarks", "remarks"),
+  store_name: {
+    label: "Store",
+    sourceEntity: "stop",
+    sourceField: "store_id",
+    editor: "relationship",
+    recordIdField: "trip_stop_id",
+    relationship: {
+      kind: "stores",
+      idField: "store_id",
+      labelField: "store_name",
+      customerIdField: "customer_id",
+    },
+  },
+  dispatch_number: tripScalars.dispatch_number,
+  transaction_number: tripScalars.transaction_number,
+  customer_name: customer,
+  driver_name: driver,
+  plate_number: truck,
 };
 
 const commonTrip: Record<string, ReportEditDefinition> = {
@@ -351,7 +379,6 @@ const commonTrip: Record<string, ReportEditDefinition> = {
   ship_from: warehouse,
   driver_name: driver,
   plate_number: truck,
-  trucker_gc_name: truckingCompany,
   trucking_company: truckingCompany,
   truck_allocated_by_name: profileField(
     "Truck Allocated By",
@@ -364,22 +391,19 @@ const commonTrip: Record<string, ReportEditDefinition> = {
     "tms_done_by_name",
   ),
   ...stopScalars,
+  stop_sequence: stopScalars.stop_sequence,
   delivery_status: deliveryStatus,
   customer_name: customer,
   store_name: store,
   ship_to: store,
   ...lineItemScalars,
+  category: productCategory,
+  product_category: productCategory,
   product_name: lineProduct,
   sku: lineProduct,
   model_code: lineProduct,
   product_model: lineProduct,
-  dr: lineItemScalars.dr_number,
   remarks: tripField("Remarks", "remarks"),
-  warehouse_departure_time: tripField(
-    "Warehouse Departure",
-    "departure_from_warehouse_at",
-    "date",
-  ),
 };
 
 const REPORT_EDITING: Record<
@@ -387,9 +411,136 @@ const REPORT_EDITING: Record<
   Record<string, ReportEditDefinition>
 > = {
   combined: commonTrip,
-  "dispatch-monitoring": commonTrip,
-  dispatch: commonTrip,
-  "trip-booking": commonTrip,
+  "dispatch-monitoring": {
+    dispatch_number: tripScalars.dispatch_number,
+    transaction_number: tripScalars.transaction_number,
+    loading_date: tripScalars.loading_date,
+    trip_status: tripStatus,
+    letter_status: letterStatus,
+    warehouse_code: warehouse,
+    warehouse_name: warehouse,
+    driver_name: driver,
+    plate_number: truck,
+    trucking_company: truckingCompany,
+    delivery_status: deliveryStatus,
+    customer_name: customer,
+    store_name: store,
+    stop_sequence: stopScalars.stop_sequence,
+    arrival_time: stopScalars.arrival_time,
+    start_unloading_time: stopScalars.start_unloading_time,
+    finish_unloading_time: stopScalars.finish_unloading_time,
+    departure_time: stopScalars.departure_time,
+    remarks: tripField("Remarks", "remarks"),
+    trip_number: tripScalars.trip_number,
+    added_to_report: tripScalars.added_to_report,
+    truck_allocated_by_name: profileField(
+      "Truck Allocated By",
+      "truck_allocated_by",
+      "truck_allocated_by_name",
+    ),
+    subcon_rate_manual: tripScalars.subcon_rate_manual,
+    signed_dr_upload_date: tripScalars.signed_dr_upload_date,
+    transmittal_date: tripScalars.transmittal_date,
+    tms_date: tripScalars.tms_date,
+    tms_done_by_name: profileField(
+      "TMS Done By",
+      "tms_done_by",
+      "tms_done_by_name",
+    ),
+    pod_ac_shipping_date: tripScalars.pod_ac_shipping_date,
+    lbc_tracking_number: tripScalars.lbc_tracking_number,
+  },
+  dispatch: {
+    dispatch_number: tripScalars.dispatch_number,
+    loading_date: tripScalars.loading_date,
+    estimated_delivery_date: tripScalars.estimated_delivery_date,
+    wh_code: warehouse,
+    ship_from: warehouse,
+    ship_to: store,
+    customer_name: customer,
+    driver_name: driver,
+    plate_number: truck,
+    trucking_company: truckingCompany,
+    product_model: lineProduct,
+    category: productCategory,
+    dr_number: lineItemScalars.dr_number,
+    customer_model: lineItemScalars.customer_model,
+    sap_so_number: lineItemScalars.sap_so_number,
+    customer_po_number: lineItemScalars.customer_po_number,
+    internal_po_number: lineItemScalars.internal_po_number,
+    quantity: lineItemScalars.quantity,
+    cbm: lineItemScalars.cbm,
+    trip_number: tripScalars.trip_number,
+    transaction_number: tripScalars.transaction_number,
+    added_to_report: tripScalars.added_to_report,
+    subcon_rate_manual: tripScalars.subcon_rate_manual,
+    remarks: tripField("Remarks", "remarks"),
+    arrival_time: stopScalars.arrival_time,
+    start_unloading_time: stopScalars.start_unloading_time,
+    finish_unloading_time: stopScalars.finish_unloading_time,
+    departure_time: stopScalars.departure_time,
+    signed_dr_upload_date: tripScalars.signed_dr_upload_date,
+    transmittal_date: tripScalars.transmittal_date,
+    tms_date: tripScalars.tms_date,
+    pod_ac_shipping_date: tripScalars.pod_ac_shipping_date,
+    lbc_tracking_number: tripScalars.lbc_tracking_number,
+    tms_done_by_name: profileField(
+      "TMS Done By",
+      "tms_done_by",
+      "tms_done_by_name",
+    ),
+    delivery_status: deliveryStatus,
+    letter_status: letterStatus,
+  },
+  "trip-booking": {
+    dispatch_number: tripScalars.dispatch_number,
+    trip_number: tripScalars.trip_number,
+    loading_date: tripScalars.loading_date,
+    warehouse_name: warehouse,
+    store_name: store,
+    trucking_company: truckingCompany,
+    driver_name: driver,
+    plate_number: truck,
+    customer_name: customer,
+    dr_number: lineItemScalars.dr_number,
+    invoice_number: billingInvoice,
+    customer_po_number: lineItemScalars.customer_po_number,
+    internal_po_number: lineItemScalars.internal_po_number,
+    sku: lineProduct,
+    model_code: lineProduct,
+    product_name: lineProduct,
+    quantity: lineItemScalars.quantity,
+    cbm: lineItemScalars.cbm,
+    customer_model: lineItemScalars.customer_model,
+    transaction_number: tripScalars.transaction_number,
+    trip_type: tripType,
+    trip_status: tripStatus,
+    delivery_status: deliveryStatus,
+    letter_status: letterStatus,
+    estimated_delivery_date: tripScalars.estimated_delivery_date,
+    warehouse_code: warehouse,
+    stop_sequence: stopScalars.stop_sequence,
+    added_to_report: tripScalars.added_to_report,
+    truck_allocated_by_name: profileField(
+      "Truck Allocated By",
+      "truck_allocated_by",
+      "truck_allocated_by_name",
+    ),
+    product_category: productCategory,
+    subcon_rate_manual: tripScalars.subcon_rate_manual,
+    signed_dr_upload_date: tripScalars.signed_dr_upload_date,
+    transmittal_date: tripScalars.transmittal_date,
+    tms_date: tripScalars.tms_date,
+    tms_done_by_name: profileField(
+      "TMS Done By",
+      "tms_done_by",
+      "tms_done_by_name",
+    ),
+    pod_ac_shipping_date: tripScalars.pod_ac_shipping_date,
+    lbc_tracking_number: tripScalars.lbc_tracking_number,
+    sap_so_number: lineItemScalars.sap_so_number,
+    remarks: tripField("Remarks", "remarks"),
+  },
   "store-calling": {
     status: {
       label: "Call Status",
@@ -408,6 +559,7 @@ const REPORT_EDITING: Record<
       dropdownField: "confirmation_status",
     },
     ...storeCallScalars,
+    ship_to: store,
   },
 };
 

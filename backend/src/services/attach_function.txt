@@ -1,0 +1,323 @@
+async function attachOperationalRecordIds(rows: Record<string, unknown>[]) {
+  const rowsMissingTripId = rows.filter(
+    (row) => typeof row.trip_id !== "string" || !row.trip_id,
+  );
+  const dispatchNumbers = [
+    ...new Set(
+      rowsMissingTripId
+        .map((row) => row.dispatch_number)
+        .filter(
+          (value): value is string => typeof value === "string" && !!value,
+        ),
+    ),
+  ];
+
+  if (dispatchNumbers.length > 0) {
+    const { data: trips, error } = await supabaseAdmin
+      .from("trips")
+      .select(
+        "id, dispatch_number, trip_number, transaction_number, loading_date",
+      )
+      .in("dispatch_number", dispatchNumbers);
+
+    if (error) {
+      console.error("Report trip ID enrichment failed:", error);
+    } else {
+      for (const row of rowsMissingTripId) {
+        const candidates = (trips ?? []).filter((trip) => {
+          if (trip.dispatch_number !== row.dispatch_number) return false;
+          for (const field of ["trip_number", "transaction_number"] as const) {
+            const rowValue = row[field];
+            if (
+              rowValue !== null &&
+              rowValue !== undefined &&
+              rowValue !== ""
+            ) {
+              if (trip[field] !== rowValue) return false;
+            }
+          }
+          if (row.loading_date && trip.loading_date) {
+            return (
+              normalizedDate(row.loading_date) ===
+              normalizedDate(trip.loading_date)
+            );
+          }
+          return true;
+        });
+
+        if (candidates.length === 1) {
+          row.trip_id = candidates[0].id;
+        }
+      }
+    }
+  }
+
+  const tripIds = [
+    ...new Set(
+      rows
+        .map((row) => row.trip_id)
+        .filter((value): value is string => typeof value === "string"),
+    ),
+  ];
+
+  const [tripResult, assignmentResult, stopResult] = await Promise.all([
+    tripIds.length
+      ? supabaseAdmin
+          .from("trips")
+          .select("id, trip_type_id, warehouse_id")
+          .in("id", tripIds)
+      : Promise.resolve({ data: [], error: null }),
+    tripIds.length
+      ? supabaseAdmin
+          .from("trip_truck_assignments")
+          .select("id, trip_id, truck_id, driver_id, trucking_company_id")
+          .in("trip_id", tripIds)
+          .is("unassigned_at", null)
+      : Promise.resolve({ data: [], error: null }),
+    tripIds.length
+      ? supabaseAdmin
+          .from("trip_stops")
+          .select("id, trip_id, stop_sequence, customer_id, store_id")
+          .in("trip_id", tripIds)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (tripResult.error) {
+    console.error(
+      "Report trip relationship enrichment failed:",
+      tripResult.error,
+    );
+  }
+  if (assignmentResult.error) {
+    console.error(
+      "Report assignment enrichment failed:",
+      assignmentResult.error,
+    );
+  }
+  if (stopResult.error) {
+    console.error("Report stop ID enrichment failed:", stopResult.error);
+  }
+
+  const tripMap = new Map(
+    (tripResult.data ?? []).map((trip) => [String(trip.id), trip]),
+  );
+  for (const row of rows) {
+    const tripId = typeof row.trip_id === "string" ? row.trip_id : "";
+    const trip = tripMap.get(tripId);
+    if (!trip) continue;
+    row.trip_type_id = trip.trip_type_id;
+    row.warehouse_id = trip.warehouse_id;
+  }
+
+  const assignments = assignmentResult.data ?? [];
+  const truckIds = [
+    ...new Set(assignments.map((item) => item.truck_id).filter(Boolean)),
+  ];
+  const driverIds = [
+    ...new Set(assignments.map((item) => item.driver_id).filter(Boolean)),
+  ];
+  const [truckResult, driverResult] = await Promise.all([
+    truckIds.length
+      ? supabaseAdmin
+          .from("trucks")
+          .select("id, plate_number")
+          .in("id", truckIds)
+      : Promise.resolve({ data: [], error: null }),
+    driverIds.length
+      ? supabaseAdmin
+          .from("drivers")
+          .select("id, first_name, last_name")
+          .in("id", driverIds)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  const truckById = new Map(
+    (truckResult.data ?? []).map((truck) => [String(truck.id), truck]),
+  );
+  const driverById = new Map(
+    (driverResult.data ?? []).map((driver) => [String(driver.id), driver]),
+  );
+  const normalizeName = (value: unknown) =>
+    typeof value === "string" ? value.trim().toLocaleLowerCase() : "";
+
+  for (const row of rows) {
+    const tripId = typeof row.trip_id === "string" ? row.trip_id : "";
+    if (!tripId) continue;
+    let candidates = assignments.filter(
+      (assignment) => assignment.trip_id === tripId,
+    );
+    const plate = normalizeName(row.plate_number);
+    if (plate) {
+      const matching = candidates.filter(
+        (assignment) =>
+          normalizeName(
+            truckById.get(String(assignment.truck_id ?? ""))?.plate_number,
+          ) === plate,
+      );
+      if (matching.length > 0) candidates = matching;
+    }
+    const driverName = normalizeName(row.driver_name);
+    if (driverName) {
+      const matching = candidates.filter((assignment) => {
+        const driver = driverById.get(String(assignment.driver_id ?? ""));
+        return (
+          normalizeName(
+            [driver?.first_name, driver?.last_name].filter(Boolean).join(" "),
+          ) === driverName
+        );
+      });
+      if (matching.length > 0) candidates = matching;
+    }
+    if (candidates.length === 1) {
+      const assignment = candidates[0];
+      row.assignment_id = assignment.id;
+      row.driver_id = assignment.driver_id;
+      row.truck_id = assignment.truck_id;
+      row.trucking_company_id = assignment.trucking_company_id;
+    }
+  }
+
+  const stops = stopResult.data ?? [];
+  const customerIds = [
+    ...new Set(stops.map((stop) => stop.customer_id).filter(Boolean)),
+  ];
+  const storeIds = [
+    ...new Set(stops.map((stop) => stop.store_id).filter(Boolean)),
+  ];
+  const [customersResult, storesResult] = await Promise.all([
+    customerIds.length
+      ? supabaseAdmin.from("customers").select("id, name").in("id", customerIds)
+      : Promise.resolve({ data: [], error: null }),
+    storeIds.length
+      ? supabaseAdmin
+          .from("customer_stores")
+          .select("id, name")
+          .in("id", storeIds)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  const customerNames = new Map(
+    (customersResult.data ?? []).map((item) => [
+      String(item.id),
+      String(item.name ?? ""),
+    ]),
+  );
+  const storeNames = new Map(
+    (storesResult.data ?? []).map((item) => [
+      String(item.id),
+      String(item.name ?? ""),
+    ]),
+  );
+
+  for (const row of rows) {
+    const tripId = typeof row.trip_id === "string" ? row.trip_id : "";
+    if (!tripId) continue;
+    let candidates = stops.filter((stop) => stop.trip_id === tripId);
+    if (typeof row.trip_stop_id === "string") {
+      candidates = candidates.filter((stop) => stop.id === row.trip_stop_id);
+    } else if (row.stop_sequence !== null && row.stop_sequence !== undefined) {
+      candidates = candidates.filter(
+        (stop) => String(stop.stop_sequence) === String(row.stop_sequence),
+      );
+    } else {
+      const destinations = [row.ship_to, row.store_name, row.customer_name]
+        .map(normalizeName)
+        .filter(Boolean);
+      if (destinations.length > 0) {
+        candidates = candidates.filter((stop) =>
+          [
+            storeNames.get(String(stop.store_id ?? "")),
+            customerNames.get(String(stop.customer_id ?? "")),
+          ].some((name) => destinations.includes(normalizeName(name))),
+        );
+      }
+    }
+    if (candidates.length === 1) {
+      const stop = candidates[0];
+      row.trip_stop_id = stop.id;
+      row.customer_id = stop.customer_id;
+      row.store_id = stop.store_id;
+    }
+  }
+
+  const lineItemIds = [
+    ...new Set(
+      rows
+        .map((row) => row.trip_line_item_id)
+        .filter((id): id is string => typeof id === "string"),
+    ),
+  ];
+  if (lineItemIds.length > 0) {
+    const { data: lineItems, error } = await supabaseAdmin
+      .from("trip_line_items")
+      .select("id, product_id")
+      .in("id", lineItemIds);
+    if (error) {
+      console.error("Report line-item relationship enrichment failed:", error);
+    } else {
+      const productsByLineItem = new Map(
+        (lineItems ?? []).map((item) => [String(item.id), item.product_id]),
+      );
+      for (const row of rows) {
+        if (typeof row.trip_line_item_id === "string") {
+          row.product_id =
+            productsByLineItem.get(row.trip_line_item_id) ?? null;
+        }
+      }
+    }
+  }
+
+  const storeCallIds = [
+    ...new Set(
+      rows
+        .map((row) => row.store_call_id)
+        .filter((id): id is string => typeof id === "string"),
+    ),
+  ];
+  if (storeCallIds.length > 0) {
+    const { data: storeCalls, error } = await supabaseAdmin
+      .from("store_calls")
+      .select("id, assigned_to, contact_id")
+      .in("id", storeCallIds);
+    if (error) {
+      console.error("Store-call relationship enrichment failed:", error);
+    } else {
+      const callById = new Map(
+        (storeCalls ?? []).map((call) => [String(call.id), call]),
+      );
+      const assignedIds = [
+        ...new Set(
+          (storeCalls ?? [])
+            .map((call) => call.assigned_to)
+            .filter((id): id is string => typeof id === "string"),
+        ),
+      ];
+      const { data: profiles } = assignedIds.length
+        ? await supabaseAdmin
+            .from("profiles")
+            .select("id, first_name, last_name")
+            .in("id", assignedIds)
+        : { data: [] };
+      const profileNames = new Map(
+        (profiles ?? []).map((profile) => [
+          String(profile.id),
+          [profile.first_name, profile.last_name]
+            .filter(Boolean)
+            .join(" ")
+            .trim(),
+        ]),
+      );
+      for (const row of rows) {
+        if (typeof row.store_call_id !== "string") continue;
+        const call = callById.get(row.store_call_id);
+        if (!call) continue;
+        row.assigned_to_id = call.assigned_to;
+        row.assigned_to_name =
+          typeof call.assigned_to === "string"
+            ? (profileNames.get(call.assigned_to) ?? "")
+            : "";
+        row.contact_id = call.contact_id;
+      }
+    }
+  }
+
+  return rows;
+}
+

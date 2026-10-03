@@ -66,7 +66,7 @@ export interface CombinedReportRow {
   trip_stop_id?: string | number | null;
   trip_line_item_id?: string | number | null;
   dispatch_number?: string | null;
-  trip_number?: string | null;
+  trip_number?: number | null;
   loading_date?: string | null;
   estimated_delivery_date?: string | null;
   trip_status?: string | null;
@@ -84,7 +84,7 @@ export interface CombinedReportRow {
 
 export interface DispatchReportRow {
   dispatch_number?: string | null;
-  trip_number?: string | null;
+  trip_number?: number | null;
   loading_date?: string | null;
   ship_from?: string | null;
   ship_to?: string | null;
@@ -114,7 +114,7 @@ export interface DispatchMonitoringReportRow {
 
 export interface TripBookingReportRow {
   dispatch_number?: string | null;
-  trip_number?: string | null;
+  trip_number?: number | null;
   loading_date?: string | null;
   ship_from?: string | null;
   ship_to?: string | null;
