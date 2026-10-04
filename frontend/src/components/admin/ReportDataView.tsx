@@ -1453,7 +1453,7 @@ export default function ReportDataView({
 
   return (
     <section className="overflow-hidden rounded-[28px] bg-white shadow-[0_1px_2px_rgba(11,35,65,0.04),0_10px_30px_-18px_rgba(11,35,65,0.14)]">
-      <div className="flex flex-col gap-3 p-5 lg:flex-row lg:items-center lg:justify-between">
+      <div className="flex flex-col gap-3 p-5 lg:flex-row lg:items-start lg:justify-between">
         <div className="flex flex-wrap items-center gap-3">
           {tripScope && onTripScopeChange && (
             <div role="tablist" aria-label="Trip views" className="inline-flex max-w-full gap-1 overflow-x-auto rounded-full bg-[#f2f6fa] p-1">

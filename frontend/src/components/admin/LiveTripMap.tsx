@@ -206,15 +206,15 @@ export default function LiveTripMap({
     !focusTripId || latestMarkers.some((marker) => marker.id === focusTripId);
 
   return (
-    <section className="overflow-hidden rounded-[28px] bg-white shadow-[0_1px_2px_rgba(11,35,65,0.04),0_10px_30px_-18px_rgba(11,35,65,0.14)]">
+    <section className="overflow-hidden rounded-[28px] bg-white shadow-[0_1px_2px_rgba(20,24,16,0.03),0_10px_30px_-18px_rgba(20,24,16,0.10)]">
       <header className="flex items-center justify-between gap-3 px-5 pb-3 pt-5">
         <div>
-          <h2 className="text-[17px] font-semibold tracking-tight text-[#0b2341]">
+          <h2 className="text-[17px] font-semibold tracking-tight text-[#17181a]">
             Trip routes
           </h2>
           <p className="text-[10px] text-slate-500">Recorded GPS routes and stops</p>
         </div>
-        <span className="rounded-full bg-[#e6f0f9] px-3 py-1 text-[11px] font-semibold text-[#1d5f94]">
+        <span className="rounded-full bg-[#eef7c4] px-3 py-1 text-[11px] font-semibold text-[#5a7010]">
           {markerCount} {markerCount === 1 ? "vehicle" : "vehicles"}
         </span>
       </header>

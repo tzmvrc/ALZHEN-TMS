@@ -19,7 +19,7 @@ import OverviewView from "./views/OverviewView";
 import ResourceView from "./views/ResourceView";
 import ClientWebsiteWorkspace from "./clientwebsite";
 import { defaultDashboardData } from "./data/defaultDashboardData";
-import dottedBackground from "../../assets/dotted-bg.svg";
+import dottedBackground from "../../assets/dotted.svg";
 import NotificationsView from "./views/NotificationsView";
 import { fetchNotifications, type AdminNotification } from "../../services/notification.service";
 
@@ -214,15 +214,15 @@ export default function DashboardPage({
   }
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[#f2f4f5] text-slate-900">
+    <div className="relative min-h-screen bg-[#f2f4f5] text-slate-900">
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 opacity-30"
-        style={{ backgroundImage: `url(${dottedBackground})`, backgroundRepeat: "repeat", backgroundSize: "20px 20px" }}
+        className="pointer-events-none fixed inset-0"
+        style={{ backgroundImage: `url("${dottedBackground}")`, backgroundRepeat: "repeat", backgroundSize: "20px 20px" }}
       />
 
       <div className="relative z-10">
-        <div className="mx-auto max-w-[1500px] px-3 sm:px-4 lg:px-6">
+        <div className="dotted-surface mx-auto max-w-[1500px] px-3 sm:px-4 lg:px-6">
           <SidebarNav
             entries={navEntries}
             activeId={activeId}
@@ -238,7 +238,7 @@ export default function DashboardPage({
           />
         </div>
 
-        <main className="mx-auto min-h-[calc(100vh-4.5rem)] max-w-[1500px] px-3 py-3 sm:px-4 lg:px-5">
+        <main className="dotted-surface mx-auto min-h-[calc(100vh-4.5rem)] w-full px-3 py-3 sm:px-4 lg:px-5">
           {activeId === "overview" ? (
             <div className="w-full">
               <h1 className="sr-only">Operations overview</h1>

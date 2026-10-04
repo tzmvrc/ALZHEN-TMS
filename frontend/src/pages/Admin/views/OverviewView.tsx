@@ -451,57 +451,57 @@ export default function OverviewView({
 
   return (
     <div className="space-y-4">
-      {/* Greeting + trip shortcuts */}
+      {/* Greeting + trip summary */}
       <div className="grid gap-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.5fr)]">
         <GreetingHeader
           name={greetingName}
           updatedLabel={updatedLabel}
           onRefresh={() => setReloadCount((count) => count + 1)}
         />
-        <TripShortcutRow
-          rows={fleetRows}
-          selectedTripId={focusedTripId}
-          onSelectTrip={(tripId) =>
-            setFocusedTripId((current) => (current === tripId ? null : tripId))
-          }
-        />
+        <div className="grid min-w-0 gap-3 sm:grid-cols-3">
+          <RingStatCard
+            label="All trips"
+            title="Total trips"
+            value={display(totalTrips)}
+            percent={!isLoading && totalTrips > 0 ? 100 : 0}
+            color={toneHex.navy}
+            caption="All recorded trips"
+            actionLabel="Check"
+            onAction={() => onMetricNavigate?.("dispatches")}
+          />
+          <RingStatCard
+            label="On the road"
+            title="In transit"
+            value={display(snapshot?.inProgress ?? 0)}
+            percent={shareValue(snapshot?.inProgress ?? 0)}
+            color={toneHex.brand}
+            caption={inProgressShare ? `${inProgressShare} of all trips` : "On the road"}
+            actionLabel="Check"
+            onAction={() => onMetricNavigate?.("monitoring")}
+          />
+          <RingStatCard
+            label="Delivered"
+            title="Completed"
+            value={display(snapshot?.completed ?? 0)}
+            percent={shareValue(snapshot?.completed ?? 0)}
+            color={toneHex.emerald}
+            caption={completedShare ? `${completedShare} of all trips` : "Successfully delivered"}
+            actionLabel="Check"
+            onAction={() => onMetricNavigate?.("combined")}
+          />
+        </div>
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.7fr)_minmax(320px,1fr)]">
         {/* Main column */}
         <div className="min-w-0 space-y-4">
-          <div className="grid gap-3 sm:grid-cols-3">
-            <RingStatCard
-              label="All trips"
-              title="Total trips"
-              value={display(totalTrips)}
-              percent={!isLoading && totalTrips > 0 ? 100 : 0}
-              color={toneHex.navy}
-              caption="All recorded trips"
-              actionLabel="Check"
-              onAction={() => onMetricNavigate?.("dispatches")}
-            />
-            <RingStatCard
-              label="On the road"
-              title="In transit"
-              value={display(snapshot?.inProgress ?? 0)}
-              percent={shareValue(snapshot?.inProgress ?? 0)}
-              color={toneHex.brand}
-              caption={inProgressShare ? `${inProgressShare} of all trips` : "On the road"}
-              actionLabel="Check"
-              onAction={() => onMetricNavigate?.("monitoring")}
-            />
-            <RingStatCard
-              label="Delivered"
-              title="Completed"
-              value={display(snapshot?.completed ?? 0)}
-              percent={shareValue(snapshot?.completed ?? 0)}
-              color={toneHex.emerald}
-              caption={completedShare ? `${completedShare} of all trips` : "Successfully delivered"}
-              actionLabel="Check"
-              onAction={() => onMetricNavigate?.("combined")}
-            />
-          </div>
+          <TripShortcutRow
+            rows={fleetRows}
+            selectedTripId={focusedTripId}
+            onSelectTrip={(tripId) =>
+              setFocusedTripId((current) => (current === tripId ? null : tripId))
+            }
+          />
 
           <SpotlightTrips rows={fleetRows} onViewTrip={onOpenTrip} />
 

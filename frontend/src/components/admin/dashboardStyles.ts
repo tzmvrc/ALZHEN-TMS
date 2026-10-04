@@ -53,8 +53,8 @@ export const surface = {
   pill: "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold",
   eyebrow: "text-[11px] font-medium text-slate-400",
   heading: "text-[17px] font-semibold tracking-tight text-[#0b2341]",
-  /* Page canvas behind the cards: put this on the dashboard wrapper */
-  canvas: "bg-[#eef3f8]",
+  /* Page canvas behind the cards (dots come from global CSS in index.css): put this on the dashboard wrapper */
+  canvas: "bg-transparent",
   /* Yellow action chip (Check / View buttons) */
   chip: "inline-flex items-center justify-center rounded-full bg-[#ffd43b] px-3.5 py-1.5 text-[11px] font-semibold text-[#0b2341] transition hover:bg-[#f2c200] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0b2341]/40",
   chipGhost:

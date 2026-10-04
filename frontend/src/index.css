@@ -65,11 +65,9 @@ body {
 
 .dotted-surface {
   background-color: #f4f5f5;
-  background-image:
-    linear-gradient(rgba(244, 245, 245, 0.78), rgba(244, 245, 245, 0.78)),
-    url("./assets/dotted-bg.svg");
+  background-image: url("./assets/dotted.svg");
   background-repeat: repeat;
-  background-size: auto, 20px 20px;
+  background-size: 20px 20px;
 }
 
 .min-h-screen.bg-slate-50 {
