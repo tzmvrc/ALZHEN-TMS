@@ -95,7 +95,7 @@ const titleMap: Record<string, [string, string]> = {
   compliance: ["Data controls", "POD, trip, and document controls"],
   alerts: ["Alerts", "Open delivery exceptions and aging"],
   settings: ["Settings", "Dashboard and integration preferences"],
-  truckers: ["Truckers", "Operations roster and driver management"],
+  truckers: ["Users", "Manage staff and trucker accounts"],
   "cash-tracker": ["Cash Tracker", "Coming soon"],
   "rates-fuel": ["Rates & Fuel", "Coming soon"],
   invoices: ["Invoices", "Coming soon"],

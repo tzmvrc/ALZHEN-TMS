@@ -6,9 +6,6 @@ export const REPORT_DEFINITIONS: Record<string, ReportDefinition> = {
     views: ["v_tms_combined", "vw_combined_report"],
     title: "Combined report",
     columns: [
-      { key: "trip_id", title: "Trip ID", type: "text" },
-      { key: "trip_stop_id", title: "Trip Stop ID", type: "text" },
-      { key: "trip_line_item_id", title: "Trip Line Item ID", type: "text" },
       { key: "dispatch_number", title: "Dispatch No.", type: "text" },
       { key: "transaction_number", title: "Transaction No.", type: "text" },
       { key: "trip_number", title: "Trip No.", type: "number" },
