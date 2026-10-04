@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Building2,
@@ -17,6 +17,7 @@ import {
   UserRound,
   X,
   Download,
+  Pin,
 } from "lucide-react";
 import type ExcelJS from "exceljs";
 import { useAuth } from "../../context/AuthContext";
@@ -24,7 +25,6 @@ import { ApiError, invalidateApiCache } from "../../services/api.service";
 import {
   fetchReportColumns,
   fetchReportRows,
-  getReportFilters,
   getSortableFields,
   REPORTS,
   type Pagination,
@@ -44,6 +44,7 @@ import {
   type ReportEditDefinition,
 } from "../../services/report-editing.config";
 import type { RelationshipOption } from "../../services/lookup.service";
+import { REPORT_REALTIME_TABLES, subscribeToTable } from "../../services/realtime.service";
 import { searchRelationshipOptions } from "../../services/lookup.service";
 import {
   updateTripAssignmentRecord,
@@ -54,10 +55,16 @@ import {
   updateTripStopRecord,
 } from "../../services/trip.service";
 import SearchableRelationshipEditor from "./SearchableRelationshipEditor";
+import ReportDropdownEditor, { type ReportDropdownChoice } from "./ReportDropdownEditor";
 import { StatusBadge, TableSkeleton } from "./DashboardPrimitives";
 
 const reportKeys = Object.keys(REPORTS) as ReportKey[];
 type ExportMode = "all-workbook" | "separate-zip" | "current-report";
+const BOOLEAN_DROPDOWN_CHOICES: ReportDropdownChoice[] = [
+  { value: "true", label: "Yes" },
+  { value: "false", label: "No" },
+];
+const reportPageCache = new Map<string, { columns: ReportColumn[]; rows: ReportRow[]; pagination: Pagination }>();
 
 async function loadExportLibraries() {
   try {
@@ -87,7 +94,10 @@ async function fetchAllReportRows(reportKey: ReportKey, token: string) {
 }
 
 function appendReportWorksheet(workbook: ExcelJS.Workbook, reportKey: ReportKey, columns: ReportColumn[], rows: ReportRow[]) {
-  const visibleColumns = columns.filter((column) => !column.key.startsWith("_"));
+  const visibleColumns = columns.filter((column) =>
+    !column.key.startsWith("_") &&
+    !["trip_id", "trip_stop_id", "trip_line_item_id"].includes(column.key),
+  );
   const name = REPORTS[reportKey].title.replace(/[:\\/?*\[\]]/g, " ").slice(0, 31);
   const worksheet = workbook.addWorksheet(name || "Report");
   worksheet.columns = visibleColumns.map((column) => ({
@@ -150,6 +160,152 @@ function rowKey(row: ReportRow, index: number): string {
   return identity || String(row.store_call_id ?? row.dispatch_number ?? index);
 }
 
+function getReportRowKey(reportKey: ReportKey, row: ReportRow): string | null {
+  if (reportKey === "store-calling") {
+    return typeof row.store_call_id === "string" && row.store_call_id
+      ? `${reportKey}:store-call:${row.store_call_id}`
+      : null;
+  }
+  const ids = [
+    ["trip", row.trip_id],
+    ["stop", row.trip_stop_id],
+    ["line-item", row.trip_line_item_id],
+    ["assignment", row.assignment_id],
+    ["billing", row.billing_id],
+  ].filter(([, id]) => typeof id === "string" && id) as [string, string][];
+  return ids.length ? `${reportKey}:${ids.map(([kind, id]) => `${kind}:${id}`).join(":")}` : null;
+}
+
+const reportSelection = (() => {
+  let selected = new Set<string>();
+  let revision = 0;
+  const listeners = new Set<() => void>();
+  const keyListeners = new Map<string, Set<() => void>>();
+  const notify = (next: Set<string>) => {
+    const changed = new Set([...selected, ...next]);
+    const changedKeys = [...changed].filter((key) => selected.has(key) !== next.has(key));
+    if (!changedKeys.length) return;
+    selected = next;
+    revision += 1;
+    changedKeys.forEach((key) => keyListeners.get(key)?.forEach((listener) => listener()));
+    listeners.forEach((listener) => listener());
+  };
+  return {
+    subscribe(listener: () => void) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    subscribeKey(key: string, listener: () => void) {
+      const keySet = keyListeners.get(key) ?? new Set<() => void>();
+      keySet.add(listener);
+      keyListeners.set(key, keySet);
+      return () => {
+        keySet.delete(listener);
+        if (!keySet.size) keyListeners.delete(key);
+      };
+    },
+    revision: () => revision,
+    isSelected: (key: string) => selected.has(key),
+    getKeys: (reportKey: ReportKey) => [...selected].filter((key) => key.startsWith(`${reportKey}:`)),
+    toggle(key: string) {
+      const next = new Set(selected);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      notify(next);
+    },
+    setVisible(keys: string[], checked: boolean) {
+      const next = new Set(selected);
+      keys.forEach((key) => checked ? next.add(key) : next.delete(key));
+      notify(next);
+    },
+    clear(reportKey?: ReportKey) {
+      if (!reportKey) {
+        notify(new Set());
+        return;
+      }
+      const next = new Set(selected);
+      [...next].filter((key) => key.startsWith(`${reportKey}:`)).forEach((key) => next.delete(key));
+      notify(next);
+    },
+  };
+})();
+
+const ReportRowSelectionCheckbox = memo(function ReportRowSelectionCheckbox({
+  rowKey,
+  label,
+}: {
+  rowKey: string | null;
+  label: string;
+}) {
+  const selected = useSyncExternalStore(
+    (listener) => rowKey ? reportSelection.subscribeKey(rowKey, listener) : () => undefined,
+    () => rowKey ? reportSelection.isSelected(rowKey) : false,
+    () => false,
+  );
+  return (
+    <input
+      type="checkbox"
+      data-report-row-select="true"
+      aria-label={`Select row ${label}`}
+      checked={selected}
+      disabled={!rowKey}
+      onClick={(event) => event.stopPropagation()}
+      onChange={() => rowKey && reportSelection.toggle(rowKey)}
+      className="h-4 w-4 rounded border-slate-300 accent-[#2678b9] focus-visible:ring-2 focus-visible:ring-blue-300" />
+  );
+});
+
+const ReportSelectAllCheckbox = memo(function ReportSelectAllCheckbox({
+  rowKeys,
+}: {
+  rowKeys: string[];
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  useSyncExternalStore(reportSelection.subscribe, reportSelection.revision, reportSelection.revision);
+  const selectedCount = rowKeys.filter((key) => reportSelection.isSelected(key)).length;
+  useEffect(() => {
+    if (ref.current) ref.current.indeterminate = selectedCount > 0 && selectedCount < rowKeys.length;
+  }, [rowKeys.length, selectedCount]);
+  return (
+    <input
+      ref={ref}
+      type="checkbox"
+      aria-label="Select all visible report rows"
+      checked={rowKeys.length > 0 && selectedCount === rowKeys.length}
+      disabled={rowKeys.length === 0}
+      onChange={(event) => reportSelection.setVisible(rowKeys, event.target.checked)}
+      className="h-4 w-4 rounded border-slate-300 accent-[#2678b9] focus-visible:ring-2 focus-visible:ring-blue-300" />
+  );
+});
+
+const ReportSelectionToolbar = memo(function ReportSelectionToolbar({
+  reportKey,
+  rows,
+  columns,
+  onEdit,
+}: {
+  reportKey: ReportKey;
+  rows: ReportRow[];
+  columns: ReportColumn[];
+  onEdit: () => void;
+}) {
+  useSyncExternalStore(reportSelection.subscribe, reportSelection.revision, reportSelection.revision);
+  const keys = reportSelection.getKeys(reportKey);
+  if (!keys.length) return null;
+  const row = rows.find((candidate) => getReportRowKey(reportKey, candidate) === keys[0]);
+  const hasEditableFields = Boolean(row && columns.some((column) => getEditableCellTarget(row, column.key, reportKey)));
+  const canEdit = keys.length === 1 && Boolean(row) && hasEditableFields;
+  return (
+    <button
+      type="button"
+      disabled={!canEdit}
+      onClick={onEdit}
+      className="inline-flex min-h-10 items-center gap-2 rounded-full border border-[#b7d5ed] bg-[#edf6fd] px-3.5 text-sm font-semibold text-[#155b8d] transition hover:bg-[#e1f0fb] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9] disabled:cursor-not-allowed disabled:opacity-50">
+      Edit {keys.length > 1 ? `(${keys.length})` : "selected row"}
+    </button>
+  );
+});
+
 function rowText(row: ReportRow, ...keys: string[]): string {
   const value = keys
     .map((key) => row[key])
@@ -167,6 +323,21 @@ type EditableCellTarget = ReportEditDefinition & {
   assignmentId?: string;
   billingId?: string;
   storeCallId?: string;
+};
+
+type SavedRowReconciliation = {
+  reportKey: ReportKey;
+  target: {
+    sourceEntity: ReportEditDefinition["sourceEntity"];
+    tripId?: string;
+    stopId?: string;
+    lineItemId?: string;
+    assignmentId?: string;
+    billingId?: string;
+    storeCallId?: string;
+  };
+  patch: ReportRow;
+  version: number;
 };
 
 type EditingCell = {
@@ -230,6 +401,27 @@ function getEditableCellTarget(
   }
   if (definition.sourceEntity === "storeCall") targetIds.storeCallId = recordId;
   return { ...definition, ...targetIds };
+}
+
+function matchesEditedRecord(
+  row: ReportRow,
+  target: SavedRowReconciliation["target"],
+): boolean {
+  switch (target.sourceEntity) {
+    case "trip":
+      return row.trip_id === target.tripId;
+    case "stop":
+      return row.trip_stop_id === target.stopId && row.trip_id === target.tripId;
+    case "lineItem":
+      return row.trip_line_item_id === target.lineItemId &&
+        row.trip_stop_id === target.stopId && row.trip_id === target.tripId;
+    case "assignment":
+      return row.assignment_id === target.assignmentId && row.trip_id === target.tripId;
+    case "billing":
+      return row.billing_id === target.billingId && row.trip_id === target.tripId;
+    case "storeCall":
+      return row.store_call_id === target.storeCallId;
+  }
 }
 
 function statusStyle(value: string): string {
@@ -599,11 +791,22 @@ export default function ReportDataView({
   const [viewMode, setViewMode] = useState<"visual" | "table">("table");
   const [columns, setColumns] = useState<ReportColumn[]>([]);
   const [rows, setRows] = useState<ReportRow[]>([]);
+  const [pinnedColumnSides, setPinnedColumnSides] = useState<Record<string, "left" | "right">>({});
+  const [leftPinOffsets, setLeftPinOffsets] = useState<Record<string, number>>({});
+  const [rightPinOffsets, setRightPinOffsets] = useState<Record<string, number>>({});
+  const [pinningNotice, setPinningNotice] = useState("");
+  const [editModalFields, setEditModalFields] = useState<{
+    column: ReportColumn;
+    cell: EditingCell;
+  }[]>([]);
+  const [editModalRecord, setEditModalRecord] = useState<ReportRow | null>(null);
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editModalBusy, setEditModalBusy] = useState(false);
+  const [editModalError, setEditModalError] = useState("");
   const [pagination, setPagination] = useState<Pagination | null>(null);
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [appliedSearch, setAppliedSearch] = useState("");
-  const [filterDraft, setFilterDraft] = useState<Record<string, string>>({});
   const [appliedFilters, setAppliedFilters] = useState<Record<string, string>>(
     {},
   );
@@ -617,15 +820,30 @@ export default function ReportDataView({
   const [retryVersion, setRetryVersion] = useState(0);
   const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
   const [dropdownOptions, setDropdownOptions] = useState<DropdownOption[]>([]);
+  const activeDropdownOptionsByField = useMemo(() => {
+    const grouped: Partial<Record<DropdownField, DropdownOption[]>> = {};
+    for (const option of dropdownOptions) {
+      if (!option.active) continue;
+      (grouped[option.field_key] ??= []).push(option);
+    }
+    return grouped;
+  }, [dropdownOptions]);
+  const dropdownChoicesByField = useMemo(() => {
+    const mapped: Partial<Record<DropdownField, ReportDropdownChoice[]>> = {};
+    for (const [field, options] of Object.entries(activeDropdownOptionsByField) as [DropdownField, DropdownOption[]][]) {
+      mapped[field] = options.map((option) => ({ value: option.option_value, label: option.display_label }));
+    }
+    return mapped;
+  }, [activeDropdownOptionsByField]);
+  const dropdownValuesByField = useMemo(() => {
+    const grouped: Partial<Record<DropdownField, string[]>> = {};
+    for (const option of dropdownOptions) {
+      (grouped[option.field_key] ??= []).push(option.option_value);
+    }
+    return grouped;
+  }, [dropdownOptions]);
   const [dropdownOptionsLoading, setDropdownOptionsLoading] = useState(true);
   const [dropdownOptionsError, setDropdownOptionsError] = useState("");
-  const [optionManagerOpen, setOptionManagerOpen] = useState(false);
-  const [optionManagerField, setOptionManagerField] =
-    useState<DropdownField>("trip_status");
-  const [newOptionValue, setNewOptionValue] = useState("");
-  const [newOptionLabel, setNewOptionLabel] = useState("");
-  const [optionManagerError, setOptionManagerError] = useState("");
-  const [optionManagerBusy, setOptionManagerBusy] = useState(false);
   const [exportModalOpen, setExportModalOpen] = useState(false);
   const [exportMode, setExportMode] = useState<ExportMode>("current-report");
   const [exportBusy, setExportBusy] = useState(false);
@@ -639,6 +857,9 @@ export default function ReportDataView({
     message: string;
   } | null>(null);
   const cellSaveInFlight = useRef(false);
+  const selectionColumnRef = useRef<HTMLTableCellElement>(null);
+  const tableViewportRef = useRef<HTMLDivElement>(null);
+  const headerCellRefs = useRef(new Map<string, HTMLTableCellElement>());
   const cancelNextBlur = useRef(false);
   const textSaveTimer = useRef<number | null>(null);
   const mentionControlActive = useRef(false);
@@ -659,6 +880,19 @@ export default function ReportDataView({
       return values.some((value) => searchableValue(value).toLocaleLowerCase().includes(term));
     }));
   }, [appliedSearch, columns, reportKey, rows]);
+  const visibleSelectionKeys = useMemo(
+    () => displayedRows.flatMap((row) => {
+      const key = getReportRowKey(reportKey, row);
+      return key ? [key] : [];
+    }),
+    [displayedRows, reportKey],
+  );
+  const leftPinnedColumnKeys = columns
+    .filter((column) => pinnedColumnSides[column.key] === "left")
+    .map((column) => column.key);
+  const rightPinnedColumnKeys = columns
+    .filter((column) => pinnedColumnSides[column.key] === "right")
+    .map((column) => column.key);
   const queryKey = JSON.stringify({
     accessToken,
     activeSortBy,
@@ -670,6 +904,99 @@ export default function ReportDataView({
     sortBy: activeSortBy,
     sortOrder,
   });
+  const snapshotKey = JSON.stringify({ accessToken, activeSortBy, appliedFilters, appliedSearch: effectiveSearch, page, reportKey, sortOrder });
+  const snapshotKeyRef = useRef(snapshotKey);
+  const reportKeyRef = useRef(reportKey);
+  const inFlightReportQueries = useRef(new Map<string, number>());
+  const realtimeRefreshDirty = useRef(false);
+  const realtimeRefreshQueuedFor = useRef<string | null>(null);
+  const realtimeRefreshTimer = useRef<number | null>(null);
+  const realtimeRefreshMaxTimer = useRef<number | null>(null);
+  const successfulSaveVersion = useRef(0);
+  const savedRowReconciliations = useRef<SavedRowReconciliation[]>([]);
+  snapshotKeyRef.current = snapshotKey;
+  reportKeyRef.current = reportKey;
+
+  useLayoutEffect(() => {
+    const measurePinnedColumns = () => {
+      let left = selectionColumnRef.current?.getBoundingClientRect().width ?? 44;
+      const nextLeftOffsets: Record<string, number> = {};
+      for (const key of leftPinnedColumnKeys) {
+        nextLeftOffsets[key] = left;
+        left += headerCellRefs.current.get(key)?.getBoundingClientRect().width ?? 160;
+      }
+      let right = 0;
+      const nextRightOffsets: Record<string, number> = {};
+      for (const key of [...rightPinnedColumnKeys].reverse()) {
+        nextRightOffsets[key] = right;
+        right += headerCellRefs.current.get(key)?.getBoundingClientRect().width ?? 160;
+      }
+      setLeftPinOffsets((current) => {
+        const currentKeys = Object.keys(current);
+        const nextKeys = Object.keys(nextLeftOffsets);
+        if (currentKeys.length === nextKeys.length && nextKeys.every((key) => current[key] === nextLeftOffsets[key])) {
+          return current;
+        }
+        return nextLeftOffsets;
+      });
+      setRightPinOffsets((current) => {
+        const currentKeys = Object.keys(current);
+        const nextKeys = Object.keys(nextRightOffsets);
+        if (currentKeys.length === nextKeys.length && nextKeys.every((key) => current[key] === nextRightOffsets[key])) {
+          return current;
+        }
+        return nextRightOffsets;
+      });
+    };
+    measurePinnedColumns();
+    const observer = typeof ResizeObserver === "undefined"
+      ? null
+      : new ResizeObserver(measurePinnedColumns);
+    if (selectionColumnRef.current) observer?.observe(selectionColumnRef.current);
+    for (const key of [...leftPinnedColumnKeys, ...rightPinnedColumnKeys]) {
+      const cell = headerCellRefs.current.get(key);
+      if (cell) observer?.observe(cell);
+    }
+    window.addEventListener("resize", measurePinnedColumns);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener("resize", measurePinnedColumns);
+    };
+  }, [columns, leftPinnedColumnKeys.join("|"), rightPinnedColumnKeys.join("|"), rows]);
+
+  const flushRealtimeRefresh = () => {
+    if (realtimeRefreshTimer.current !== null) {
+      window.clearTimeout(realtimeRefreshTimer.current);
+      realtimeRefreshTimer.current = null;
+    }
+    if (realtimeRefreshMaxTimer.current !== null) {
+      window.clearTimeout(realtimeRefreshMaxTimer.current);
+      realtimeRefreshMaxTimer.current = null;
+    }
+    const targetSnapshot = snapshotKeyRef.current;
+    if (
+      cellSaveInFlight.current ||
+      (inFlightReportQueries.current.get(targetSnapshot) ?? 0) > 0 ||
+      realtimeRefreshQueuedFor.current === targetSnapshot
+    ) {
+      realtimeRefreshDirty.current = true;
+      return;
+    }
+    realtimeRefreshQueuedFor.current = targetSnapshot;
+    invalidateApiCache(REPORTS[reportKeyRef.current].endpoint);
+    setRetryVersion((version) => version + 1);
+  };
+  const scheduleRealtimeRefresh = () => {
+    if (realtimeRefreshTimer.current !== null) {
+      window.clearTimeout(realtimeRefreshTimer.current);
+    }
+    realtimeRefreshTimer.current = window.setTimeout(flushRealtimeRefresh, 250);
+    if (realtimeRefreshMaxTimer.current === null) {
+      realtimeRefreshMaxTimer.current = window.setTimeout(flushRealtimeRefresh, 1_000);
+    }
+  };
+  const scheduleRealtimeRefreshRef = useRef(scheduleRealtimeRefresh);
+  scheduleRealtimeRefreshRef.current = scheduleRealtimeRefresh;
 
   useEffect(
     () => () => {
@@ -686,9 +1013,16 @@ export default function ReportDataView({
     setPage(1);
     setSearch("");
     setAppliedSearch("");
-    setFilterDraft({});
     setAppliedFilters({});
+    reportSelection.clear();
+    setPinnedColumnSides({});
+    setEditModalOpen(false);
   }, [initialReport]);
+
+  useEffect(() => {
+    reportSelection.clear(reportKey);
+    setEditModalOpen(false);
+  }, [reportKey, page, appliedSearch, appliedFilters]);
 
   useEffect(() => {
     if (!accessToken) return;
@@ -722,6 +1056,26 @@ export default function ReportDataView({
     }
 
     let active = true;
+    const cached = reportPageCache.get(snapshotKey);
+    if (cached) {
+      setColumns(cached.columns);
+      setRows(cached.rows);
+      setPagination(cached.pagination);
+      setLoadedQueryKey(queryKey);
+    } else {
+      setColumns([]);
+      setRows([]);
+      setPagination(null);
+    }
+
+    inFlightReportQueries.current.set(
+      snapshotKey,
+      (inFlightReportQueries.current.get(snapshotKey) ?? 0) + 1,
+    );
+    const requestSaveVersion = successfulSaveVersion.current;
+    if (realtimeRefreshQueuedFor.current === snapshotKey) {
+      realtimeRefreshQueuedFor.current = null;
+    }
 
     void (async () => {
       try {
@@ -735,9 +1089,31 @@ export default function ReportDataView({
           filters: appliedFilters,
         });
         if (!active) return;
+        const applicableReconciliations = savedRowReconciliations.current.filter(
+          (reconciliation) =>
+            reconciliation.reportKey === reportKey &&
+            reconciliation.version > requestSaveVersion,
+        );
+        const reconciledRows = applicableReconciliations.length
+          ? result.rows.map((row) =>
+              applicableReconciliations.reduce(
+                (nextRow, reconciliation) =>
+                  matchesEditedRecord(nextRow, reconciliation.target)
+                    ? { ...nextRow, ...reconciliation.patch }
+                    : nextRow,
+                row,
+              ),
+            )
+          : result.rows;
         setColumns(nextColumns);
-        setRows(result.rows);
+        setRows(reconciledRows);
         setPagination(result.pagination);
+        reportPageCache.set(snapshotKey, { columns: nextColumns, rows: reconciledRows, pagination: result.pagination });
+        savedRowReconciliations.current = savedRowReconciliations.current.filter(
+          (reconciliation) =>
+            reconciliation.reportKey !== reportKey ||
+            reconciliation.version > requestSaveVersion,
+        );
       } catch (cause) {
         if (!active) return;
         if (cause instanceof ApiError && cause.status === 401) {
@@ -754,7 +1130,20 @@ export default function ReportDataView({
                 : "Unable to load this report.",
         });
       } finally {
+        const remaining = (inFlightReportQueries.current.get(snapshotKey) ?? 1) - 1;
+        if (remaining > 0) inFlightReportQueries.current.set(snapshotKey, remaining);
+        else inFlightReportQueries.current.delete(snapshotKey);
         if (active) setLoadedQueryKey(queryKey);
+        const latestSnapshot = snapshotKeyRef.current;
+        if (
+          realtimeRefreshDirty.current &&
+          !cellSaveInFlight.current &&
+          (inFlightReportQueries.current.get(latestSnapshot) ?? 0) === 0 &&
+          realtimeRefreshQueuedFor.current !== latestSnapshot
+        ) {
+          realtimeRefreshDirty.current = false;
+          scheduleRealtimeRefreshRef.current();
+        }
       }
     })();
 
@@ -774,7 +1163,41 @@ export default function ReportDataView({
     retryVersion,
     sortBy,
     sortOrder,
+    snapshotKey,
   ]);
+
+  useEffect(() => {
+    if (!accessToken) return;
+    const unsubscribers = REPORT_REALTIME_TABLES[reportKey].map((table) =>
+      subscribeToTable(
+        table,
+        scheduleRealtimeRefreshRef.current,
+        scheduleRealtimeRefreshRef.current,
+      ),
+    );
+    // Realtime is best effort: refresh when returning to the tab and periodically
+    // so a disconnected subscription cannot leave this report stale indefinitely.
+    const onVisible = () => {
+      if (document.visibilityState === "visible") scheduleRealtimeRefreshRef.current();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    const recovery = window.setInterval(() => scheduleRealtimeRefreshRef.current(), 60_000);
+    return () => {
+      unsubscribers.forEach((unsubscribe) => unsubscribe());
+      document.removeEventListener("visibilitychange", onVisible);
+      window.clearInterval(recovery);
+      if (realtimeRefreshTimer.current !== null) {
+        window.clearTimeout(realtimeRefreshTimer.current);
+        realtimeRefreshTimer.current = null;
+      }
+      if (realtimeRefreshMaxTimer.current !== null) {
+        window.clearTimeout(realtimeRefreshMaxTimer.current);
+        realtimeRefreshMaxTimer.current = null;
+      }
+      realtimeRefreshDirty.current = false;
+      realtimeRefreshQueuedFor.current = null;
+    };
+  }, [accessToken, reportKey]);
 
   function submitSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -790,18 +1213,6 @@ export default function ReportDataView({
     return () => window.clearTimeout(timer);
   }, [search]);
 
-  function submitFilters(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setPage(1);
-    setAppliedFilters(filterDraft);
-  }
-
-  function clearFilters() {
-    setPage(1);
-    setFilterDraft({});
-    setAppliedFilters({});
-  }
-
   function changeReport(value: string) {
     if (!reportKeys.includes(value as ReportKey)) return;
     const nextReport = value as ReportKey;
@@ -814,20 +1225,15 @@ export default function ReportDataView({
     setColumns([]);
     setRows([]);
     setPagination(null);
-    setFilterDraft({});
     setAppliedFilters({});
+    reportSelection.clear();
+    setPinnedColumnSides({});
+    setEditModalOpen(false);
   }
 
-  function beginEditCell(row: ReportRow, index: number, columnKey: string) {
-    if (cellSaveInFlight.current) return;
-    cancelNextBlur.current = false;
-    if (textSaveTimer.current !== null) {
-      window.clearTimeout(textSaveTimer.current);
-      textSaveTimer.current = null;
-    }
+  function createEditingCell(row: ReportRow, index: number, columnKey: string): EditingCell | null {
     const target = getEditableCellTarget(row, columnKey, reportKey);
-    if (!target) return;
-    setMentionOptions([]);
+    if (!target) return null;
     const rawCurrentText = String(row[columnKey] ?? "");
     const currentDateTime =
       target.editor === "datetime" && rawCurrentText
@@ -843,7 +1249,7 @@ export default function ReportDataView({
     const relationshipId = target.relationship
       ? row[target.relationship.idField]
       : undefined;
-    setEditingCell({
+    return {
       rowKey: rowKey(row, index),
       field: columnKey,
       definition: target,
@@ -865,13 +1271,131 @@ export default function ReportDataView({
         reportKey === "store-calling" && columnKey === "assigned_to"
           ? crypto.randomUUID()
           : undefined,
-    });
+    };
+  }
+
+  function beginEditCell(row: ReportRow, index: number, columnKey: string) {
+    if (cellSaveInFlight.current) return;
+    cancelNextBlur.current = false;
+    if (textSaveTimer.current !== null) {
+      window.clearTimeout(textSaveTimer.current);
+      textSaveTimer.current = null;
+    }
+    const nextCell = createEditingCell(row, index, columnKey);
+    if (!nextCell) return;
+    setMentionOptions([]);
+    setEditingCell(nextCell);
     setCellSaveState({
-      rowKey: rowKey(row, index),
+      rowKey: nextCell.rowKey,
       field: columnKey,
       status: "editing",
       message: "Editing",
     });
+  }
+
+  function setColumnPinSide(columnKey: string, side: "left" | "right" | null) {
+    const next = { ...pinnedColumnSides };
+    if (side) next[columnKey] = side;
+    else delete next[columnKey];
+    const viewportWidth = tableViewportRef.current?.clientWidth ?? window.innerWidth;
+    const pinnedWidth = columns.reduce((total, column) => {
+      if (!next[column.key]) return total;
+      return total + (headerCellRefs.current.get(column.key)?.getBoundingClientRect().width ?? 160);
+    }, selectionColumnRef.current?.getBoundingClientRect().width ?? 44);
+    if (pinnedWidth > Math.max(180, viewportWidth - 120)) {
+      setPinningNotice("Unpin a column to keep room for horizontal scrolling.");
+      return;
+    }
+    setPinningNotice("");
+    setPinnedColumnSides(next);
+  }
+
+  function openSelectedRowEditor() {
+    const keys = reportSelection.getKeys(reportKey);
+    if (keys.length !== 1) return;
+    const row = displayedRows.find((candidate) => getReportRowKey(reportKey, candidate) === keys[0]);
+    if (!row) return;
+    const rowIndex = rows.indexOf(row);
+    const seen = new Set<string>();
+    const fields = columns.flatMap((column) => {
+      const cell = createEditingCell(row, rowIndex, column.key);
+      if (!cell) return [];
+      const identity = [
+        cell.definition.sourceEntity,
+        cell.tripId,
+        cell.stopId,
+        cell.lineItemId,
+        cell.assignmentId,
+        cell.billingId,
+        cell.storeCallId,
+        cell.definition.sourceField,
+      ].join(":");
+      if (seen.has(identity)) return [];
+      seen.add(identity);
+      if (cell.definition.editor === "boolean") {
+        cell.value = row[column.key] === true || row[column.key] === "true" ? "true" : "false";
+        cell.originalValue = cell.value;
+      }
+      return [{ column, cell }];
+    });
+    if (!fields.length) return;
+    setEditModalRecord(row);
+    setEditModalFields(fields);
+    setEditModalError("");
+    setEditModalOpen(true);
+  }
+
+  function updateModalCell(field: string, updater: (cell: EditingCell) => EditingCell) {
+    setEditModalFields((current) => current.map((item) =>
+      item.cell.field === field ? { ...item, cell: updater(item.cell) } : item,
+    ));
+  }
+
+  async function addModalDropdownOption(target: EditingCell, rawValue: string): Promise<boolean> {
+    const field = target.definition.dropdownField;
+    if (!field || field === "letter_status") return false;
+    await createConfigurableOption(field, rawValue);
+    return true;
+  }
+
+
+  async function saveSelectedRowEdits() {
+    if (editModalBusy) return;
+    setEditModalBusy(true);
+    setEditModalError("");
+    let nextFields = editModalFields;
+    try {
+      for (let index = 0; index < nextFields.length; index += 1) {
+        const item = nextFields[index];
+        const cell = item.cell;
+        const changed = cell.definition.editor === "relationship"
+          ? cell.relationshipId !== cell.originalRelationshipId
+          : cell.value.trim() !== cell.originalValue.trim();
+        if (!changed) continue;
+        const succeeded = await commitEditableCell(cell);
+        if (!succeeded) {
+          setEditModalFields(nextFields);
+          setEditModalError(`Could not save ${item.column.title}. Correct the field and try again. Any earlier fields saved successfully remain saved.`);
+          return;
+        }
+        nextFields = nextFields.map((field, fieldIndex) => fieldIndex === index
+          ? {
+              ...field,
+              cell: {
+                ...field.cell,
+                originalValue: field.cell.value,
+                originalRelationshipId: field.cell.relationshipId,
+              },
+            }
+          : field,
+        );
+      }
+      setEditModalFields(nextFields);
+      setEditModalOpen(false);
+      reportSelection.clear(reportKey);
+    } finally {
+      setEditModalBusy(false);
+    }
   }
 
   async function loadMentionOptions() {
@@ -912,13 +1436,14 @@ export default function ReportDataView({
   async function commitEditableCell(
     candidate?: EditingCell,
     keepEditing = false,
-  ) {
+    verifiedDropdownOption?: DropdownOption,
+  ): Promise<boolean> {
     if (cancelNextBlur.current) {
       cancelNextBlur.current = false;
-      return;
+      return false;
     }
     const sourceCell = candidate ?? editingCell;
-    if (!sourceCell || !accessToken || cellSaveInFlight.current) return;
+    if (!sourceCell || !accessToken || cellSaveInFlight.current) return false;
     if (textSaveTimer.current !== null) {
       window.clearTimeout(textSaveTimer.current);
       textSaveTimer.current = null;
@@ -935,7 +1460,7 @@ export default function ReportDataView({
         status: "error",
         message: "Value cannot be blank.",
       });
-      return;
+      return false;
     }
 
     let nextValue: unknown = textValue || null;
@@ -947,7 +1472,7 @@ export default function ReportDataView({
           status: "error",
           message: "Choose a matching record from the list.",
         });
-        return;
+        return false;
       }
       nextValue = targetCell.relationshipId;
     } else if (definition.editor === "number" && textValue) {
@@ -959,7 +1484,7 @@ export default function ReportDataView({
           status: "error",
           message: "Enter a valid number.",
         });
-        return;
+        return false;
       }
       nextValue = parsed;
     } else if (definition.editor === "datetime" && textValue) {
@@ -971,7 +1496,7 @@ export default function ReportDataView({
           status: "error",
           message: "Enter a valid date and time.",
         });
-        return;
+        return false;
       }
       nextValue = parsed.toISOString();
     } else if (definition.editor === "boolean") {
@@ -982,7 +1507,7 @@ export default function ReportDataView({
           status: "error",
           message: "Choose Yes or No.",
         });
-        return;
+        return false;
       }
       nextValue = textValue === "true";
     } else if (isControlled) {
@@ -991,6 +1516,10 @@ export default function ReportDataView({
           option.field_key === definition.dropdownField &&
           option.option_value === textValue &&
           option.active,
+      ) || Boolean(
+        verifiedDropdownOption?.active &&
+        verifiedDropdownOption.field_key === definition.dropdownField &&
+        verifiedDropdownOption.option_value === textValue,
       );
       if (!allowed) {
         setCellSaveState({
@@ -999,7 +1528,7 @@ export default function ReportDataView({
           status: "error",
           message: dropdownOptionsError || "Choose an active option.",
         });
-        return;
+        return false;
       }
     }
 
@@ -1010,7 +1539,7 @@ export default function ReportDataView({
     ) {
       setEditingCell(null);
       setCellSaveState(null);
-      return;
+      return true;
     }
 
     setCellSaveState({
@@ -1128,84 +1657,100 @@ export default function ReportDataView({
         ? savedRecord[definition.sourceField]
         : nextValue;
 
+      let savedRowPatch: ReportRow;
+      if (isRelationship && definition.relationship) {
+        const option = targetCell.relationshipOption;
+        const internalIdField: Record<string, string> = {
+          trip_type_id: "_trip_type_id",
+          warehouse_id: "_warehouse_id",
+          customer_id: "_customer_id",
+          store_id: "_store_id",
+          truck_id: "_truck_id",
+          driver_id: "_driver_id",
+          trucking_company_id: "_trucking_company_id",
+          product_id: "_product_id",
+          truck_allocated_by: "_truck_allocated_by",
+          tms_done_by: "_tms_done_by",
+        };
+        const internalIdKey = internalIdField[definition.relationship.idField];
+        const displayText =
+          option?.values?.[targetCell.field] ??
+          (targetCell.field === "warehouse_code" ? option?.secondary : option?.label) ??
+          targetCell.value;
+        savedRowPatch = {
+          [targetCell.field]: displayText,
+          [definition.relationship.idField]: nextValue,
+          ...(internalIdKey ? { [internalIdKey]: nextValue } : {}),
+          ...(option?.values ?? {}),
+          ...(definition.sourceEntity === "stop" && definition.sourceField === "customer_id"
+            ? {
+                store_id: null,
+                _store_id: null,
+                store_name: null,
+                ship_to: null,
+                city: null,
+                province: null,
+              }
+            : {}),
+          ...(definition.sourceEntity === "stop" &&
+          definition.sourceField === "store_id" &&
+          option?.values?.customer_id
+            ? {
+                customer_id: option.values.customer_id,
+                _customer_id: option.values.customer_id,
+              }
+            : {}),
+        };
+      } else {
+        const confirmedValue = Object.prototype.hasOwnProperty.call(
+          savedRecord,
+          definition.sourceField,
+        )
+          ? savedRecord[definition.sourceField]
+          : nextValue;
+        savedRowPatch = { [targetCell.field]: confirmedValue };
+      }
+
+      const recordTarget: SavedRowReconciliation["target"] = {
+        sourceEntity: definition.sourceEntity,
+        tripId: targetCell.tripId,
+        stopId: targetCell.stopId,
+        lineItemId: targetCell.lineItemId,
+        assignmentId: targetCell.assignmentId,
+        billingId: targetCell.billingId,
+        storeCallId: targetCell.storeCallId,
+      };
+      const saveVersion = ++successfulSaveVersion.current;
+      const reconciliation: SavedRowReconciliation = {
+        reportKey,
+        target: recordTarget,
+        patch: savedRowPatch,
+        version: saveVersion,
+      };
+      savedRowReconciliations.current.push(reconciliation);
+
       setRows((currentRows) =>
         currentRows.map((row) => {
-          const matchesEditedRecord =
-            definition.sourceEntity === "trip"
-              ? row.trip_id === targetCell.tripId
-              : definition.sourceEntity === "stop"
-                ? row.trip_stop_id === targetCell.stopId &&
-                  row.trip_id === targetCell.tripId
-                : definition.sourceEntity === "lineItem"
-                  ? row.trip_line_item_id === targetCell.lineItemId &&
-                    row.trip_stop_id === targetCell.stopId &&
-                    row.trip_id === targetCell.tripId
-                  : definition.sourceEntity === "assignment"
-                    ? row.assignment_id === targetCell.assignmentId &&
-                      row.trip_id === targetCell.tripId
-                    : definition.sourceEntity === "billing"
-                      ? row.billing_id === targetCell.billingId &&
-                        row.trip_id === targetCell.tripId
-                      : row.store_call_id === targetCell.storeCallId;
-          if (!matchesEditedRecord) return row;
-          if (isRelationship && definition.relationship) {
-            const option = targetCell.relationshipOption;
-            const internalIdField: Record<string, string> = {
-              trip_type_id: "_trip_type_id",
-              warehouse_id: "_warehouse_id",
-              customer_id: "_customer_id",
-              store_id: "_store_id",
-              truck_id: "_truck_id",
-              driver_id: "_driver_id",
-              trucking_company_id: "_trucking_company_id",
-              product_id: "_product_id",
-              truck_allocated_by: "_truck_allocated_by",
-              tms_done_by: "_tms_done_by",
-            };
-            const internalIdKey =
-              internalIdField[definition.relationship.idField];
-            const displayText =
-              option?.values?.[targetCell.field] ??
-              (targetCell.field === "warehouse_code"
-                ? option?.secondary
-                : option?.label) ??
-              targetCell.value;
-            return {
-              ...row,
-              [targetCell.field]: displayText,
-              [definition.relationship.idField]: nextValue,
-              ...(internalIdKey ? { [internalIdKey]: nextValue } : {}),
-              ...(option?.values ?? {}),
-              ...(definition.sourceEntity === "stop" &&
-              definition.sourceField === "customer_id"
-                ? {
-                    store_id: null,
-                    _store_id: null,
-                    store_name: null,
-                    ship_to: null,
-                    city: null,
-                    province: null,
-                  }
-                : {}),
-              ...(definition.sourceEntity === "stop" &&
-              definition.sourceField === "store_id" &&
-              option?.values?.customer_id
-                ? {
-                    customer_id: option.values.customer_id,
-                    _customer_id: option.values.customer_id,
-                  }
-                : {}),
-            };
-          }
-          const confirmedValue = Object.prototype.hasOwnProperty.call(
-            savedRecord,
-            definition.sourceField,
-          )
-            ? savedRecord[definition.sourceField]
-            : nextValue;
-          return { ...row, [targetCell.field]: confirmedValue };
+          if (!matchesEditedRecord(row, recordTarget)) return row;
+          return { ...row, ...savedRowPatch };
         }),
       );
+      for (const [cacheKey, cachedPage] of reportPageCache) {
+        try {
+          const cachedReportKey = (JSON.parse(cacheKey) as { reportKey?: ReportKey }).reportKey;
+          if (cachedReportKey !== reportKey) continue;
+          reportPageCache.set(cacheKey, {
+            ...cachedPage,
+            rows: cachedPage.rows.map((row) =>
+              matchesEditedRecord(row, recordTarget)
+                ? { ...row, ...savedRowPatch }
+                : row,
+            ),
+          });
+        } catch {
+          // Ignore cache entries whose keys are not report snapshot JSON.
+        }
+      }
 
       setCellSaveState({
         rowKey: targetCell.rowKey,
@@ -1234,6 +1779,7 @@ export default function ReportDataView({
       ) {
         setRetryVersion((version) => version + 1);
       }
+      return true;
     } catch (cause) {
       const message =
         cause instanceof ApiError
@@ -1248,8 +1794,18 @@ export default function ReportDataView({
         message: message,
       });
       if (!keepEditing) setEditingCell(null);
+      return false;
     } finally {
       cellSaveInFlight.current = false;
+      const latestSnapshot = snapshotKeyRef.current;
+      if (
+        realtimeRefreshDirty.current &&
+        (inFlightReportQueries.current.get(latestSnapshot) ?? 0) === 0 &&
+        realtimeRefreshQueuedFor.current !== latestSnapshot
+      ) {
+        realtimeRefreshDirty.current = false;
+        scheduleRealtimeRefreshRef.current();
+      }
     }
   }
 
@@ -1272,120 +1828,61 @@ export default function ReportDataView({
     }
   }
 
-  async function submitNewDropdownOption(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!accessToken) return;
-    setOptionManagerBusy(true);
-    setOptionManagerError("");
-    try {
-      await addDropdownOption(accessToken, {
-        field_key: optionManagerField,
-        option_value: newOptionValue,
-        display_label: newOptionLabel || newOptionValue,
-        sort_order:
-          dropdownOptions.filter(
-            (option) => option.field_key === optionManagerField,
-          ).length * 10,
-      });
-      setNewOptionValue("");
-      setNewOptionLabel("");
-      await reloadDropdownOptions();
-    } catch (cause) {
-      setOptionManagerError(
-        cause instanceof Error ? cause.message : "Unable to add option.",
-      );
-    } finally {
-      setOptionManagerBusy(false);
+  async function createConfigurableOption(field: DropdownField, rawLabel: string): Promise<void> {
+    if (!accessToken) throw new Error("Your session has expired. Please log in again.");
+    const displayLabel = rawLabel.trim();
+    const value = displayLabel.toUpperCase();
+    if (!displayLabel) throw new Error("Enter a display label.");
+    if (!/^[A-Z0-9][A-Z0-9 _-]{0,59}$/.test(value)) {
+      throw new Error("Use letters, numbers, spaces, hyphens, or underscores for the stored option value.");
     }
+    if (field === "letter_status") throw new Error("Letter status is fixed and cannot accept new options.");
+    const duplicate = dropdownOptions.some((option) => option.field_key === field && (
+      option.option_value.trim().toLocaleLowerCase() === value.toLocaleLowerCase() ||
+      option.display_label.trim().toLocaleLowerCase() === displayLabel.toLocaleLowerCase()
+    ));
+    if (duplicate) throw new Error("An option with this value or display label already exists.");
+    await addDropdownOption(accessToken, {
+      field_key: field,
+      option_value: value,
+      display_label: displayLabel,
+      sort_order: dropdownOptions.filter((item) => item.field_key === field).length * 10,
+    });
+    await reloadDropdownOptions();
   }
 
-  async function saveDropdownOption(
-    option: DropdownOption,
-    patch: {
-      display_label?: string;
-      sort_order?: number;
-      active?: boolean;
-    },
-  ) {
-    if (!accessToken) return;
-    let confirmInUse = false;
-    const affectsInUseOption =
-      option.usage_count > 0 &&
-      ((patch.display_label !== undefined &&
-        patch.display_label !== option.display_label) ||
-        patch.active === false);
-    if (affectsInUseOption) {
-      confirmInUse = window.confirm(
-        `This option is used by ${option.usage_count} record(s). Changing its label preserves the stored value; deactivation removes it from new selections but keeps historical records. Continue?`,
-      );
-      if (!confirmInUse) return;
-    }
-
-    setOptionManagerBusy(true);
-    setOptionManagerError("");
-    try {
-      await editDropdownOption(accessToken, option.id, {
-        ...patch,
-        ...(confirmInUse ? { confirm_in_use: true } : {}),
-      });
-      await reloadDropdownOptions();
-    } catch (cause) {
-      setOptionManagerError(
-        cause instanceof Error ? cause.message : "Unable to update option.",
-      );
-    } finally {
-      setOptionManagerBusy(false);
-    }
+  async function addTypedOptionAndSave(target: EditingCell, typedValue = target.value): Promise<boolean> {
+    const field = target.definition.dropdownField;
+    if (!field || field === "letter_status") return false;
+    await createConfigurableOption(field, typedValue);
+    return true;
   }
 
-  async function moveDropdownOption(option: DropdownOption, direction: -1 | 1) {
-    if (!accessToken) return;
-    const siblings = dropdownOptions
-      .filter((candidate) => candidate.field_key === optionManagerField)
-      .sort(
-        (left, right) =>
-          left.sort_order - right.sort_order ||
-          left.option_value.localeCompare(right.option_value),
-      );
-    const index = siblings.findIndex((candidate) => candidate.id === option.id);
-    const neighbor = siblings[index + direction];
-    if (!neighbor) return;
-
-    setOptionManagerBusy(true);
-    setOptionManagerError("");
-    try {
-      await Promise.all([
-        editDropdownOption(accessToken, option.id, {
-          sort_order: neighbor.sort_order,
-        }),
-        editDropdownOption(accessToken, neighbor.id, {
-          sort_order: option.sort_order,
-        }),
-      ]);
-      await reloadDropdownOptions();
-    } catch (cause) {
-      setOptionManagerError(
-        cause instanceof Error ? cause.message : "Unable to reorder options.",
-      );
-    } finally {
-      setOptionManagerBusy(false);
+  async function saveDropdownOption(option: DropdownOption, displayLabel: string): Promise<boolean> {
+    if (!accessToken) throw new Error("Your session has expired. Please log in again.");
+    const normalizedLabel = displayLabel.trim();
+    if (!normalizedLabel) throw new Error("Display labels cannot be empty.");
+    if (dropdownOptions.some((candidate) => candidate.field_key === option.field_key && candidate.id !== option.id && candidate.display_label.trim().toLocaleLowerCase() === normalizedLabel.toLocaleLowerCase())) {
+      throw new Error("An option with this display label already exists.");
     }
-  }
-
-  function renameDropdownOption(option: DropdownOption) {
-    const displayLabel = window.prompt(
-      "Display label. The stored business value will not change.",
-      option.display_label,
+    const needsConfirmation = option.usage_count > 0 && normalizedLabel !== option.display_label;
+    const confirmInUse = needsConfirmation && window.confirm(
+      `This option is used by ${option.usage_count} record(s). Changing its display label keeps the stored value unchanged. Continue?`,
     );
-    if (displayLabel === null || displayLabel.trim() === option.display_label) {
-      return;
-    }
-    void saveDropdownOption(option, { display_label: displayLabel });
+    if (needsConfirmation && !confirmInUse) return false;
+    await editDropdownOption(accessToken, option.id, {
+      display_label: normalizedLabel,
+      ...(confirmInUse ? { confirm_in_use: true } : {}),
+    });
+    await reloadDropdownOptions();
+    return true;
   }
 
-  const reportFilters = getReportFilters(reportKey);
-  const canManageDropdowns =
-    profile?.is_admin === true || profile?.role?.toUpperCase() === "ADMIN";
+  async function editOptionDisplayLabel(option: DropdownOption, displayLabel: string): Promise<boolean> {
+    return saveDropdownOption(option, displayLabel);
+  }
+
+  const canManageDropdowns = ["ADMIN", "STAFF"].includes(profile?.role?.toUpperCase() ?? "");
   const pageCount = pagination?.totalPages ?? 0;
   const activeError =
     requestError?.key === queryKey
@@ -1393,19 +1890,7 @@ export default function ReportDataView({
       : !accessToken
         ? "Your session has expired. Please log in again."
         : null;
-  const isLoading = Boolean(accessToken) && loadedQueryKey !== queryKey;
-
-  function openOptionManager() {
-    setOptionManagerField(
-      reportKey === "store-calling"
-        ? "store_call_status"
-        : reportKey === "dispatch"
-          ? "delivery_status"
-          : "trip_status",
-    );
-    setOptionManagerError("");
-    setOptionManagerOpen(true);
-  }
+  const isLoading = Boolean(accessToken) && loadedQueryKey !== queryKey && !reportPageCache.has(snapshotKey);
 
   async function runReportExport() {
     if (!accessToken || exportBusy) return;
@@ -1500,19 +1985,21 @@ export default function ReportDataView({
             className="inline-flex h-10 items-center rounded-full bg-[#f2f6fa] p-1">
             <button
               type="button"
+              title="Visual view"
+              aria-label="Visual view"
               aria-pressed={viewMode === "visual"}
               onClick={() => setViewMode("visual")}
-              className={`inline-flex h-8 items-center gap-1.5 rounded-full px-3.5 text-xs font-semibold transition-colors ${viewMode === "visual" ? "bg-[#0b2341] text-white shadow-sm" : "text-slate-500 hover:text-[#0b2341]"}`}>
+              className={`inline-flex h-8 w-9 items-center justify-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9] ${viewMode === "visual" ? "bg-[#0b2341] text-white shadow-sm" : "text-slate-500 hover:text-[#0b2341]"}`}>
               <LayoutGrid aria-hidden="true" className="h-3.5 w-3.5" />
-              Visual
             </button>
             <button
               type="button"
+              title="Table view"
+              aria-label="Table view"
               aria-pressed={viewMode === "table"}
               onClick={() => setViewMode("table")}
-              className={`inline-flex h-8 items-center gap-1.5 rounded-full px-3.5 text-xs font-semibold transition-colors ${viewMode === "table" ? "bg-[#0b2341] text-white shadow-sm" : "text-slate-500 hover:text-[#0b2341]"}`}>
+              className={`inline-flex h-8 w-9 items-center justify-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9] ${viewMode === "table" ? "bg-[#0b2341] text-white shadow-sm" : "text-slate-500 hover:text-[#0b2341]"}`}>
               <Table2 aria-hidden="true" className="h-3.5 w-3.5" />
-              Table
             </button>
           </div>
           <button
@@ -1520,16 +2007,19 @@ export default function ReportDataView({
             title="Export reports"
             aria-label="Export reports"
             onClick={() => { setExportError(""); setExportModalOpen(true); }}
-            className="inline-flex min-h-10 items-center gap-2 rounded-full border border-slate-200 bg-white px-3.5 text-sm font-medium text-slate-700 transition hover:border-amber-300 hover:bg-amber-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400">
+            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 transition hover:border-amber-300 hover:bg-amber-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400">
             <Download aria-hidden="true" className="h-4 w-4" />
-            <span>Export</span>
           </button>
-          <label className="text-xs text-slate-500" htmlFor="report-sort">
-            Sort
-          </label>
+          <ReportSelectionToolbar
+            reportKey={reportKey}
+            rows={displayedRows}
+            columns={columns}
+            onEdit={openSelectedRowEditor} />
+          <span title="Sort report rows" aria-label="Sort report rows" className="inline-flex h-10 w-9 items-center justify-center text-slate-500"><ArrowUpDown aria-hidden="true" className="h-4 w-4" /></span>
           <div className="relative">
             <select
               id="report-sort"
+              aria-label="Sort by column"
               value={activeSortBy}
               onChange={(event) => setSortBy(event.target.value)}
               className="min-h-10 max-w-48 appearance-none rounded-full border border-slate-200 bg-[#f2f6fa] py-2 pl-3 pr-9 text-sm text-slate-700 outline-none transition-colors focus:border-[#2678b9] focus:ring-2 focus:ring-[#cfe1f1]">
@@ -1561,14 +2051,6 @@ export default function ReportDataView({
               className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500"
             />
           </div>
-          {canManageDropdowns && (
-            <button
-              type="button"
-              onClick={openOptionManager}
-              className="min-h-9 rounded-full border border-slate-200 px-3.5 text-xs font-medium text-slate-700 hover:bg-[#f2f6fa]">
-              Manage options
-            </button>
-          )}
         </div>
         <form onSubmit={submitSearch} className="flex gap-2">
           <label
@@ -1633,261 +2115,82 @@ export default function ReportDataView({
         </div>
       )}
 
-      {optionManagerOpen && canManageDropdowns && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/35 p-4">
-          <section
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="dropdown-manager-title"
-            className="max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-xl">
-            <header className="flex items-start justify-between gap-4 border-b border-slate-200 p-4">
-              <div>
-                <h2
-                  id="dropdown-manager-title"
-                  className="text-base font-semibold text-slate-900">
-                  Dropdown options
-                </h2>
-                <p className="mt-1 text-xs text-slate-500">
-                  Labels do not change stored values. Deactivated options remain
-                  on historical records.
-                </p>
-              </div>
-              <button
-                type="button"
-                aria-label="Close dropdown manager"
-                onClick={() => setOptionManagerOpen(false)}
-                className="rounded-md px-2 py-1 text-sm text-slate-500 hover:bg-slate-100">
-                Close
-              </button>
+      {editModalOpen && editModalRecord && (
+        <div className="fixed inset-0 z-[75] flex items-center justify-center bg-slate-950/40 p-4" onMouseDown={(event) => {
+          if (event.target === event.currentTarget && !editModalBusy) setEditModalOpen(false);
+        }}>
+          <section role="dialog" aria-modal="true" aria-labelledby="report-row-edit-title" className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+            <header className="border-b border-slate-100 px-5 py-4">
+              <h2 id="report-row-edit-title" className="text-lg font-semibold text-[#0b2341]">Edit report row</h2>
+              <p className="mt-1 text-sm text-slate-500">{REPORTS[reportKey].title} · {rowText(editModalRecord, "dispatch_number", "trip_number", "store_call_id") || "Selected record"}</p>
             </header>
-            <div className="grid gap-4 p-4">
-              <label className="grid max-w-sm gap-1 text-xs font-medium text-slate-600">
-                Field
-                <select
-                  value={optionManagerField}
-                  onChange={(event) =>
-                    setOptionManagerField(event.target.value as DropdownField)
-                  }
-                  className="min-h-9 rounded-md border border-slate-300 px-2.5 text-sm text-slate-800">
-                  <option value="trip_status">Trip status</option>
-                  <option value="delivery_status">Delivery status</option>
-                  <option value="letter_status">Letter status</option>
-                  <option value="store_call_status">
-                    Store Calling status
-                  </option>
-                  <option value="confirmation_status">
-                    Confirmation status
-                  </option>
-                </select>
-              </label>
-
-              {optionManagerField === "letter_status" ? (
-                <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                  Values are fixed by the trips database constraint: READY,
-                  SENT, CANCELLED. Labels and ordering can be changed, but
-                  values cannot be added or deactivated.
-                </p>
-              ) : (
-                <form
-                  onSubmit={(event) => void submitNewDropdownOption(event)}
-                  className="grid gap-2 rounded-md border border-slate-200 bg-slate-50 p-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
-                  <label className="grid gap-1 text-xs font-medium text-slate-600">
-                    Stored value
-                    <input
-                      required
-                      maxLength={60}
-                      value={newOptionValue}
-                      onChange={(event) =>
-                        setNewOptionValue(event.target.value)
-                      }
-                      className="min-h-9 rounded-md border border-slate-300 bg-white px-2.5 text-sm font-normal text-slate-800"
-                    />
+            <div className="grid gap-4 overflow-y-auto p-5 sm:grid-cols-2">
+              {editModalFields.map(({ column, cell }) => {
+                const saving = editModalBusy || cellSaveInFlight.current;
+                const fieldKey = cell.definition.dropdownField;
+                const choices = cell.definition.editor === "boolean"
+                  ? BOOLEAN_DROPDOWN_CHOICES
+                  : (fieldKey ? dropdownChoicesByField[fieldKey] : undefined) ?? [];
+                return (
+                  <label key={`${cell.definition.sourceEntity}:${cell.definition.sourceField}:${cell.field}`} className="grid content-start gap-1.5 text-sm font-medium text-slate-700">
+                    <span>{column.title}</span>
+                    {cell.definition.editor === "status" || cell.definition.editor === "boolean" ? (
+                      <ReportDropdownEditor
+                        label={column.title}
+                        value={cell.value}
+                        displayValue={cell.definition.editor === "boolean" ? cell.value === "true" ? "Yes" : cell.value === "false" ? "No" : "" : choices.find((choice) => choice.value === cell.value)?.label ?? cell.value}
+                        options={choices}
+                        knownValues={fieldKey ? dropdownValuesByField[fieldKey] : []}
+                        managedOptions={fieldKey ? activeDropdownOptionsByField[fieldKey] ?? [] : []}
+                        autoOpen={false}
+                        loading={cell.definition.editor === "status" && dropdownOptionsLoading}
+                        error={cell.definition.editor === "status" ? dropdownOptionsError : undefined}
+                        allowAdd={cell.definition.editor === "status" && cell.definition.dropdownField !== "letter_status"}
+                        canManageOptions={canManageDropdowns && cell.definition.editor === "status"}
+                        disabled={saving}
+                        onSelect={(value) => updateModalCell(cell.field, (current) => ({ ...current, value }))}
+                        onAdd={(value) => addModalDropdownOption(cell, value)}
+                        onEditOption={editOptionDisplayLabel} />
+                    ) : cell.definition.editor === "relationship" && cell.definition.relationship ? (
+                      <SearchableRelationshipEditor
+                        token={accessToken ?? ""}
+                        kind={cell.definition.relationship.kind}
+                        value={cell.value}
+                        autoFocus={false}
+                        storeId={typeof editModalRecord[cell.definition.relationship.storeIdField ?? ""] === "string" ? String(editModalRecord[cell.definition.relationship.storeIdField ?? ""]) : undefined}
+                        customerId={typeof editModalRecord[cell.definition.relationship.customerIdField ?? ""] === "string" ? String(editModalRecord[cell.definition.relationship.customerIdField ?? ""]) : undefined}
+                        disabled={saving}
+                        onSelect={(option) => updateModalCell(cell.field, (current) => ({
+                          ...current,
+                          value: option.values?.[cell.field] ?? (cell.field === "warehouse_code" ? option.values?.warehouse_code ?? option.secondary ?? option.label : option.label),
+                          relationshipId: option.id,
+                          relationshipOption: option,
+                        }))}
+                        onCommitBlur={() => undefined}
+                        onCancel={() => undefined} />
+                    ) : (
+                      <input
+                        type={cell.definition.editor === "number" ? "number" : cell.definition.editor === "date" ? "date" : cell.definition.editor === "datetime" ? "datetime-local" : "text"}
+                        placeholder={!cell.value ? `Enter ${column.title.toLowerCase()}` : undefined}
+                        step={cell.definition.editor === "number" && cell.field === "page_no" ? "1" : "any"}
+                        disabled={saving}
+                        value={cell.value}
+                        onChange={(event) => updateModalCell(cell.field, (current) => ({ ...current, value: event.target.value }))}
+                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none transition focus:border-[#2678b9] focus:ring-2 focus:ring-[#cfe1f1] disabled:opacity-60" />
+                    )}
                   </label>
-                  <label className="grid gap-1 text-xs font-medium text-slate-600">
-                    Display label
-                    <input
-                      maxLength={80}
-                      value={newOptionLabel}
-                      onChange={(event) =>
-                        setNewOptionLabel(event.target.value)
-                      }
-                      className="min-h-9 rounded-md border border-slate-300 bg-white px-2.5 text-sm font-normal text-slate-800"
-                    />
-                  </label>
-                  <button
-                    type="submit"
-                    disabled={optionManagerBusy}
-                    className="min-h-9 rounded-md bg-[#0b2341] px-4 text-xs font-medium text-white hover:bg-[#16345a] disabled:opacity-50">
-                    Add option
-                  </button>
-                </form>
-              )}
-
-              {optionManagerError && (
-                <p role="alert" className="text-xs text-rose-700">
-                  {optionManagerError}
-                </p>
-              )}
-              {dropdownOptionsError && (
-                <p role="alert" className="text-xs text-rose-700">
-                  {dropdownOptionsError}
-                </p>
-              )}
-
-              <div className="divide-y divide-slate-100 rounded-md border border-slate-200">
-                {dropdownOptions
-                  .filter((option) => option.field_key === optionManagerField)
-                  .sort(
-                    (left, right) =>
-                      left.sort_order - right.sort_order ||
-                      left.option_value.localeCompare(right.option_value),
-                  )
-                  .map((option, index, options) => (
-                    <div
-                      key={option.id}
-                      className="flex flex-wrap items-center justify-between gap-3 px-3 py-2.5">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-slate-800">
-                          {option.display_label}
-                          {!option.active && (
-                            <span className="ml-2 text-[10px] font-normal text-slate-500">
-                              Inactive
-                            </span>
-                          )}
-                        </p>
-                        <p className="text-[10px] text-slate-500">
-                          Stored value: {option.option_value} · Used by{" "}
-                          {option.usage_count} record(s)
-                        </p>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-1">
-                        <button
-                          type="button"
-                          title="Move up"
-                          aria-label={`Move ${option.display_label} up`}
-                          disabled={optionManagerBusy || index === 0}
-                          onClick={() => void moveDropdownOption(option, -1)}
-                          className="rounded border border-slate-300 px-2 py-1 text-xs disabled:opacity-40">
-                          ↑
-                        </button>
-                        <button
-                          type="button"
-                          title="Move down"
-                          aria-label={`Move ${option.display_label} down`}
-                          disabled={
-                            optionManagerBusy || index === options.length - 1
-                          }
-                          onClick={() => void moveDropdownOption(option, 1)}
-                          className="rounded border border-slate-300 px-2 py-1 text-xs disabled:opacity-40">
-                          ↓
-                        </button>
-                        <button
-                          type="button"
-                          disabled={optionManagerBusy}
-                          onClick={() => renameDropdownOption(option)}
-                          className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 disabled:opacity-50">
-                          Rename label
-                        </button>
-                        {option.field_key !== "letter_status" && (
-                          <button
-                            type="button"
-                            disabled={optionManagerBusy}
-                            onClick={() =>
-                              void saveDropdownOption(option, {
-                                active: !option.active,
-                              })
-                            }
-                            className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 disabled:opacity-50">
-                            {option.active ? "Deactivate" : "Activate"}
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-              </div>
+                );
+              })}
+              {editModalFields.length === 0 && <p className="text-sm text-slate-500">This row has no fields supported by the existing report update APIs.</p>}
             </div>
+            {editModalError && <p role="alert" className="mx-5 mb-3 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{editModalError}</p>}
+            <footer className="flex justify-end gap-2 border-t border-slate-100 px-5 py-4">
+              <button type="button" disabled={editModalBusy} onClick={() => setEditModalOpen(false)} className="rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50">Cancel</button>
+              <button type="button" disabled={editModalBusy || editModalFields.length === 0} onClick={() => void saveSelectedRowEdits()} className="rounded-full bg-[#ffd43b] px-4 py-2 text-sm font-semibold text-[#0b2341] hover:bg-[#f2c200] disabled:opacity-50">{editModalBusy ? "Saving…" : "Save changes"}</button>
+            </footer>
           </section>
         </div>
       )}
-
-      <details className="border-y border-slate-100 px-5 py-2">
-        <summary className="cursor-pointer py-1 text-xs font-medium text-slate-600">
-          Filters
-        </summary>
-        <form
-          onSubmit={submitFilters}
-          className="grid gap-3 py-3 sm:grid-cols-2 lg:grid-cols-4">
-          {reportFilters.map((filter) => (
-            <label
-              key={filter.key}
-              className="grid gap-1 text-xs font-medium text-slate-600">
-              {filter.label}
-              {filter.dropdownField ? (
-                <select
-                  value={filterDraft[filter.key] ?? ""}
-                  onChange={(event) =>
-                    setFilterDraft((current) => ({
-                      ...current,
-                      [filter.key]: event.target.value,
-                    }))
-                  }
-                  className="min-h-9 rounded-md border border-slate-300 bg-white px-2.5 text-sm font-normal text-slate-800 outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-100">
-                  <option value="">All</option>
-                  {[...new Map(
-                    dropdownOptions
-                      .filter(
-                        (option) =>
-                          option.field_key === filter.dropdownField &&
-                          option.active,
-                      )
-                      .map((option) => [option.option_value, option]),
-                  ).values()].map((option) => (
-                    <option key={option.option_value} value={option.option_value}>
-                      {option.display_label}
-                    </option>
-                  ))}
-                  {filterDraft[filter.key] &&
-                    !dropdownOptions.some(
-                      (option) =>
-                        option.field_key === filter.dropdownField &&
-                        option.option_value === filterDraft[filter.key] &&
-                        option.active,
-                    ) && (
-                      <option value={filterDraft[filter.key]}>
-                        {filterDraft[filter.key]} (inactive)
-                      </option>
-                    )}
-                </select>
-              ) : (
-                <input
-                  type={filter.type ?? "text"}
-                  value={filterDraft[filter.key] ?? ""}
-                  onChange={(event) =>
-                    setFilterDraft((current) => ({
-                      ...current,
-                      [filter.key]: event.target.value,
-                    }))
-                  }
-                  className="min-h-9 rounded-md border border-slate-300 px-2.5 text-sm font-normal text-slate-800 outline-none focus:border-slate-500"
-                />
-              )}
-            </label>
-          ))}
-          <div className="flex items-end gap-2 sm:col-span-2 lg:col-span-4">
-            <button
-              type="submit"
-              className="min-h-9 rounded-md bg-[#0b2341] px-4 text-xs font-medium text-white hover:bg-[#16345a]">
-              Apply filters
-            </button>
-            <button
-              type="button"
-              onClick={clearFilters}
-              className="min-h-9 rounded-md border border-slate-300 px-3 text-xs font-medium text-slate-700 hover:bg-slate-50">
-              Clear
-            </button>
-          </div>
-        </form>
-      </details>
 
       {activeError ? (
         <div className="flex min-h-48 flex-col items-center justify-center gap-3 p-6 text-center">
@@ -1903,7 +2206,14 @@ export default function ReportDataView({
         </div>
       ) : (
         <>
-          <div className="relative min-h-48 overflow-x-auto">
+          <style>{`
+            .report-data-row:has([data-report-row-select]:checked) { background-color: #eaf4ff; }
+            .report-data-row:has([data-report-row-select]:checked) > td { background-color: #eaf4ff; }
+            .report-data-row:has([data-report-row-select]:checked):hover,
+            .report-data-row:has([data-report-row-select]:checked):hover > td { background-color: #deefff; }
+          `}</style>
+          <div ref={tableViewportRef} className="relative min-h-48 overflow-x-auto">
+            {pinningNotice && <p role="status" className="sticky left-2 z-40 w-fit rounded-md bg-amber-50 px-2.5 py-1.5 text-xs text-amber-900 shadow-sm">{pinningNotice}</p>}
             {viewMode === "visual" ? (
               isLoading ? (
                 <div className="p-3">
@@ -1934,12 +2244,23 @@ export default function ReportDataView({
                 />
               </div>
             ) : (
-              <table className="w-full min-w-max border-collapse text-left text-sm">
+              <table className="w-full min-w-max border-separate border-spacing-0 text-left text-sm">
                 <thead className="bg-[#f2f6fa] text-xs font-semibold text-slate-600">
                   <tr>
+                    <th
+                      ref={selectionColumnRef}
+                      scope="col"
+                      className="sticky left-0 z-30 w-11 min-w-11 border-b border-slate-100 bg-[#f2f6fa] px-3 py-3 shadow-[3px_0_5px_-5px_rgba(11,35,65,0.65)]">
+                      <ReportSelectAllCheckbox rowKeys={visibleSelectionKeys} />
+                    </th>
                     {columns.map((column) => {
                       const sortable = sortableFields.includes(column.key);
                       const isActiveSort = activeSortBy === column.key;
+                      const pinSide = pinnedColumnSides[column.key];
+                      const isPinned = Boolean(pinSide);
+                      const isOuterPinnedEdge = pinSide === "left"
+                        ? leftPinnedColumnKeys.at(-1) === column.key
+                        : pinSide === "right" && rightPinnedColumnKeys[0] === column.key;
                       const SortIcon = !isActiveSort
                         ? ArrowUpDown
                         : sortOrder === "asc"
@@ -1948,8 +2269,13 @@ export default function ReportDataView({
                       return (
                       <th
                         key={column.key}
+                        ref={(element) => {
+                          if (element) headerCellRefs.current.set(column.key, element);
+                          else headerCellRefs.current.delete(column.key);
+                        }}
                         scope="col"
-                        className={`whitespace-nowrap border-b border-slate-100 px-4 py-3 ${
+                        style={isPinned ? { position: "sticky", ...(pinSide === "left" ? { left: leftPinOffsets[column.key] ?? 44 } : { right: rightPinOffsets[column.key] ?? 0 }), zIndex: 20 } : undefined}
+                        className={`whitespace-nowrap border-b border-slate-100 px-3 py-2.5 ${isPinned ? `bg-[#f2f6fa] ${isOuterPinnedEdge ? pinSide === "left" ? "shadow-[4px_0_7px_-5px_rgba(11,35,65,0.75)]" : "shadow-[-4px_0_7px_-5px_rgba(11,35,65,0.75)]" : ""}` : ""} ${
                           column.type === "number" ||
                           ["quantity", "cbm", "subcon_rate_manual"].includes(
                             column.key,
@@ -1957,6 +2283,7 @@ export default function ReportDataView({
                             ? "text-right"
                             : "text-left"
                         }`}>
+                        <div className="flex items-center justify-between gap-2">
                         {sortable ? (
                           <button
                             type="button"
@@ -1982,6 +2309,28 @@ export default function ReportDataView({
                         ) : (
                           column.title
                         )}
+                        <button
+                          type="button"
+                          title={pinSide ? `Unpin ${column.title}` : `Pin ${column.title} to the nearest table edge`}
+                          aria-label={pinSide ? `Unpin ${column.title} column` : `Pin ${column.title} to the nearest table edge`}
+                          aria-pressed={Boolean(pinSide)}
+                          onClick={() => {
+                            if (pinSide) {
+                              setColumnPinSide(column.key, null);
+                              return;
+                            }
+                            const columnRect = headerCellRefs.current.get(column.key)?.getBoundingClientRect();
+                            const viewportRect = tableViewportRef.current?.getBoundingClientRect();
+                            if (!columnRect || !viewportRect) return;
+                            const columnCenter = (columnRect.left + columnRect.right) / 2;
+                            const leftDistance = Math.abs(columnCenter - viewportRect.left);
+                            const rightDistance = Math.abs(viewportRect.right - columnCenter);
+                            setColumnPinSide(column.key, leftDistance <= rightDistance ? "left" : "right");
+                          }}
+                          className={`shrink-0 rounded p-1 transition hover:bg-blue-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 ${pinSide ? "bg-blue-50 text-[#2678b9]" : "text-slate-400 hover:text-[#0b2341]"}`}>
+                          <Pin aria-hidden="true" className="h-3.5 w-3.5" />
+                        </button>
+                        </div>
                       </th>
                       );
                     })}
@@ -1991,7 +2340,7 @@ export default function ReportDataView({
                   {displayedRows.length === 0 && (
                     <tr>
                       <td
-                        colSpan={Math.max(columns.length, 1)}
+                        colSpan={Math.max(columns.length + 1, 1)}
                         className="px-4 py-12 text-center text-sm text-slate-500">
                         {appliedSearch ||
                         Object.values(appliedFilters).some((value) => value.trim())
@@ -2002,25 +2351,34 @@ export default function ReportDataView({
                   )}
                   {displayedRows.map((row, index) => {
                     const currentRowKey = rowKey(row, index);
+                    const selectionKey = getReportRowKey(reportKey, row);
                     return (
                       <tr
                         key={currentRowKey}
-                        className="border-b border-slate-100 last:border-0 hover:bg-[#f2f6fa]/70">
+                        className="group report-data-row border-b border-slate-100 last:border-0 hover:bg-[#f2f6fa]/70">
+                        <td className="sticky left-0 z-10 w-11 min-w-11 bg-white px-3 py-2.5 shadow-[3px_0_5px_-5px_rgba(11,35,65,0.65)] group-hover:bg-[#f2f6fa]">
+                          <ReportRowSelectionCheckbox
+                            rowKey={selectionKey}
+                            label={rowText(row, "dispatch_number", "trip_number", "store_call_id")} />
+                        </td>
                         {columns.map((column) => {
                           const editableTarget = getEditableCellTarget(
                             row,
                             column.key,
                             reportKey,
                           );
-                          const activeOptionsForCell = editableTarget?.dropdownField
-                            ? dropdownOptions.filter(
-                                (option) =>
-                                  option.field_key ===
-                                    editableTarget.dropdownField &&
-                                  option.active,
-                              )
-                            : [];
+                          const dropdownField = editableTarget?.dropdownField;
+                          const dropdownChoices = editableTarget?.editor === "boolean"
+                            ? BOOLEAN_DROPDOWN_CHOICES
+                            : dropdownField
+                              ? dropdownChoicesByField[dropdownField] ?? []
+                              : [];
                           const isEditable = Boolean(editableTarget);
+                          const pinSide = pinnedColumnSides[column.key];
+                          const isPinned = Boolean(pinSide);
+                          const isOuterPinnedEdge = pinSide === "left"
+                            ? leftPinnedColumnKeys.at(-1) === column.key
+                            : pinSide === "right" && rightPinnedColumnKeys[0] === column.key;
                           const isEditing =
                             editingCell?.rowKey === currentRowKey &&
                             editingCell.field === column.key;
@@ -2028,12 +2386,14 @@ export default function ReportDataView({
                           return (
                             <td
                               key={column.key}
-                              onClick={() => {
+                              style={isPinned ? { position: "sticky", ...(pinSide === "left" ? { left: leftPinOffsets[column.key] ?? 44 } : { right: rightPinOffsets[column.key] ?? 0 }), zIndex: 10 } : undefined}
+                              onClick={(event) => {
+                                if ((event.target as HTMLElement).closest("button, input, select, textarea")) return;
                                 if (!isEditing) {
                                   beginEditCell(row, index, column.key);
                                 }
                               }}
-                              className={`max-w-80 px-4 py-3 text-slate-700 ${
+                              className={`max-w-80 px-3 py-2.5 text-slate-700 ${isPinned ? `bg-white group-hover:bg-[#f2f6fa] ${isOuterPinnedEdge ? pinSide === "left" ? "shadow-[4px_0_7px_-5px_rgba(11,35,65,0.75)]" : "shadow-[-4px_0_7px_-5px_rgba(11,35,65,0.75)]" : ""}` : ""} ${
                                 isEditable
                                   ? "cursor-pointer outline-none ring-1 ring-transparent transition hover:bg-amber-50/40 hover:ring-amber-200"
                                   : ""
@@ -2083,18 +2443,6 @@ export default function ReportDataView({
                                           )
                                         : undefined
                                     }
-                                    onChange={(value) =>
-                                      setEditingCell((current) =>
-                                        current
-                                          ? {
-                                              ...current,
-                                              value,
-                                              relationshipId: undefined,
-                                              relationshipOption: undefined,
-                                            }
-                                          : current,
-                                      )
-                                    }
                                     onSelect={(option) => {
                                       if (!editingCell) return;
                                       const displayed =
@@ -2130,120 +2478,37 @@ export default function ReportDataView({
                                     "status" ||
                                   editingCell.definition.editor ===
                                     "boolean" ? (
-                                  editingCell.definition.editor === "boolean" ? (
-                                    <input
-                                      autoFocus
-                                      type="checkbox"
-                                      aria-label={`Edit ${column.title}`}
-                                      checked={editingCell.value === "true"}
-                                      disabled={
-                                        cellSaveState?.rowKey === currentRowKey &&
-                                        cellSaveState.status === "saving"
-                                      }
-                                      onChange={(event) => {
-                                        const nextCell = {
-                                          ...editingCell,
-                                          value: String(event.target.checked),
-                                        };
-                                        setEditingCell(nextCell);
-                                        void commitEditableCell(nextCell);
-                                      }}
-                                      onKeyDown={(event) => {
-                                        if (event.key === "Escape") {
-                                          event.preventDefault();
-                                          cancelNextBlur.current = true;
-                                          setEditingCell(null);
-                                          setCellSaveState(null);
-                                        }
-                                      }}
-                                      className="h-4 w-4 accent-cyan-700"
-                                    />
-                                  ) : (
-                                  <div className="relative inline-flex max-w-full">
-                                  <select
-                                    autoFocus
-                                    aria-label={`Edit ${column.title}`}
-                                    disabled={
-                                      (cellSaveState?.rowKey === currentRowKey &&
-                                        cellSaveState.status === "saving") ||
-                                      activeOptionsForCell.length === 0
-                                    }
+                                  <ReportDropdownEditor
+                                    label={column.title}
                                     value={editingCell.value}
-                                    onChange={(event) => {
-                                      const nextCell = {
-                                        ...editingCell,
-                                        value: event.target.value,
-                                      };
+                                    displayValue={editingCell.definition.editor === "boolean" ? editingCell.value === "true" ? "Yes" : editingCell.value === "false" ? "No" : "" : dropdownChoices.find((choice) => choice.value === editingCell.value)?.label ?? editingCell.value}
+                                    options={dropdownChoices}
+                                    knownValues={editingCell.definition.dropdownField ? dropdownValuesByField[editingCell.definition.dropdownField] ?? [] : []}
+                                    managedOptions={dropdownField ? activeDropdownOptionsByField[dropdownField] ?? [] : []}
+                                    loading={editingCell.definition.editor === "status" && dropdownOptionsLoading}
+                                    error={editingCell.definition.editor === "status" ? dropdownOptionsError : undefined}
+                                    allowAdd={editingCell.definition.editor === "status" && editingCell.definition.dropdownField !== "letter_status"}
+                                    canManageOptions={canManageDropdowns && editingCell.definition.editor === "status"}
+                                    disabled={cellSaveState?.rowKey === currentRowKey && cellSaveState.status === "saving"}
+                                    onSelect={(value) => {
+                                      const nextCell = { ...editingCell, value };
                                       setEditingCell(nextCell);
                                       void commitEditableCell(nextCell);
                                     }}
-                                    onBlur={() => void commitEditableCell()}
-                                    onKeyDown={(event) => {
-                                      if (event.key === "Enter") {
-                                        event.preventDefault();
-                                        void commitEditableCell();
-                                      }
-                                      if (event.key === "Escape") {
-                                        cancelNextBlur.current = true;
-                                        if (textSaveTimer.current !== null) {
-                                          window.clearTimeout(textSaveTimer.current);
-                                          textSaveTimer.current = null;
-                                        }
+                                    onAdd={(value) => addTypedOptionAndSave(editingCell, value)}
+                                    onEditOption={editOptionDisplayLabel}
+                                    onClose={() => {
+                                      if (editingCell.definition.editor === "boolean") {
                                         setEditingCell(null);
                                         setCellSaveState(null);
                                       }
                                     }}
-
-                                    className="max-w-[min(22rem,70vw)] min-w-[130px] appearance-none rounded-lg border border-amber-300 bg-white px-3 py-2 pr-9 text-sm font-medium text-slate-800 shadow-sm outline-none transition hover:border-amber-400 focus:border-amber-500 focus:ring-2 focus:ring-amber-100 disabled:cursor-not-allowed disabled:opacity-60">
-                                    {activeOptionsForCell.length === 0 &&
-                                      !editingCell.value && (
-                                        <option value="" disabled>
-                                          {dropdownOptionsLoading
-                                            ? "Loading options..."
-                                            : dropdownOptionsError
-                                              ? "Options unavailable"
-                                              : "No active options"}
-                                        </option>
-                                      )}
-
-                                    {dropdownOptions
-                                      .filter(
-                                        (option) =>
-                                          option.field_key ===
-                                            editingCell.definition.dropdownField &&
-                                          option.active,
-                                      )
-                                      .map((option) => (
-                                        <option
-                                          key={option.id}
-                                          value={option.option_value}>
-                                          {option.display_label}
-                                        </option>
-                                      ))}
-                                    {editingCell.value &&
-                                      !dropdownOptions.some(
-                                        (option) =>
-                                          option.field_key ===
-                                            editingCell.definition.dropdownField &&
-                                          option.option_value ===
-                                            editingCell.value &&
-                                          option.active,
-                                      ) && (
-                                        <option value={editingCell.value}>
-                                          {editingCell.value} (inactive)
-                                        </option>
-                                      )}
-                                  </select>
-                                  <ChevronDown
-                                    aria-hidden="true"
-                                    className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-amber-700"
                                   />
-                                  </div>
-                                  )
                                 ) : (
                                   <div className="grid min-w-[150px] gap-1">
                                   <input
                                     autoFocus
+                                    placeholder={!editingCell.value ? `Enter ${column.title.toLowerCase()}` : undefined}
                                     type={
                                       editingCell.definition.editor === "number"
                                         ? "number"

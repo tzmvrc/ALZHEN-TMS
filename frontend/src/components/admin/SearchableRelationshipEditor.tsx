@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { ChevronDown } from "lucide-react";
+import { Check, ChevronDown } from "lucide-react";
 import {
   searchRelationshipOptions,
   type RelationshipKind,
@@ -13,8 +13,8 @@ type SearchableRelationshipEditorProps = {
   value: string;
   storeId?: string;
   disabled?: boolean;
+  autoFocus?: boolean;
   customerId?: string;
-  onChange: (value: string) => void;
   onSelect: (option: RelationshipOption) => void;
   onCommitBlur: () => void;
   onCancel: () => void;
@@ -26,8 +26,8 @@ export default function SearchableRelationshipEditor({
   value,
   storeId,
   disabled = false,
+  autoFocus = true,
   customerId,
-  onChange,
   onSelect,
   onCommitBlur,
   onCancel,
@@ -35,6 +35,7 @@ export default function SearchableRelationshipEditor({
   const listId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
   const [isOpen, setIsOpen] = useState(false);
+  const [query, setQuery] = useState("");
   const [options, setOptions] = useState<RelationshipOption[]>([]);
   const [activeIndex, setActiveIndex] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -47,14 +48,15 @@ export default function SearchableRelationshipEditor({
     const timer = window.setTimeout(() => {
       setLoading(true);
       setError("");
-      void searchRelationshipOptions(token, kind, value, {
+      void searchRelationshipOptions(token, kind, query, {
         storeId,
         customerId,
       })
         .then((result) => {
           if (!active) return;
           setOptions(result);
-          setActiveIndex(0);
+          const selectedIndex = result.findIndex((option) => option.label === value);
+          setActiveIndex(Math.max(selectedIndex, 0));
         })
         .catch((cause) => {
           if (!active) return;
@@ -74,7 +76,7 @@ export default function SearchableRelationshipEditor({
       active = false;
       window.clearTimeout(timer);
     };
-  }, [customerId, isOpen, kind, storeId, token, value]);
+  }, [customerId, isOpen, kind, query, storeId, token, value]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -102,6 +104,7 @@ export default function SearchableRelationshipEditor({
   function selectOption(option: RelationshipOption | undefined) {
     if (!option) return;
     setIsOpen(false);
+    setQuery("");
     onSelect(option);
   }
 
@@ -109,7 +112,7 @@ export default function SearchableRelationshipEditor({
     if (event.key === "ArrowDown") {
       event.preventDefault();
       setIsOpen(true);
-      setActiveIndex((index) => Math.min(index + 1, options.length - 1));
+      setActiveIndex((index) => Math.min(index + 1, Math.max(0, options.length - 1)));
     } else if (event.key === "ArrowUp") {
       event.preventDefault();
       setActiveIndex((index) => Math.max(index - 1, 0));
@@ -123,6 +126,7 @@ export default function SearchableRelationshipEditor({
     } else if (event.key === "Escape") {
       event.preventDefault();
       setIsOpen(false);
+      setQuery("");
       onCancel();
     }
   }
@@ -134,6 +138,7 @@ export default function SearchableRelationshipEditor({
       aria-label="Matching records"
       className="fixed z-[100] max-h-56 overflow-y-auto rounded-xl border border-amber-200 bg-white py-1 shadow-xl"
       style={position}>
+      {value && <p className="border-b border-slate-100 px-3 py-2 text-[11px] text-slate-500">Current: <span className="font-semibold text-slate-700">{value}</span></p>}
       {loading ? (
         <p className="px-3 py-2 text-xs text-slate-500">Searching...</p>
       ) : error ? (
@@ -153,7 +158,8 @@ export default function SearchableRelationshipEditor({
             onMouseDown={(event) => event.preventDefault()}
             onMouseEnter={() => setActiveIndex(index)}
             onClick={() => selectOption(option)}
-            className={`block w-full px-3 py-2 text-left transition-colors ${index === activeIndex ? "bg-amber-50" : "hover:bg-amber-50/60"}`}>
+            className={`flex w-full items-center justify-between gap-2 px-3 py-2 text-left transition-colors ${index === activeIndex ? "bg-amber-50" : "hover:bg-amber-50/60"}`}>
+            <span className="min-w-0 flex-1">
             <span className="block truncate text-sm font-medium text-slate-800">
               {option.label}
             </span>
@@ -162,6 +168,8 @@ export default function SearchableRelationshipEditor({
                 {option.secondary}
               </span>
             )}
+            </span>
+            {option.label === value && <Check aria-hidden="true" className="h-4 w-4 shrink-0 text-emerald-700" />}
           </button>
         ))
       )}
@@ -173,21 +181,28 @@ export default function SearchableRelationshipEditor({
       <div className="relative inline-flex max-w-full">
       <input
         ref={inputRef}
-        autoFocus
+        autoFocus={autoFocus}
         disabled={disabled}
         role="combobox"
         aria-autocomplete="list"
         aria-expanded={isOpen}
         aria-controls={listId}
-        aria-activedescendant={isOpen ? `${listId}-${activeIndex}` : undefined}
-        value={value}
-        onFocus={() => !disabled && setIsOpen(true)}
+        aria-activedescendant={isOpen && options.length ? `${listId}-${activeIndex}` : undefined}
+        value={query}
+        placeholder={value ? `Current: ${value}` : "Search records"}
+        onFocus={() => {
+          if (!disabled) {
+            setQuery("");
+            setIsOpen(true);
+          }
+        }}
         onChange={(event) => {
-          onChange(event.target.value);
+          setQuery(event.target.value);
           setIsOpen(true);
         }}
         onBlur={() => {
           setIsOpen(false);
+          setQuery("");
           onCommitBlur();
         }}
         onKeyDown={handleKeyDown}

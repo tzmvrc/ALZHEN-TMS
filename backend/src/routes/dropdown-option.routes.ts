@@ -6,14 +6,13 @@ import {
 } from "../controllers/dropdown-option.controller.js";
 import { authMiddleware } from "../middleware/auth.middleware.js";
 import {
-  requireAdmin,
   requireAdminOrStaff,
 } from "../middleware/role.middleware.js";
 
 const router = Router();
 
 router.get("/", authMiddleware, requireAdminOrStaff, getDropdownOptions);
-router.post("/", authMiddleware, requireAdmin, addDropdownOption);
-router.patch("/:id", authMiddleware, requireAdmin, editDropdownOption);
+router.post("/", authMiddleware, requireAdminOrStaff, addDropdownOption);
+router.patch("/:id", authMiddleware, requireAdminOrStaff, editDropdownOption);
 
 export default router;

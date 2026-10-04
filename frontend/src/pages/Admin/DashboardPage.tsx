@@ -120,7 +120,7 @@ export default function DashboardPage({
       { id: "trips", label: "Trips", icon: <Truck className="h-4 w-4" /> },
       {
         id: "truckers",
-        label: "Truckers",
+        label: "Users",
         icon: <Users className="h-4 w-4" />,
       },
       { id: "pod", label: "POD", icon: <FileText className="h-4 w-4" /> },
