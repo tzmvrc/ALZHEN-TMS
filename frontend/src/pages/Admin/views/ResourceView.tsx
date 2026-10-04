@@ -334,15 +334,12 @@ export default function ResourceView({
       {id === "dispatches" && (
         <>
           <TripsPageHeader scope="dispatches" />
-          <TripsFilterBar
-            scope="all"
-            selectedScope={tripScope ?? "dispatches"}
-            onScopeChange={onTripScopeChange}
-          />
           <ReportDataView
             initialReport="trip-booking"
             showReportPicker={false}
             onOpenTrip={openTrip}
+            tripScope={tripScope ?? "dispatches"}
+            onTripScopeChange={onTripScopeChange}
           />
         </>
       )}
@@ -365,30 +362,24 @@ export default function ResourceView({
       {id === "deliveries" && (
         <>
           <TripsPageHeader scope="deliveries" showAdd={false} />
-          <TripsFilterBar
-            scope="deliveries"
-            selectedScope={tripScope ?? "deliveries"}
-            onScopeChange={onTripScopeChange}
-          />
           <ReportDataView
             initialReport="dispatch-monitoring"
             showReportPicker={false}
             onOpenTrip={openTrip}
+            tripScope={tripScope ?? "deliveries"}
+            onTripScopeChange={onTripScopeChange}
           />
         </>
       )}
       {id === "monitoring" && (
         <>
           <TripsPageHeader scope="monitoring" showAdd={false} />
-          <TripsFilterBar
-            scope="monitoring"
-            selectedScope={tripScope ?? "monitoring"}
-            onScopeChange={onTripScopeChange}
-          />
           <ReportDataView
             initialReport="dispatch-monitoring"
             showReportPicker={false}
             onOpenTrip={openTrip}
+            tripScope={tripScope ?? "monitoring"}
+            onTripScopeChange={onTripScopeChange}
           />
         </>
       )}
@@ -576,151 +567,6 @@ function TripsPageHeader({
         </div>
       )}
     </>
-  );
-}
-
-const tripTabs: { id: TripScope; label: string }[] = [
-  { id: "dispatches", label: "All trips" },
-  { id: "monitoring", label: "Dispatch monitoring" },
-  { id: "deliveries", label: "Deliveries" },
-];
-
-const filterField =
-  "h-9 rounded-full border border-slate-200 bg-[#f2f6fa] px-3 text-xs text-slate-700 outline-none transition focus:border-[#2678b9] focus:ring-2 focus:ring-[#cfe1f1]";
-const filterLabel = "grid gap-1 text-[11px] font-medium text-slate-500";
-
-function TripsFilterBar({
-  scope,
-  selectedScope,
-  onScopeChange,
-}: {
-  scope: "all" | "monitoring" | "deliveries";
-  selectedScope?: TripScope;
-  onScopeChange?: (value: TripScope) => void;
-}) {
-  const [status, setStatus] = useState("all");
-  const [tripType, setTripType] = useState("all");
-  const [warehouse, setWarehouse] = useState("");
-  const [dateRange, setDateRange] = useState("custom");
-  const [query, setQuery] = useState("");
-  const activeScope: TripScope =
-    selectedScope ?? (scope === "all" ? "dispatches" : scope);
-
-  return (
-    <div className="mb-4 space-y-3">
-      <div
-        role="tablist"
-        aria-label="Trip views"
-        className="inline-flex max-w-full gap-1 overflow-x-auto rounded-full bg-white p-1 shadow-[0_1px_2px_rgba(11,35,65,0.06)]">
-        {tripTabs.map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            role="tab"
-            aria-selected={activeScope === tab.id}
-            onClick={() => onScopeChange?.(tab.id)}
-            className={`shrink-0 rounded-full px-4 py-2 text-[13px] font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0b2341]/40 ${
-              activeScope === tab.id
-                ? "bg-[#0b2341] text-white"
-                : "text-slate-500 hover:text-[#0b2341]"
-            }`}>
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
-      <div className="flex flex-wrap items-end gap-3 rounded-[28px] bg-white p-4 shadow-[0_1px_2px_rgba(11,35,65,0.04),0_10px_30px_-18px_rgba(11,35,65,0.14)]">
-        {scope === "all" && (
-          <>
-            <label className={filterLabel}>
-              Status
-              <select
-                value={status}
-                onChange={(e) => setStatus(e.target.value)}
-                className={filterField}>
-                <option value="all">All</option>
-                <option value="in_progress">In progress</option>
-                <option value="completed">Completed</option>
-              </select>
-            </label>
-            <label className={filterLabel}>
-              Trip type
-              <select
-                value={tripType}
-                onChange={(e) => setTripType(e.target.value)}
-                className={filterField}>
-                <option value="all">All</option>
-                <option value="regular">Regular</option>
-                <option value="stock_transfer">Stock transfer</option>
-              </select>
-            </label>
-          </>
-        )}
-        {scope === "monitoring" && (
-          <label className={filterLabel}>
-            Trip status
-            <select
-              value={status}
-              onChange={(e) => setStatus(e.target.value)}
-              className={filterField}>
-              <option value="all">All</option>
-              <option value="in_progress">In progress</option>
-              <option value="completed">Completed</option>
-            </select>
-          </label>
-        )}
-        <label className={filterLabel}>
-          Warehouse
-          <input
-            value={warehouse}
-            onChange={(e) => setWarehouse(e.target.value)}
-            placeholder="All"
-            className={`${filterField} w-36`}
-          />
-        </label>
-        <label className={filterLabel}>
-          Date range
-          <select
-            value={dateRange}
-            onChange={(e) => setDateRange(e.target.value)}
-            className={filterField}>
-            <option value="custom">Custom</option>
-            <option value="today">Today</option>
-            <option value="week">This week</option>
-          </select>
-        </label>
-        {scope === "deliveries" && (
-          <>
-            <label className={filterLabel}>
-              Driver
-              <input
-                placeholder="Any"
-                className={`${filterField} w-36`}
-              />
-            </label>
-            <label className={filterLabel}>
-              Delivery status
-              <select className={filterField}>
-                <option value="all">All</option>
-                <option value="assigned">Assigned</option>
-                <option value="delivered">Delivered</option>
-              </select>
-            </label>
-          </>
-        )}
-        {scope === "all" && (
-          <label className={`${filterLabel} ml-auto`}>
-            Search
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search trips"
-              className={`${filterField} w-52`}
-            />
-          </label>
-        )}
-      </div>
-    </div>
   );
 }
 

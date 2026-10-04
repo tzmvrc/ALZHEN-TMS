@@ -18,6 +18,7 @@ import {
   updateTripStopRecord,
 } from "../services/trip.service.js";
 import { sendError, sendSuccess } from "../utils/api-response.js";
+import { notifyMentionAfterRemarksSave } from "../services/notification.service.js";
 
 export async function listTrips(req: Request, res: Response) {
   try {
@@ -103,13 +104,15 @@ export async function updateTrip(req: Request, res: Response) {
     const tripId = Array.isArray(req.params.id)
       ? req.params.id[0]
       : (req.params.id ?? "");
+    const { _mention, ...updates } = req.body ?? {};
     const result = await updateTripRecord(
       tripId,
-      req.body,
+      updates,
       req.user,
       req.profile,
     );
-    return sendSuccess(res, 200, "Trip updated successfully", result);
+    const warning = await notifyMentionAfterRemarksSave({ actorId: req.user!.id, referenceType: "trip", referenceId: tripId, remarks: updates.remarks, mention: _mention });
+    return sendSuccess(res, 200, "Trip updated successfully", warning ? { ...result, _mention_notification_warning: warning } : result);
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Unable to update trip";
@@ -213,8 +216,10 @@ export async function updateTripStop(req: Request, res: Response) {
       ? req.params.stopId[0]
       : (req.params.stopId ?? "");
 
-    const result = await updateTripStopRecord(tripId, stopId, req.body ?? {});
-    return sendSuccess(res, 200, "Trip stop updated successfully", result);
+    const { _mention, ...updates } = req.body ?? {};
+    const result = await updateTripStopRecord(tripId, stopId, updates);
+    const warning = await notifyMentionAfterRemarksSave({ actorId: req.user!.id, referenceType: "trip", referenceId: tripId, remarks: updates.remarks, mention: _mention });
+    return sendSuccess(res, 200, "Trip stop updated successfully", warning ? { ...result, _mention_notification_warning: warning } : result);
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Unable to update trip stop";
@@ -372,13 +377,15 @@ export async function updateTripLineItem(req: Request, res: Response) {
       ? req.params.lineItemId[0]
       : (req.params.lineItemId ?? "");
 
+    const { _mention, ...updates } = req.body ?? {};
     const result = await updateTripLineItemRecord(
       tripId,
       stopId,
       lineItemId,
-      req.body ?? {},
+      updates,
     );
-    return sendSuccess(res, 200, "Trip line item updated successfully", result);
+    const warning = await notifyMentionAfterRemarksSave({ actorId: req.user!.id, referenceType: "trip", referenceId: tripId, remarks: updates.remarks, mention: _mention });
+    return sendSuccess(res, 200, "Trip line item updated successfully", warning ? { ...result, _mention_notification_warning: warning } : result);
   } catch (error) {
     const message =
       error instanceof Error

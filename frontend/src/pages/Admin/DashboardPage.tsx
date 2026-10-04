@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import SidebarNav, {
   type NavEntry,
   type WorkspaceName,
@@ -19,6 +19,9 @@ import OverviewView from "./views/OverviewView";
 import ResourceView from "./views/ResourceView";
 import ClientWebsiteWorkspace from "./clientwebsite";
 import { defaultDashboardData } from "./data/defaultDashboardData";
+import dottedBackground from "../../assets/dotted-bg.svg";
+import NotificationsView from "./views/NotificationsView";
+import { fetchNotifications, type AdminNotification } from "../../services/notification.service";
 
 export interface DashboardPageProps {
   data?: DashboardData;
@@ -29,6 +32,7 @@ export interface DashboardPageProps {
 }
 
 const normalizeMainSection = (value: string) => {
+  if (value === "notifications") return "notifications";
   if (["dispatches", "deliveries", "monitoring"].includes(value))
     return "trips";
   if (
@@ -64,7 +68,7 @@ export default function DashboardPage({
   onNavigate = () => {},
   onLogout,
 }: DashboardPageProps) {
-  const { logout, profile, user } = useAuth();
+  const { logout, profile, user, accessToken } = useAuth();
   const displayName =
     [profile?.first_name, profile?.last_name].filter(Boolean).join(" ") ||
     user?.email ||
@@ -90,6 +94,21 @@ export default function DashboardPage({
     "rates-fuel" | "invoices" | "payables" | "cash-tracker"
   >("invoices");
   const [searchQuery] = useState("");
+  const [notificationCount, setNotificationCount] = useState(0);
+
+  useEffect(() => {
+    if (profile?.role !== "ADMIN" || !accessToken) {
+      setNotificationCount(0);
+      return;
+    }
+    let active = true;
+    void fetchNotifications(accessToken).then((result) => {
+      if (active) setNotificationCount(result.unreadCount);
+    }).catch(() => {
+      if (active) setNotificationCount(0);
+    });
+    return () => { active = false; };
+  }, [accessToken, profile?.role]);
 
   const navEntries: NavEntry[] = useMemo(
     () => [
@@ -142,6 +161,7 @@ export default function DashboardPage({
 
   const handleNavigate = (id: string) => {
     const nextSection = normalizeMainSection(id);
+    if (nextSection === "notifications" && profile?.role !== "ADMIN") return;
     setActiveId(nextSection);
     onNavigate(nextSection);
   };
@@ -197,14 +217,8 @@ export default function DashboardPage({
     <div className="relative min-h-screen overflow-hidden bg-[#f2f4f5] text-slate-900">
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 opacity-100"
-        style={{
-          backgroundColor: "#f2f4f5",
-          backgroundImage:
-            "radial-gradient(circle, rgba(11, 35, 65, 0.1) 0.8px, transparent 0.8px)",
-          backgroundSize: "18px 18px",
-          backgroundPosition: "center",
-        }}
+        className="pointer-events-none absolute inset-0 opacity-30"
+        style={{ backgroundImage: `url(${dottedBackground})`, backgroundRepeat: "repeat", backgroundSize: "20px 20px" }}
       />
 
       <div className="relative z-10">
@@ -214,6 +228,9 @@ export default function DashboardPage({
             activeId={activeId}
             onNavigate={handleNavigate}
             onLogout={() => setShowLogoutConfirm(true)}
+            onNotificationsClick={() => handleNavigate("notifications")}
+            notificationCount={profile?.role === "ADMIN" ? notificationCount : 0}
+            canAccessNotifications={profile?.role === "ADMIN"}
             workspace={workspace}
             onWorkspaceChange={setWorkspace}
             userName={displayName}
@@ -232,6 +249,20 @@ export default function DashboardPage({
                 onMetricNavigate={handleMetricNavigate}
               />
             </div>
+          ) : activeId === "notifications" ? (
+            profile?.role === "ADMIN" ? <NotificationsView onOpen={(item: AdminNotification) => {
+              if (!item.read_at) setNotificationCount((count) => Math.max(0, count - 1));
+              const targetReport = item.metadata?.report_key;
+              if (["combined", "dispatch-monitoring", "dispatch", "trip-booking", "store-calling"].includes(String(targetReport))) {
+                setReportView(targetReport as "combined" | "dispatch-monitoring" | "dispatch" | "trip-booking" | "store-calling");
+                setActiveId("reports");
+              } else if (item.reference_type === "store_call") {
+                setReportView("store-calling");
+                setActiveId("reports");
+              } else {
+                setActiveId(`trip-detail:${item.reference_id}:overview`);
+              }
+            }} /> : <OverviewView onOpenTrip={(tripId) => setActiveId(`trip-detail:${tripId}:overview`)} onMetricNavigate={handleMetricNavigate} />
           ) : activeId === "trips" ? (
             <ResourceView
               id={tripView}

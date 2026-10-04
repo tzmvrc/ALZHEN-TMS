@@ -109,6 +109,7 @@ export interface SidebarNavProps {
   onHelpClick?: () => void;
   onNotificationsClick?: () => void;
   notificationCount?: number;
+  canAccessNotifications?: boolean;
   workspace?: WorkspaceName;
   onWorkspaceChange?: (workspace: WorkspaceName) => void;
   userName?: string;
@@ -125,6 +126,7 @@ export default function SidebarNav({
   onLogout = () => {},
   onNotificationsClick = () => {},
   notificationCount = 0,
+  canAccessNotifications = false,
   workspace = "Operational Admin",
   onWorkspaceChange = () => {},
   userName,
@@ -189,7 +191,7 @@ export default function SidebarNav({
         </nav>
 
         <div className="order-2 ml-auto flex shrink-0 items-center gap-2 lg:order-3">
-          <button
+          {canAccessNotifications && <button
             type="button"
             onClick={onNotificationsClick}
             aria-label={
@@ -204,7 +206,7 @@ export default function SidebarNav({
                 {notificationText}
               </span>
             )}
-          </button>
+          </button>}
 
           <div ref={profileRef} className="relative">
             <button

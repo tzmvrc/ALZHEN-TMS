@@ -1,4 +1,4 @@
-import { apiGetCached, type ApiResponse } from "./api.service";
+import { apiGet, apiGetCached, type ApiResponse } from "./api.service";
 import type { DropdownField } from "./dropdown-option.service";
 
 export const REPORTS = {
@@ -168,6 +168,7 @@ export async function fetchReportRows(
     sortBy: string;
     sortOrder: "asc" | "desc";
     filters: Record<string, string>;
+    fresh?: boolean;
   },
 ): Promise<ReportData<ReportRow>> {
   const params = new URLSearchParams({
@@ -183,10 +184,10 @@ export async function fetchReportRows(
     if (value) params.set(filter.key, value);
   }
 
-  const response = await apiGetCached<ApiResponse<ReportData<ReportRow>>>(
-    `${REPORTS[reportKey].endpoint}?${params.toString()}`,
-    token,
-  );
+  const endpoint = `${REPORTS[reportKey].endpoint}?${params.toString()}`;
+  const response = options.fresh
+    ? await apiGet<ApiResponse<ReportData<ReportRow>>>(endpoint, token)
+    : await apiGetCached<ApiResponse<ReportData<ReportRow>>>(endpoint, token);
   return unwrap(response, "Unable to load report rows.");
 }
 

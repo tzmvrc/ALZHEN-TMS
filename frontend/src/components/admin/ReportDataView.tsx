@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Building2,
@@ -16,7 +16,9 @@ import {
   Truck,
   UserRound,
   X,
+  Download,
 } from "lucide-react";
+import type ExcelJS from "exceljs";
 import { useAuth } from "../../context/AuthContext";
 import { ApiError, invalidateApiCache } from "../../services/api.service";
 import {
@@ -42,6 +44,7 @@ import {
   type ReportEditDefinition,
 } from "../../services/report-editing.config";
 import type { RelationshipOption } from "../../services/lookup.service";
+import { searchRelationshipOptions } from "../../services/lookup.service";
 import {
   updateTripAssignmentRecord,
   updateTripBillingRecord,
@@ -54,6 +57,65 @@ import SearchableRelationshipEditor from "./SearchableRelationshipEditor";
 import { StatusBadge, TableSkeleton } from "./DashboardPrimitives";
 
 const reportKeys = Object.keys(REPORTS) as ReportKey[];
+type ExportMode = "all-workbook" | "separate-zip" | "current-report";
+
+async function loadExportLibraries() {
+  try {
+    const [{ default: ExcelJS }, { default: JSZip }] = await Promise.all([
+      import("exceljs"),
+      import("jszip"),
+    ]);
+    return { ExcelJS, JSZip };
+  } catch {
+    throw new Error("Export could not start. Reload the page and try again.");
+  }
+}
+
+async function fetchAllReportRows(reportKey: ReportKey, token: string) {
+  const columns = await fetchReportColumns(reportKey, token);
+  const firstPage = await fetchReportRows(reportKey, token, {
+    page: 1, limit: 100, search: "", sortBy: "", sortOrder: "asc", filters: {}, fresh: true,
+  });
+  const rows = [...firstPage.rows];
+  for (let pageNumber = 2; pageNumber <= firstPage.pagination.totalPages; pageNumber += 1) {
+    const pageResult = await fetchReportRows(reportKey, token, {
+      page: pageNumber, limit: 100, search: "", sortBy: "", sortOrder: "asc", filters: {}, fresh: true,
+    });
+    rows.push(...pageResult.rows);
+  }
+  return { columns, rows };
+}
+
+function appendReportWorksheet(workbook: ExcelJS.Workbook, reportKey: ReportKey, columns: ReportColumn[], rows: ReportRow[]) {
+  const visibleColumns = columns.filter((column) => !column.key.startsWith("_"));
+  const name = REPORTS[reportKey].title.replace(/[:\\/?*\[\]]/g, " ").slice(0, 31);
+  const worksheet = workbook.addWorksheet(name || "Report");
+  worksheet.columns = visibleColumns.map((column) => ({
+    header: column.title,
+    key: column.key,
+    width: Math.min(32, Math.max(14, column.title.length + 2)),
+    style: column.type === "number" ? { numFmt: "0.###" } : column.type === "date" ? { numFmt: "yyyy-mm-dd hh:mm" } : undefined,
+  }));
+  worksheet.addRows(rows.map((row) => Object.fromEntries(visibleColumns.map((column) => {
+    const value = row[column.key];
+    if (column.type === "date" && typeof value === "string") {
+      const parsed = new Date(value);
+      return [column.key, Number.isNaN(parsed.getTime()) ? value : parsed];
+    }
+    return [column.key, value ?? null];
+  }))));
+  worksheet.getRow(1).font = { bold: true };
+  worksheet.views = [{ state: "frozen", ySplit: 1 }];
+}
+
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
 
 function displayValue(value: unknown, type: string): string {
   if (value === null || value === undefined || value === "") return "";
@@ -68,6 +130,17 @@ function displayValue(value: unknown, type: string): string {
     return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
   }
   return String(value);
+}
+
+function searchableValue(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return String(value);
+  if (value instanceof Date) return value.toISOString();
+  try {
+    return JSON.stringify(value) ?? "";
+  } catch {
+    return String(value);
+  }
 }
 
 function rowKey(row: ReportRow, index: number): string {
@@ -112,6 +185,9 @@ type EditingCell = {
   relationshipOption?: RelationshipOption;
   value: string;
   originalValue: string;
+  mentionProfileIds?: string[];
+  mentionEventKey?: string;
+  assignmentEventKey?: string;
 };
 
 function getEditableCellTarget(
@@ -507,11 +583,15 @@ export default function ReportDataView({
   initialReport = "combined",
   showReportPicker = true,
   onReportScopeChange,
+  tripScope,
+  onTripScopeChange,
 }: {
   initialReport?: ReportKey;
   showReportPicker?: boolean;
   onOpenTrip?: (tripId: string) => void;
   onReportScopeChange?: (value: ReportKey) => void;
+  tripScope?: "dispatches" | "monitoring" | "deliveries";
+  onTripScopeChange?: (value: "dispatches" | "monitoring" | "deliveries") => void;
 }) {
   const { accessToken, refreshSession, profile } = useAuth();
   const navigate = useNavigate();
@@ -546,15 +626,22 @@ export default function ReportDataView({
   const [newOptionLabel, setNewOptionLabel] = useState("");
   const [optionManagerError, setOptionManagerError] = useState("");
   const [optionManagerBusy, setOptionManagerBusy] = useState(false);
+  const [exportModalOpen, setExportModalOpen] = useState(false);
+  const [exportMode, setExportMode] = useState<ExportMode>("current-report");
+  const [exportBusy, setExportBusy] = useState(false);
+  const [exportError, setExportError] = useState("");
+  const [mentionOptions, setMentionOptions] = useState<RelationshipOption[]>([]);
+  const [mentionLoading, setMentionLoading] = useState(false);
   const [cellSaveState, setCellSaveState] = useState<{
     rowKey: string;
     field: string;
-    status: "editing" | "saving" | "saved" | "error";
+    status: "editing" | "saving" | "saved" | "warning" | "error";
     message: string;
   } | null>(null);
   const cellSaveInFlight = useRef(false);
   const cancelNextBlur = useRef(false);
   const textSaveTimer = useRef<number | null>(null);
+  const mentionControlActive = useRef(false);
   const sortableFields =
     columns.length > 0
       ? columns.map((column) => column.key)
@@ -562,11 +649,21 @@ export default function ReportDataView({
   const activeSortBy = sortableFields.includes(sortBy)
     ? sortBy
     : getSortableFields(reportKey)[0];
+  const effectiveSearch = reportKey === "store-calling" ? "" : appliedSearch;
+  const displayedRows = useMemo(() => {
+    const term = reportKey === "store-calling" ? appliedSearch.trim().toLocaleLowerCase() : "";
+    if (!term) return rows;
+    return rows.filter((row) => columns.some((column) => {
+      const values = [row[column.key]];
+      if (column.key === "assigned_to") values.push(row.assigned_to_name);
+      return values.some((value) => searchableValue(value).toLocaleLowerCase().includes(term));
+    }));
+  }, [appliedSearch, columns, reportKey, rows]);
   const queryKey = JSON.stringify({
     accessToken,
     activeSortBy,
     appliedFilters,
-    appliedSearch,
+    appliedSearch: effectiveSearch,
     page,
     reportKey,
     retryVersion,
@@ -632,7 +729,7 @@ export default function ReportDataView({
         const result = await fetchReportRows(reportKey, accessToken, {
           page,
           limit: 50,
-          search: appliedSearch,
+          search: effectiveSearch,
           sortBy: activeSortBy,
           sortOrder,
           filters: appliedFilters,
@@ -668,7 +765,7 @@ export default function ReportDataView({
     accessToken,
     activeSortBy,
     appliedFilters,
-    appliedSearch,
+    effectiveSearch,
     navigate,
     page,
     queryKey,
@@ -730,6 +827,7 @@ export default function ReportDataView({
     }
     const target = getEditableCellTarget(row, columnKey, reportKey);
     if (!target) return;
+    setMentionOptions([]);
     const rawCurrentText = String(row[columnKey] ?? "");
     const currentDateTime =
       target.editor === "datetime" && rawCurrentText
@@ -762,6 +860,11 @@ export default function ReportDataView({
         typeof relationshipId === "string" ? relationshipId : undefined,
       value: currentText,
       originalValue: currentText,
+      mentionProfileIds: [],
+      assignmentEventKey:
+        reportKey === "store-calling" && columnKey === "assigned_to"
+          ? crypto.randomUUID()
+          : undefined,
     });
     setCellSaveState({
       rowKey: rowKey(row, index),
@@ -769,6 +872,25 @@ export default function ReportDataView({
       status: "editing",
       message: "Editing",
     });
+  }
+
+  async function loadMentionOptions() {
+    if (!accessToken || mentionLoading) return;
+    setMentionLoading(true);
+    try {
+      const options = await searchRelationshipOptions(accessToken, "assignees", "");
+      const admins = options.filter((option) => option.secondary?.toUpperCase() === "ADMIN");
+      setMentionOptions(admins);
+      if (admins.length === 0) {
+        mentionControlActive.current = false;
+        setCellSaveState((current) => current ? { ...current, status: "error", message: "No eligible active admin profiles found." } : current);
+      }
+    } catch (cause) {
+      mentionControlActive.current = false;
+      setCellSaveState((current) => current ? { ...current, status: "error", message: cause instanceof Error ? cause.message : "Unable to load eligible admins." } : current);
+    } finally {
+      setMentionLoading(false);
+    }
   }
 
   function scheduleTextSave(candidate: EditingCell) {
@@ -904,6 +1026,26 @@ export default function ReportDataView({
       const updatePayload: Record<string, unknown> = {
         [definition.sourceField]: nextValue,
       };
+      if (definition.sourceField === "remarks" && targetCell.mentionProfileIds?.length) {
+        updatePayload._mention = {
+          recipientIds: targetCell.mentionProfileIds,
+          reportKey,
+          eventKey: targetCell.mentionEventKey ?? crypto.randomUUID(),
+          recordLabel: definition.label,
+        };
+      }
+      if (
+        reportKey === "store-calling" &&
+        definition.sourceEntity === "storeCall" &&
+        definition.sourceField === "assigned_to" &&
+        isRelationship &&
+        targetCell.relationshipId !== targetCell.originalRelationshipId &&
+        targetCell.relationshipOption?.secondary?.toUpperCase() === "ADMIN"
+      ) {
+        updatePayload._assignment_notification = {
+          eventKey: targetCell.assignmentEventKey ?? crypto.randomUUID(),
+        };
+      }
       if (
         definition.sourceEntity === "stop" &&
         definition.sourceField === "customer_id" &&
@@ -976,6 +1118,10 @@ export default function ReportDataView({
       } else {
         throw new Error("This report row is missing its update record ID.");
       }
+
+      const mentionWarning = typeof savedRecord._mention_notification_warning === "string"
+        ? savedRecord._mention_notification_warning
+        : "";
 
       const confirmedCellValue = !isRelationship &&
         Object.prototype.hasOwnProperty.call(savedRecord, definition.sourceField)
@@ -1064,8 +1210,8 @@ export default function ReportDataView({
       setCellSaveState({
         rowKey: targetCell.rowKey,
         field: targetCell.field,
-        status: "saved",
-        message: "Saved",
+        status: mentionWarning ? "warning" : "saved",
+        message: mentionWarning || "Saved",
       });
       if (keepEditing) {
         setEditingCell({
@@ -1073,16 +1219,19 @@ export default function ReportDataView({
           value: String(confirmedCellValue ?? ""),
           originalValue: String(confirmedCellValue ?? ""),
           originalRelationshipId: targetCell.relationshipId,
+          mentionProfileIds: [],
+          mentionEventKey: undefined,
+          assignmentEventKey: undefined,
         });
       } else {
         setEditingCell(null);
       }
+      invalidateApiCache(REPORTS[reportKey].endpoint);
       if (
         appliedSearch ||
         Object.values(appliedFilters).some((value) => value.trim()) ||
         activeSortBy === targetCell.field
       ) {
-        invalidateApiCache(REPORTS[reportKey].endpoint);
         setRetryVersion((version) => version + 1);
       }
     } catch (cause) {
@@ -1258,10 +1407,65 @@ export default function ReportDataView({
     setOptionManagerOpen(true);
   }
 
+  async function runReportExport() {
+    if (!accessToken || exportBusy) return;
+    setExportBusy(true);
+    setExportError("");
+    try {
+      const { ExcelJS, JSZip } = await loadExportLibraries();
+      const keys = exportMode === "current-report" ? [reportKey] : reportKeys;
+      const datasets = await Promise.all(
+        keys.map(async (key) => ({ key, ...(await fetchAllReportRows(key, accessToken)) })),
+      );
+      if (exportMode === "all-workbook") {
+        const workbook = new ExcelJS.Workbook();
+        for (const dataset of datasets) {
+          appendReportWorksheet(workbook, dataset.key, dataset.columns, dataset.rows);
+        }
+        const bytes = await workbook.xlsx.writeBuffer();
+        downloadBlob(new Blob([bytes], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), "alzhen-all-reports.xlsx");
+      } else if (exportMode === "separate-zip") {
+        const zip = new JSZip();
+        for (const dataset of datasets) {
+          const workbook = new ExcelJS.Workbook();
+          appendReportWorksheet(workbook, dataset.key, dataset.columns, dataset.rows);
+          const bytes = await workbook.xlsx.writeBuffer();
+          const safeName = REPORTS[dataset.key].title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+          zip.file(`${safeName}.xlsx`, bytes);
+        }
+        const blob = await zip.generateAsync({ type: "blob" });
+        downloadBlob(blob, "alzhen-reports.zip");
+      } else {
+        const dataset = datasets[0];
+        const workbook = new ExcelJS.Workbook();
+        appendReportWorksheet(workbook, dataset.key, dataset.columns, dataset.rows);
+        const bytes = await workbook.xlsx.writeBuffer();
+        const filename = REPORTS[dataset.key].title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+        downloadBlob(new Blob([bytes], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), `${filename}.xlsx`);
+      }
+      setExportModalOpen(false);
+    } catch (cause) {
+      setExportError(cause instanceof Error ? cause.message : "Unable to export report data.");
+    } finally {
+      setExportBusy(false);
+    }
+  }
+
   return (
     <section className="overflow-hidden rounded-[28px] bg-white shadow-[0_1px_2px_rgba(11,35,65,0.04),0_10px_30px_-18px_rgba(11,35,65,0.14)]">
       <div className="flex flex-col gap-3 p-5 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex flex-wrap items-center gap-3">
+          {tripScope && onTripScopeChange && (
+            <div role="tablist" aria-label="Trip views" className="inline-flex max-w-full gap-1 overflow-x-auto rounded-full bg-[#f2f6fa] p-1">
+              {([
+                ["dispatches", "All trips"],
+                ["monitoring", "Dispatch monitoring"],
+                ["deliveries", "Deliveries"],
+              ] as const).map(([scope, label]) => (
+                <button key={scope} type="button" role="tab" aria-selected={tripScope === scope} onClick={() => onTripScopeChange(scope)} className={`shrink-0 rounded-full px-3 py-2 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 ${tripScope === scope ? "bg-[#0b2341] text-white" : "text-slate-500 hover:text-[#0b2341]"}`}>{label}</button>
+              ))}
+            </div>
+          )}
           {showReportPicker ? (
             <label className="sr-only" htmlFor="report-select">
               Select report
@@ -1311,6 +1515,15 @@ export default function ReportDataView({
               Table
             </button>
           </div>
+          <button
+            type="button"
+            title="Export reports"
+            aria-label="Export reports"
+            onClick={() => { setExportError(""); setExportModalOpen(true); }}
+            className="inline-flex min-h-10 items-center gap-2 rounded-full border border-slate-200 bg-white px-3.5 text-sm font-medium text-slate-700 transition hover:border-amber-300 hover:bg-amber-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400">
+            <Download aria-hidden="true" className="h-4 w-4" />
+            <span>Export</span>
+          </button>
           <label className="text-xs text-slate-500" htmlFor="report-sort">
             Sort
           </label>
@@ -1393,6 +1606,32 @@ export default function ReportDataView({
           )}
         </form>
       </div>
+
+      {exportModalOpen && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/40 p-4">
+          <section role="dialog" aria-modal="true" aria-labelledby="report-export-title" className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl">
+            <h2 id="report-export-title" className="text-lg font-semibold text-[#0b2341]">Export reports</h2>
+            <p className="mt-1 text-sm text-slate-500">Exports use report access already granted to your account and include all pages of report data.</p>
+            <div className="mt-4 space-y-2">
+              {([
+                ["all-workbook", "All reports in one workbook", "One Excel workbook with a worksheet for each report."],
+                ["separate-zip", "All reports separately", "A ZIP containing a separate Excel workbook for each report."],
+                ["current-report", `This report: ${REPORTS[reportKey].title}`, "One Excel workbook for the selected report."],
+              ] as [ExportMode, string, string][]).map(([value, label, description]) => (
+                <label key={value} className={`flex cursor-pointer gap-3 rounded-xl border p-3 ${exportMode === value ? "border-amber-400 bg-amber-50/60" : "border-slate-200 hover:bg-slate-50"}`}>
+                  <input type="radio" name="report-export-mode" value={value} checked={exportMode === value} onChange={() => setExportMode(value)} className="mt-1 accent-amber-500" />
+                  <span><span className="block text-sm font-semibold text-slate-800">{label}</span><span className="mt-0.5 block text-xs text-slate-500">{description}</span></span>
+                </label>
+              ))}
+            </div>
+            {exportError && <p role="alert" className="mt-3 text-sm text-rose-700">{exportError}</p>}
+            <div className="mt-5 flex justify-end gap-2">
+              <button type="button" disabled={exportBusy} onClick={() => setExportModalOpen(false)} className="rounded-full border border-slate-200 px-4 py-2 text-sm text-slate-700 disabled:opacity-50">Cancel</button>
+              <button type="button" disabled={exportBusy} onClick={() => void runReportExport()} className="rounded-full bg-[#ffd43b] px-4 py-2 text-sm font-semibold text-[#0b2341] disabled:opacity-50">{exportBusy ? "Preparing…" : "Export"}</button>
+            </div>
+          </section>
+        </div>
+      )}
 
       {optionManagerOpen && canManageDropdowns && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/35 p-4">
@@ -1673,7 +1912,7 @@ export default function ReportDataView({
                     rows={5}
                   />
                 </div>
-              ) : rows.length === 0 ? (
+              ) : displayedRows.length === 0 ? (
                 <p className="px-4 py-12 text-center text-sm text-slate-500">
                   {appliedSearch ||
                   Object.values(appliedFilters).some((value) => value.trim())
@@ -1682,7 +1921,7 @@ export default function ReportDataView({
                 </p>
               ) : (
                 <ReportVisualCards
-                  rows={rows}
+                  rows={displayedRows}
                   columns={columns}
                   reportKey={reportKey}
                 />
@@ -1749,7 +1988,7 @@ export default function ReportDataView({
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.length === 0 && (
+                  {displayedRows.length === 0 && (
                     <tr>
                       <td
                         colSpan={Math.max(columns.length, 1)}
@@ -1761,7 +2000,7 @@ export default function ReportDataView({
                       </td>
                     </tr>
                   )}
-                  {rows.map((row, index) => {
+                  {displayedRows.map((row, index) => {
                     const currentRowKey = rowKey(row, index);
                     return (
                       <tr
@@ -2002,6 +2241,7 @@ export default function ReportDataView({
                                   </div>
                                   )
                                 ) : (
+                                  <div className="grid min-w-[150px] gap-1">
                                   <input
                                     autoFocus
                                     type={
@@ -2039,7 +2279,9 @@ export default function ReportDataView({
                                         scheduleTextSave(nextCell);
                                       }
                                     }}
-                                    onBlur={() => void commitEditableCell()}
+                                    onBlur={() => {
+                                      if (!mentionControlActive.current) void commitEditableCell();
+                                    }}
                                     onKeyDown={(event) => {
                                       if (event.key === "Enter") {
                                         event.preventDefault();
@@ -2057,6 +2299,34 @@ export default function ReportDataView({
                                     }}
                                     className="min-w-[120px] rounded-md border border-[#9cc3e3] bg-white px-2 py-1 text-sm font-medium text-slate-800 shadow-sm outline-none ring-2 ring-[#cfe1f1]"
                                   />
+                                  {(editingCell.tripId || editingCell.storeCallId) && editingCell.definition.sourceField === "remarks" && (
+                                    <>
+                                      <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => { mentionControlActive.current = true; if (textSaveTimer.current !== null) { window.clearTimeout(textSaveTimer.current); textSaveTimer.current = null; } void loadMentionOptions(); }} className="w-fit rounded-md px-1.5 py-1 text-left text-[11px] font-medium text-[#2678b9] hover:bg-blue-50">@ Mention admin</button>
+                                      {mentionOptions.length > 0 && mentionControlActive.current && (
+                                        <select aria-label="Select admin to mention" defaultValue="" onBlur={() => { mentionControlActive.current = false; void commitEditableCell(); }} onChange={(event) => {
+                                          const option = mentionOptions.find((item) => item.id === event.target.value);
+                                          if (!option) return;
+                                          const current = editingCell;
+                                          const nextCell = {
+                                            ...current,
+                                            value: `${current.value}${current.value && !current.value.endsWith(" ") ? " " : ""}@${option.label}`,
+                                            mentionProfileIds: [...new Set([...(current.mentionProfileIds ?? []), option.id])],
+                                            mentionEventKey: current.mentionEventKey ?? crypto.randomUUID(),
+                                          };
+                                          setEditingCell(nextCell);
+                                          mentionControlActive.current = false;
+                                          setMentionOptions([]);
+                                          scheduleTextSave(nextCell);
+                                        }} className="max-w-[min(22rem,70vw)] rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700">
+                                          <option value="">Choose an eligible admin</option>
+                                          {mentionOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+                                        </select>
+                                      )}
+                                      {mentionLoading && <span className="text-[10px] text-slate-500">Loading admins…</span>}
+                                      {cellSaveState?.status === "error" && cellSaveState.message.includes("eligible admins") && <span role="alert" className="text-[10px] text-rose-600">{cellSaveState.message}</span>}
+                                    </>
+                                  )}
+                                  </div>
                                 )
                               ) : isEditable ? (
                                 <div className="flex items-center justify-between gap-2">
@@ -2093,7 +2363,7 @@ export default function ReportDataView({
                                   {cellSaveState?.rowKey === currentRowKey &&
                                   cellSaveState.field === column.key ? (
                                     <span
-                                      className={`text-[10px] font-medium ${cellSaveState.status === "error" ? "text-rose-600" : cellSaveState.status === "saving" ? "text-amber-600" : "text-emerald-600"}`}>
+                                      className={`text-[10px] font-medium ${cellSaveState.status === "error" ? "text-rose-600" : cellSaveState.status === "saving" || cellSaveState.status === "warning" ? "text-amber-700" : "text-emerald-600"}`}>
                                       {cellSaveState.message}
                                     </span>
                                   ) : null}
@@ -2113,7 +2383,7 @@ export default function ReportDataView({
                               cellSaveState.field === column.key ? (
                                 <span
                                   role="status"
-                                  className={`ml-2 text-[10px] font-medium ${cellSaveState.status === "error" ? "text-rose-600" : cellSaveState.status === "saving" ? "text-amber-600" : cellSaveState.status === "saved" ? "text-emerald-600" : "text-slate-400"}`}>
+                                  className={`ml-2 text-[10px] font-medium ${cellSaveState.status === "error" ? "text-rose-600" : cellSaveState.status === "saving" || cellSaveState.status === "warning" ? "text-amber-700" : cellSaveState.status === "saved" ? "text-emerald-600" : "text-slate-400"}`}>
                                   {cellSaveState.message}
                                 </span>
                               ) : null}

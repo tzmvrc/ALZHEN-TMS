@@ -487,7 +487,11 @@ export async function getReportData(
       "store-calling",
     ];
     const searchColumns = reportTableKeys.includes(key)
-      ? definition.columns
+      ? definition.columns.filter(
+          // Store Calling's assigned_to projection is a profile UUID; its
+          // display name is enriched after the query and is searched client-side.
+          (column) => !(key === "store-calling" && column.key === "assigned_to"),
+        )
       : definition.searchableColumns.map((column) => ({
           key: column,
           title: column,

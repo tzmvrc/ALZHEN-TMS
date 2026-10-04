@@ -112,7 +112,7 @@ export async function updateStoreCallRecord(
 
   const { data: existing, error: existingError } = await supabaseAdmin
     .from("store_calls")
-    .select("id, trip_id, trip_stop_id")
+    .select("id, trip_id, trip_stop_id, assigned_to")
     .eq("id", id)
     .maybeSingle();
 
@@ -271,5 +271,5 @@ export async function updateStoreCallRecord(
     throw new Error("Unable to update store call");
   }
 
-  return data;
+  return { record: data, previousAssignedTo: existing.assigned_to as string | null };
 }
