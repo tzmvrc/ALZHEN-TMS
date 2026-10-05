@@ -50,8 +50,8 @@ export default function TruckersView() {
     void (async () => {
       try {
         const [adminResponse, staffResponse] = await Promise.all([
-          apiGetCached<ApiResponse<ProfileLookupRow[]>>("/lookup/profiles?role=ADMIN", accessToken, 60_000),
-          apiGetCached<ApiResponse<ProfileLookupRow[]>>("/lookup/profiles?role=STAFF", accessToken, 60_000),
+          apiGetCached<ApiResponse<ProfileLookupRow[]>>("/lookups/profiles?role=ADMIN", accessToken, 60_000),
+          apiGetCached<ApiResponse<ProfileLookupRow[]>>("/lookups/profiles?role=STAFF", accessToken, 60_000),
         ]);
         if (!adminResponse.success || !adminResponse.data || !staffResponse.success || !staffResponse.data) {
           throw new Error(adminResponse.message ?? staffResponse.message ?? "Unable to load staff profiles.");
@@ -128,7 +128,7 @@ export default function TruckersView() {
     : totalPages;
 
   function refreshList() {
-    invalidateApiCache("/lookup/profiles");
+    invalidateApiCache("/lookups/profiles");
     invalidateApiCache("/truckers");
     setActionsOpen(false);
     setRefreshVersion((current) => current + 1);
@@ -147,10 +147,6 @@ export default function TruckersView() {
       <div>
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div className="flex flex-wrap items-center gap-2">
-            <label className="relative min-w-[200px] flex-1 sm:flex-none xl:w-72">
-              <Search aria-hidden="true" className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <input value={search} onChange={(event) => { setPage(1); setSearch(event.target.value); }} placeholder={category === "staff" ? "Search admin or staff" : "Search truckers"} className={tableUi.search} />
-            </label>
             <div role="group" aria-label="User category" className={tableUi.segment}>
               <button type="button" aria-pressed={category === "staff"} onClick={() => changeCategory("staff")} className={`${tableUi.segmentBtn} ${category === "staff" ? tableUi.segmentOn : tableUi.segmentOff}`}>Admin &amp; Staff</button>
               <button type="button" aria-pressed={category === "truckers"} onClick={() => changeCategory("truckers")} className={`${tableUi.segmentBtn} ${category === "truckers" ? tableUi.segmentOn : tableUi.segmentOff}`}>Truckers</button>
@@ -180,6 +176,10 @@ export default function TruckersView() {
             )}
           </div>
           <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
+            <label className="relative min-w-[200px] flex-1 sm:flex-none xl:w-72">
+              <Search aria-hidden="true" className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input value={search} onChange={(event) => { setPage(1); setSearch(event.target.value); }} placeholder={category === "staff" ? "Search admin or staff" : "Search truckers"} className={tableUi.search} />
+            </label>
             <div className="relative">
               <button type="button" aria-label="User list options" aria-haspopup="menu" aria-expanded={actionsOpen} onClick={() => setActionsOpen((current) => !current)} className={tableUi.iconBtn} title="User list options"><MoreHorizontal aria-hidden="true" className="h-5 w-5" /></button>
               {actionsOpen && <div role="menu" className="absolute right-0 top-11 z-30 min-w-44 rounded-2xl border border-slate-100 bg-white p-1 shadow-[0_16px_40px_-12px_rgba(11,35,65,0.2)]"><button type="button" role="menuitem" onClick={refreshList} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"><RefreshCw aria-hidden="true" className="h-4 w-4" />Refresh list</button></div>}

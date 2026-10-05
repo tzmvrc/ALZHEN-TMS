@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import SidebarNav, {
   type NavEntry,
   type WorkspaceName,
@@ -13,6 +13,7 @@ import {
   Truck,
   Users,
   WalletCards,
+  X,
 } from "lucide-react";
 import type { DashboardData } from "../../types/dashboard";
 import OverviewView from "./views/OverviewView";
@@ -21,7 +22,9 @@ import ClientWebsiteWorkspace from "./clientwebsite";
 import { defaultDashboardData } from "./data/defaultDashboardData";
 import dottedBackground from "../../assets/dotted.svg";
 import NotificationsView from "./views/NotificationsView";
-import { fetchNotifications, type AdminNotification } from "../../services/notification.service";
+import { fetchNotifications, markNotificationAsRead, type AdminNotification, type AdminNotificationTarget } from "../../services/notification.service";
+import { subscribeToTable } from "../../services/realtime.service";
+import type { RealtimePayload } from "../../services/realtime.service";
 
 export interface DashboardPageProps {
   data?: DashboardData;
@@ -95,20 +98,158 @@ export default function DashboardPage({
   >("invoices");
   const [searchQuery] = useState("");
   const [notificationCount, setNotificationCount] = useState(0);
+  const [notificationItems, setNotificationItems] = useState<AdminNotification[]>([]);
+  const [notificationLoading, setNotificationLoading] = useState(false);
+  const [notificationError, setNotificationError] = useState("");
+  const [newNotification, setNewNotification] = useState<AdminNotification | null>(null);
+  const [notificationTarget, setNotificationTarget] = useState<AdminNotificationTarget | null>(null);
+  const notificationItemsRef = useRef<AdminNotification[]>([]);
+  const seenNotificationIds = useRef(new Set<string>());
+  const notificationOwner = useRef<string | null>(null);
+  const notificationReload = useRef<() => void>(() => {});
 
   useEffect(() => {
-    if (profile?.role !== "ADMIN" || !accessToken) {
+    if (profile?.role !== "ADMIN" || !accessToken || !profile.id) {
+      notificationReload.current = () => {};
+      notificationOwner.current = null;
+      notificationItemsRef.current = [];
+      seenNotificationIds.current.clear();
+      setNotificationItems([]);
       setNotificationCount(0);
+      setNotificationLoading(false);
+      setNewNotification(null);
+      setNotificationError("");
       return;
     }
+    if (notificationOwner.current !== profile.id) {
+      notificationOwner.current = profile.id;
+      notificationItemsRef.current = [];
+      seenNotificationIds.current.clear();
+      setNotificationItems([]);
+      setNotificationCount(0);
+      setNewNotification(null);
+    }
     let active = true;
-    void fetchNotifications(accessToken).then((result) => {
-      if (active) setNotificationCount(result.unreadCount);
-    }).catch(() => {
-      if (active) setNotificationCount(0);
-    });
-    return () => { active = false; };
-  }, [accessToken, profile?.role]);
+    let initialLoaded = false;
+    let loadInFlight = false;
+    const receivedBeforeLoad = new Map<string, AdminNotification>();
+
+    const load = async () => {
+      if (loadInFlight) return;
+      loadInFlight = true;
+      setNotificationLoading(true);
+      try {
+        const result = await fetchNotifications(accessToken);
+        if (!active) return;
+        const apiIds = new Set(result.notifications.map((item) => item.id));
+        const additional = [...receivedBeforeLoad.values()].filter((item) => !apiIds.has(item.id));
+        const items = [...additional, ...result.notifications]
+          .filter((item, index, all) => all.findIndex((candidate) => candidate.id === item.id) === index)
+          .sort((a, b) => b.created_at.localeCompare(a.created_at));
+        items.forEach((item) => seenNotificationIds.current.add(item.id));
+        notificationItemsRef.current = items;
+        setNotificationItems(items);
+        setNotificationCount(result.unreadCount + additional.filter((item) => !item.read_at).length);
+        setNotificationError("");
+      } catch (cause) {
+        if (active) setNotificationError(cause instanceof Error ? cause.message : "Unable to load notifications.");
+      } finally {
+        initialLoaded = true;
+        loadInFlight = false;
+        if (active) setNotificationLoading(false);
+      }
+    };
+    notificationReload.current = () => void load();
+
+    const onNotificationEvent = (event: RealtimePayload) => {
+      if (event.eventType !== "INSERT" || !event.new || event.new.recipient_profile_id !== profile.id) return;
+      const row = event.new;
+      if (typeof row.id !== "string" || typeof row.created_at !== "string" || typeof row.message !== "string") return;
+      const item: AdminNotification = {
+        id: row.id,
+        actor_profile_id: typeof row.actor_profile_id === "string" ? row.actor_profile_id : null,
+        notification_type: typeof row.notification_type === "string" ? row.notification_type : "",
+        reference_type: typeof row.reference_type === "string" ? row.reference_type : "",
+        reference_id: typeof row.reference_id === "string" ? row.reference_id : "",
+        message: row.message,
+        metadata: row.metadata && typeof row.metadata === "object" ? row.metadata as Record<string, unknown> : {},
+        read_at: typeof row.read_at === "string" ? row.read_at : null,
+        created_at: row.created_at,
+      };
+      if (seenNotificationIds.current.has(item.id)) return;
+      seenNotificationIds.current.add(item.id);
+      if (!initialLoaded) receivedBeforeLoad.set(item.id, item);
+      const next = [item, ...notificationItemsRef.current.filter((candidate) => candidate.id !== item.id)].slice(0, 100);
+      notificationItemsRef.current = next;
+      setNotificationItems(next);
+      if (initialLoaded && !item.read_at) setNotificationCount((count) => count + 1);
+      setNewNotification(item);
+    };
+
+    const unsubscribe = subscribeToTable("admin_notifications", onNotificationEvent, () => void load());
+    void load();
+    return () => {
+      active = false;
+      notificationReload.current = () => {};
+      unsubscribe();
+    };
+  }, [accessToken, profile?.id, profile?.role]);
+
+  useEffect(() => {
+    if (!newNotification) return;
+    const timer = window.setTimeout(() => setNewNotification(null), 7_000);
+    return () => window.clearTimeout(timer);
+  }, [newNotification]);
+
+  const markNotificationReadLocally = (id: string, readAt: string) => {
+    const item = notificationItemsRef.current.find((notification) => notification.id === id);
+    if (!item) return;
+    if (!item.read_at) setNotificationCount((count) => Math.max(0, count - 1));
+    const next = notificationItemsRef.current.map((notification) => notification.id === id
+      ? { ...notification, read_at: readAt }
+      : notification);
+    notificationItemsRef.current = next;
+    setNotificationItems(next);
+  };
+
+  const handleNotificationOpen = (item: AdminNotification) => {
+    const validReports = ["combined", "dispatch-monitoring", "dispatch", "trip-booking", "store-calling"] as const;
+    const metadataReport = String(item.metadata?.report_key ?? "");
+    const reportKey = validReports.includes(metadataReport as typeof validReports[number])
+      ? metadataReport as typeof validReports[number]
+      : item.reference_type === "store_call" ? "store-calling" : null;
+    if (reportKey) {
+      setNotificationTarget({
+        notificationId: item.id,
+        navigationKey: crypto.randomUUID(),
+        reportKey,
+        referenceType: item.reference_type,
+        referenceId: item.reference_id,
+        searchText: typeof item.metadata?.dispatch_number === "string" ? item.metadata.dispatch_number : undefined,
+      });
+      setReportView(reportKey);
+      setActiveId("reports");
+      onNavigate("reports");
+      return;
+    }
+    setNotificationTarget(null);
+    setActiveId(`trip-detail:${item.reference_id}:overview`);
+    onNavigate(`trip-detail:${item.reference_id}:overview`);
+  };
+
+  const openToastNotification = async (item: AdminNotification) => {
+    if (!item.read_at && accessToken) {
+      try {
+        const result = await markNotificationAsRead(accessToken, item.id);
+        markNotificationReadLocally(item.id, result.read_at);
+      } catch (cause) {
+        setNotificationError(cause instanceof Error ? cause.message : "Unable to mark notification as read.");
+        return;
+      }
+    }
+    setNewNotification(null);
+    handleNotificationOpen(item);
+  };
 
   const navEntries: NavEntry[] = useMemo(
     () => [
@@ -215,6 +356,18 @@ export default function DashboardPage({
 
   return (
     <div className="relative min-h-screen bg-[#f2f4f5] text-slate-900">
+      {profile?.role === "ADMIN" && newNotification && (
+        <div role="status" aria-live="polite" className="fixed right-4 top-20 z-[90] w-[min(25rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-blue-200 bg-white shadow-xl">
+          <div className="flex items-start gap-3 p-3.5">
+            <span className="mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full bg-[#2678b9]" />
+            <button type="button" onClick={() => void openToastNotification(newNotification)} className="min-w-0 flex-1 text-left">
+              <span className="block text-xs font-semibold uppercase tracking-wide text-[#2678b9]">New notification</span>
+              <span className="mt-1 block text-sm font-medium text-slate-800">{newNotification.message}</span>
+            </button>
+            <button type="button" aria-label="Dismiss notification" onClick={() => setNewNotification(null)} className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><X aria-hidden="true" className="h-4 w-4" /></button>
+          </div>
+        </div>
+      )}
       <div
         aria-hidden="true"
         className="pointer-events-none fixed inset-0"
@@ -229,8 +382,14 @@ export default function DashboardPage({
             onNavigate={handleNavigate}
             onLogout={() => setShowLogoutConfirm(true)}
             onNotificationsClick={() => handleNavigate("notifications")}
+            onNotificationOpen={handleNotificationOpen}
             notificationCount={profile?.role === "ADMIN" ? notificationCount : 0}
             canAccessNotifications={profile?.role === "ADMIN"}
+            notificationItems={notificationItems}
+            notificationLoading={notificationLoading}
+            notificationError={notificationError}
+            onNotificationRetry={() => notificationReload.current()}
+            onNotificationRead={markNotificationReadLocally}
             workspace={workspace}
             onWorkspaceChange={setWorkspace}
             userName={displayName}
@@ -250,19 +409,14 @@ export default function DashboardPage({
               />
             </div>
           ) : activeId === "notifications" ? (
-            profile?.role === "ADMIN" ? <NotificationsView onOpen={(item: AdminNotification) => {
-              if (!item.read_at) setNotificationCount((count) => Math.max(0, count - 1));
-              const targetReport = item.metadata?.report_key;
-              if (["combined", "dispatch-monitoring", "dispatch", "trip-booking", "store-calling"].includes(String(targetReport))) {
-                setReportView(targetReport as "combined" | "dispatch-monitoring" | "dispatch" | "trip-booking" | "store-calling");
-                setActiveId("reports");
-              } else if (item.reference_type === "store_call") {
-                setReportView("store-calling");
-                setActiveId("reports");
-              } else {
-                setActiveId(`trip-detail:${item.reference_id}:overview`);
-              }
-            }} /> : <OverviewView onOpenTrip={(tripId) => setActiveId(`trip-detail:${tripId}:overview`)} onMetricNavigate={handleMetricNavigate} />
+            profile?.role === "ADMIN" ? <NotificationsView
+              items={notificationItems}
+              loading={notificationLoading}
+              error={notificationError}
+              onRetry={() => notificationReload.current()}
+              onNotificationRead={markNotificationReadLocally}
+              onOpen={handleNotificationOpen}
+            /> : <OverviewView onOpenTrip={(tripId) => setActiveId(`trip-detail:${tripId}:overview`)} onMetricNavigate={handleMetricNavigate} />
           ) : activeId === "trips" ? (
             <ResourceView
               id={tripView}
@@ -291,6 +445,7 @@ export default function DashboardPage({
               id={reportView}
               data={filteredData}
               onNavigate={handleNavigate}
+              notificationTarget={notificationTarget}
               onReportScopeChange={(next) => {
                 setReportView(next);
                 setActiveId("reports");

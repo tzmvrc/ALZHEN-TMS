@@ -1,4 +1,5 @@
 import { apiGet, apiPatch, type ApiResponse } from "./api.service";
+import type { ReportKey } from "./report.service";
 
 export type AdminNotification = {
   id: string;
@@ -10,6 +11,15 @@ export type AdminNotification = {
   metadata: Record<string, unknown>;
   read_at: string | null;
   created_at: string;
+};
+
+export type AdminNotificationTarget = {
+  notificationId: string;
+  navigationKey: string;
+  reportKey: ReportKey;
+  referenceType: string;
+  referenceId: string;
+  searchText?: string;
 };
 
 export async function fetchNotifications(token: string) {

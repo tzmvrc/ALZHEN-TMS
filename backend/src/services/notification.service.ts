@@ -3,13 +3,53 @@ import { ApiError } from "../utils/api-response.js";
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+async function getStoreCallDispatchNumber(storeCallId: string) {
+  const { data, error } = await supabaseAdmin
+    .from("v_store_calling")
+    .select("dispatch_number")
+    .eq("store_call_id", storeCallId)
+    .limit(1)
+    .maybeSingle();
+  if (error) {
+    console.warn("Store-call notification dispatch context could not be loaded:", error.message);
+    return "";
+  }
+  return typeof data?.dispatch_number === "string" ? data.dispatch_number : "";
+}
+
 export async function listNotifications(recipientId: string) {
   const [{ data, error }, { count, error: countError }] = await Promise.all([
     supabaseAdmin.from("admin_notifications").select("id, actor_profile_id, notification_type, reference_type, reference_id, message, metadata, read_at, created_at").eq("recipient_profile_id", recipientId).order("created_at", { ascending: false }).limit(100),
     supabaseAdmin.from("admin_notifications").select("id", { count: "exact", head: true }).eq("recipient_profile_id", recipientId).is("read_at", null),
   ]);
   if (error || countError) throw new ApiError("Unable to load notifications", 500, "NOTIFICATIONS_QUERY_FAILED");
-  return { notifications: data ?? [], unreadCount: count ?? 0 };
+  const notifications = data ?? [];
+  const storeCallIds = [...new Set(notifications
+    .filter((item) => item.reference_type === "store_call")
+    .map((item) => item.reference_id))];
+  let dispatchNumbers = new Map<string, string>();
+  if (storeCallIds.length) {
+    const { data: contexts, error: contextError } = await supabaseAdmin
+      .from("v_store_calling")
+      .select("store_call_id, dispatch_number")
+      .in("store_call_id", storeCallIds);
+    if (!contextError) {
+      dispatchNumbers = new Map((contexts ?? []).flatMap((context) =>
+        typeof context.store_call_id === "string" && typeof context.dispatch_number === "string"
+          ? [[context.store_call_id, context.dispatch_number] as const]
+          : [],
+      ));
+    }
+  }
+  return {
+    notifications: notifications.map((item) => {
+      const dispatchNumber = dispatchNumbers.get(item.reference_id);
+      return dispatchNumber
+        ? { ...item, metadata: { ...item.metadata, dispatch_number: dispatchNumber } }
+        : item;
+    }),
+    unreadCount: count ?? 0,
+  };
 }
 
 export async function markNotificationRead(recipientId: string, notificationId: string) {
@@ -50,6 +90,7 @@ export async function createReportMentionNotifications(input: {
   } else {
     const { data: storeCall, error } = await supabaseAdmin.from("store_calls").select("id").eq("id", referenceId).maybeSingle();
     if (error || !storeCall) throw new ApiError("Store call reference was not found", 404, "STORE_CALL_NOT_FOUND");
+    dispatch = await getStoreCallDispatchNumber(String(referenceId));
   }
   const { data: profiles, error: profileError } = await supabaseAdmin.from("profiles").select("id, first_name, role").in("id", recipients).eq("role", "ADMIN");
   if (profileError) throw new ApiError("Unable to verify mentioned admins", 500, "MENTION_LOOKUP_FAILED");
@@ -154,7 +195,11 @@ export async function notifyStoreCallAssigneeAfterUpdate(input: {
       reference_type: "store_call",
       reference_id: referenceId,
       message: `${actorName} assigned you to a Store Calling record.`,
-      metadata: { report_key: "store-calling", event_kind: "assignment" },
+      metadata: {
+        report_key: "store-calling",
+        event_kind: "assignment",
+        dispatch_number: await getStoreCallDispatchNumber(referenceId) || null,
+      },
       event_key: String(eventKey),
     }, { onConflict: "recipient_profile_id,event_key", ignoreDuplicates: true });
     if (error) throw error;

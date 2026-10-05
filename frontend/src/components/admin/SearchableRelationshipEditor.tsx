@@ -16,6 +16,7 @@ type SearchableRelationshipEditorProps = {
   autoFocus?: boolean;
   customerId?: string;
   onSelect: (option: RelationshipOption) => void;
+  onCommitSelection?: (option: RelationshipOption) => void;
   onCommitBlur: () => void;
   onCancel: () => void;
 };
@@ -29,6 +30,7 @@ export default function SearchableRelationshipEditor({
   autoFocus = true,
   customerId,
   onSelect,
+  onCommitSelection,
   onCommitBlur,
   onCancel,
 }: SearchableRelationshipEditorProps) {
@@ -101,11 +103,12 @@ export default function SearchableRelationshipEditor({
     };
   }, [isOpen]);
 
-  function selectOption(option: RelationshipOption | undefined) {
+  function selectOption(option: RelationshipOption | undefined, commit = false) {
     if (!option) return;
     setIsOpen(false);
     setQuery("");
     onSelect(option);
+    if (commit) onCommitSelection?.(option);
   }
 
   function handleKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
@@ -119,7 +122,7 @@ export default function SearchableRelationshipEditor({
     } else if (event.key === "Enter") {
       event.preventDefault();
       if (isOpen && options.length > 0) {
-        selectOption(options[activeIndex] ?? options[0]);
+        selectOption(options[activeIndex] ?? options[0], true);
       } else {
         onCommitBlur();
       }

@@ -61,6 +61,7 @@ import {
 import SearchableRelationshipEditor from "./SearchableRelationshipEditor";
 import { tableUi } from "./dashboardStyles";
 import ReportDropdownEditor, { type ReportDropdownChoice } from "./ReportDropdownEditor";
+import type { AdminNotificationTarget } from "../../services/notification.service";
 import { StatusBadge, TableSkeleton } from "./DashboardPrimitives";
 
 const reportKeys = Object.keys(REPORTS) as ReportKey[];
@@ -134,7 +135,18 @@ function downloadBlob(blob: Blob, filename: string) {
 
 function displayValue(value: unknown, type: string): string {
   if (value === null || value === undefined || value === "") return "";
-  if (type === "date" && typeof value === "string") return value.slice(0, 10);
+  const formatDate = (date: Date) => new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(date);
+  if (type === "date" && typeof value === "string") {
+    const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+    const parsed = dateOnly
+      ? new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3]))
+      : new Date(value);
+    return Number.isNaN(parsed.getTime()) ? value : formatDate(parsed);
+  }
   if (typeof value === "number") {
     return new Intl.NumberFormat(undefined, {
       maximumFractionDigits: 2,
@@ -142,7 +154,7 @@ function displayValue(value: unknown, type: string): string {
   }
   if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}T/.test(value)) {
     const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+    return Number.isNaN(date.getTime()) ? value : formatDate(date);
   }
   return String(value);
 }
@@ -230,6 +242,11 @@ const reportSelection = (() => {
       }
       const next = new Set(selected);
       [...next].filter((key) => key.startsWith(`${reportKey}:`)).forEach((key) => next.delete(key));
+      notify(next);
+    },
+    selectOnly(reportKey: ReportKey, rowKeys: string[]) {
+      const next = new Set([...selected].filter((key) => !key.startsWith(`${reportKey}:`)));
+      rowKeys.forEach((key) => next.add(key));
       notify(next);
     },
   };
@@ -793,6 +810,7 @@ function VisualFact({
 
 export default function ReportDataView({
   initialReport = "combined",
+  notificationTarget,
   showReportPicker = true,
   onOpenTrip,
   onReportScopeChange,
@@ -801,6 +819,7 @@ export default function ReportDataView({
   toolbarActions,
 }: {
   initialReport?: ReportKey;
+  notificationTarget?: AdminNotificationTarget | null;
   showReportPicker?: boolean;
   onOpenTrip?: (tripId: string) => void;
   onReportScopeChange?: (value: ReportKey) => void;
@@ -886,7 +905,6 @@ export default function ReportDataView({
   const tableViewportRef = useRef<HTMLDivElement>(null);
   const headerCellRefs = useRef(new Map<string, HTMLTableCellElement>());
   const cancelNextBlur = useRef(false);
-  const textSaveTimer = useRef<number | null>(null);
   const mentionControlActive = useRef(false);
   const sortableFields =
     columns.length > 0
@@ -895,7 +913,10 @@ export default function ReportDataView({
   const activeSortBy = sortableFields.includes(sortBy)
     ? sortBy
     : getSortableFields(reportKey)[0];
-  const effectiveSearch = reportKey === "store-calling" ? "" : appliedSearch;
+  const notificationSearch = notificationTarget?.reportKey === reportKey
+    ? notificationTarget.searchText?.trim() ?? ""
+    : "";
+  const effectiveSearch = reportKey === "store-calling" && !notificationSearch ? "" : appliedSearch;
   const displayedRows = useMemo(() => {
     const term = reportKey === "store-calling" ? appliedSearch.trim().toLocaleLowerCase() : "";
     if (!term) return rows;
@@ -932,6 +953,8 @@ export default function ReportDataView({
   const snapshotKey = JSON.stringify({ accessToken, activeSortBy, appliedFilters, appliedSearch: effectiveSearch, page, reportKey, sortOrder });
   const snapshotKeyRef = useRef(snapshotKey);
   const reportKeyRef = useRef(reportKey);
+  const appliedNotificationTarget = useRef<string | null>(null);
+  const handledNotificationTarget = useRef<string | null>(null);
   const inFlightReportQueries = useRef(new Map<string, number>());
   const realtimeRefreshDirty = useRef(false);
   const realtimeRefreshQueuedFor = useRef<string | null>(null);
@@ -1022,15 +1045,6 @@ export default function ReportDataView({
   };
   const scheduleRealtimeRefreshRef = useRef(scheduleRealtimeRefresh);
   scheduleRealtimeRefreshRef.current = scheduleRealtimeRefresh;
-
-  useEffect(
-    () => () => {
-      if (textSaveTimer.current !== null) {
-        window.clearTimeout(textSaveTimer.current);
-      }
-    },
-    [],
-  );
 
   useEffect(() => {
     setReportKey(initialReport);
@@ -1302,10 +1316,6 @@ export default function ReportDataView({
   function beginEditCell(row: ReportRow, index: number, columnKey: string) {
     if (cellSaveInFlight.current) return;
     cancelNextBlur.current = false;
-    if (textSaveTimer.current !== null) {
-      window.clearTimeout(textSaveTimer.current);
-      textSaveTimer.current = null;
-    }
     const nextCell = createEditingCell(row, index, columnKey);
     if (!nextCell) return;
     setMentionOptions([]);
@@ -1442,20 +1452,14 @@ export default function ReportDataView({
     }
   }
 
-  function scheduleTextSave(candidate: EditingCell) {
-    if (textSaveTimer.current !== null) {
-      window.clearTimeout(textSaveTimer.current);
-    }
+  function keepCellEditLocal(candidate: EditingCell) {
     setCellSaveState({
       rowKey: candidate.rowKey,
       field: candidate.field,
       status: "editing",
       message: "Editing",
     });
-    textSaveTimer.current = window.setTimeout(() => {
-      textSaveTimer.current = null;
-      void commitEditableCell(candidate, true);
-    }, 700);
+    setEditingCell(candidate);
   }
 
   async function commitEditableCell(
@@ -1469,10 +1473,6 @@ export default function ReportDataView({
     }
     const sourceCell = candidate ?? editingCell;
     if (!sourceCell || !accessToken || cellSaveInFlight.current) return false;
-    if (textSaveTimer.current !== null) {
-      window.clearTimeout(textSaveTimer.current);
-      textSaveTimer.current = null;
-    }
     const targetCell = { ...sourceCell };
     const definition = targetCell.definition;
     const textValue = targetCell.value.trim();
@@ -1919,6 +1919,35 @@ export default function ReportDataView({
         : null;
   const isLoading = Boolean(accessToken) && loadedQueryKey !== queryKey && !reportPageCache.has(snapshotKey);
 
+  useEffect(() => {
+    if (!notificationTarget || notificationTarget.reportKey !== reportKey || appliedNotificationTarget.current === notificationTarget.navigationKey) return;
+    appliedNotificationTarget.current = notificationTarget.navigationKey;
+    setPage(1);
+    setAppliedFilters({});
+    const searchText = notificationTarget.searchText ?? "";
+    setSearch(searchText);
+    setAppliedSearch(searchText);
+  }, [notificationTarget, reportKey]);
+
+  useEffect(() => {
+    const targetSearch = notificationTarget?.searchText?.trim() ?? "";
+    const hasActiveFilters = Object.values(appliedFilters).some((value) => value.trim());
+    if (!notificationTarget || notificationTarget.reportKey !== reportKey || !accessToken || isLoading || loadedQueryKey !== queryKey || page !== 1 || handledNotificationTarget.current === notificationTarget.navigationKey || appliedSearch.trim() !== targetSearch || hasActiveFilters) return;
+    const row = displayedRows.find((candidate) => notificationTarget.referenceType === "store_call"
+      ? candidate.store_call_id === notificationTarget.referenceId
+      : candidate.trip_id === notificationTarget.referenceId);
+    if (!row) return;
+    const selectionKey = getReportRowKey(reportKey, row);
+    if (!selectionKey) return;
+    reportSelection.selectOnly(reportKey, [selectionKey]);
+    handledNotificationTarget.current = notificationTarget.navigationKey;
+    window.requestAnimationFrame(() => {
+      const targetElement = [...document.querySelectorAll<HTMLTableRowElement>("tr[data-report-selection-key]")]
+        .find((element) => element.dataset.reportSelectionKey === selectionKey);
+      targetElement?.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
+    });
+  }, [accessToken, appliedFilters, appliedSearch, displayedRows, isLoading, loadedQueryKey, notificationTarget, page, queryKey, reportKey]);
+
   async function runReportExport() {
     if (!accessToken || exportBusy) return;
     setExportBusy(true);
@@ -1965,63 +1994,8 @@ export default function ReportDataView({
 
   return (
     <div className="space-y-4">
-      <div className={tableUi.toolbar}>
-        <form onSubmit={submitSearch} className="flex w-full gap-2 lg:w-auto">
-          <label
-            className="relative min-w-0 flex-1 lg:w-72"
-            htmlFor="report-search">
-            <Search
-              aria-hidden="true"
-              className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
-            />
-            <input
-              id="report-search"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search report"
-              className={tableUi.search}
-            />
-          </label>
-          <button
-            type="submit"
-            className="h-10 rounded-full bg-[#ffd43b] px-5 text-sm font-semibold text-[#0b2341] transition hover:bg-[#f2c200]">
-            Search
-          </button>
-          {reportFilters.length > 0 && (
-            <button
-              type="button"
-              aria-label={filtersExpanded ? "Hide filters" : "Show filters"}
-              aria-expanded={filtersExpanded}
-              aria-controls="report-filter-controls"
-              title={filtersExpanded ? "Hide filters" : "Show filters"}
-              onClick={() => setFiltersExpanded((expanded) => !expanded)}
-              className={`${tableUi.iconBtn} relative shrink-0 ${
-                filtersExpanded ? "bg-[#e6f0f9] text-[#0b2341]" : ""
-              }`}>
-              <SlidersHorizontal aria-hidden="true" className="h-4 w-4" />
-              {hasAppliedFilters && (
-                <span
-                  aria-label={`${Object.values(appliedFilters).filter((value) => value.trim()).length} active filters`}
-                  className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-[#2678b9]"
-                />
-              )}
-            </button>
-          )}
-          {search && (
-            <button
-              type="button"
-              aria-label="Clear search"
-              onClick={() => {
-                setSearch("");
-                setAppliedSearch("");
-                setPage(1);
-              }}
-              className={tableUi.iconBtn}>
-              <X aria-hidden="true" className="h-4 w-4" />
-            </button>
-          )}
-        </form>
-        <div className="flex flex-wrap items-center gap-3">
+      <div className={`${tableUi.toolbar} flex-wrap`}>
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3">
           {tripScope && onTripScopeChange && (
             <div role="tablist" aria-label="Trip views" className={`${tableUi.segment} max-w-full gap-1 overflow-x-auto`}>
               {([
@@ -2061,6 +2035,27 @@ export default function ReportDataView({
               />
             </div>
           )}
+          <ReportSelectionToolbar
+            reportKey={reportKey}
+            rows={displayedRows}
+            columns={columns}
+            onEdit={openSelectedRowEditor} />
+        </div>
+        <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
+          <form onSubmit={submitSearch} className="flex min-w-0 w-full gap-2 sm:w-auto">
+            <label className="relative min-w-0 flex-1 sm:w-64" htmlFor="report-search">
+              <Search aria-hidden="true" className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input id="report-search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search report" className={tableUi.search} />
+            </label>
+            <button type="submit" className="h-10 shrink-0 rounded-full bg-[#ffd43b] px-4 text-sm font-semibold text-[#0b2341] transition hover:bg-[#f2c200]">Search</button>
+            {reportFilters.length > 0 && (
+              <button type="button" aria-label={filtersExpanded ? "Hide filters" : "Show filters"} aria-expanded={filtersExpanded} aria-controls="report-filter-controls" title={filtersExpanded ? "Hide filters" : "Show filters"} onClick={() => setFiltersExpanded((expanded) => !expanded)} className={`${tableUi.iconBtn} relative shrink-0 ${filtersExpanded ? "bg-[#e6f0f9] text-[#0b2341]" : ""}`}>
+                <SlidersHorizontal aria-hidden="true" className="h-4 w-4" />
+                {hasAppliedFilters && <span aria-label={`${Object.values(appliedFilters).filter((value) => value.trim()).length} active filters`} className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-[#2678b9]" />}
+              </button>
+            )}
+            {search && <button type="button" aria-label="Clear search" onClick={() => { setSearch(""); setAppliedSearch(""); setPage(1); }} className={tableUi.iconBtn}><X aria-hidden="true" className="h-4 w-4" /></button>}
+          </form>
           <div
             role="group"
             aria-label="Report display mode"
@@ -2092,11 +2087,6 @@ export default function ReportDataView({
             className={tableUi.iconBtn}>
             <Download aria-hidden="true" className="h-4 w-4" />
           </button>
-          <ReportSelectionToolbar
-            reportKey={reportKey}
-            rows={displayedRows}
-            columns={columns}
-            onEdit={openSelectedRowEditor} />
           {viewMode === "visual" && (
             <>
                     <div className="relative">
@@ -2322,6 +2312,7 @@ export default function ReportDataView({
             .report-data-row:has([data-report-row-select]:checked) > td { background-color: #eaf4ff; }
             .report-data-row:has([data-report-row-select]:checked):hover,
             .report-data-row:has([data-report-row-select]:checked):hover > td { background-color: #deefff; }
+            .report-data-row > td:hover { outline: 1px solid rgba(38, 120, 185, 0.2); outline-offset: -1px; }
           `}</style>
           <div ref={tableViewportRef} className="relative min-h-48 overflow-x-auto">
             {pinningNotice && <p role="status" className="sticky left-2 z-40 w-fit rounded-md bg-amber-50 px-2.5 py-1.5 text-xs text-amber-900 shadow-sm">{pinningNotice}</p>}
@@ -2355,6 +2346,10 @@ export default function ReportDataView({
                   rows={6}
                 />
               </div>
+            ) : displayedRows.length === 0 && (Boolean(appliedSearch.trim()) || hasAppliedFilters) ? (
+              <div className="flex min-h-48 w-full items-center justify-center px-4 py-12 text-center text-sm text-slate-500">
+                No matching records found.
+              </div>
             ) : (
               <table className="w-full min-w-max border-separate border-spacing-0 text-left">
                 <thead className={tableUi.thead}>
@@ -2362,7 +2357,7 @@ export default function ReportDataView({
                     <th
                       ref={selectionColumnRef}
                       scope="col"
-                      className="sticky left-0 z-30 w-11 min-w-11 border-b border-slate-100 bg-white px-4 py-3.5">
+                      className="sticky left-0 z-30 w-11 min-w-11 border-b border-r border-slate-100/70 bg-white px-4 py-3.5">
                       <ReportSelectAllCheckbox rowKeys={visibleSelectionKeys} />
                     </th>
                     {columns.map((column) => {
@@ -2387,7 +2382,7 @@ export default function ReportDataView({
                         }}
                         scope="col"
                         style={isPinned ? { position: "sticky", ...(pinSide === "left" ? { left: leftPinOffsets[column.key] ?? 44 } : { right: rightPinOffsets[column.key] ?? 0 }), zIndex: 20 } : undefined}
-                        className={`${tableUi.th} ${isPinned ? `bg-white ${isOuterPinnedEdge ? pinSide === "left" ? "shadow-[4px_0_8px_-6px_rgba(11,35,65,0.35)]" : "shadow-[-4px_0_8px_-6px_rgba(11,35,65,0.35)]" : ""}` : ""} ${
+                        className={`${tableUi.th} border-r border-slate-100/70 last:border-r-0 ${isPinned ? `bg-white ${isOuterPinnedEdge ? pinSide === "left" ? "shadow-[4px_0_8px_-6px_rgba(11,35,65,0.35)]" : "shadow-[-4px_0_8px_-6px_rgba(11,35,65,0.35)]" : ""}` : ""} ${
                           column.type === "number" ||
                           ["quantity", "cbm", "subcon_rate_manual"].includes(
                             column.key,
@@ -2467,8 +2462,9 @@ export default function ReportDataView({
                     return (
                       <tr
                         key={currentRowKey}
+                        data-report-selection-key={selectionKey ?? undefined}
                         className={`group report-data-row ${tableUi.row}`}>
-                        <td className="sticky left-0 z-10 w-11 min-w-11 bg-white px-4 py-3.5 group-hover:bg-[#f6f9fc]">
+                        <td className="sticky left-0 z-10 w-11 min-w-11 border-r border-slate-100/70 bg-white px-3 py-3.5 shadow-[3px_0_5px_-5px_rgba(11,35,65,0.65)] group-hover:bg-[#f2f6fa]">
                           <ReportRowSelectionCheckbox
                             rowKey={selectionKey}
                             label={rowText(row, "dispatch_number", "trip_number", "store_call_id")} />
@@ -2486,6 +2482,7 @@ export default function ReportDataView({
                               ? dropdownChoicesByField[dropdownField] ?? []
                               : [];
                           const isEditable = Boolean(editableTarget);
+                          const isRemarksColumn = /remarks|comment|notes/i.test(column.key) || editableTarget?.sourceField === "remarks";
                           const pinSide = pinnedColumnSides[column.key];
                           const isPinned = Boolean(pinSide);
                           const isOuterPinnedEdge = pinSide === "left"
@@ -2505,7 +2502,7 @@ export default function ReportDataView({
                                   beginEditCell(row, index, column.key);
                                 }
                               }}
-                              className={`max-w-80 ${tableUi.td} ${isPinned ? `bg-white group-hover:bg-[#f6f9fc] ${isOuterPinnedEdge ? pinSide === "left" ? "shadow-[4px_0_8px_-6px_rgba(11,35,65,0.35)]" : "shadow-[-4px_0_8px_-6px_rgba(11,35,65,0.35)]" : ""}` : ""} ${
+                              className={`${isRemarksColumn ? "min-w-[14rem] max-w-[30rem] whitespace-pre-wrap break-words align-top" : "max-w-80"} ${tableUi.td} border-r border-slate-100/70 text-slate-700 last:border-r-0 ${isPinned ? `bg-white group-hover:bg-[#f2f6fa] ${isOuterPinnedEdge ? pinSide === "left" ? "shadow-[4px_0_7px_-5px_rgba(11,35,65,0.75)]" : "shadow-[-4px_0_7px_-5px_rgba(11,35,65,0.75)]" : ""}` : ""} ${
                                 isEditable
                                   ? "cursor-text outline-none transition hover:bg-[#e6f0f9]/50"
                                   : ""
@@ -2571,7 +2568,19 @@ export default function ReportDataView({
                                         relationshipOption: option,
                                       };
                                       setEditingCell(nextCell);
-                                      void commitEditableCell(nextCell);
+                                    }}
+                                    onCommitSelection={(option) => {
+                                      if (!editingCell) return;
+                                      const displayed = option.values?.[editingCell.field] ??
+                                        (editingCell.field === "warehouse_code"
+                                          ? option.values?.warehouse_code ?? option.secondary ?? option.label
+                                          : option.label);
+                                      void commitEditableCell({
+                                        ...editingCell,
+                                        value: displayed,
+                                        relationshipId: option.id,
+                                        relationshipOption: option,
+                                      });
                                     }}
                                     onCommitBlur={() =>
                                       void commitEditableCell()
@@ -2605,38 +2614,20 @@ export default function ReportDataView({
                                     onSelect={(value) => {
                                       const nextCell = { ...editingCell, value };
                                       setEditingCell(nextCell);
-                                      void commitEditableCell(nextCell);
                                     }}
+                                    onCommitSelection={(value) => void commitEditableCell({ ...editingCell, value })}
+                                    onCommitBlur={() => void commitEditableCell()}
                                     onAdd={(value) => addTypedOptionAndSave(editingCell, value)}
                                     onEditOption={editOptionDisplayLabel}
-                                    onClose={() => {
-                                      if (editingCell.definition.editor === "boolean") {
-                                        setEditingCell(null);
-                                        setCellSaveState(null);
-                                      }
-                                    }}
+                                    onClose={() => void commitEditableCell()}
                                   />
                                 ) : (
                                   <div className="grid min-w-[150px] gap-1">
-                                  <input
+                                  {editingCell.definition.sourceField === "remarks" ? (
+                                  <textarea
                                     autoFocus
+                                    rows={4}
                                     placeholder={!editingCell.value ? `Enter ${column.title.toLowerCase()}` : undefined}
-                                    type={
-                                      editingCell.definition.editor === "number"
-                                        ? "number"
-                                        : editingCell.definition.editor === "date"
-                                          ? "date"
-                                          : editingCell.definition.editor === "datetime"
-                                            ? "datetime-local"
-                                            : "text"
-                                    }
-                                    step={
-                                      editingCell.definition.editor === "number" &&
-
-                                      editingCell.field === "page_no"
-                                        ? "1"
-                                        : "any"
-                                    }
                                     aria-label={`Edit ${column.title}`}
                                     disabled={
                                       cellSaveState?.rowKey === currentRowKey &&
@@ -2648,37 +2639,44 @@ export default function ReportDataView({
                                         ...editingCell,
                                         value: event.target.value,
                                       };
-                                      setEditingCell(nextCell);
-                                      if (
-                                        editingCell.definition.editor === "text" ||
-                                        editingCell.definition.editor === "number"
-                                      ) {
-                                        scheduleTextSave(nextCell);
-                                      }
+                                      keepCellEditLocal(nextCell);
                                     }}
                                     onBlur={() => {
                                       if (!mentionControlActive.current) void commitEditableCell();
                                     }}
                                     onKeyDown={(event) => {
                                       if (event.key === "Enter") {
-                                        event.preventDefault();
-                                        void commitEditableCell();
+                                        if (!event.shiftKey) {
+                                          event.preventDefault();
+                                          void commitEditableCell();
+                                        }
                                       }
                                       if (event.key === "Escape") {
                                         cancelNextBlur.current = true;
-                                        if (textSaveTimer.current !== null) {
-                                          window.clearTimeout(textSaveTimer.current);
-                                          textSaveTimer.current = null;
-                                        }
                                         setEditingCell(null);
                                         setCellSaveState(null);
                                       }
                                     }}
-                                    className="min-w-[120px] rounded-md border border-[#9cc3e3] bg-white px-2 py-1 text-sm font-medium text-slate-800 shadow-sm outline-none ring-2 ring-[#cfe1f1]"
+                                    className="w-[min(36rem,70vw)] min-w-[min(24rem,70vw)] max-w-[70vw] resize-y rounded-md border border-[#9cc3e3] bg-white px-2 py-1 text-sm font-medium text-slate-800 shadow-sm outline-none ring-2 ring-[#cfe1f1]"
                                   />
+                                  ) : <input
+                                    autoFocus
+                                    placeholder={!editingCell.value ? `Enter ${column.title.toLowerCase()}` : undefined}
+                                    type={editingCell.definition.editor === "number" ? "number" : editingCell.definition.editor === "date" ? "date" : editingCell.definition.editor === "datetime" ? "datetime-local" : "text"}
+                                    step={editingCell.definition.editor === "number" && editingCell.field === "page_no" ? "1" : "any"}
+                                    aria-label={`Edit ${column.title}`}
+                                    disabled={cellSaveState?.rowKey === currentRowKey && cellSaveState.status === "saving"}
+                                    value={editingCell.value}
+                                    onChange={(event) => keepCellEditLocal({ ...editingCell, value: event.target.value })}
+                                    onBlur={() => { if (!mentionControlActive.current) void commitEditableCell(); }}
+                                    onKeyDown={(event) => {
+                                      if (event.key === "Enter") { event.preventDefault(); void commitEditableCell(); }
+                                      if (event.key === "Escape") { cancelNextBlur.current = true; setEditingCell(null); setCellSaveState(null); }
+                                    }}
+                                    className="min-w-[120px] rounded-md border border-[#9cc3e3] bg-white px-2 py-1 text-sm font-medium text-slate-800 shadow-sm outline-none ring-2 ring-[#cfe1f1]" />}
                                   {(editingCell.tripId || editingCell.storeCallId) && editingCell.definition.sourceField === "remarks" && (
                                     <>
-                                      <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => { mentionControlActive.current = true; if (textSaveTimer.current !== null) { window.clearTimeout(textSaveTimer.current); textSaveTimer.current = null; } void loadMentionOptions(); }} className="w-fit rounded-md px-1.5 py-1 text-left text-[11px] font-medium text-[#2678b9] hover:bg-blue-50">@ Mention admin</button>
+                                      <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => { mentionControlActive.current = true; void loadMentionOptions(); }} className="w-fit rounded-md px-1.5 py-1 text-left text-[11px] font-medium text-[#2678b9] hover:bg-blue-50">@ Mention admin</button>
                                       {mentionOptions.length > 0 && mentionControlActive.current && (
                                         <select aria-label="Select admin to mention" defaultValue="" onBlur={() => { mentionControlActive.current = false; void commitEditableCell(); }} onChange={(event) => {
                                           const option = mentionOptions.find((item) => item.id === event.target.value);
@@ -2693,7 +2691,7 @@ export default function ReportDataView({
                                           setEditingCell(nextCell);
                                           mentionControlActive.current = false;
                                           setMentionOptions([]);
-                                          scheduleTextSave(nextCell);
+                                          keepCellEditLocal(nextCell);
                                         }} className="max-w-[min(22rem,70vw)] rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700">
                                           <option value="">Choose an eligible admin</option>
                                           {mentionOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}

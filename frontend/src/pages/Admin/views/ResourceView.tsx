@@ -16,6 +16,7 @@ import RequestsView from "./RequestsView";
 import DatabaseExplorerView from "./DatabaseExplorerView";
 import TripDetailView from "./TripDetailView";
 import TruckersView from "./TruckersView";
+import type { AdminNotificationTarget } from "../../../services/notification.service";
 
 const titleMap: Record<string, [string, string]> = {
   "request-inbox": [
@@ -174,13 +175,14 @@ function GenericResourceTable({
 
   return (
     <div className="space-y-4">
-      <div className={tableUi.toolbar}>
+      <div className={`${tableUi.toolbar} flex-wrap`}>
+        <div className="flex w-full flex-wrap items-center justify-end gap-2">
         <input
           placeholder={`Search ${headings[0].toLowerCase()} records`}
           aria-label={`Search ${headings[0].toLowerCase()} records`}
           className={`${tableUi.search} pl-4 sm:w-72`}
         />
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           <button type="button" className={`${tableUi.segmentBtn} bg-white text-slate-600 shadow-[0_1px_2px_rgba(11,35,65,0.06)] hover:text-[#0b2341]`}>
             Filter
           </button>
@@ -190,6 +192,7 @@ function GenericResourceTable({
           <button type="button" className="rounded-full bg-[#ffd43b] px-4 py-1.5 text-xs font-semibold text-[#0b2341] transition hover:bg-[#f2c200]">
             Export
           </button>
+        </div>
         </div>
       </div>
       <div className={tableUi.shell}>
@@ -261,6 +264,7 @@ export default function ResourceView({
   tripScope,
   onTripScopeChange,
   onReportScopeChange,
+  notificationTarget,
   billingScope,
   onBillingScopeChange,
 }: {
@@ -279,6 +283,7 @@ export default function ResourceView({
       | "trip-booking"
       | "store-calling",
   ) => void;
+  notificationTarget?: AdminNotificationTarget | null;
   billingScope?: "rates-fuel" | "invoices" | "payables" | "cash-tracker";
   onBillingScopeChange?: (
     value: "rates-fuel" | "invoices" | "payables" | "cash-tracker",
@@ -368,6 +373,7 @@ export default function ResourceView({
         <>
           <ReportDataView
             initialReport="trip-booking"
+            notificationTarget={notificationTarget}
             showReportPicker={false}
             onOpenTrip={openTrip}
             tripScope={tripScope ?? "dispatches"}
@@ -396,6 +402,7 @@ export default function ResourceView({
         <>
           <ReportDataView
             initialReport="dispatch-monitoring"
+            notificationTarget={notificationTarget}
             showReportPicker={false}
             onOpenTrip={openTrip}
             tripScope={tripScope ?? "deliveries"}
@@ -407,6 +414,7 @@ export default function ResourceView({
         <>
           <ReportDataView
             initialReport="dispatch-monitoring"
+            notificationTarget={notificationTarget}
             showReportPicker={false}
             onOpenTrip={openTrip}
             tripScope={tripScope ?? "monitoring"}
@@ -417,6 +425,7 @@ export default function ResourceView({
       {id === "dispatch-monitoring" && (
         <ReportDataView
           initialReport="dispatch-monitoring"
+          notificationTarget={notificationTarget}
           onOpenTrip={openTrip}
           onReportScopeChange={onReportScopeChange}
         />
@@ -424,12 +433,14 @@ export default function ResourceView({
       {id === "store-calling" && (
         <ReportDataView
           initialReport="store-calling"
+          notificationTarget={notificationTarget}
           onOpenTrip={openTrip}
           onReportScopeChange={onReportScopeChange}
         />
       )}
       {id === "reports" && (
         <ReportDataView
+          notificationTarget={notificationTarget}
           onOpenTrip={openTrip}
           onReportScopeChange={onReportScopeChange}
         />
@@ -437,6 +448,7 @@ export default function ResourceView({
       {id === "combined" && (
         <ReportDataView
           initialReport="combined"
+          notificationTarget={notificationTarget}
           onOpenTrip={openTrip}
           onReportScopeChange={onReportScopeChange}
         />
@@ -444,6 +456,7 @@ export default function ResourceView({
       {id === "dispatch" && (
         <ReportDataView
           initialReport="dispatch"
+          notificationTarget={notificationTarget}
           onOpenTrip={openTrip}
           onReportScopeChange={onReportScopeChange}
         />
@@ -451,6 +464,7 @@ export default function ResourceView({
       {id === "trip-booking" && (
         <ReportDataView
           initialReport="trip-booking"
+          notificationTarget={notificationTarget}
           onOpenTrip={openTrip}
           onReportScopeChange={onReportScopeChange}
         />

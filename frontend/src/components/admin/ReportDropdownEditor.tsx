@@ -19,6 +19,8 @@ type ReportDropdownEditorProps = {
   canManageOptions?: boolean;
   autoOpen?: boolean;
   onSelect: (value: string) => void;
+  onCommitSelection?: (value: string) => void;
+  onCommitBlur?: () => void;
   onAdd?: (displayLabel: string) => Promise<boolean>;
   onEditOption?: (option: DropdownOption, displayLabel: string) => Promise<boolean>;
   onClose?: () => void;
@@ -38,6 +40,8 @@ export default function ReportDropdownEditor({
   canManageOptions = false,
   autoOpen = true,
   onSelect,
+  onCommitSelection,
+  onCommitBlur,
   onAdd,
   onEditOption,
   onClose,
@@ -46,6 +50,7 @@ export default function ReportDropdownEditor({
   const rootRef = useRef<HTMLDivElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(autoOpen);
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
@@ -111,9 +116,9 @@ export default function ReportDropdownEditor({
     if (open && autoOpen) inputRef.current?.focus();
   }, [autoOpen, open]);
 
-  function close() {
+  function close(notify = true) {
     setOpen(false);
-    onClose?.();
+    if (notify) onClose?.();
   }
 
   async function createOption() {
@@ -165,14 +170,20 @@ export default function ReportDropdownEditor({
         setNewLabel(query.trim());
         setAddingOption(true);
       } else if (filteredOptions.length) {
-        onSelect(filteredOptions[Math.min(activeIndex, filteredOptions.length - 1)].value);
-        close();
+        const selectedValue = filteredOptions[Math.min(activeIndex, filteredOptions.length - 1)].value;
+        onSelect(selectedValue);
+        close(false);
+        requestAnimationFrame(() => triggerRef.current?.focus());
+        onCommitSelection?.(selectedValue);
       }
     } else if (event.key === "Escape") {
       event.preventDefault();
       if (editingOptionId) setEditingOptionId(null);
       else if (addingOption) setAddingOption(false);
-      else close();
+      else {
+        close(false);
+        requestAnimationFrame(() => triggerRef.current?.focus());
+      }
       setManagementError("");
     }
   }
@@ -203,7 +214,7 @@ export default function ReportDropdownEditor({
               </form>
             ) : (
               <>
-                <button type="button" role="option" aria-selected={option.value === value} onMouseDown={(event) => event.preventDefault()} onMouseEnter={() => setActiveIndex(index)} onClick={() => { onSelect(option.value); close(); }} className="flex min-h-12 min-w-0 flex-1 items-center justify-between gap-3 px-3 py-2 text-left text-sm text-slate-700">
+                <button type="button" role="option" aria-selected={option.value === value} onMouseDown={(event) => event.preventDefault()} onMouseEnter={() => setActiveIndex(index)} onClick={() => { onSelect(option.value); close(false); requestAnimationFrame(() => triggerRef.current?.focus()); }} className="flex min-h-12 min-w-0 flex-1 items-center justify-between gap-3 px-3 py-2 text-left text-sm text-slate-700">
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-bold text-slate-800">{option.label}</span>
                     <span className="block truncate text-[11px] font-normal text-slate-500">{option.value}</span>
@@ -243,7 +254,7 @@ export default function ReportDropdownEditor({
         {open ? (
           <input ref={inputRef} type="text" role="combobox" aria-label={`Search ${label} options`} aria-autocomplete="list" aria-expanded="true" aria-controls={listId} autoComplete="off" disabled={disabled || busy} value={query} onChange={(event) => { setQuery(event.target.value); setActiveIndex(0); }} onKeyDown={handleKeyDown} placeholder={(displayValue ?? value) ? `Current: ${displayValue ?? value}` : `Search ${label.toLowerCase()}`} className="w-full rounded-lg border border-amber-300 bg-white px-3 py-2 pr-9 text-sm font-medium text-slate-800 shadow-sm outline-none transition focus:border-amber-500 focus:ring-2 focus:ring-amber-100 disabled:opacity-60" />
         ) : (
-          <button type="button" disabled={disabled} onClick={() => { setQuery(""); setActiveIndex(Math.max(0, options.findIndex((option) => option.value === value))); setOpen(true); }} className="flex w-full items-center justify-between gap-2 rounded-lg border border-amber-300 bg-white px-3 py-2 text-left text-sm font-medium text-slate-800 shadow-sm hover:bg-amber-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 disabled:opacity-60">
+          <button ref={triggerRef} type="button" disabled={disabled} onBlur={() => onCommitBlur?.()} onClick={() => { setQuery(""); setActiveIndex(Math.max(0, options.findIndex((option) => option.value === value))); setOpen(true); }} className="flex w-full items-center justify-between gap-2 rounded-lg border border-amber-300 bg-white px-3 py-2 text-left text-sm font-medium text-slate-800 shadow-sm hover:bg-amber-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 disabled:opacity-60">
             <span className="truncate">{(displayValue ?? value) || `Choose ${label.toLowerCase()}`}</span><ChevronDown aria-hidden="true" className="h-4 w-4 shrink-0 text-amber-700" />
           </button>
         )}

@@ -1,8 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { Bell } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import {
-  fetchNotifications,
   markNotificationAsRead,
   type AdminNotification,
 } from "../../services/notification.service";
@@ -19,38 +18,26 @@ function timeAgo(iso: string) {
 
 /** Facebook-style panel that drops down under the bell, on the same page. */
 export default function NotificationsDropdown({
+  items,
+  loading,
+  error,
+  onRetry,
+  onNotificationRead,
   onOpenItem,
   onViewAll,
-  onChanged,
 }: {
+  items: AdminNotification[];
+  loading: boolean;
+  error: string;
+  onRetry: () => void;
+  onNotificationRead: (id: string, readAt: string) => void;
   onOpenItem: (item: AdminNotification) => void;
   onViewAll: () => void;
-  onChanged?: () => void;
 }) {
   const { accessToken } = useAuth();
-  const [items, setItems] = useState<AdminNotification[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
   const [filter, setFilter] = useState<"all" | "unread">("all");
+  const [actionError, setActionError] = useState("");
   const busy = useRef(false);
-
-  const load = useCallback(async () => {
-    if (!accessToken) return;
-    setLoading(true);
-    try {
-      const result = await fetchNotifications(accessToken);
-      setItems(result.notifications);
-      setError("");
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Unable to load notifications.");
-    } finally {
-      setLoading(false);
-    }
-  }, [accessToken]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
 
   const openItem = async (item: AdminNotification) => {
     if (!accessToken || busy.current) return;
@@ -58,14 +45,10 @@ export default function NotificationsDropdown({
       busy.current = true;
       try {
         const result = await markNotificationAsRead(accessToken, item.id);
-        setItems((current) =>
-          current.map((entry) =>
-            entry.id === item.id ? { ...entry, read_at: result.read_at } : entry,
-          ),
-        );
-        onChanged?.();
+        onNotificationRead(item.id, result.read_at);
+        setActionError("");
       } catch (cause) {
-        setError(cause instanceof Error ? cause.message : "Unable to mark notification as read.");
+        setActionError(cause instanceof Error ? cause.message : "Unable to mark notification as read.");
         return;
       } finally {
         busy.current = false;
@@ -98,16 +81,16 @@ export default function NotificationsDropdown({
                   : "text-slate-500 hover:bg-slate-100"
               }`}>
               {value}
-            </button>
+              </button>
           ))}
         </div>
       </div>
 
       <div className="max-h-[min(420px,60vh)] overflow-y-auto px-2 pb-2">
-        {error && (
+        {(error || actionError) && (
           <p role="alert" className="mx-2 mb-2 rounded-xl bg-rose-50 px-3 py-2 text-[12px] text-rose-800">
-            {error}
-            <button type="button" className="ml-2 underline" onClick={() => void load()}>
+            {actionError || error}
+            <button type="button" className="ml-2 underline" onClick={onRetry}>
               Retry
             </button>
           </p>

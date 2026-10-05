@@ -14,7 +14,7 @@ import {
 import logo from "../../assets/logo.png";
 import type { NavItem } from "../../types/dashboard";
 import type { AdminNotification } from "../../services/notification.service";
-import NotificationsDropdown from "./Notificationsdropdown";
+import NotificationsDropdown from "./NotificationsDropdown";
 
 export type WorkspaceName = "Operational Admin" | "Client Website";
 
@@ -116,8 +116,11 @@ export interface SidebarNavProps {
   onNotificationsClick?: () => void;
   /** Called when a notification in the dropdown is opened (same handler NotificationsView uses). */
   onNotificationOpen?: (item: AdminNotification) => void;
-  /** Called after a notification is marked read, so the parent can refresh its unread count. */
-  onNotificationsChanged?: () => void;
+  notificationItems?: AdminNotification[];
+  notificationLoading?: boolean;
+  notificationError?: string;
+  onNotificationRetry?: () => void;
+  onNotificationRead?: (id: string, readAt: string) => void;
   notificationCount?: number;
   canAccessNotifications?: boolean;
   workspace?: WorkspaceName;
@@ -147,7 +150,11 @@ export default function SidebarNav({
   onHelpClick = () => {},
   onNotificationsClick = () => {},
   onNotificationOpen = () => {},
-  onNotificationsChanged,
+  notificationItems = [],
+  notificationLoading = false,
+  notificationError = "",
+  onNotificationRetry = () => {},
+  onNotificationRead = () => {},
   notificationCount = 0,
   canAccessNotifications = false,
   workspace = "Operational Admin",
@@ -504,6 +511,11 @@ export default function SidebarNav({
 
             {notifOpen && (
               <NotificationsDropdown
+                items={notificationItems}
+                loading={notificationLoading}
+                error={notificationError}
+                onRetry={onNotificationRetry}
+                onNotificationRead={onNotificationRead}
                 onOpenItem={(item) => {
                   setNotifOpen(false);
                   onNotificationOpen(item);
@@ -512,7 +524,6 @@ export default function SidebarNav({
                   setNotifOpen(false);
                   onNotificationsClick();
                 }}
-                onChanged={onNotificationsChanged}
               />
             )}
           </div>
