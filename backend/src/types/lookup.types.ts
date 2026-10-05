@@ -101,6 +101,7 @@ export interface ProfileOption {
   full_name: string;
   role: string | null;
   is_admin: boolean | null;
+  profile_picture_url?: string | null;
 }
 
 export interface StoreContactOption {

@@ -33,3 +33,9 @@ export async function markNotificationAsRead(token: string, id: string) {
   if (!response.success || !response.data) throw new Error(response.message ?? "Unable to mark notification as read.");
   return response.data;
 }
+
+export async function markAllNotificationsAsRead(token: string) {
+  const response = await apiPatch<ApiResponse<{ notifications: Array<{ id: string; read_at: string }>; read_at: string }>>("/notifications/read-all", {}, token);
+  if (!response.success || !response.data) throw new Error(response.message ?? "Unable to mark notifications as read.");
+  return response.data;
+}

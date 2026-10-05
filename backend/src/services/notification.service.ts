@@ -59,6 +59,18 @@ export async function markNotificationRead(recipientId: string, notificationId: 
   return data;
 }
 
+export async function markAllNotificationsRead(recipientId: string) {
+  const readAt = new Date().toISOString();
+  const { data, error } = await supabaseAdmin
+    .from("admin_notifications")
+    .update({ read_at: readAt })
+    .eq("recipient_profile_id", recipientId)
+    .is("read_at", null)
+    .select("id, read_at");
+  if (error) throw new ApiError("Unable to update notifications", 500, "NOTIFICATION_UPDATE_FAILED");
+  return { notifications: data ?? [], read_at: readAt };
+}
+
 export async function createReportMentionNotifications(input: {
   actorId: string;
   recipientIds: unknown;

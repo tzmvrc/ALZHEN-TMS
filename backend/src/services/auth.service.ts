@@ -1,4 +1,4 @@
-import { supabaseAuth } from "../config/supabase.js";
+import { supabaseAdmin, supabaseAuth } from "../config/supabase.js";
 
 import { getProfileByUserId } from "../models/profile.model.js";
 
@@ -62,7 +62,16 @@ export async function getCurrentUserProfile(userId: string) {
     throw new Error("User profile not found.");
   }
 
-  return profile;
+  const path = profile.profile_picture_path;
+  let profilePictureUrl: string | null = null;
+  if (path && /^https?:\/\//i.test(path)) profilePictureUrl = path;
+  else if (path) {
+    try {
+      const { data } = await supabaseAdmin.storage.from("profile-pictures").createSignedUrl(path, 60 * 60);
+      profilePictureUrl = data?.signedUrl ?? null;
+    } catch { /* authentication must remain available if the private image is unavailable */ }
+  }
+  return { ...profile, profile_picture_url: profilePictureUrl };
 }
 
 export async function logoutUser() {

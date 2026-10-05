@@ -25,6 +25,7 @@ export type AuthProfile = {
   first_name?: string | null;
   last_name?: string | null;
   profile_picture_path?: string | null;
+  profile_picture_url?: string | null;
   created_at?: string;
   updated_at?: string;
 };

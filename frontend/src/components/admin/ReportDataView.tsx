@@ -2735,9 +2735,10 @@ export default function ReportDataView({
                                     </span>
                                   )}
                                   {cellSaveState?.rowKey === currentRowKey &&
-                                  cellSaveState.field === column.key ? (
+                                  cellSaveState.field === column.key &&
+                                  cellSaveState.status !== "saving" ? (
                                     <span
-                                      className={`text-[10px] font-medium ${cellSaveState.status === "error" ? "text-rose-600" : cellSaveState.status === "saving" || cellSaveState.status === "warning" ? "text-amber-700" : "text-emerald-600"}`}>
+                                      className={`text-[10px] font-medium ${cellSaveState.status === "error" ? "text-rose-600" : cellSaveState.status === "warning" ? "text-amber-700" : "text-emerald-600"}`}>
                                       {cellSaveState.message}
                                     </span>
                                   ) : null}
@@ -2754,10 +2755,11 @@ export default function ReportDataView({
                               )}
                               {isEditing &&
                               cellSaveState?.rowKey === currentRowKey &&
-                              cellSaveState.field === column.key ? (
+                              cellSaveState.field === column.key &&
+                              cellSaveState.status !== "saving" ? (
                                 <span
                                   role="status"
-                                  className={`ml-2 text-[10px] font-medium ${cellSaveState.status === "error" ? "text-rose-600" : cellSaveState.status === "saving" || cellSaveState.status === "warning" ? "text-amber-700" : cellSaveState.status === "saved" ? "text-emerald-600" : "text-slate-400"}`}>
+                                  className={`ml-2 text-[10px] font-medium ${cellSaveState.status === "error" ? "text-rose-600" : cellSaveState.status === "warning" ? "text-amber-700" : cellSaveState.status === "saved" ? "text-emerald-600" : "text-slate-400"}`}>
                                   {cellSaveState.message}
                                 </span>
                               ) : null}

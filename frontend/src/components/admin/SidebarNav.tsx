@@ -114,6 +114,8 @@ export interface SidebarNavProps {
   onHelpClick?: () => void;
   /** "See all" in the notifications dropdown. */
   onNotificationsClick?: () => void;
+  /** Called once when the notification panel is opened. */
+  onNotificationBellOpen?: () => void;
   /** Called when a notification in the dropdown is opened (same handler NotificationsView uses). */
   onNotificationOpen?: (item: AdminNotification) => void;
   notificationItems?: AdminNotification[];
@@ -128,6 +130,7 @@ export interface SidebarNavProps {
   userName?: string;
   userRole?: string;
   userInitial?: string;
+  userPictureUrl?: string | null;
   /** Called with `true` when the sidebar is collapsed, `false` when open. */
   onCollapseChange?: (collapsed: boolean) => void;
 }
@@ -149,6 +152,7 @@ export default function SidebarNav({
   onLogout = () => {},
   onHelpClick = () => {},
   onNotificationsClick = () => {},
+  onNotificationBellOpen = () => {},
   onNotificationOpen = () => {},
   notificationItems = [],
   notificationLoading = false,
@@ -162,6 +166,7 @@ export default function SidebarNav({
   userName,
   userRole,
   userInitial,
+  userPictureUrl,
   onCollapseChange,
 }: SidebarNavProps) {
   const items: NavEntry[] = entries ?? [];
@@ -185,6 +190,7 @@ export default function SidebarNav({
   );
   const [profileOpen, setProfileOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
+  const [failedAvatarUrl, setFailedAvatarUrl] = useState<string | null>(null);
 
   // Pinning only applies on desktop; smaller screens always use the overlay.
   const open = hovered || (pinned && isDesktop);
@@ -276,6 +282,9 @@ export default function SidebarNav({
 
   /* ---- derived ---- */
   const avatarLabel = userInitial ?? userName?.charAt(0)?.toUpperCase() ?? "A";
+  const avatarContent = userPictureUrl && userPictureUrl !== failedAvatarUrl
+    ? <img src={userPictureUrl} alt="" onError={() => setFailedAvatarUrl(userPictureUrl)} className="h-full w-full object-cover" />
+    : userName ? avatarLabel : <UserCircle2 className="h-5 w-5" />;
   const hasNotifications = notificationCount > 0;
   const notificationText = notificationCount > 99 ? "99+" : notificationCount;
 
@@ -424,7 +433,7 @@ export default function SidebarNav({
             </div>
           </nav>
 
-          {/* Footer: help, switch role, account, small print */}
+          {/* Footer: help, workspace switcher, account, small print */}
           <div className="shrink-0 border-t border-white/10 px-3 pb-3 pt-3">
             <button type="button" onClick={onHelpClick} className={itemBase}>
               <HelpCircle className="h-[18px] w-[18px] shrink-0 text-white/50 group-hover:text-[#ffd43b]" />
@@ -433,7 +442,7 @@ export default function SidebarNav({
 
             <div
               role="group"
-              aria-label="Switch role"
+              aria-label="Switch workspace"
               className="mt-2 flex rounded-xl bg-white/5 p-1">
               {workspaceOptions.map((option) => {
                 const selected = option === workspace;
@@ -459,8 +468,8 @@ export default function SidebarNav({
               onClick={() => handleNavigate("settings")}
               aria-label="Account settings"
               className="mt-3 flex w-full items-center gap-2.5 rounded-xl p-1.5 text-left transition-colors duration-150 hover:bg-white/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#ffd43b]/70">
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#ffd43b] text-[13px] font-semibold text-[#0b2341]">
-                {userName ? avatarLabel : <UserCircle2 className="h-5 w-5" />}
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#ffd43b] text-[13px] font-semibold text-[#0b2341]">
+                {avatarContent}
               </span>
               <span className="min-w-0">
                 <span className="block truncate text-[13px] font-semibold text-white">
@@ -489,7 +498,8 @@ export default function SidebarNav({
               type="button"
               onClick={() => {
                 setProfileOpen(false);
-                setNotifOpen((value) => !value);
+                if (!notifOpen) onNotificationBellOpen();
+                setNotifOpen(!notifOpen);
               }}
               aria-expanded={notifOpen}
               aria-haspopup="dialog"
@@ -543,7 +553,7 @@ export default function SidebarNav({
               profileOpen ? "bg-white/20" : "hover:bg-white/10"
             }`}>
             <span className="flex h-full w-full items-center justify-center overflow-hidden rounded-full bg-[#ffd43b] text-[12px] font-semibold text-[#0b2341]">
-              {userName ? avatarLabel : <UserCircle2 className="h-5 w-5" />}
+              {avatarContent}
             </span>
           </button>
 
@@ -552,8 +562,8 @@ export default function SidebarNav({
               role="menu"
               className="absolute right-0 top-full z-50 mt-3 w-60 overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-1.5 shadow-[0_24px_48px_-12px_rgba(15,23,42,0.22)]">
               <div className="mb-1 flex items-center gap-2.5 rounded-xl bg-slate-50 px-3 py-2.5">
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#0b2341] text-[11px] font-semibold text-white">
-                  {userName ? avatarLabel : <UserCircle2 className="h-4 w-4" />}
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#0b2341] text-[11px] font-semibold text-white">
+                  {avatarContent}
                 </span>
                 <span className="min-w-0">
                   <span className="block truncate text-[13px] font-semibold text-slate-900">

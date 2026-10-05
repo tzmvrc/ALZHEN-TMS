@@ -14,6 +14,8 @@ import {
   Users,
   WalletCards,
   X,
+  Database,
+  CalendarDays,
 } from "lucide-react";
 import type { DashboardData } from "../../types/dashboard";
 import OverviewView from "./views/OverviewView";
@@ -22,7 +24,7 @@ import ClientWebsiteWorkspace from "./clientwebsite";
 import { defaultDashboardData } from "./data/defaultDashboardData";
 import dottedBackground from "../../assets/dotted.svg";
 import NotificationsView from "./views/NotificationsView";
-import { fetchNotifications, markNotificationAsRead, type AdminNotification, type AdminNotificationTarget } from "../../services/notification.service";
+import { fetchNotifications, markAllNotificationsAsRead, markNotificationAsRead, type AdminNotification, type AdminNotificationTarget } from "../../services/notification.service";
 import { subscribeToTable } from "../../services/realtime.service";
 import type { RealtimePayload } from "../../services/realtime.service";
 
@@ -55,6 +57,8 @@ const normalizeMainSection = (value: string) => {
       "overview",
       "trips",
       "truckers",
+      "database",
+      "calendar",
       "pod",
       "reports",
       "billing",
@@ -107,6 +111,7 @@ export default function DashboardPage({
   const seenNotificationIds = useRef(new Set<string>());
   const notificationOwner = useRef<string | null>(null);
   const notificationReload = useRef<() => void>(() => {});
+  const notificationsReadAtById = useRef(new Map<string, string>());
 
   useEffect(() => {
     if (profile?.role !== "ADMIN" || !accessToken || !profile.id) {
@@ -173,7 +178,7 @@ export default function DashboardPage({
         reference_id: typeof row.reference_id === "string" ? row.reference_id : "",
         message: row.message,
         metadata: row.metadata && typeof row.metadata === "object" ? row.metadata as Record<string, unknown> : {},
-        read_at: typeof row.read_at === "string" ? row.read_at : null,
+        read_at: typeof row.read_at === "string" ? row.read_at : notificationsReadAtById.current.get(row.id) ?? null,
         created_at: row.created_at,
       };
       if (seenNotificationIds.current.has(item.id)) return;
@@ -210,6 +215,34 @@ export default function DashboardPage({
       : notification);
     notificationItemsRef.current = next;
     setNotificationItems(next);
+  };
+
+  const handleNotificationBellOpen = async () => {
+    if (!accessToken || profile?.role !== "ADMIN") return;
+    const optimisticReadAt = new Date().toISOString();
+    const next = notificationItemsRef.current.map((item) => item.read_at ? item : { ...item, read_at: optimisticReadAt });
+    notificationItemsRef.current = next;
+    setNotificationItems(next);
+    setNotificationCount(0);
+    try {
+      const result = await markAllNotificationsAsRead(accessToken);
+      const readAtById = new Map(result.notifications.map((item) => [item.id, item.read_at]));
+      result.notifications.forEach((item) => notificationsReadAtById.current.set(item.id, item.read_at));
+      let unreadArrivedBeforeRead = 0;
+      const reconciled = notificationItemsRef.current.map((item) => {
+        const readAt = readAtById.get(item.id);
+        if (!readAt) return item;
+        if (!item.read_at) unreadArrivedBeforeRead += 1;
+        return { ...item, read_at: readAt };
+      });
+      notificationItemsRef.current = reconciled;
+      setNotificationItems(reconciled);
+      if (unreadArrivedBeforeRead) setNotificationCount((count) => Math.max(0, count - unreadArrivedBeforeRead));
+      setNotificationError("");
+    } catch (cause) {
+      setNotificationError(cause instanceof Error ? cause.message : "Unable to mark notifications as read.");
+      notificationReload.current();
+    }
   };
 
   const handleNotificationOpen = (item: AdminNotification) => {
@@ -275,8 +308,12 @@ export default function DashboardPage({
         label: "Billing",
         icon: <WalletCards className="h-4 w-4" />,
       },
+      ...(profile?.role === "ADMIN" || profile?.role === "STAFF" ? [
+        { id: "database", label: "Database", icon: <Database className="h-4 w-4" /> },
+      ] : []),
+      { id: "calendar", label: "Calendar", icon: <CalendarDays className="h-4 w-4" /> },
     ],
-    [],
+    [profile?.role],
   );
 
   const filteredData = useMemo(() => {
@@ -382,6 +419,7 @@ export default function DashboardPage({
             onNavigate={handleNavigate}
             onLogout={() => setShowLogoutConfirm(true)}
             onNotificationsClick={() => handleNavigate("notifications")}
+            onNotificationBellOpen={() => void handleNotificationBellOpen()}
             onNotificationOpen={handleNotificationOpen}
             notificationCount={profile?.role === "ADMIN" ? notificationCount : 0}
             canAccessNotifications={profile?.role === "ADMIN"}
@@ -394,6 +432,7 @@ export default function DashboardPage({
             onWorkspaceChange={setWorkspace}
             userName={displayName}
             userInitial={displayName.charAt(0).toUpperCase()}
+            userPictureUrl={profile?.profile_picture_url}
           />
         </div>
 

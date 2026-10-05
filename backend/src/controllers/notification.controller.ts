@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { sendError, sendSuccess } from "../utils/api-response.js";
-import { listNotifications, markNotificationRead } from "../services/notification.service.js";
+import { listNotifications, markAllNotificationsRead, markNotificationRead } from "../services/notification.service.js";
 
 function actorId(req: Request) {
   if (!req.user?.id) throw new Error("Authenticated profile is unavailable.");
@@ -23,5 +23,13 @@ export async function readNotification(req: Request, res: Response) {
     return sendSuccess(res, 200, "Notification marked as read", data);
   } catch (error) {
     return sendError(res, 400, error instanceof Error ? error.message : "Unable to update notification", "NOTIFICATION_UPDATE_FAILED");
+  }
+}
+
+export async function readAllNotifications(req: Request, res: Response) {
+  try {
+    return sendSuccess(res, 200, "Notifications marked as read", await markAllNotificationsRead(actorId(req)));
+  } catch (error) {
+    return sendError(res, 500, error instanceof Error ? error.message : "Unable to update notifications", "NOTIFICATION_UPDATE_FAILED");
   }
 }

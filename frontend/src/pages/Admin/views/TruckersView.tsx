@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { MoreHorizontal, RefreshCw, Search, SlidersHorizontal, UserRound } from "lucide-react";
+import { MoreHorizontal, RefreshCw, Search, SlidersHorizontal, UserRound, Pencil, Plus, X } from "lucide-react";
 import { useAuth } from "../../../context/AuthContext";
 import { tableUi } from "../../../components/admin/dashboardStyles";
 import TruckerDetailDrawer from "../../../components/admin/TruckerDetailDrawer";
 import { apiGetCached, invalidateApiCache, type ApiResponse } from "../../../services/api.service";
 import { fetchTruckerDetail, fetchTruckers, type TruckerListItem } from "../../../services/trucker.service";
+import UserManagementModal from "../../../components/admin/UserManagementModal";
+import { fetchManagedUsers, type ManagedUser } from "../../../services/user-management.service";
 
 const PAGE_SIZE = 12;
 
@@ -15,6 +17,7 @@ type ProfileLookupRow = {
   full_name: string;
   role: string | null;
   is_admin: boolean | null;
+  profile_picture_url?: string | null;
 };
 type AdminStaffProfile = ProfileLookupRow & { role: "ADMIN" | "STAFF" };
 
@@ -25,7 +28,7 @@ function formatAvatarPath(path: string | null) {
 }
 
 export default function TruckersView() {
-  const { accessToken } = useAuth();
+  const { accessToken, profile } = useAuth();
   const [category, setCategory] = useState<"staff" | "truckers">("staff");
   const [roleFilter, setRoleFilter] = useState<"all" | "ADMIN" | "STAFF">("all");
   const [search, setSearch] = useState("");
@@ -41,6 +44,18 @@ export default function TruckersView() {
   const [actionsOpen, setActionsOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<Awaited<ReturnType<typeof fetchTruckerDetail>> | null>(null);
+  const [managedUsers, setManagedUsers] = useState<ManagedUser[]>([]);
+  const [userModalOpen, setUserModalOpen] = useState(false);
+  const [editingUser, setEditingUser] = useState<ManagedUser | null>(null);
+  const [notice, setNotice] = useState("");
+
+  useEffect(() => {
+    if (!accessToken || profile?.role !== "ADMIN") return;
+    let active = true;
+    void fetchManagedUsers(accessToken).then((users) => { if (active) setManagedUsers(users); })
+      .catch((cause) => { if (active) setError(cause instanceof Error ? cause.message : "Unable to load user details."); });
+    return () => { active = false; };
+  }, [accessToken, profile?.role, refreshVersion]);
 
   useEffect(() => {
     if (!accessToken || category !== "staff") return;
@@ -144,6 +159,7 @@ export default function TruckersView() {
 
   return (
     <div className="space-y-4">
+      {notice && <div role="status" className="flex items-center justify-between rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-800">{notice}<button type="button" aria-label="Dismiss message" onClick={() => setNotice("")}><X className="h-4 w-4" /></button></div>}
       <div>
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div className="flex flex-wrap items-center gap-2">
@@ -176,6 +192,7 @@ export default function TruckersView() {
             )}
           </div>
           <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
+            {profile?.role === "ADMIN" && <button type="button" onClick={() => { setEditingUser(null); setUserModalOpen(true); }} className="inline-flex h-10 items-center gap-2 rounded-full bg-[#ffd43b] px-4 text-sm font-semibold text-[#0b2341] hover:bg-[#f2c200]"><Plus className="h-4 w-4" />Add user</button>}
             <label className="relative min-w-[200px] flex-1 sm:flex-none xl:w-72">
               <Search aria-hidden="true" className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input value={search} onChange={(event) => { setPage(1); setSearch(event.target.value); }} placeholder={category === "staff" ? "Search admin or staff" : "Search truckers"} className={tableUi.search} />
@@ -197,28 +214,28 @@ export default function TruckersView() {
         <div className="overflow-x-auto">
           <table className="min-w-full text-left">
             <thead className={tableUi.thead}>
-              <tr><th className={tableUi.th}>User</th><th className={tableUi.th}>Email / contact</th><th className={tableUi.th}>Assigned truck</th><th className={tableUi.th}>Current trip</th><th className={tableUi.th}>Delivery status</th></tr>
+              <tr>{category === "staff" ? <><th className={tableUi.th}>User</th><th className={tableUi.th}>Email</th><th className={tableUi.th}>Role</th><th className={tableUi.th}>Actions</th></> : <><th className={tableUi.th}>User</th><th className={tableUi.th}>Contact</th><th className={tableUi.th}>Assigned truck</th><th className={tableUi.th}>Current trip</th><th className={tableUi.th}>Delivery status</th><th className={tableUi.th}>Actions</th></>}</tr>
             </thead>
             <tbody>
               {loading ? Array.from({ length: 5 }).map((_, index) => (
                 <tr key={`skeleton-${index}`} className={tableUi.row}><td className="px-4 py-3"><div className="h-10 w-10 animate-pulse rounded-full bg-slate-200" /></td><td className="px-4 py-3"><div className="h-4 w-32 animate-pulse rounded bg-slate-200" /></td><td className="px-4 py-3"><div className="h-4 w-24 animate-pulse rounded bg-slate-200" /></td><td className="px-4 py-3"><div className="h-4 w-28 animate-pulse rounded bg-slate-200" /></td><td className="px-4 py-3"><div className="h-4 w-20 animate-pulse rounded bg-slate-200" /></td></tr>
               )) : error ? (
-                <tr><td colSpan={5} role="alert" className="px-4 py-12 text-center text-sm text-rose-700">{error}</td></tr>
+                <tr><td colSpan={category === "staff" ? 4 : 6} role="alert" className="px-4 py-12 text-center text-sm text-rose-700">{error}</td></tr>
               ) : category === "staff" ? visibleProfiles.length === 0 ? (
-                <tr><td colSpan={5} className="px-4 py-16 text-center text-sm text-slate-400">No admin or staff users found.</td></tr>
+                <tr><td colSpan={4} className="px-4 py-16 text-center text-sm text-slate-400">No admin or staff users found.</td></tr>
               ) : visibleProfiles.map((profile) => (
                 <tr key={profile.id} className={tableUi.row}>
-                  <td className="px-4 py-3.5"><div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#e6f0f9]"><UserRound aria-hidden="true" className="h-5 w-5 text-[#2678b9]" /></div><div><div className="text-[13px] font-medium text-[#0b2341]">{profile.full_name}</div><div className="text-xs text-slate-500">{profile.role === "ADMIN" && profile.is_admin ? "Admin" : profile.role === "ADMIN" ? "Administrator" : "Staff"}</div></div></div></td>
-                  <td className={tableUi.td}>—</td><td className={tableUi.td}>—</td><td className={tableUi.td}>—</td><td className={tableUi.td}>—</td>
+                  <td className="px-4 py-3.5"><div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-[#e6f0f9]">{profile.profile_picture_url ? <img src={profile.profile_picture_url} alt="" className="h-full w-full object-cover" /> : <UserRound aria-hidden="true" className="h-5 w-5 text-[#2678b9]" />}</div><div><div className="text-[13px] font-medium text-[#0b2341]">{profile.full_name}</div><div className="text-xs text-slate-500">{profile.role === "ADMIN" && profile.is_admin ? "Admin" : profile.role === "ADMIN" ? "Administrator" : "Staff"}</div></div></div></td>
+                  <td className={tableUi.td}>{managedUsers.find((item) => item.id === profile.id)?.email ?? "—"}</td><td className={tableUi.td}>{profile.role}</td><td className={tableUi.td}>{managedUsers.some((item) => item.id === profile.id) && <button type="button" aria-label={`Edit ${profile.full_name}`} onClick={() => { setEditingUser(managedUsers.find((item) => item.id === profile.id) ?? null); setUserModalOpen(true); }} className={tableUi.iconBtn}><Pencil className="h-4 w-4" /></button>}</td>
                 </tr>
               )) : rows.length === 0 ? (
-                <tr><td colSpan={5} className="px-4 py-16 text-center text-sm text-slate-400">No truckers found.</td></tr>
+                <tr><td colSpan={6} className="px-4 py-16 text-center text-sm text-slate-400">No truckers found.</td></tr>
               ) : rows.map((trucker) => {
-                const avatar = formatAvatarPath(trucker.profile_picture_path);
+                const avatar = managedUsers.find((item) => item.id === trucker.profile_id)?.profile_picture_url ?? formatAvatarPath(trucker.profile_picture_path);
                 return (
                   <tr key={trucker.id} onClick={() => setSelectedId(trucker.id)} className={`cursor-pointer ${tableUi.row}`}>
                     <td className="px-4 py-3.5"><div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-[#e6f0f9]">{avatar ? <img src={avatar} alt={trucker.full_name} className="h-full w-full object-cover" /> : <UserRound aria-hidden="true" className="h-5 w-5 text-[#2678b9]" />}</div><div><div className="text-[13px] font-medium text-[#0b2341]">{trucker.full_name}</div><div className="text-xs text-slate-500">{trucker.email || "No email"}</div></div></div></td>
-                    <td className={tableUi.td}>{trucker.contact_number || "—"}</td><td className={tableUi.td}>{trucker.plate_number || "—"}</td><td className={tableUi.td}>{trucker.active_trip_number || "—"}</td><td className={tableUi.td}>{trucker.delivery_status || trucker.current_trip_status || "—"}</td>
+                    <td className={tableUi.td}>{trucker.contact_number || "—"}</td><td className={tableUi.td}>{trucker.plate_number || "—"}</td><td className={tableUi.td}>{trucker.active_trip_number || "—"}</td><td className={tableUi.td}>{trucker.delivery_status || trucker.current_trip_status || "—"}</td><td className={tableUi.td}><button type="button" aria-label={`Edit ${trucker.full_name}`} onClick={(event) => { event.stopPropagation(); const managed = managedUsers.find((item) => item.id === trucker.profile_id); if (managed) { setEditingUser(managed); setUserModalOpen(true); } else setError("Unable to load this user account for editing."); }} className={tableUi.iconBtn}><Pencil className="h-4 w-4" /></button></td>
                   </tr>
                 );
               })}
@@ -228,6 +245,7 @@ export default function TruckersView() {
       </div>
 
       {selectedId && detail ? <TruckerDetailDrawer trucker={detail} onClose={() => setSelectedId(null)} /> : null}
+      {userModalOpen && <UserManagementModal user={editingUser} onClose={() => setUserModalOpen(false)} onSaved={(message) => { setUserModalOpen(false); setNotice(message ?? "User saved successfully."); refreshList(); }} />}
     </div>
   );
 }

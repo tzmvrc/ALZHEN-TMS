@@ -13,6 +13,8 @@ import documentRoutes from "./routes/document.routes.js";
 import storeCallRoutes from "./routes/store-call.routes.js";
 import dropdownOptionRoutes from "./routes/dropdown-option.routes.js";
 import notificationRoutes from "./routes/notification.routes.js";
+import masterDataRoutes from "./routes/master-data.routes.js";
+import calendarRoutes from "./routes/calendar.routes.js";
 import { errorMiddleware } from "./middleware/error.middleware.js";
 
 import websiteContentRoutes from "./routes/clientwebsite.routes.js";
@@ -36,6 +38,8 @@ app.use("/api/store-calls", storeCallRoutes);
 app.use("/api/dropdown-options", dropdownOptionRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/database", databaseBrowserRoutes);
+app.use("/api/master-data", masterDataRoutes);
+app.use("/api/calendar", calendarRoutes);
 
 app.get("/", (_req, res) => {
   res.json({ message: "ALZHEN TMS backend is running" });

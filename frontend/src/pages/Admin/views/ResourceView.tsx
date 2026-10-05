@@ -13,7 +13,8 @@ import { tableUi } from "../../../components/admin/dashboardStyles";
 import ReportDataView from "../../../components/admin/ReportDataView";
 import TruckCardGrid from "../../../components/admin/TruckCardGrid";
 import RequestsView from "./RequestsView";
-import DatabaseExplorerView from "./DatabaseExplorerView";
+import MasterDataView from "./MasterDataView";
+import CalendarView from "./CalendarView";
 import TripDetailView from "./TripDetailView";
 import TruckersView from "./TruckersView";
 import type { AdminNotificationTarget } from "../../../services/notification.service";
@@ -93,6 +94,7 @@ const titleMap: Record<string, [string, string]> = {
   ],
   reports: ["Reports", "Export dispatch, delivery, and POD status"],
   database: ["Database", "Browse Supabase tables and report views"],
+  calendar: ["Calendar", "View trips, stops, events, and store-call dates"],
   payables: ["Payables", "Phase 2: payable trips and cash advances"],
   compliance: ["Data controls", "POD, trip, and document controls"],
   alerts: ["Alerts", "Open delivery exceptions and aging"],
@@ -240,6 +242,7 @@ const TABLE_PAGE_IDS = new Set([
   "trip-booking",
   "truckers",
   "database",
+  "calendar",
 ]);
 
 /* Title centred in the same row as the menu toggle and the
@@ -322,6 +325,7 @@ export default function ResourceView({
       "dispatch",
       "trip-booking",
       "database",
+      "calendar",
       "truckers",
       "cash-tracker",
       "rates-fuel",
@@ -500,7 +504,8 @@ export default function ResourceView({
           <PlaceholderPage title="Invoices" />
         </>
       )}
-      {id === "database" && <DatabaseExplorerView />}
+      {id === "database" && <MasterDataView />}
+      {id === "calendar" && <CalendarView />}
       {isTripDetail && (
         <TripDetailView
           tripId={tripDetailId}
@@ -531,6 +536,7 @@ export default function ResourceView({
           "dispatch",
           "trip-booking",
           "database",
+          "calendar",
           "alerts",
           "settings",
           "compliance",

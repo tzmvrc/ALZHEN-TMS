@@ -521,7 +521,7 @@ export async function getProfiles(
 
   let queryBuilder = supabaseAdmin
     .from("profiles")
-    .select("id, first_name, last_name, role, is_admin");
+    .select("id, first_name, last_name, role, is_admin, profile_picture_path");
 
   if (query.q) {
     queryBuilder = applySearch(queryBuilder, query.q, [
@@ -544,10 +544,18 @@ export async function getProfiles(
     throw new ApiError("Unable to fetch profiles", 500, "LOOKUP_QUERY_FAILED");
   }
 
-  return ((data ?? []) as Record<string, unknown>[]).map((row) => {
+  return Promise.all(((data ?? []) as Record<string, unknown>[]).map(async (row) => {
     const fullName =
       [row.first_name, row.last_name].filter(Boolean).join(" ").trim() ||
       "Unnamed profile";
+    const picturePath = typeof row.profile_picture_path === "string" ? row.profile_picture_path : null;
+    let profilePictureUrl = picturePath && /^https?:\/\//i.test(picturePath) ? picturePath : null;
+    if (picturePath && !profilePictureUrl) {
+      try {
+        const { data: signed } = await supabaseAdmin.storage.from("profile-pictures").createSignedUrl(picturePath, 60 * 60);
+        profilePictureUrl = signed?.signedUrl ?? null;
+      } catch { /* retain the profile listing if its private image is unavailable */ }
+    }
     return {
       id: String(row.id),
       first_name: typeof row.first_name === "string" ? row.first_name : null,
@@ -555,8 +563,9 @@ export async function getProfiles(
       full_name: fullName,
       role: typeof row.role === "string" ? row.role : null,
       is_admin: typeof row.is_admin === "boolean" ? row.is_admin : null,
+      profile_picture_url: profilePictureUrl,
     } as ProfileOption;
-  });
+  }));
 }
 
 export async function getEligibleAssignees(
