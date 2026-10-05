@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight, Database, Search, Table2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { tableUi } from "../../../components/admin/dashboardStyles";
 import { useAuth } from "../../../context/AuthContext";
 import { ApiError } from "../../../services/api.service";
 import {
@@ -86,11 +87,11 @@ export default function DatabaseExplorerView() {
 
   return (
     <div className="grid min-h-[calc(100vh-11rem)] gap-4 xl:grid-cols-[260px_minmax(0,1fr)]">
-      <aside className="flex min-h-0 flex-col rounded-lg border border-slate-200 bg-white">
-        <header className="border-b border-slate-200 p-4">
+      <aside className={`${tableUi.shell} flex min-h-0 flex-col`}>
+        <header className="border-b border-slate-100 p-4">
           <div className="flex items-center gap-2">
-            <Database aria-hidden="true" className="h-4 w-4 text-cyan-800" />
-            <h2 className="text-sm font-semibold text-slate-900">Supabase sources</h2>
+            <Database aria-hidden="true" className="h-4 w-4 text-[#2678b9]" />
+            <h2 className="text-sm font-semibold text-[#0b2341]">Supabase sources</h2>
           </div>
           <p className="mt-1 text-xs text-slate-500">27 tables and 5 views</p>
           <label className="relative mt-3 block">
@@ -100,7 +101,7 @@ export default function DatabaseExplorerView() {
               value={sourceSearch}
               onChange={(event) => setSourceSearch(event.target.value)}
               placeholder="Filter sources"
-              className="h-9 w-full rounded-md border border-slate-300 pl-8 pr-2 text-xs outline-none focus:border-cyan-700"
+              className={`${tableUi.search} h-9 pl-8 text-xs !bg-[#f2f6fa] !shadow-none`}
             />
           </label>
         </header>
@@ -114,10 +115,10 @@ export default function DatabaseExplorerView() {
                 setPage(1);
                 setRowSearch("");
               }}
-              className={`flex min-h-9 w-full items-center gap-2 rounded-md px-2.5 text-left text-xs transition-colors ${
+              className={`flex min-h-9 w-full items-center gap-2 rounded-full px-3 text-left text-xs transition-colors ${
                 selectedSource === source.name
-                  ? "bg-cyan-50 font-semibold text-cyan-950"
-                  : "text-slate-600 hover:bg-slate-50"
+                  ? "bg-[#e6f0f9] font-semibold text-[#0b2341]"
+                  : "text-slate-500 hover:bg-[#f2f6fa]"
               }`}
             >
               {source.kind === "view" ? (
@@ -132,11 +133,11 @@ export default function DatabaseExplorerView() {
         </nav>
       </aside>
 
-      <section className="flex min-w-0 flex-col overflow-hidden rounded-lg border border-slate-200 bg-white">
-        <header className="flex flex-col gap-3 border-b border-slate-200 p-4 md:flex-row md:items-center md:justify-between">
+      <section className={`${tableUi.shell} flex min-w-0 flex-col`}>
+        <header className="flex flex-col gap-3 border-b border-slate-100 px-5 py-4 md:flex-row md:items-center md:justify-between">
           <div>
-            <p className="text-[10px] font-semibold uppercase text-cyan-800">Read only · administrator access</p>
-            <h2 className="mt-0.5 text-base font-semibold text-slate-900">
+            <p className="text-[11px] font-medium text-slate-400">Read only · administrator access</p>
+            <h2 className="mt-0.5 text-[17px] font-semibold tracking-tight text-[#0b2341]">
               {result?.source.label ?? selectedSource}
             </h2>
             <p className="mt-0.5 text-xs text-slate-500">
@@ -145,13 +146,13 @@ export default function DatabaseExplorerView() {
             </p>
           </div>
           <label className="relative md:w-72">
-            <Search aria-hidden="true" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <Search aria-hidden="true" className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <input
               aria-label="Filter current page rows"
               value={rowSearch}
               onChange={(event) => setRowSearch(event.target.value)}
               placeholder="Filter current page"
-              className="h-10 w-full rounded-md border border-slate-300 pl-9 pr-3 text-sm outline-none focus:border-cyan-700"
+              className={`${tableUi.search} !bg-[#f2f6fa] !shadow-none`}
             />
           </label>
         </header>
@@ -162,7 +163,7 @@ export default function DatabaseExplorerView() {
             <button
               type="button"
               onClick={() => setRetry((value) => value + 1)}
-              className="min-h-9 rounded-md border border-slate-300 px-3 text-sm text-slate-700 hover:bg-slate-50"
+              className="min-h-9 rounded-full bg-[#ffd43b] px-4 text-sm font-semibold text-[#0b2341] hover:bg-[#f2c200]"
             >
               Retry
             </button>
@@ -175,28 +176,28 @@ export default function DatabaseExplorerView() {
                   Loading records...
                 </div>
               )}
-              <table className="w-full min-w-max border-collapse text-left text-xs">
-                <thead className="sticky top-0 z-[1] bg-slate-50 text-[10px] font-semibold uppercase text-slate-500">
+              <table className="w-full min-w-max border-collapse text-left">
+                <thead className={`sticky top-0 z-[1] ${tableUi.thead}`}>
                   <tr>
                     {(result?.columns ?? []).map((column) => (
-                      <th key={column} className="max-w-64 whitespace-nowrap border-b border-slate-200 px-3 py-3">{column.replaceAll("_", " ")}</th>
+                      <th key={column} className={`max-w-64 ${tableUi.th}`}>{column.replaceAll("_", " ")}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {!isLoading && filteredRows.length === 0 && (
                     <tr>
-                      <td colSpan={Math.max(result?.columns.length ?? 1, 1)} className="px-4 py-12 text-center text-sm text-slate-500">
+                      <td colSpan={Math.max(result?.columns.length ?? 1, 1)} className={tableUi.empty}>
                         {result?.rows.length ? "No rows match this filter." : "No rows in this source."}
                       </td>
                     </tr>
                   )}
                   {filteredRows.map((row, rowIndex) => (
-                    <tr key={String(row.id ?? `${selectedSource}-${rowIndex}`)} className="border-b border-slate-100 align-top last:border-0 hover:bg-cyan-50/30">
+                    <tr key={String(row.id ?? `${selectedSource}-${rowIndex}`)} className={`align-top ${tableUi.row}`}>
                       {(result?.columns ?? []).map((column) => {
                         const value = displayCell(row[column]);
                         return (
-                          <td key={column} className="max-w-80 px-3 py-2.5 text-slate-700">
+                          <td key={column} className={`max-w-80 ${tableUi.td} !text-xs`}>
                             <span className="block max-h-24 min-w-12 overflow-auto whitespace-pre-wrap break-words" title={value}>{value}</span>
                           </td>
                         );
@@ -206,7 +207,7 @@ export default function DatabaseExplorerView() {
                 </tbody>
               </table>
             </div>
-            <footer className="flex items-center justify-between border-t border-slate-200 px-4 py-3 text-xs text-slate-500">
+            <footer className={tableUi.footer}>
               <span>
                 {result
                   ? `Page ${result.pagination.page} of ${result.pagination.totalPages} · Showing ${filteredRows.length} of ${result.rows.length} rows`
@@ -218,7 +219,7 @@ export default function DatabaseExplorerView() {
                   aria-label="Previous page"
                   disabled={isLoading || page <= 1}
                   onClick={() => setPage((value) => Math.max(1, value - 1))}
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-300 disabled:opacity-40"
+                  className={tableUi.pageBtn}
                 >
                   <ChevronLeft aria-hidden="true" className="h-4 w-4" />
                 </button>
@@ -227,7 +228,7 @@ export default function DatabaseExplorerView() {
                   aria-label="Next page"
                   disabled={isLoading || pageCount === 0 || page >= pageCount}
                   onClick={() => setPage((value) => value + 1)}
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-300 disabled:opacity-40"
+                  className={tableUi.pageBtn}
                 >
                   <ChevronRight aria-hidden="true" className="h-4 w-4" />
                 </button>

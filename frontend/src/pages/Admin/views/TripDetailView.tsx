@@ -130,7 +130,7 @@ function ProgressGauge({ percent }: { percent: number }) {
 }
 
 const glass =
-  "rounded-3xl bg-white/85 shadow-[0_1px_2px_rgba(11,35,65,0.04),0_10px_30px_-18px_rgba(11,35,65,0.18)] backdrop-blur";
+  "rounded-3xl border border-white/70 bg-white/60 shadow-[0_1px_2px_rgba(11,35,65,0.04),0_14px_34px_-20px_rgba(11,35,65,0.22)] backdrop-blur-xl";
 
 export default function TripDetailView({
   tripId,
@@ -289,6 +289,8 @@ export default function TripDetailView({
   const driverName = getBookingValue(reportRows, "driver_name");
   const placeholder = isLoading ? "…" : undefined;
 
+  const timelineEvents = orderedEvents.slice().reverse();
+
   return (
     <div className="space-y-4">
       {/* Top bar */}
@@ -296,7 +298,7 @@ export default function TripDetailView({
         <button
           type="button"
           onClick={onBack}
-          className="inline-flex h-10 items-center gap-2 rounded-full bg-white pl-3 pr-4 text-xs font-semibold text-[#0b2341] shadow-[0_1px_2px_rgba(11,35,65,0.08)] transition hover:bg-[#ffd43b] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0b2341]/40">
+          className="inline-flex h-10 items-center gap-2 rounded-full border border-white/70 bg-white/80 pl-3 pr-4 text-xs font-semibold text-[#0b2341] shadow-[0_1px_2px_rgba(11,35,65,0.08)] backdrop-blur transition hover:bg-[#ffd43b] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0b2341]/40">
           <ArrowLeft aria-hidden="true" className="h-4 w-4" />
           Back to trips
         </button>
@@ -316,11 +318,15 @@ export default function TripDetailView({
         </div>
       )}
 
-      {/* Hero */}
-      <section className="overflow-hidden rounded-[32px] bg-gradient-to-br from-[#e6f0f9] via-[#f4f8fc] to-[#eef3f8] p-3 shadow-[0_1px_2px_rgba(11,35,65,0.04),0_10px_30px_-18px_rgba(11,35,65,0.14)] sm:p-4">
-        <div className="grid gap-3 xl:grid-cols-[300px_minmax(0,1fr)_300px]">
+      {/* Hero: big truck behind floating glass cards (Moveon style) */}
+      <section className="relative overflow-hidden rounded-[36px] bg-gradient-to-b from-[#f5f8fb] via-[#eef3f8] to-[#e3ebf4] p-3 shadow-[0_1px_2px_rgba(11,35,65,0.04),0_10px_30px_-18px_rgba(11,35,65,0.14)] sm:p-4">
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_60%_55%_at_50%_45%,rgba(255,255,255,0.95),transparent)]"
+        />
+        <div className="relative grid gap-3 xl:grid-cols-[300px_minmax(0,1fr)_300px]">
           {/* Left: dispatch, stop progress, driver */}
-          <div className="space-y-3">
+          <div className="relative z-10 space-y-3">
             <div className={`${glass} p-5`}>
               <div className="flex items-start justify-between gap-2">
                 <h2 className="min-w-0 truncate text-xl font-bold tracking-tight text-[#0b2341]">
@@ -343,7 +349,7 @@ export default function TripDetailView({
                 <span>{shortDate(trip?.loading_date)}</span>
                 <span>{shortDate(trip?.estimated_delivery_date)}</span>
               </div>
-              <ul className="mt-4 space-y-2 border-t border-slate-100 pt-4 text-xs">
+              <ul className="mt-4 space-y-2 border-t border-slate-200/70 pt-4 text-xs">
                 <li className="flex items-start gap-2.5">
                   <span className="mt-1 h-2 w-2 shrink-0 rounded-full border-2 border-[#0b2341] bg-white" />
                   <span className="min-w-0 break-words text-slate-700">{originName}</span>
@@ -395,27 +401,32 @@ export default function TripDetailView({
             </div>
           </div>
 
-          {/* Center: truck */}
-          <div className="relative order-first flex min-h-[260px] flex-col items-center justify-center xl:order-none">
+          {/* Center: oversized truck that sits behind the side cards on wide screens */}
+          <div className="relative z-0 order-first flex min-h-[240px] flex-col items-center justify-center xl:order-none xl:min-h-[540px]">
             <img
               src={fleetTruckPhoto}
               alt=""
-              className="w-full max-w-[640px] object-contain mix-blend-multiply drop-shadow-[0_24px_24px_rgba(11,35,65,0.18)]"
+              className="w-full max-w-[640px] object-contain mix-blend-multiply drop-shadow-[0_24px_24px_rgba(11,35,65,0.18)] xl:absolute xl:left-1/2 xl:top-1/2 xl:w-[175%] xl:max-w-none xl:-translate-x-1/2 xl:-translate-y-[55%]"
             />
-            <span className="mt-2 inline-flex items-center gap-2 rounded-full bg-[#0b2341] px-4 py-1.5 text-xs font-semibold text-white shadow-[0_8px_20px_-8px_rgba(11,35,65,0.6)]">
+            <span className="relative z-10 mt-2 inline-flex items-center gap-2 rounded-full bg-[#0b2341] px-4 py-1.5 text-xs font-semibold text-white shadow-[0_8px_20px_-8px_rgba(11,35,65,0.6)] xl:absolute xl:bottom-2 xl:left-1/2 xl:mt-0 xl:-translate-x-1/2">
               <Truck aria-hidden="true" className="h-3.5 w-3.5 text-[#ffd43b]" />
               {getBookingValue(reportRows, "plate_number", "No plate recorded")}
             </span>
           </div>
 
           {/* Right: key figures */}
-          <div className="grid grid-cols-2 gap-3 xl:grid-cols-1">
-            <div className="rounded-3xl bg-emerald-50/90 p-5 shadow-[0_10px_30px_-18px_rgba(11,35,65,0.18)]">
-              <Store aria-hidden="true" className="h-6 w-6 text-emerald-600" />
+          <div className="relative z-10 grid grid-cols-2 gap-3 xl:grid-cols-1">
+            <div className="relative overflow-hidden rounded-3xl border border-white/70 bg-gradient-to-b from-emerald-100/90 to-emerald-50/80 p-5 shadow-[0_10px_30px_-18px_rgba(11,35,65,0.18)]">
+              <svg aria-hidden="true" viewBox="0 0 120 14" preserveAspectRatio="none" className="absolute inset-x-0 top-0 h-3 w-full text-white/60">
+                <path d="M0 0 H120 V6 Q90 16 60 6 T0 8 Z" fill="currentColor" />
+              </svg>
+              <span className="mt-1 flex h-10 w-10 items-center justify-center rounded-2xl bg-white/80 text-emerald-600">
+                <Store aria-hidden="true" className="h-5 w-5" />
+              </span>
               <p className="mt-3 text-2xl font-bold text-[#0b2341]">
                 {placeholder ?? `${doneStops}/${stops.length}`}
               </p>
-              <p className="text-[11px] text-slate-500">Stops completed</p>
+              <p className="text-[11px] text-emerald-800/70">Stops completed</p>
             </div>
             <div className={`${glass} col-span-2 p-5 xl:col-span-1`}>
               <h3 className="text-sm font-semibold text-[#0b2341]">Delivery progress</h3>
@@ -423,33 +434,35 @@ export default function TripDetailView({
               <div className="mt-2"><ProgressGauge percent={progress} /></div>
             </div>
             <div className={`${glass} col-span-2 p-5 xl:col-span-1`}>
-              <h3 className="text-sm font-semibold text-[#0b2341]">Cargo</h3>
+              <div className="flex items-baseline justify-between">
+                <h3 className="text-sm font-semibold text-[#0b2341]">Cargo</h3>
+                <span className="inline-flex items-center gap-1 text-[11px] text-slate-500">
+                  <CalendarDays aria-hidden="true" className="h-3.5 w-3.5 text-[#2678b9]" />
+                  ETA {dateText(trip?.estimated_delivery_date)}
+                </span>
+              </div>
               <dl className="mt-3 grid grid-cols-3 gap-2 text-center">
                 {[
                   ["Items", placeholder ?? String(lineItemCount)],
                   ["Quantity", placeholder ?? formatNumber(totalQty)],
                   ["CBM", placeholder ?? formatNumber(totalCbm)],
                 ].map(([label, value]) => (
-                  <div key={label} className="rounded-2xl bg-[#f2f6fa] px-1 py-2.5">
+                  <div key={label} className="rounded-2xl bg-white/70 px-1 py-2.5">
                     <dd className="text-base font-bold tabular-nums text-[#0b2341]">{value}</dd>
                     <dt className="text-[10px] text-slate-500">{label}</dt>
                   </div>
                 ))}
               </dl>
-              <p className="mt-3 flex items-center gap-1.5 text-[11px] text-slate-500">
-                <CalendarDays aria-hidden="true" className="h-3.5 w-3.5 text-[#2678b9]" />
-                ETA {dateText(trip?.estimated_delivery_date)}
-              </p>
             </div>
           </div>
         </div>
         {Boolean(trip?.remarks) && (
-          <p className="mt-3 rounded-2xl bg-white/70 px-4 py-2.5 text-xs text-slate-600">{String(trip?.remarks)}</p>
+          <p className="relative mt-3 rounded-2xl bg-white/70 px-4 py-2.5 text-xs text-slate-600 backdrop-blur">{String(trip?.remarks)}</p>
         )}
       </section>
 
-      {/* Stop selector strip */}
-      <section aria-label="Stops" className="-mx-1 flex gap-3 overflow-x-auto px-1 pb-1">
+      {/* Stop selector strip: translucent cards, selected one lifts to solid white */}
+      <section aria-label="Stops" className="-mx-1 flex gap-3 overflow-x-auto px-1 pb-2 pt-1">
         {stops.length === 0 ? (
           <p className={`${surface.card} w-full px-5 py-6 text-center text-sm text-slate-500`}>
             {placeholder ?? "No stops recorded for this trip."}
@@ -465,22 +478,30 @@ export default function TripDetailView({
                 type="button"
                 aria-pressed={selected}
                 onClick={() => setSelectedStop((current) => (current === key ? null : key))}
-                className={`min-w-[230px] max-w-[260px] shrink-0 rounded-3xl bg-white p-4 text-left shadow-[0_1px_2px_rgba(11,35,65,0.04),0_10px_30px_-18px_rgba(11,35,65,0.14)] transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0b2341]/40 ${
-                  selected ? "ring-2 ring-[#ffd43b]" : "hover:bg-[#f9fbfd]"
+                className={`relative min-w-[250px] max-w-[280px] shrink-0 overflow-hidden rounded-2xl border p-4 text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0b2341]/40 ${
+                  selected
+                    ? "border-white bg-white shadow-[0_12px_28px_-14px_rgba(11,35,65,0.3)] ring-2 ring-[#ffd43b]"
+                    : "border-white/60 bg-white/50 backdrop-blur hover:bg-white/80"
                 }`}>
-                <div className="flex items-center justify-between gap-2">
-                  <span className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold ${selected ? "bg-[#ffd43b] text-[#0b2341]" : "bg-[#e6f0f9] text-[#0b2341]"}`}>
+                <img
+                  src={fleetTruckPhoto}
+                  alt=""
+                  aria-hidden="true"
+                  className={`pointer-events-none absolute -right-3 bottom-1 h-14 w-24 object-contain mix-blend-multiply ${selected ? "opacity-90" : "opacity-40"}`}
+                />
+                <div className="relative flex items-center gap-2">
+                  <span className={`flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-bold ${selected ? "bg-[#ffd43b] text-[#0b2341]" : "bg-[#e6f0f9] text-[#0b2341]"}`}>
                     {key}
                   </span>
                   <StatusPill status={stop.delivery_status ?? match.delivery_status} fallback="Pending" />
                 </div>
-                <p className="mt-3 truncate text-sm font-semibold text-[#0b2341]">
+                <p className="relative mt-3 max-w-[150px] truncate text-sm font-bold text-[#0b2341]">
                   {valueText(match.store_name, valueText(stop.store_id, "Store not recorded"))}
                 </p>
-                <p className="mt-0.5 truncate text-[11px] text-slate-500">
+                <p className="relative mt-0.5 max-w-[150px] truncate text-[11px] text-slate-500">
                   {valueText(match.customer_name, valueText(stop.customer_id, "Customer not recorded"))}
                 </p>
-                <p className="mt-2 flex items-center gap-1.5 text-[11px] text-slate-500">
+                <p className="relative mt-2 flex items-center gap-1.5 text-[11px] text-slate-500">
                   <Clock aria-hidden="true" className="h-3 w-3" />
                   {stop.arrival_time ? dateText(stop.arrival_time, true) : "No arrival yet"}
                 </p>
@@ -490,103 +511,119 @@ export default function TripDetailView({
         )}
       </section>
 
-      {/* Map + timeline | products */}
-      <div className="grid gap-4 xl:grid-cols-[minmax(320px,0.85fr)_minmax(0,1.5fr)]">
-        <div className="min-w-0 space-y-4">
-          <LiveTripMap tracks={mapTrack} focusTripId={tripId} eventLoadError={false} height={300} />
-
-          <section className={`${surface.card} p-5`}>
-            <header className="mb-4 flex items-center justify-between">
-              <div>
-                <h3 className={surface.heading}>Activity</h3>
-                <p className="text-[10px] text-slate-500">Recorded trip and GPS updates</p>
-              </div>
+      {/* Fleet tracking: timeline beside the map */}
+      <div className="grid gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
+        <section className={`${surface.card} flex min-w-0 flex-col p-5`}>
+          <header className="mb-3">
+            <div className="flex items-center justify-between">
+              <h3 className={surface.heading}>Trip tracking</h3>
               <span className="rounded-full bg-[#e6f0f9] px-3 py-1 text-[11px] font-semibold tabular-nums text-[#1d5f94]">
                 {orderedEvents.length} events
               </span>
-            </header>
-            {orderedEvents.length === 0 ? (
-              <p className="py-6 text-center text-sm text-slate-500">No events recorded.</p>
-            ) : (
-              <ol className="relative ml-2 max-h-80 overflow-y-auto border-l border-slate-200 pl-5 pr-1">
-                {orderedEvents.map((event, index) => (
-                  <li key={event.id} className="relative mb-5 last:mb-0">
-                    <span
-                      className={`timeline-dot absolute -left-[27px] top-1 h-3 w-3 rounded-full ${
-                        index === orderedEvents.length - 1 ? "bg-[#ffd43b] text-[#ffd43b]" : "bg-[#2678b9] text-[#2678b9]"
-                      }`}
-                    />
-                    <p className="text-[11px] font-medium text-slate-400">{dateText(event.event_time, true)}</p>
-                    <p className="mt-0.5 text-sm font-semibold capitalize text-[#0b2341]">{event.event_type.replaceAll("_", " ").toLowerCase()}</p>
-                    {event.notes && <p className="mt-1 text-xs text-slate-600">{event.notes}</p>}
-                  </li>
-                ))}
-              </ol>
-            )}
-          </section>
-        </div>
-
-        <section className={`${surface.card} min-w-0 overflow-hidden`}>
-          <header className="flex flex-col gap-3 px-5 pb-3 pt-5 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h3 className={surface.heading}>Products and line items</h3>
-              <p className="text-[10px] text-slate-500">From the trip booking rows</p>
             </div>
-            <div role="group" aria-label="Filter products by stop" className="flex max-w-full items-center gap-1 overflow-x-auto rounded-full bg-[#f2f6fa] p-1">
-              {[{ key: null as string | null, label: "All" }, ...stops.map((stop, index) => ({ key: stopKey(stop, index), label: `Stop ${stopKey(stop, index)}` }))].map(({ key, label }) => {
-                const count = key === null ? reportRows.length : rowsForStop(key).length;
-                const active = selectedStop === key;
-                return (
-                  <button
-                    key={label}
-                    type="button"
-                    aria-pressed={active}
-                    onClick={() => setSelectedStop(key)}
-                    className={`shrink-0 rounded-full px-3 py-1.5 text-[11px] font-semibold transition-colors ${active ? "bg-[#0b2341] text-white shadow-sm" : "text-slate-500 hover:text-[#0b2341]"}`}>
-                    {label} <span className={active ? "text-white/60" : "text-slate-400"}>{count}</span>
-                  </button>
-                );
-              })}
-            </div>
+            <ul className="mt-3 space-y-1 text-[11px] text-slate-600">
+              <li className="flex items-start gap-2">
+                <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-[#ffd43b]" />
+                <span className="min-w-0 break-words">{originName}</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-[#2678b9]" />
+                <span className="min-w-0 break-words">{destinationText}</span>
+              </li>
+            </ul>
           </header>
-          <div className="overflow-x-auto bg-[#f2f6fa] px-3 pb-3">
-            <table className="w-full min-w-[640px] border-separate border-spacing-y-2 text-left text-xs">
-              <thead className="text-[11px] font-semibold text-slate-500">
+          {timelineEvents.length === 0 ? (
+            <p className="py-6 text-center text-sm text-slate-500">No events recorded.</p>
+          ) : (
+            <ol className="relative ml-2 max-h-[400px] flex-1 overflow-y-auto border-l-2 border-[#ffd43b]/70 pl-5 pr-1">
+              {timelineEvents.map((event, index) => (
+                <li key={event.id} className="relative mb-5 last:mb-0">
+                  <span
+                    className={`timeline-dot absolute -left-[28px] top-1 h-3 w-3 rounded-full border-2 border-white ${
+                      index === 0 ? "bg-[#ffd43b] text-[#ffd43b]" : "bg-[#2678b9] text-[#2678b9]"
+                    }`}
+                  />
+                  <p className="text-sm font-semibold capitalize text-[#0b2341]">{event.event_type.replaceAll("_", " ").toLowerCase()}</p>
+                  <p className="mt-0.5 text-[11px] font-medium text-slate-400">{dateText(event.event_time, true)}</p>
+                  {event.notes && <p className="mt-1 text-xs text-slate-600">{event.notes}</p>}
+                </li>
+              ))}
+            </ol>
+          )}
+        </section>
+
+        <div className="min-w-0">
+          <LiveTripMap tracks={mapTrack} focusTripId={tripId} eventLoadError={false} height={420} />
+        </div>
+      </div>
+
+      {/* Products table, Orders-style */}
+      <section className={`${surface.card} min-w-0 overflow-hidden`}>
+        <header className="flex flex-col gap-3 px-5 pb-3 pt-5 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex items-center gap-2">
+            <h3 className={surface.heading}>Products</h3>
+            <span className="rounded-full bg-[#0b2341] px-2 py-0.5 text-[10px] font-semibold tabular-nums text-white">{reportRows.length}</span>
+          </div>
+          <div role="group" aria-label="Filter products by stop" className="flex max-w-full items-center gap-1 overflow-x-auto rounded-full bg-[#eef3f8] p-1">
+            {[{ key: null as string | null, label: "All" }, ...stops.map((stop, index) => ({ key: stopKey(stop, index), label: `Stop ${stopKey(stop, index)}` }))].map(({ key, label }) => {
+              const count = key === null ? reportRows.length : rowsForStop(key).length;
+              const active = selectedStop === key;
+              return (
+                <button
+                  key={label}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => setSelectedStop(key)}
+                  className={`shrink-0 rounded-full px-3.5 py-1.5 text-[11px] font-semibold transition-colors ${active ? "bg-white text-[#0b2341] shadow-[0_2px_8px_-2px_rgba(11,35,65,0.2)]" : "text-slate-500 hover:text-[#0b2341]"}`}>
+                  {label} <span className="text-slate-400">{count}</span>
+                </button>
+              );
+            })}
+          </div>
+        </header>
+        <div className="overflow-x-auto bg-[#f2f6fa] px-3 pb-3">
+          <table className="w-full min-w-[820px] border-separate border-spacing-y-2 text-left text-xs">
+            <thead className="text-[11px] font-semibold text-slate-500">
+              <tr>
+                <th className="px-4 pb-1 pt-3">Product</th>
+                <th className="px-4 pb-1 pt-3">SKU / Model</th>
+                <th className="px-4 pb-1 pt-3">Store</th>
+                <th className="px-4 pb-1 pt-3">DR number</th>
+                <th className="px-4 pb-1 pt-3 text-right">Quantity</th>
+                <th className="px-4 pb-1 pt-3 text-right">CBM</th>
+                <th className="px-4 pb-1 pt-3 text-right">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visibleRows.length === 0 ? (
                 <tr>
-                  <th className="px-4 pb-1 pt-3">Product</th>
-                  <th className="px-4 pb-1 pt-3">SKU / Model</th>
-                  <th className="px-4 pb-1 pt-3 text-right">Quantity</th>
-                  <th className="px-4 pb-1 pt-3 text-right">CBM</th>
-                  <th className="px-4 pb-1 pt-3">DR number</th>
+                  <td colSpan={7} className="rounded-2xl bg-white px-4 py-8 text-center text-sm text-slate-500">
+                    {selectedStop ? "No products recorded for this stop." : "No product rows available."}
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {visibleRows.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className="rounded-2xl bg-white px-4 py-8 text-center text-sm text-slate-500">
-                      {selectedStop ? "No products recorded for this stop." : "No product rows available."}
+              ) : (
+                visibleRows.map((row, index) => (
+                  <tr key={String(row.trip_line_item_id ?? row.id ?? `${tripId}-item-${index}`)} className="bg-white shadow-[0_1px_2px_rgba(11,35,65,0.04)]">
+                    <td className="rounded-l-2xl px-4 py-3.5 font-semibold text-[#0b2341]">{valueText(row.product_name, "Product not recorded")}</td>
+                    <td className="px-4 py-3.5 text-slate-600">{valueText(row.sku ?? row.model_code)}</td>
+                    <td className="px-4 py-3.5 text-slate-600">{valueText(row.store_name)}</td>
+                    <td className="px-4 py-3.5 text-slate-700">{valueText(row.dr_number)}</td>
+                    <td className="px-4 py-3.5 text-right tabular-nums text-slate-700">{valueText(row.quantity)}</td>
+                    <td className="px-4 py-3.5 text-right tabular-nums text-slate-700">{valueText(row.cbm)}</td>
+                    <td className="rounded-r-2xl px-4 py-3.5 text-right">
+                      <StatusPill status={row.delivery_status} fallback="Pending" />
                     </td>
                   </tr>
-                ) : (
-                  visibleRows.map((row, index) => (
-                    <tr key={String(row.trip_line_item_id ?? row.id ?? `${tripId}-item-${index}`)} className="bg-white shadow-[0_1px_2px_rgba(11,35,65,0.04)]">
-                      <td className="rounded-l-2xl px-4 py-3 font-semibold text-[#0b2341]">{valueText(row.product_name, "Product not recorded")}</td>
-                      <td className="px-4 py-3 text-slate-600">{valueText(row.sku ?? row.model_code)}</td>
-                      <td className="px-4 py-3 text-right tabular-nums text-slate-700">{valueText(row.quantity)}</td>
-                      <td className="px-4 py-3 text-right tabular-nums text-slate-700">{valueText(row.cbm)}</td>
-                      <td className="rounded-r-2xl px-4 py-3 text-slate-700">{valueText(row.dr_number)}</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-          <footer className="flex items-center gap-2 px-5 py-3 text-[11px] text-slate-500">
-            <Package aria-hidden="true" className="h-3.5 w-3.5 text-[#2678b9]" />
-            {visibleRows.length} {visibleRows.length === 1 ? "line" : "lines"} · {formatNumber(sumOf(visibleRows, "quantity"))} units · {formatNumber(sumOf(visibleRows, "cbm"))} CBM
-          </footer>
-        </section>
-      </div>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+        <footer className="flex items-center gap-2 px-5 py-3 text-[11px] text-slate-500">
+          <Package aria-hidden="true" className="h-3.5 w-3.5 text-[#2678b9]" />
+          {visibleRows.length} {visibleRows.length === 1 ? "line" : "lines"} · {formatNumber(sumOf(visibleRows, "quantity"))} units · {formatNumber(sumOf(visibleRows, "cbm"))} CBM
+        </footer>
+      </section>
     </div>
   );
 }

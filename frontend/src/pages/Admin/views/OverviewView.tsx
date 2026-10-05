@@ -450,7 +450,7 @@ export default function OverviewView({
   }));
 
   return (
-    <div className="space-y-4">
+    <div className="mx-auto w-full max-w-[1440px] space-y-4 px-1 sm:px-4 lg:px-6">
       {/* Greeting + trip summary */}
       <div className="grid gap-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.5fr)]">
         <GreetingHeader

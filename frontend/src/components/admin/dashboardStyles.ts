@@ -60,3 +60,24 @@ export const surface = {
   chipGhost:
     "inline-flex items-center justify-center rounded-full border border-slate-200 bg-white px-3.5 py-1.5 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0b2341]/40",
 };
+
+/* Shared table tokens: every table page (trips, reports, users, database...) uses these */
+export const tableUi = {
+  shell: "overflow-hidden rounded-[28px] bg-white shadow-[0_1px_2px_rgba(11,35,65,0.04),0_10px_30px_-18px_rgba(11,35,65,0.14)]",
+  toolbar: "flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between",
+  search: "h-10 w-full rounded-full border border-transparent bg-white pl-10 pr-4 text-sm text-slate-700 shadow-[0_1px_2px_rgba(11,35,65,0.06)] outline-none placeholder:text-slate-400 focus:border-[#2678b9]/40 focus:ring-2 focus:ring-[#2678b9]/15",
+  select: "h-10 appearance-none rounded-full border border-transparent bg-white pl-4 pr-9 text-sm text-slate-600 shadow-[0_1px_2px_rgba(11,35,65,0.06)] outline-none transition focus:border-[#2678b9]/40 focus:ring-2 focus:ring-[#2678b9]/15",
+  segment: "inline-flex items-center rounded-full bg-white p-1 shadow-[0_1px_2px_rgba(11,35,65,0.06)]",
+  segmentBtn: "rounded-full px-3.5 py-1.5 text-xs font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9]",
+  segmentOn: "bg-[#0b2341] text-white",
+  segmentOff: "text-slate-500 hover:text-[#0b2341]",
+  iconBtn: "inline-flex h-10 w-10 items-center justify-center rounded-full bg-white text-slate-500 shadow-[0_1px_2px_rgba(11,35,65,0.06)] transition hover:text-[#0b2341] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9]",
+  thead: "bg-white",
+  th: "whitespace-nowrap border-b border-slate-100 px-4 py-3.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400",
+  td: "px-4 py-3.5 text-[13px] text-slate-600",
+  tdStrong: "px-4 py-3.5 text-[13px] font-medium text-[#0b2341]",
+  row: "border-b border-slate-100/80 transition-colors last:border-0 hover:bg-[#f2f6fa]/70",
+  footer: "flex items-center justify-between border-t border-slate-100 px-5 py-3 text-xs text-slate-400",
+  pageBtn: "inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-500 transition hover:bg-[#f2f6fa] hover:text-[#0b2341] disabled:cursor-not-allowed disabled:opacity-30",
+  empty: "px-4 py-16 text-center text-sm text-slate-400",
+} as const;

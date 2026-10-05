@@ -9,6 +9,7 @@ import {
   SettingsPanel,
   PodWorkflowPanel,
 } from "../../../components/admin/DashboardPrimitives";
+import { tableUi } from "../../../components/admin/dashboardStyles";
 import ReportDataView from "../../../components/admin/ReportDataView";
 import TruckCardGrid from "../../../components/admin/TruckCardGrid";
 import RequestsView from "./RequestsView";
@@ -172,66 +173,80 @@ function GenericResourceTable({
   );
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-      <SectionHeader
-        eyebrow="Integration-ready records"
-        title={`${headings[0]} register`}
-        action="Export"
-      />
-      <div className="mb-4 flex flex-col gap-3 border-b border-slate-100 pb-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="relative w-full sm:w-64">
-          <input
-            placeholder={`Search ${headings[0].toLowerCase()} records`}
-            className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs outline-none focus:border-blue-600 focus:bg-white"
-          />
-        </div>
+    <div className="space-y-4">
+      <div className={tableUi.toolbar}>
+        <input
+          placeholder={`Search ${headings[0].toLowerCase()} records`}
+          aria-label={`Search ${headings[0].toLowerCase()} records`}
+          className={`${tableUi.search} pl-4 sm:w-72`}
+        />
         <div className="flex gap-2">
-          <button
-            type="button"
-            className="rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-600">
+          <button type="button" className={`${tableUi.segmentBtn} bg-white text-slate-600 shadow-[0_1px_2px_rgba(11,35,65,0.06)] hover:text-[#0b2341]`}>
             Filter
           </button>
-          <button
-            type="button"
-            className="rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-600">
+          <button type="button" className={`${tableUi.segmentBtn} bg-white text-slate-600 shadow-[0_1px_2px_rgba(11,35,65,0.06)] hover:text-[#0b2341]`}>
             Sort
+          </button>
+          <button type="button" className="rounded-full bg-[#ffd43b] px-4 py-1.5 text-xs font-semibold text-[#0b2341] transition hover:bg-[#f2c200]">
+            Export
           </button>
         </div>
       </div>
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[620px] text-left text-sm">
-          <thead>
-            <tr className="border-b border-slate-200 text-slate-400">
-              {headings.map((heading) => (
-                <th
-                  key={heading}
-                  className="pb-4 pr-6 text-[11px] font-medium uppercase tracking-wider">
-                  {heading}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {records.map((record, index) => (
-              <tr
-                key={`${id}-${index}`}
-                className="border-b border-slate-100 transition-colors last:border-none hover:bg-slate-50/50">
-                {record.map((value, valueIndex) => (
-                  <td
-                    key={`${id}-${index}-${valueIndex}`}
-                    className={`py-4 pr-6 ${
-                      valueIndex === 0
-                        ? "font-medium text-slate-800"
-                        : "text-slate-600"
-                    }`}>
-                    {value}
-                  </td>
+      <div className={tableUi.shell}>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[620px] text-left">
+            <thead className={tableUi.thead}>
+              <tr>
+                {headings.map((heading) => (
+                  <th key={heading} className={tableUi.th}>
+                    {heading}
+                  </th>
                 ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {records.map((record, index) => (
+                <tr key={`${id}-${index}`} className={tableUi.row}>
+                  {record.map((value, valueIndex) => (
+                    <td
+                      key={`${id}-${index}-${valueIndex}`}
+                      className={valueIndex === 0 ? tableUi.tdStrong : tableUi.td}>
+                      {value}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
+    </div>
+  );
+}
+
+/* Pages whose main content is a table: full width, title in the top bar. */
+const TABLE_PAGE_IDS = new Set([
+  "dispatches",
+  "deliveries",
+  "monitoring",
+  "dispatch-monitoring",
+  "store-calling",
+  "reports",
+  "combined",
+  "dispatch",
+  "trip-booking",
+  "truckers",
+  "database",
+]);
+
+/* Title centred in the same row as the menu toggle and the
+   notifications/profile pill (both are fixed at top-4, h-11). */
+function PageTitleBar({ title }: { title: string }) {
+  return (
+    <div className="pointer-events-none fixed inset-x-0 top-4 z-30 flex h-11 items-center justify-center px-20 sm:px-32">
+      <h1 className="min-w-0 max-w-full truncate text-xl font-bold leading-none tracking-tight text-[#0b2341]">
+        {title}
+      </h1>
     </div>
   );
 }
@@ -307,23 +322,41 @@ export default function ResourceView({
       "rates-fuel",
       "invoices",
     ].includes(id);
-  const showPageIntro =
-    ![
-      "dispatches",
-      "deliveries",
-      "monitoring",
-      "dispatch-monitoring",
-      "store-calling",
-      "reports",
-      "combined",
-      "dispatch",
-      "trip-booking",
-    ].includes(id) && !isTripDetail;
+  /* Table pages already show their title in the top bar, so no title/subtitle block. */
+  const showPageIntro = !TABLE_PAGE_IDS.has(id) && !isTripDetail;
 
   const showLocalTrip = !isTripDetail && localTripId !== null;
 
+  const isTablePage = !isTripDetail && TABLE_PAGE_IDS.has(id);
+  const isTripsScope = ["dispatches", "deliveries", "monitoring"].includes(id);
+  /* The report picker switches the id to combined / dispatch / trip-booking, etc.
+     The page is still "Reports", so the top bar never shows the sub-report name. */
+  const isReportsScope = [
+    "reports",
+    "combined",
+    "dispatch",
+    "trip-booking",
+    "dispatch-monitoring",
+    "store-calling",
+  ].includes(id);
+  const barTitle = showLocalTrip
+    ? "Trip details"
+    : isTripsScope
+      ? "Trips"
+      : isReportsScope
+        ? "Reports"
+        : title;
+  const showTitleBar = isTablePage || isTripDetail || showLocalTrip;
+  /* Table pages use the full width; everything else is centred and moderately wide. */
+  const layoutClass =
+    isTablePage
+      ? "w-full"
+      : "mx-auto w-full max-w-[1180px] px-1 sm:px-4 lg:px-8";
+
   return (
     <>
+      {showTitleBar && <PageTitleBar title={barTitle} />}
+      <div className={layoutClass}>
       <div hidden={showLocalTrip}>
       {showPageIntro && <PageIntro title={title} subtitle={subtitle} />}
       {isPrototype && <PrototypeNotice />}
@@ -333,13 +366,13 @@ export default function ResourceView({
 
       {id === "dispatches" && (
         <>
-          <TripsPageHeader scope="dispatches" />
           <ReportDataView
             initialReport="trip-booking"
             showReportPicker={false}
             onOpenTrip={openTrip}
             tripScope={tripScope ?? "dispatches"}
             onTripScopeChange={onTripScopeChange}
+            toolbarActions={<AddTripButton />}
           />
         </>
       )}
@@ -361,7 +394,6 @@ export default function ResourceView({
       {id === "pod" && <PodWorkflowPanel rows={data.operations.dispatches} />}
       {id === "deliveries" && (
         <>
-          <TripsPageHeader scope="deliveries" showAdd={false} />
           <ReportDataView
             initialReport="dispatch-monitoring"
             showReportPicker={false}
@@ -373,7 +405,6 @@ export default function ResourceView({
       )}
       {id === "monitoring" && (
         <>
-          <TripsPageHeader scope="monitoring" showAdd={false} />
           <ReportDataView
             initialReport="dispatch-monitoring"
             showReportPicker={false}
@@ -499,48 +530,25 @@ export default function ResourceView({
           onBack={() => setLocalTripId(null)}
         />
       )}
+      </div>
     </>
   );
 }
 
-type TripScope = "dispatches" | "monitoring" | "deliveries";
-
-const tripScopeCopy: Record<TripScope, string> = {
-  dispatches: "Every booked trip, with its route, truck, driver and cargo.",
-  monitoring: "Follow dispatches from loading to arrival.",
-  deliveries: "Check what has been delivered and what is still assigned.",
-};
-
-function TripsPageHeader({
-  scope,
-  showAdd = true,
-}: {
-  scope: TripScope;
-  showAdd?: boolean;
-}) {
+function AddTripButton() {
   const [open, setOpen] = useState(false);
 
   return (
     <>
-      <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-[28px] font-extrabold leading-tight tracking-tight text-[#0b2341]">
-            Trips
-          </h1>
-          <p className="mt-1 text-sm text-slate-500">{tripScopeCopy[scope]}</p>
-        </div>
-        {showAdd && (
-          <button
-            type="button"
-            onClick={() => setOpen(true)}
-            className="inline-flex items-center gap-2 rounded-full bg-[#ffd43b] px-4 py-2.5 text-sm font-semibold text-[#0b2341] transition hover:bg-[#f2c200] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0b2341]/40">
-            <span aria-hidden="true" className="text-base leading-none">
-              +
-            </span>
-            Add trip
-          </button>
-        )}
-      </div>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="inline-flex min-h-10 items-center gap-2 rounded-full bg-[#ffd43b] px-4 text-sm font-semibold text-[#0b2341] transition hover:bg-[#f2c200] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0b2341]/40">
+        <span aria-hidden="true" className="text-base leading-none">
+          +
+        </span>
+        Add trip
+      </button>
 
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0b2341]/30 p-4 backdrop-blur-sm">

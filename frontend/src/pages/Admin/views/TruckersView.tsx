@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { MoreHorizontal, RefreshCw, Search, SlidersHorizontal, UserRound } from "lucide-react";
 import { useAuth } from "../../../context/AuthContext";
+import { tableUi } from "../../../components/admin/dashboardStyles";
 import TruckerDetailDrawer from "../../../components/admin/TruckerDetailDrawer";
 import { apiGetCached, invalidateApiCache, type ApiResponse } from "../../../services/api.service";
 import { fetchTruckerDetail, fetchTruckers, type TruckerListItem } from "../../../services/trucker.service";
@@ -143,15 +144,19 @@ export default function TruckersView() {
 
   return (
     <div className="space-y-4">
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div>
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div className="flex flex-wrap items-center gap-2">
-            <div role="group" aria-label="User category" className="inline-flex rounded-lg bg-slate-100 p-1">
-              <button type="button" aria-pressed={category === "staff"} onClick={() => changeCategory("staff")} className={`h-8 rounded-md px-3 text-sm font-medium transition ${category === "staff" ? "bg-white text-[#0b2341] shadow-sm" : "text-slate-600 hover:text-slate-900"}`}>Admin &amp; Staff</button>
-              <button type="button" aria-pressed={category === "truckers"} onClick={() => changeCategory("truckers")} className={`h-8 rounded-md px-3 text-sm font-medium transition ${category === "truckers" ? "bg-white text-[#0b2341] shadow-sm" : "text-slate-600 hover:text-slate-900"}`}>Truckers</button>
+            <label className="relative min-w-[200px] flex-1 sm:flex-none xl:w-72">
+              <Search aria-hidden="true" className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input value={search} onChange={(event) => { setPage(1); setSearch(event.target.value); }} placeholder={category === "staff" ? "Search admin or staff" : "Search truckers"} className={tableUi.search} />
+            </label>
+            <div role="group" aria-label="User category" className={tableUi.segment}>
+              <button type="button" aria-pressed={category === "staff"} onClick={() => changeCategory("staff")} className={`${tableUi.segmentBtn} ${category === "staff" ? tableUi.segmentOn : tableUi.segmentOff}`}>Admin &amp; Staff</button>
+              <button type="button" aria-pressed={category === "truckers"} onClick={() => changeCategory("truckers")} className={`${tableUi.segmentBtn} ${category === "truckers" ? tableUi.segmentOn : tableUi.segmentOff}`}>Truckers</button>
             </div>
             {category === "staff" ? (
-              <select aria-label="Filter by role" value={roleFilter} onChange={(event) => { setPage(1); setRoleFilter(event.target.value as "all" | "ADMIN" | "STAFF"); }} className="h-10 rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-700 outline-none focus:border-slate-400">
+              <select aria-label="Filter by role" value={roleFilter} onChange={(event) => { setPage(1); setRoleFilter(event.target.value as "all" | "ADMIN" | "STAFF"); }} className={`${tableUi.select} pr-4`}>
                 <option value="all">All roles</option>
                 <option value="ADMIN">Admin</option>
                 <option value="STAFF">Staff</option>
@@ -159,14 +164,14 @@ export default function TruckersView() {
             ) : (
               <>
                 <div className="relative">
-                  <SlidersHorizontal aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                  <select aria-label="Filter truckers by status" value={status} onChange={(event) => { setPage(1); setStatus(event.target.value); }} className="h-10 appearance-none rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-8 text-sm text-slate-700 outline-none focus:border-slate-400">
+                  <SlidersHorizontal aria-hidden="true" className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <select aria-label="Filter truckers by status" value={status} onChange={(event) => { setPage(1); setStatus(event.target.value); }} className={`${tableUi.select} pl-9`}>
                     <option value="all">All status</option>
                     <option value="ACTIVE">Active</option>
                     <option value="INACTIVE">Inactive</option>
                   </select>
                 </div>
-                <select aria-label="Filter truckers by assignment" value={assignment} onChange={(event) => { setPage(1); setAssignment(event.target.value as "all" | "assigned" | "unassigned"); }} className="h-10 rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-700 outline-none focus:border-slate-400">
+                <select aria-label="Filter truckers by assignment" value={assignment} onChange={(event) => { setPage(1); setAssignment(event.target.value as "all" | "assigned" | "unassigned"); }} className={`${tableUi.select} pr-4`}>
                   <option value="all">All assignments</option>
                   <option value="assigned">Assigned</option>
                   <option value="unassigned">Unassigned</option>
@@ -175,49 +180,45 @@ export default function TruckersView() {
             )}
           </div>
           <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
-            <label className="relative min-w-[200px] flex-1 sm:flex-none xl:w-64">
-              <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <input value={search} onChange={(event) => { setPage(1); setSearch(event.target.value); }} placeholder={category === "staff" ? "Search admin or staff" : "Search truckers"} className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-3 text-sm text-slate-700 outline-none focus:border-slate-400" />
-            </label>
             <div className="relative">
-              <button type="button" aria-label="User list options" aria-haspopup="menu" aria-expanded={actionsOpen} onClick={() => setActionsOpen((current) => !current)} className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9]" title="User list options"><MoreHorizontal aria-hidden="true" className="h-5 w-5" /></button>
-              {actionsOpen && <div role="menu" className="absolute right-0 top-11 z-30 min-w-44 rounded-xl border border-slate-200 bg-white p-1 shadow-lg"><button type="button" role="menuitem" onClick={refreshList} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"><RefreshCw aria-hidden="true" className="h-4 w-4" />Refresh list</button></div>}
+              <button type="button" aria-label="User list options" aria-haspopup="menu" aria-expanded={actionsOpen} onClick={() => setActionsOpen((current) => !current)} className={tableUi.iconBtn} title="User list options"><MoreHorizontal aria-hidden="true" className="h-5 w-5" /></button>
+              {actionsOpen && <div role="menu" className="absolute right-0 top-11 z-30 min-w-44 rounded-2xl border border-slate-100 bg-white p-1 shadow-[0_16px_40px_-12px_rgba(11,35,65,0.2)]"><button type="button" role="menuitem" onClick={refreshList} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"><RefreshCw aria-hidden="true" className="h-4 w-4" />Refresh list</button></div>}
             </div>
             <div className="flex items-center gap-2 pl-1">
-              <button type="button" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={page <= 1} className="h-10 rounded-lg border border-slate-200 px-3 text-sm text-slate-700 disabled:cursor-not-allowed disabled:opacity-50">Prev</button>
+              <button type="button" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={page <= 1} className="h-10 rounded-full bg-white px-4 text-sm text-slate-600 shadow-[0_1px_2px_rgba(11,35,65,0.06)] transition hover:text-[#0b2341] disabled:cursor-not-allowed disabled:opacity-40">Prev</button>
               <span className="whitespace-nowrap text-sm text-slate-600">Page {page} / {visibleTotalPages}</span>
-              <button type="button" onClick={() => setPage((current) => Math.min(visibleTotalPages, current + 1))} disabled={page >= visibleTotalPages} className="h-10 rounded-lg border border-slate-200 px-3 text-sm text-slate-700 disabled:cursor-not-allowed disabled:opacity-50">Next</button>
+              <button type="button" onClick={() => setPage((current) => Math.min(visibleTotalPages, current + 1))} disabled={page >= visibleTotalPages} className="h-10 rounded-full bg-white px-4 text-sm text-slate-600 shadow-[0_1px_2px_rgba(11,35,65,0.06)] transition hover:text-[#0b2341] disabled:cursor-not-allowed disabled:opacity-40">Next</button>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className={tableUi.shell}>
         <div className="overflow-x-auto">
-          <table className="min-w-full text-left text-sm">
-            <thead className="bg-slate-50 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
-              <tr><th className="px-4 py-3">User</th><th className="px-4 py-3">Email / contact</th><th className="px-4 py-3">Assigned truck</th><th className="px-4 py-3">Current trip</th><th className="px-4 py-3">Delivery status</th></tr>
+          <table className="min-w-full text-left">
+            <thead className={tableUi.thead}>
+              <tr><th className={tableUi.th}>User</th><th className={tableUi.th}>Email / contact</th><th className={tableUi.th}>Assigned truck</th><th className={tableUi.th}>Current trip</th><th className={tableUi.th}>Delivery status</th></tr>
             </thead>
             <tbody>
               {loading ? Array.from({ length: 5 }).map((_, index) => (
-                <tr key={`skeleton-${index}`} className="border-t border-slate-100"><td className="px-4 py-3"><div className="h-10 w-10 animate-pulse rounded-full bg-slate-200" /></td><td className="px-4 py-3"><div className="h-4 w-32 animate-pulse rounded bg-slate-200" /></td><td className="px-4 py-3"><div className="h-4 w-24 animate-pulse rounded bg-slate-200" /></td><td className="px-4 py-3"><div className="h-4 w-28 animate-pulse rounded bg-slate-200" /></td><td className="px-4 py-3"><div className="h-4 w-20 animate-pulse rounded bg-slate-200" /></td></tr>
+                <tr key={`skeleton-${index}`} className={tableUi.row}><td className="px-4 py-3"><div className="h-10 w-10 animate-pulse rounded-full bg-slate-200" /></td><td className="px-4 py-3"><div className="h-4 w-32 animate-pulse rounded bg-slate-200" /></td><td className="px-4 py-3"><div className="h-4 w-24 animate-pulse rounded bg-slate-200" /></td><td className="px-4 py-3"><div className="h-4 w-28 animate-pulse rounded bg-slate-200" /></td><td className="px-4 py-3"><div className="h-4 w-20 animate-pulse rounded bg-slate-200" /></td></tr>
               )) : error ? (
                 <tr><td colSpan={5} role="alert" className="px-4 py-12 text-center text-sm text-rose-700">{error}</td></tr>
               ) : category === "staff" ? visibleProfiles.length === 0 ? (
-                <tr><td colSpan={5} className="px-4 py-12 text-center text-sm text-slate-500">No admin or staff users found.</td></tr>
+                <tr><td colSpan={5} className="px-4 py-16 text-center text-sm text-slate-400">No admin or staff users found.</td></tr>
               ) : visibleProfiles.map((profile) => (
-                <tr key={profile.id} className="border-t border-slate-100 transition hover:bg-slate-50">
-                  <td className="px-4 py-3"><div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-slate-100"><UserRound aria-hidden="true" className="h-5 w-5 text-slate-600" /></div><div><div className="font-medium text-slate-900">{profile.full_name}</div><div className="text-xs text-slate-500">{profile.role === "ADMIN" && profile.is_admin ? "Admin" : profile.role === "ADMIN" ? "Administrator" : "Staff"}</div></div></div></td>
-                  <td className="px-4 py-3 text-slate-600">—</td><td className="px-4 py-3 text-slate-600">—</td><td className="px-4 py-3 text-slate-600">—</td><td className="px-4 py-3 text-slate-600">—</td>
+                <tr key={profile.id} className={tableUi.row}>
+                  <td className="px-4 py-3.5"><div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#e6f0f9]"><UserRound aria-hidden="true" className="h-5 w-5 text-[#2678b9]" /></div><div><div className="text-[13px] font-medium text-[#0b2341]">{profile.full_name}</div><div className="text-xs text-slate-500">{profile.role === "ADMIN" && profile.is_admin ? "Admin" : profile.role === "ADMIN" ? "Administrator" : "Staff"}</div></div></div></td>
+                  <td className={tableUi.td}>—</td><td className={tableUi.td}>—</td><td className={tableUi.td}>—</td><td className={tableUi.td}>—</td>
                 </tr>
               )) : rows.length === 0 ? (
-                <tr><td colSpan={5} className="px-4 py-12 text-center text-sm text-slate-500">No truckers found.</td></tr>
+                <tr><td colSpan={5} className="px-4 py-16 text-center text-sm text-slate-400">No truckers found.</td></tr>
               ) : rows.map((trucker) => {
                 const avatar = formatAvatarPath(trucker.profile_picture_path);
                 return (
-                  <tr key={trucker.id} onClick={() => setSelectedId(trucker.id)} className="cursor-pointer border-t border-slate-100 transition hover:bg-slate-50">
-                    <td className="px-4 py-3"><div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border border-slate-200 bg-slate-100">{avatar ? <img src={avatar} alt={trucker.full_name} className="h-full w-full object-cover" /> : <UserRound aria-hidden="true" className="h-5 w-5 text-slate-600" />}</div><div><div className="font-medium text-slate-900">{trucker.full_name}</div><div className="text-xs text-slate-500">{trucker.email || "No email"}</div></div></div></td>
-                    <td className="px-4 py-3 text-slate-600">{trucker.contact_number || "—"}</td><td className="px-4 py-3 text-slate-600">{trucker.plate_number || "—"}</td><td className="px-4 py-3 text-slate-600">{trucker.active_trip_number || "—"}</td><td className="px-4 py-3 text-slate-600">{trucker.delivery_status || trucker.current_trip_status || "—"}</td>
+                  <tr key={trucker.id} onClick={() => setSelectedId(trucker.id)} className={`cursor-pointer ${tableUi.row}`}>
+                    <td className="px-4 py-3.5"><div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-[#e6f0f9]">{avatar ? <img src={avatar} alt={trucker.full_name} className="h-full w-full object-cover" /> : <UserRound aria-hidden="true" className="h-5 w-5 text-[#2678b9]" />}</div><div><div className="text-[13px] font-medium text-[#0b2341]">{trucker.full_name}</div><div className="text-xs text-slate-500">{trucker.email || "No email"}</div></div></div></td>
+                    <td className={tableUi.td}>{trucker.contact_number || "—"}</td><td className={tableUi.td}>{trucker.plate_number || "—"}</td><td className={tableUi.td}>{trucker.active_trip_number || "—"}</td><td className={tableUi.td}>{trucker.delivery_status || trucker.current_trip_status || "—"}</td>
                   </tr>
                 );
               })}

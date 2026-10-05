@@ -1,14 +1,16 @@
-import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent } from "react";
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Building2,
   CalendarDays,
+  ArrowUpRight,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   LayoutGrid,
   Package,
   Search,
+  SlidersHorizontal,
   ArrowDown,
   ArrowUp,
   ArrowUpDown,
@@ -25,10 +27,12 @@ import { ApiError, invalidateApiCache } from "../../services/api.service";
 import {
   fetchReportColumns,
   fetchReportRows,
+  getReportFilters,
   getSortableFields,
   REPORTS,
   type Pagination,
   type ReportColumn,
+  type ReportFilter,
   type ReportKey,
   type ReportRow,
 } from "../../services/report.service";
@@ -55,6 +59,7 @@ import {
   updateTripStopRecord,
 } from "../../services/trip.service";
 import SearchableRelationshipEditor from "./SearchableRelationshipEditor";
+import { tableUi } from "./dashboardStyles";
 import ReportDropdownEditor, { type ReportDropdownChoice } from "./ReportDropdownEditor";
 import { StatusBadge, TableSkeleton } from "./DashboardPrimitives";
 
@@ -485,10 +490,12 @@ function ReportVisualCards({
   rows,
   columns,
   reportKey,
+  onOpenTrip,
 }: {
   rows: ReportRow[];
   columns: ReportColumn[];
   reportKey: ReportKey;
+  onOpenTrip?: (tripId: string) => void;
 }) {
   const isStoreCall = reportKey === "store-calling";
   const groups = groupRows(rows, !isStoreCall);
@@ -592,6 +599,7 @@ function ReportVisualCards({
           "sku",
         );
         const showExtras = group.length === 1 && extraColumns.length > 0;
+        const tripId = isStoreCall ? "" : firstValue(group, "trip_id");
 
         return (
           <article
@@ -608,14 +616,26 @@ function ReportVisualCards({
                   {identity}
                 </h3>
               </div>
-              <span
-                className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ring-inset ${statusStyle(primaryStatus)}`}>
+              <div className="flex shrink-0 items-center gap-1.5">
                 <span
-                  aria-hidden="true"
-                  className={`h-1.5 w-1.5 rounded-full ${statusDot(primaryStatus)}`}
-                />
-                {primaryStatus.replaceAll("_", " ")}
-              </span>
+                  className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ring-inset ${statusStyle(primaryStatus)}`}>
+                  <span
+                    aria-hidden="true"
+                    className={`h-1.5 w-1.5 rounded-full ${statusDot(primaryStatus)}`}
+                  />
+                  {primaryStatus.replaceAll("_", " ")}
+                </span>
+                {tripId && onOpenTrip && (
+                  <button
+                    type="button"
+                    onClick={() => onOpenTrip(tripId)}
+                    title="View trip details"
+                    aria-label={`View trip details for ${identity}`}
+                    className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#f2f6fa] text-slate-600 transition hover:bg-[#ffd43b] hover:text-[#0b2341] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0b2341]/40">
+                    <ArrowUpRight aria-hidden="true" className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
             </header>
 
             {otherTags.length > 0 && (
@@ -774,9 +794,11 @@ function VisualFact({
 export default function ReportDataView({
   initialReport = "combined",
   showReportPicker = true,
+  onOpenTrip,
   onReportScopeChange,
   tripScope,
   onTripScopeChange,
+  toolbarActions,
 }: {
   initialReport?: ReportKey;
   showReportPicker?: boolean;
@@ -784,6 +806,8 @@ export default function ReportDataView({
   onReportScopeChange?: (value: ReportKey) => void;
   tripScope?: "dispatches" | "monitoring" | "deliveries";
   onTripScopeChange?: (value: "dispatches" | "monitoring" | "deliveries") => void;
+  /** Extra action buttons rendered at the end of the controls row above the table. */
+  toolbarActions?: ReactNode;
 }) {
   const { accessToken, refreshSession, profile } = useAuth();
   const navigate = useNavigate();
@@ -810,6 +834,7 @@ export default function ReportDataView({
   const [appliedFilters, setAppliedFilters] = useState<Record<string, string>>(
     {},
   );
+  const [filtersExpanded, setFiltersExpanded] = useState(false);
   const [sortBy, setSortBy] = useState(getSortableFields(initialReport)[0]);
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [loadedQueryKey, setLoadedQueryKey] = useState<string | null>(null);
@@ -1883,6 +1908,8 @@ export default function ReportDataView({
   }
 
   const canManageDropdowns = ["ADMIN", "STAFF"].includes(profile?.role?.toUpperCase() ?? "");
+  const reportFilters = getReportFilters(reportKey);
+  const hasAppliedFilters = Object.values(appliedFilters).some((value) => value.trim());
   const pageCount = pagination?.totalPages ?? 0;
   const activeError =
     requestError?.key === queryKey
@@ -1937,17 +1964,72 @@ export default function ReportDataView({
   }
 
   return (
-    <section className="overflow-hidden rounded-[28px] bg-white shadow-[0_1px_2px_rgba(11,35,65,0.04),0_10px_30px_-18px_rgba(11,35,65,0.14)]">
-      <div className="flex flex-col gap-3 p-5 lg:flex-row lg:items-start lg:justify-between">
+    <div className="space-y-4">
+      <div className={tableUi.toolbar}>
+        <form onSubmit={submitSearch} className="flex w-full gap-2 lg:w-auto">
+          <label
+            className="relative min-w-0 flex-1 lg:w-72"
+            htmlFor="report-search">
+            <Search
+              aria-hidden="true"
+              className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+            />
+            <input
+              id="report-search"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search report"
+              className={tableUi.search}
+            />
+          </label>
+          <button
+            type="submit"
+            className="h-10 rounded-full bg-[#ffd43b] px-5 text-sm font-semibold text-[#0b2341] transition hover:bg-[#f2c200]">
+            Search
+          </button>
+          {reportFilters.length > 0 && (
+            <button
+              type="button"
+              aria-label={filtersExpanded ? "Hide filters" : "Show filters"}
+              aria-expanded={filtersExpanded}
+              aria-controls="report-filter-controls"
+              title={filtersExpanded ? "Hide filters" : "Show filters"}
+              onClick={() => setFiltersExpanded((expanded) => !expanded)}
+              className={`${tableUi.iconBtn} relative shrink-0 ${
+                filtersExpanded ? "bg-[#e6f0f9] text-[#0b2341]" : ""
+              }`}>
+              <SlidersHorizontal aria-hidden="true" className="h-4 w-4" />
+              {hasAppliedFilters && (
+                <span
+                  aria-label={`${Object.values(appliedFilters).filter((value) => value.trim()).length} active filters`}
+                  className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-[#2678b9]"
+                />
+              )}
+            </button>
+          )}
+          {search && (
+            <button
+              type="button"
+              aria-label="Clear search"
+              onClick={() => {
+                setSearch("");
+                setAppliedSearch("");
+                setPage(1);
+              }}
+              className={tableUi.iconBtn}>
+              <X aria-hidden="true" className="h-4 w-4" />
+            </button>
+          )}
+        </form>
         <div className="flex flex-wrap items-center gap-3">
           {tripScope && onTripScopeChange && (
-            <div role="tablist" aria-label="Trip views" className="inline-flex max-w-full gap-1 overflow-x-auto rounded-full bg-[#f2f6fa] p-1">
+            <div role="tablist" aria-label="Trip views" className={`${tableUi.segment} max-w-full gap-1 overflow-x-auto`}>
               {([
                 ["dispatches", "All trips"],
                 ["monitoring", "Dispatch monitoring"],
                 ["deliveries", "Deliveries"],
               ] as const).map(([scope, label]) => (
-                <button key={scope} type="button" role="tab" aria-selected={tripScope === scope} onClick={() => onTripScopeChange(scope)} className={`shrink-0 rounded-full px-3 py-2 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 ${tripScope === scope ? "bg-[#0b2341] text-white" : "text-slate-500 hover:text-[#0b2341]"}`}>{label}</button>
+                <button key={scope} type="button" role="tab" aria-selected={tripScope === scope} onClick={() => onTripScopeChange(scope)} className={`${tableUi.segmentBtn} shrink-0 ${tripScope === scope ? tableUi.segmentOn : tableUi.segmentOff}`}>{label}</button>
               ))}
             </div>
           )}
@@ -1956,7 +2038,7 @@ export default function ReportDataView({
               Select report
             </label>
           ) : (
-            <h2 className="text-[17px] font-semibold tracking-tight text-[#0b2341]">
+            <h2 className="sr-only">
               {REPORTS[reportKey].title}
             </h2>
           )}
@@ -1966,7 +2048,7 @@ export default function ReportDataView({
                 id="report-select"
                 value={reportKey}
                 onChange={(event) => changeReport(event.target.value)}
-                className="min-h-10 appearance-none rounded-full border border-slate-200 bg-[#f2f6fa] py-2 pl-3 pr-9 text-sm font-medium text-slate-800 outline-none transition-colors focus:border-[#2678b9] focus:ring-2 focus:ring-[#cfe1f1]">
+                className={`${tableUi.select} font-medium text-[#0b2341]`}>
                 {reportKeys.map((key) => (
                   <option key={key} value={key}>
                     {REPORTS[key].title}
@@ -1982,14 +2064,14 @@ export default function ReportDataView({
           <div
             role="group"
             aria-label="Report display mode"
-            className="inline-flex h-10 items-center rounded-full bg-[#f2f6fa] p-1">
+            className={tableUi.segment}>
             <button
               type="button"
               title="Visual view"
               aria-label="Visual view"
               aria-pressed={viewMode === "visual"}
               onClick={() => setViewMode("visual")}
-              className={`inline-flex h-8 w-9 items-center justify-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9] ${viewMode === "visual" ? "bg-[#0b2341] text-white shadow-sm" : "text-slate-500 hover:text-[#0b2341]"}`}>
+              className={`inline-flex h-8 w-9 items-center justify-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9] ${viewMode === "visual" ? tableUi.segmentOn : tableUi.segmentOff}`}>
               <LayoutGrid aria-hidden="true" className="h-3.5 w-3.5" />
             </button>
             <button
@@ -1998,7 +2080,7 @@ export default function ReportDataView({
               aria-label="Table view"
               aria-pressed={viewMode === "table"}
               onClick={() => setViewMode("table")}
-              className={`inline-flex h-8 w-9 items-center justify-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9] ${viewMode === "table" ? "bg-[#0b2341] text-white shadow-sm" : "text-slate-500 hover:text-[#0b2341]"}`}>
+              className={`inline-flex h-8 w-9 items-center justify-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9] ${viewMode === "table" ? tableUi.segmentOn : tableUi.segmentOff}`}>
               <Table2 aria-hidden="true" className="h-3.5 w-3.5" />
             </button>
           </div>
@@ -2007,7 +2089,7 @@ export default function ReportDataView({
             title="Export reports"
             aria-label="Export reports"
             onClick={() => { setExportError(""); setExportModalOpen(true); }}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 transition hover:border-amber-300 hover:bg-amber-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400">
+            className={tableUi.iconBtn}>
             <Download aria-hidden="true" className="h-4 w-4" />
           </button>
           <ReportSelectionToolbar
@@ -2015,14 +2097,15 @@ export default function ReportDataView({
             rows={displayedRows}
             columns={columns}
             onEdit={openSelectedRowEditor} />
-          <span title="Sort report rows" aria-label="Sort report rows" className="inline-flex h-10 w-9 items-center justify-center text-slate-500"><ArrowUpDown aria-hidden="true" className="h-4 w-4" /></span>
-          <div className="relative">
+          {viewMode === "visual" && (
+            <>
+                    <div className="relative">
             <select
               id="report-sort"
               aria-label="Sort by column"
               value={activeSortBy}
               onChange={(event) => setSortBy(event.target.value)}
-              className="min-h-10 max-w-48 appearance-none rounded-full border border-slate-200 bg-[#f2f6fa] py-2 pl-3 pr-9 text-sm text-slate-700 outline-none transition-colors focus:border-[#2678b9] focus:ring-2 focus:ring-[#cfe1f1]">
+              className={`${tableUi.select} max-w-48`}>
               {sortableFields.map((field) => (
                 <option key={field} value={field}>
                   {columns.find((column) => column.key === field)?.title ??
@@ -2042,7 +2125,7 @@ export default function ReportDataView({
               onChange={(event) =>
                 setSortOrder(event.target.value as "asc" | "desc")
               }
-              className="min-h-10 appearance-none rounded-full border border-slate-200 bg-[#f2f6fa] py-2 pl-3 pr-9 text-sm text-slate-700 outline-none transition-colors focus:border-[#2678b9] focus:ring-2 focus:ring-[#cfe1f1]">
+              className={tableUi.select}>
               <option value="desc">Descending</option>
               <option value="asc">Ascending</option>
             </select>
@@ -2051,43 +2134,70 @@ export default function ReportDataView({
               className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500"
             />
           </div>
-        </div>
-        <form onSubmit={submitSearch} className="flex gap-2">
-          <label
-            className="relative min-w-0 flex-1 lg:w-64"
-            htmlFor="report-search">
-            <Search
-              aria-hidden="true"
-              className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
-            />
-            <input
-              id="report-search"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search report"
-              className="min-h-10 w-full rounded-full border border-slate-200 bg-[#f2f6fa] pl-9 pr-3 text-sm outline-none placeholder:text-slate-400 focus:border-slate-500"
-            />
-          </label>
-          <button
-            type="submit"
-            className="min-h-10 rounded-full bg-[#ffd43b] px-5 text-sm font-semibold text-[#0b2341] transition hover:bg-[#f2c200]">
-            Search
-          </button>
-          {search && (
-            <button
-              type="button"
-              aria-label="Clear search"
-              onClick={() => {
-                setSearch("");
-                setAppliedSearch("");
-                setPage(1);
-              }}
-              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 text-slate-500 transition hover:bg-slate-100 hover:text-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9]">
-              <X aria-hidden="true" className="h-4 w-4" />
-            </button>
+            </>
           )}
-        </form>
+          {toolbarActions}
+        </div>
       </div>
+      {reportFilters.length > 0 && (
+        <section
+          id="report-filter-controls"
+          hidden={!filtersExpanded}
+          className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="flex flex-wrap items-end gap-3">
+            {reportFilters.map((filter: ReportFilter) => (
+              <label key={filter.key} className="grid min-w-[150px] flex-1 gap-1.5 text-xs font-medium text-slate-600">
+                <span>{filter.label}</span>
+                {filter.dropdownField ? (
+                  <select
+                    aria-label={filter.label}
+                    value={appliedFilters[filter.key] ?? ""}
+                    onChange={(event) => {
+                      setPage(1);
+                      setAppliedFilters((current) => ({
+                        ...current,
+                        [filter.key]: event.target.value,
+                      }));
+                    }}
+                    className={tableUi.select}>
+                    <option value="">All</option>
+                    {(activeDropdownOptionsByField[filter.dropdownField] ?? []).map((option) => (
+                      <option key={option.id} value={option.option_value}>
+                        {option.display_label}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type={filter.type === "date" ? "date" : "search"}
+                    aria-label={filter.label}
+                    value={appliedFilters[filter.key] ?? ""}
+                    onChange={(event) => {
+                      setPage(1);
+                      setAppliedFilters((current) => ({
+                        ...current,
+                        [filter.key]: event.target.value,
+                      }));
+                    }}
+                    className={tableUi.search}
+                  />
+                )}
+              </label>
+            ))}
+            {hasAppliedFilters && (
+              <button
+                type="button"
+                onClick={() => {
+                  setPage(1);
+                  setAppliedFilters({});
+                }}
+                className="h-10 rounded-full px-3 text-xs font-medium text-slate-500 transition hover:bg-slate-50 hover:text-[#0b2341]">
+                Clear filters
+              </button>
+            )}
+          </div>
+        </section>
+      )}
 
       {exportModalOpen && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/40 p-4">
@@ -2192,6 +2302,7 @@ export default function ReportDataView({
         </div>
       )}
 
+      <section className={tableUi.shell}>
       {activeError ? (
         <div className="flex min-h-48 flex-col items-center justify-center gap-3 p-6 text-center">
           <p role="alert" className="text-sm text-rose-700">
@@ -2234,6 +2345,7 @@ export default function ReportDataView({
                   rows={displayedRows}
                   columns={columns}
                   reportKey={reportKey}
+                  onOpenTrip={onOpenTrip}
                 />
               )
             ) : isLoading ? (
@@ -2244,13 +2356,13 @@ export default function ReportDataView({
                 />
               </div>
             ) : (
-              <table className="w-full min-w-max border-separate border-spacing-0 text-left text-sm">
-                <thead className="bg-[#f2f6fa] text-xs font-semibold text-slate-600">
+              <table className="w-full min-w-max border-separate border-spacing-0 text-left">
+                <thead className={tableUi.thead}>
                   <tr>
                     <th
                       ref={selectionColumnRef}
                       scope="col"
-                      className="sticky left-0 z-30 w-11 min-w-11 border-b border-slate-100 bg-[#f2f6fa] px-3 py-3 shadow-[3px_0_5px_-5px_rgba(11,35,65,0.65)]">
+                      className="sticky left-0 z-30 w-11 min-w-11 border-b border-slate-100 bg-white px-4 py-3.5">
                       <ReportSelectAllCheckbox rowKeys={visibleSelectionKeys} />
                     </th>
                     {columns.map((column) => {
@@ -2275,7 +2387,7 @@ export default function ReportDataView({
                         }}
                         scope="col"
                         style={isPinned ? { position: "sticky", ...(pinSide === "left" ? { left: leftPinOffsets[column.key] ?? 44 } : { right: rightPinOffsets[column.key] ?? 0 }), zIndex: 20 } : undefined}
-                        className={`whitespace-nowrap border-b border-slate-100 px-3 py-2.5 ${isPinned ? `bg-[#f2f6fa] ${isOuterPinnedEdge ? pinSide === "left" ? "shadow-[4px_0_7px_-5px_rgba(11,35,65,0.75)]" : "shadow-[-4px_0_7px_-5px_rgba(11,35,65,0.75)]" : ""}` : ""} ${
+                        className={`${tableUi.th} ${isPinned ? `bg-white ${isOuterPinnedEdge ? pinSide === "left" ? "shadow-[4px_0_8px_-6px_rgba(11,35,65,0.35)]" : "shadow-[-4px_0_8px_-6px_rgba(11,35,65,0.35)]" : ""}` : ""} ${
                           column.type === "number" ||
                           ["quantity", "cbm", "subcon_rate_manual"].includes(
                             column.key,
@@ -2283,7 +2395,7 @@ export default function ReportDataView({
                             ? "text-right"
                             : "text-left"
                         }`}>
-                        <div className="flex items-center justify-between gap-2">
+                        <div className="group/th flex items-center justify-between gap-2">
                         {sortable ? (
                           <button
                             type="button"
@@ -2299,11 +2411,11 @@ export default function ReportDataView({
                               setPage(1);
                             }}
                             aria-label={`Sort by ${column.title}${isActiveSort ? `, currently ${sortOrder === "asc" ? "ascending" : "descending"}` : ""}`}
-                            className="inline-flex items-center gap-1.5 rounded px-1 py-0.5 text-inherit transition hover:bg-[#e6f0f9] hover:text-[#0b2341] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9]">
+                            className="inline-flex items-center gap-1.5 rounded px-1 py-0.5 uppercase text-inherit transition hover:text-[#0b2341] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9]">
                             {column.title}
                             <SortIcon
                               aria-hidden="true"
-                              className={`h-3.5 w-3.5 ${isActiveSort ? "text-[#d97706]" : "text-slate-400"}`}
+                              className={`h-3 w-3 ${isActiveSort ? "text-[#2678b9]" : "text-slate-300"}`}
                             />
                           </button>
                         ) : (
@@ -2327,7 +2439,7 @@ export default function ReportDataView({
                             const rightDistance = Math.abs(viewportRect.right - columnCenter);
                             setColumnPinSide(column.key, leftDistance <= rightDistance ? "left" : "right");
                           }}
-                          className={`shrink-0 rounded p-1 transition hover:bg-blue-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 ${pinSide ? "bg-blue-50 text-[#2678b9]" : "text-slate-400 hover:text-[#0b2341]"}`}>
+                          className={`shrink-0 rounded p-1 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 ${pinSide ? "bg-[#e6f0f9] text-[#2678b9]" : "text-slate-300 opacity-0 hover:text-[#0b2341] focus:opacity-100 group-hover/th:opacity-100"}`}>
                           <Pin aria-hidden="true" className="h-3.5 w-3.5" />
                         </button>
                         </div>
@@ -2341,7 +2453,7 @@ export default function ReportDataView({
                     <tr>
                       <td
                         colSpan={Math.max(columns.length + 1, 1)}
-                        className="px-4 py-12 text-center text-sm text-slate-500">
+                        className={tableUi.empty}>
                         {appliedSearch ||
                         Object.values(appliedFilters).some((value) => value.trim())
                           ? "No matching records found."
@@ -2355,8 +2467,8 @@ export default function ReportDataView({
                     return (
                       <tr
                         key={currentRowKey}
-                        className="group report-data-row border-b border-slate-100 last:border-0 hover:bg-[#f2f6fa]/70">
-                        <td className="sticky left-0 z-10 w-11 min-w-11 bg-white px-3 py-2.5 shadow-[3px_0_5px_-5px_rgba(11,35,65,0.65)] group-hover:bg-[#f2f6fa]">
+                        className={`group report-data-row ${tableUi.row}`}>
+                        <td className="sticky left-0 z-10 w-11 min-w-11 bg-white px-4 py-3.5 group-hover:bg-[#f6f9fc]">
                           <ReportRowSelectionCheckbox
                             rowKey={selectionKey}
                             label={rowText(row, "dispatch_number", "trip_number", "store_call_id")} />
@@ -2393,9 +2505,9 @@ export default function ReportDataView({
                                   beginEditCell(row, index, column.key);
                                 }
                               }}
-                              className={`max-w-80 px-3 py-2.5 text-slate-700 ${isPinned ? `bg-white group-hover:bg-[#f2f6fa] ${isOuterPinnedEdge ? pinSide === "left" ? "shadow-[4px_0_7px_-5px_rgba(11,35,65,0.75)]" : "shadow-[-4px_0_7px_-5px_rgba(11,35,65,0.75)]" : ""}` : ""} ${
+                              className={`max-w-80 ${tableUi.td} ${isPinned ? `bg-white group-hover:bg-[#f6f9fc] ${isOuterPinnedEdge ? pinSide === "left" ? "shadow-[4px_0_8px_-6px_rgba(11,35,65,0.35)]" : "shadow-[-4px_0_8px_-6px_rgba(11,35,65,0.35)]" : ""}` : ""} ${
                                 isEditable
-                                  ? "cursor-pointer outline-none ring-1 ring-transparent transition hover:bg-amber-50/40 hover:ring-amber-200"
+                                  ? "cursor-text outline-none transition hover:bg-[#e6f0f9]/50"
                                   : ""
                               } ${
                                 column.type === "number" ||
@@ -2663,7 +2775,7 @@ export default function ReportDataView({
               </table>
             )}
           </div>
-          <footer className="flex flex-col gap-3 border-t border-slate-100 px-5 py-3 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between">
+          <footer className={tableUi.footer}>
             <span>
               {pagination
                 ? `${pagination.total.toLocaleString()} rows · Page ${pagination.page} of ${pagination.totalPages}`
@@ -2675,7 +2787,7 @@ export default function ReportDataView({
                 aria-label="Previous page"
                 disabled={isLoading || page <= 1}
                 onClick={() => setPage((value) => Math.max(1, value - 1))}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 text-slate-700 hover:bg-[#f2f6fa] disabled:cursor-not-allowed disabled:opacity-40">
+                className={tableUi.pageBtn}>
                 <ChevronLeft aria-hidden="true" className="h-4 w-4" />
               </button>
               <button
@@ -2683,13 +2795,14 @@ export default function ReportDataView({
                 aria-label="Next page"
                 disabled={isLoading || pageCount === 0 || page >= pageCount}
                 onClick={() => setPage((value) => value + 1)}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 text-slate-700 hover:bg-[#f2f6fa] disabled:cursor-not-allowed disabled:opacity-40">
+                className={tableUi.pageBtn}>
                 <ChevronRight aria-hidden="true" className="h-4 w-4" />
               </button>
             </div>
           </footer>
         </>
       )}
-    </section>
+      </section>
+    </div>
   );
 }
