@@ -1,10 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
-  CalendarDays,
+  ChevronLeft,
+  ChevronRight,
   Clock,
   Package,
-  Store,
   Truck,
   UserRound,
 } from "lucide-react";
@@ -21,7 +21,14 @@ import {
   type TripRecord,
 } from "../../../services/trip.service";
 import LiveTripMap, { type TripEventTrack } from "../../../components/admin/LiveTripMap";
-import { fleetTruckPhoto, surface } from "../../../components/admin/dashboardStyles";
+import { fleetTruckPhotos, getFleetTruckPhoto, surface } from "../../../components/admin/dashboardStyles";
+import ImageWithFallback from "../../../components/admin/ImageWithFallback";
+import {
+  getProductPhotoFallback,
+  getRecordImageUrls,
+  PRODUCT_IMAGE_FIELDS,
+  TRIP_IMAGE_FIELDS,
+} from "../../../services/image.service";
 
 type BookingPage = {
   rows: Record<string, unknown>[];
@@ -107,30 +114,78 @@ function stopIsDone(stop: TripChildRecord): boolean {
   );
 }
 
-/* Half-circle gauge, same visual idea as the engine-load dial in the reference */
-function ProgressGauge({ percent }: { percent: number }) {
-  const length = Math.PI * 50;
-  const filled = (Math.max(0, Math.min(100, percent)) / 100) * length;
+/* Photo gallery: one large photo, thumbnails underneath. Photos never sit behind other cards. */
+function TripGallery({
+  trip,
+  seed,
+  plate,
+}: {
+  trip: TripRecord;
+  seed: string;
+  plate: string;
+}) {
+  const photos = useMemo(() => {
+    const backendPhotos = getRecordImageUrls(trip, TRIP_IMAGE_FIELDS);
+    if (backendPhotos.length > 0) return backendPhotos;
+
+    const first = getFleetTruckPhoto(seed);
+    const start = Math.max((fleetTruckPhotos as readonly string[]).indexOf(first), 0);
+    return [...fleetTruckPhotos.slice(start), ...fleetTruckPhotos.slice(0, start)];
+  }, [seed, trip]);
+  const [active, setActive] = useState(0);
+  const go = (step: number) => setActive((current) => (current + step + photos.length) % photos.length);
+  const navBtn =
+    "absolute top-1/2 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-white/90 text-[#0b2341] shadow-[0_2px_8px_rgba(11,35,65,0.18)] transition hover:bg-[#ffd43b] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0b2341]/40";
+
   return (
-    <svg viewBox="0 0 120 72" className="mx-auto w-full max-w-[190px]" role="img" aria-label={`${percent}% of stops completed`}>
-      <path d="M10 62 A50 50 0 0 1 110 62" fill="none" stroke="#e2e8f0" strokeWidth="11" strokeLinecap="round" />
-      <path
-        d="M10 62 A50 50 0 0 1 110 62"
-        fill="none"
-        stroke="#ffd43b"
-        strokeWidth="11"
-        strokeLinecap="round"
-        strokeDasharray={`${filled} ${length}`}
-      />
-      <text x="60" y="58" textAnchor="middle" className="fill-[#0b2341] text-[22px] font-bold">
-        {percent}%
-      </text>
-    </svg>
+    <div className={`${surface.card} p-3`}>
+      <div className="relative aspect-[16/10] overflow-hidden rounded-2xl bg-slate-100">
+        <ImageWithFallback
+          key={photos[active]}
+          src={photos[active]}
+          fallbackSrc={getFleetTruckPhoto(seed)}
+          alt={`Truck photo ${active + 1} of ${photos.length}`}
+          className="h-full w-full object-cover"
+        />
+        <button type="button" aria-label="Previous photo" onClick={() => go(-1)} className={`${navBtn} left-3`}>
+          <ChevronLeft aria-hidden="true" className="h-4 w-4" />
+        </button>
+        <button type="button" aria-label="Next photo" onClick={() => go(1)} className={`${navBtn} right-3`}>
+          <ChevronRight aria-hidden="true" className="h-4 w-4" />
+        </button>
+        <span className="absolute bottom-3 left-3 inline-flex items-center gap-2 rounded-full bg-[#0b2341]/90 px-3 py-1.5 text-xs font-semibold text-white backdrop-blur">
+          <Truck aria-hidden="true" className="h-3.5 w-3.5 text-[#ffd43b]" />
+          {plate}
+        </span>
+        <span className="absolute bottom-3 right-3 rounded-full bg-white/90 px-2.5 py-1 text-[11px] font-semibold tabular-nums text-[#0b2341]">
+          {active + 1} / {photos.length}
+        </span>
+      </div>
+      <div className="mt-3 grid grid-cols-4 gap-2" role="group" aria-label="Truck photos">
+        {photos.map((photo, index) => (
+          <button
+            key={photo}
+            type="button"
+            aria-label={`Show photo ${index + 1}`}
+            aria-pressed={index === active}
+            onClick={() => setActive(index)}
+            className={`aspect-[4/3] overflow-hidden rounded-xl bg-slate-100 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0b2341]/40 ${
+              index === active ? "ring-2 ring-[#ffd43b] ring-offset-2" : "opacity-60 hover:opacity-100"
+            }`}>
+            <ImageWithFallback
+              src={photo}
+              fallbackSrc={getFleetTruckPhoto(seed)}
+              alt=""
+              loading="lazy"
+              className="h-full w-full object-cover"
+            />
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 
-const glass =
-  "rounded-3xl border border-white/70 bg-white/60 shadow-[0_1px_2px_rgba(11,35,65,0.04),0_14px_34px_-20px_rgba(11,35,65,0.22)] backdrop-blur-xl";
 
 export default function TripDetailView({
   tripId,
@@ -318,150 +373,87 @@ export default function TripDetailView({
         </div>
       )}
 
-      {/* Hero: big truck behind floating glass cards (Moveon style) */}
-      <section className="relative overflow-hidden rounded-[36px] bg-gradient-to-b from-[#f5f8fb] via-[#eef3f8] to-[#e3ebf4] p-3 shadow-[0_1px_2px_rgba(11,35,65,0.04),0_10px_30px_-18px_rgba(11,35,65,0.14)] sm:p-4">
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_60%_55%_at_50%_45%,rgba(255,255,255,0.95),transparent)]"
+      {/* Overview: gallery on the left, trip summary on the right. Nothing overlaps. */}
+      <section className="grid items-start gap-4 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+        <TripGallery
+          key={tripId}
+          trip={trip ?? {}}
+          seed={tripId}
+          plate={getBookingValue(reportRows, "plate_number", "No plate recorded")}
         />
-        <div className="relative grid gap-3 xl:grid-cols-[300px_minmax(0,1fr)_300px]">
-          {/* Left: dispatch, stop progress, driver */}
-          <div className="relative z-10 space-y-3">
-            <div className={`${glass} p-5`}>
-              <div className="flex items-start justify-between gap-2">
-                <h2 className="min-w-0 truncate text-xl font-bold tracking-tight text-[#0b2341]">
-                  {isLoading ? "Loading trip…" : dispatchNumber}
-                </h2>
-                <StatusPill status={trip?.status} fallback="Loading" />
-              </div>
-              <div className="mt-4 flex items-center justify-between text-[11px] text-slate-500">
-                <span>{placeholder ?? `${doneStops} of ${stops.length} stops`}</span>
-                <span className="font-semibold text-[#0b2341]">{progress}%</span>
-              </div>
-              <div className="relative mt-2 h-1.5 rounded-full bg-slate-200/80">
-                <div className="h-full rounded-full bg-[#0b2341] transition-all duration-500" style={{ width: `${progress}%` }} />
-                <span
-                  className="absolute top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-[#ffd43b] shadow"
-                  style={{ left: `${progress}%` }}
-                />
-              </div>
-              <div className="mt-2 flex items-center justify-between text-[11px] font-medium text-slate-600">
-                <span>{shortDate(trip?.loading_date)}</span>
-                <span>{shortDate(trip?.estimated_delivery_date)}</span>
-              </div>
-              <ul className="mt-4 space-y-2 border-t border-slate-200/70 pt-4 text-xs">
-                <li className="flex items-start gap-2.5">
-                  <span className="mt-1 h-2 w-2 shrink-0 rounded-full border-2 border-[#0b2341] bg-white" />
-                  <span className="min-w-0 break-words text-slate-700">{originName}</span>
-                </li>
-                <li className="flex items-start gap-2.5">
-                  <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-[#2678b9]" />
-                  <span className="min-w-0 break-words text-slate-700">{destinationText}</span>
-                </li>
-              </ul>
-            </div>
 
-            <div className={`${glass} p-5`}>
-              <div className="flex items-baseline justify-between">
-                <h3 className="text-sm font-semibold text-[#0b2341]">Stop progress</h3>
-                <span className="text-[11px] text-slate-400">{stops.length} stops</span>
-              </div>
-              {stops.length === 0 ? (
-                <p className="mt-4 text-xs text-slate-500">{placeholder ?? "No stops recorded."}</p>
-              ) : (
-                <div className="mt-4 flex h-12 items-end gap-1.5" aria-hidden="true">
-                  {stops.map((stop, index) => {
-                    const done = stopIsDone(stop);
-                    const isNext = !done && stops.slice(0, index).every(stopIsDone);
-                    return (
-                      <span
-                        key={stopKey(stop, index)}
-                        className={`flex-1 rounded-full ${done ? "bg-[#0b2341]" : isNext ? "bg-[#ffd43b]" : "bg-slate-200"}`}
-                        style={{ height: `${40 + ((index * 17) % 60)}%` }}
-                      />
-                    );
-                  })}
-                </div>
-              )}
-              <p className="mt-3 text-[11px] text-slate-500">
-                <span className="mr-3 inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-[#0b2341]" />Done</span>
-                <span className="mr-3 inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-[#ffd43b]" />Next</span>
-                <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-slate-200" />Pending</span>
-              </p>
+        <div className={`${surface.card} p-6`}>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className={surface.eyebrow}>Dispatch number</p>
+              <h2 className="mt-0.5 truncate text-2xl font-bold tracking-tight text-[#0b2341]">
+                {isLoading ? "Loading trip…" : dispatchNumber}
+              </h2>
             </div>
+            <StatusPill status={trip?.status} fallback="Loading" />
+          </div>
 
-            <div className={`${glass} flex items-center gap-3 p-4`}>
-              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#ffd43b] text-[#0b2341]">
-                {driverName === "Not recorded" ? <UserRound aria-hidden="true" className="h-5 w-5" /> : <span className="text-sm font-bold">{driverName.charAt(0).toUpperCase()}</span>}
-              </span>
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-[#0b2341]">{driverName}</p>
-                <p className="text-[11px] text-slate-500">Driver · {getBookingValue(reportRows, "trucking_company")}</p>
-              </div>
+          <div className="mt-6">
+            <div className="flex items-center justify-between text-xs text-slate-500">
+              <span>{placeholder ?? `${doneStops} of ${stops.length} stops completed`}</span>
+              <span className="font-semibold text-[#0b2341]">{progress}%</span>
+            </div>
+            <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
+              <div className="h-full rounded-full bg-[#ffd43b] transition-all duration-500" style={{ width: `${progress}%` }} />
+            </div>
+            <div className="mt-2 flex items-center justify-between text-[11px] text-slate-500">
+              <span>Loading {shortDate(trip?.loading_date)}</span>
+              <span>ETA {shortDate(trip?.estimated_delivery_date)}</span>
             </div>
           </div>
 
-          {/* Center: oversized truck that sits behind the side cards on wide screens */}
-          <div className="relative z-0 order-first flex min-h-[240px] flex-col items-center justify-center xl:order-none xl:min-h-[540px]">
-            <img
-              src={fleetTruckPhoto}
-              alt=""
-              className="w-full max-w-[640px] object-contain mix-blend-multiply drop-shadow-[0_24px_24px_rgba(11,35,65,0.18)] xl:absolute xl:left-1/2 xl:top-1/2 xl:w-[175%] xl:max-w-none xl:-translate-x-1/2 xl:-translate-y-[55%]"
-            />
-            <span className="relative z-10 mt-2 inline-flex items-center gap-2 rounded-full bg-[#0b2341] px-4 py-1.5 text-xs font-semibold text-white shadow-[0_8px_20px_-8px_rgba(11,35,65,0.6)] xl:absolute xl:bottom-2 xl:left-1/2 xl:mt-0 xl:-translate-x-1/2">
-              <Truck aria-hidden="true" className="h-3.5 w-3.5 text-[#ffd43b]" />
-              {getBookingValue(reportRows, "plate_number", "No plate recorded")}
+          <ul className="mt-6 space-y-3 border-t border-slate-100 pt-5 text-sm">
+            <li className="flex items-start gap-3">
+              <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full border-2 border-[#0b2341] bg-white" />
+              <span className="min-w-0">
+                <span className="block text-[11px] text-slate-400">From</span>
+                <span className="break-words text-slate-700">{originName}</span>
+              </span>
+            </li>
+            <li className="flex items-start gap-3">
+              <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-[#2678b9]" />
+              <span className="min-w-0">
+                <span className="block text-[11px] text-slate-400">To</span>
+                <span className="break-words text-slate-700">{destinationText}</span>
+              </span>
+            </li>
+          </ul>
+
+          <dl className="mt-6 grid grid-cols-3 gap-2 text-center">
+            {[
+              ["Items", placeholder ?? String(lineItemCount)],
+              ["Quantity", placeholder ?? formatNumber(totalQty)],
+              ["CBM", placeholder ?? formatNumber(totalCbm)],
+            ].map(([label, value]) => (
+              <div key={label} className={`${surface.inner} px-2 py-3`}>
+                <dd className="text-base font-bold tabular-nums text-[#0b2341]">{value}</dd>
+                <dt className="text-[11px] text-slate-500">{label}</dt>
+              </div>
+            ))}
+          </dl>
+
+          <div className="mt-6 flex items-center gap-3 border-t border-slate-100 pt-5">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#ffd43b] text-[#0b2341]">
+              {driverName === "Not recorded" ? <UserRound aria-hidden="true" className="h-5 w-5" /> : <span className="text-sm font-bold">{driverName.charAt(0).toUpperCase()}</span>}
             </span>
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold text-[#0b2341]">{driverName}</p>
+              <p className="truncate text-[11px] text-slate-500">Driver · {getBookingValue(reportRows, "trucking_company")}</p>
+            </div>
           </div>
 
-          {/* Right: key figures */}
-          <div className="relative z-10 grid grid-cols-2 gap-3 xl:grid-cols-1">
-            <div className="relative overflow-hidden rounded-3xl border border-white/70 bg-gradient-to-b from-emerald-100/90 to-emerald-50/80 p-5 shadow-[0_10px_30px_-18px_rgba(11,35,65,0.18)]">
-              <svg aria-hidden="true" viewBox="0 0 120 14" preserveAspectRatio="none" className="absolute inset-x-0 top-0 h-3 w-full text-white/60">
-                <path d="M0 0 H120 V6 Q90 16 60 6 T0 8 Z" fill="currentColor" />
-              </svg>
-              <span className="mt-1 flex h-10 w-10 items-center justify-center rounded-2xl bg-white/80 text-emerald-600">
-                <Store aria-hidden="true" className="h-5 w-5" />
-              </span>
-              <p className="mt-3 text-2xl font-bold text-[#0b2341]">
-                {placeholder ?? `${doneStops}/${stops.length}`}
-              </p>
-              <p className="text-[11px] text-emerald-800/70">Stops completed</p>
-            </div>
-            <div className={`${glass} col-span-2 p-5 xl:col-span-1`}>
-              <h3 className="text-sm font-semibold text-[#0b2341]">Delivery progress</h3>
-              <p className="text-[11px] text-slate-500">Share of stops completed</p>
-              <div className="mt-2"><ProgressGauge percent={progress} /></div>
-            </div>
-            <div className={`${glass} col-span-2 p-5 xl:col-span-1`}>
-              <div className="flex items-baseline justify-between">
-                <h3 className="text-sm font-semibold text-[#0b2341]">Cargo</h3>
-                <span className="inline-flex items-center gap-1 text-[11px] text-slate-500">
-                  <CalendarDays aria-hidden="true" className="h-3.5 w-3.5 text-[#2678b9]" />
-                  ETA {dateText(trip?.estimated_delivery_date)}
-                </span>
-              </div>
-              <dl className="mt-3 grid grid-cols-3 gap-2 text-center">
-                {[
-                  ["Items", placeholder ?? String(lineItemCount)],
-                  ["Quantity", placeholder ?? formatNumber(totalQty)],
-                  ["CBM", placeholder ?? formatNumber(totalCbm)],
-                ].map(([label, value]) => (
-                  <div key={label} className="rounded-2xl bg-white/70 px-1 py-2.5">
-                    <dd className="text-base font-bold tabular-nums text-[#0b2341]">{value}</dd>
-                    <dt className="text-[10px] text-slate-500">{label}</dt>
-                  </div>
-                ))}
-              </dl>
-            </div>
-          </div>
+          {Boolean(trip?.remarks) && (
+            <p className={`${surface.inner} mt-5 px-4 py-3 text-xs text-slate-600`}>{String(trip?.remarks)}</p>
+          )}
         </div>
-        {Boolean(trip?.remarks) && (
-          <p className="relative mt-3 rounded-2xl bg-white/70 px-4 py-2.5 text-xs text-slate-600 backdrop-blur">{String(trip?.remarks)}</p>
-        )}
       </section>
 
-      {/* Stop selector strip: translucent cards, selected one lifts to solid white */}
+      {/* Stop selector strip */}
       <section aria-label="Stops" className="-mx-1 flex gap-3 overflow-x-auto px-1 pb-2 pt-1">
         {stops.length === 0 ? (
           <p className={`${surface.card} w-full px-5 py-6 text-center text-sm text-slate-500`}>
@@ -480,25 +472,19 @@ export default function TripDetailView({
                 onClick={() => setSelectedStop((current) => (current === key ? null : key))}
                 className={`relative min-w-[250px] max-w-[280px] shrink-0 overflow-hidden rounded-2xl border p-4 text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0b2341]/40 ${
                   selected
-                    ? "border-white bg-white shadow-[0_12px_28px_-14px_rgba(11,35,65,0.3)] ring-2 ring-[#ffd43b]"
-                    : "border-white/60 bg-white/50 backdrop-blur hover:bg-white/80"
+                    ? "border-transparent bg-white shadow-[0_12px_28px_-14px_rgba(11,35,65,0.3)] ring-2 ring-[#ffd43b]"
+                    : "border-slate-200/70 bg-white hover:border-slate-300"
                 }`}>
-                <img
-                  src={fleetTruckPhoto}
-                  alt=""
-                  aria-hidden="true"
-                  className={`pointer-events-none absolute -right-3 bottom-1 h-14 w-24 object-contain mix-blend-multiply ${selected ? "opacity-90" : "opacity-40"}`}
-                />
                 <div className="relative flex items-center gap-2">
                   <span className={`flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-bold ${selected ? "bg-[#ffd43b] text-[#0b2341]" : "bg-[#e6f0f9] text-[#0b2341]"}`}>
                     {key}
                   </span>
                   <StatusPill status={stop.delivery_status ?? match.delivery_status} fallback="Pending" />
                 </div>
-                <p className="relative mt-3 max-w-[150px] truncate text-sm font-bold text-[#0b2341]">
+                <p className="relative mt-3 truncate text-sm font-bold text-[#0b2341]">
                   {valueText(match.store_name, valueText(stop.store_id, "Store not recorded"))}
                 </p>
-                <p className="relative mt-0.5 max-w-[150px] truncate text-[11px] text-slate-500">
+                <p className="relative mt-0.5 truncate text-[11px] text-slate-500">
                   {valueText(match.customer_name, valueText(stop.customer_id, "Customer not recorded"))}
                 </p>
                 <p className="relative mt-2 flex items-center gap-1.5 text-[11px] text-slate-500">
@@ -574,8 +560,11 @@ export default function TripDetailView({
                   type="button"
                   aria-pressed={active}
                   onClick={() => setSelectedStop(key)}
-                  className={`shrink-0 rounded-full px-3.5 py-1.5 text-[11px] font-semibold transition-colors ${active ? "bg-white text-[#0b2341] shadow-[0_2px_8px_-2px_rgba(11,35,65,0.2)]" : "text-slate-500 hover:text-[#0b2341]"}`}>
-                  {label} <span className="text-slate-400">{count}</span>
+                  className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[11px] font-semibold transition-colors ${active ? "bg-white text-[#0b2341] shadow-[0_2px_8px_-2px_rgba(11,35,65,0.2)]" : "text-slate-500 hover:text-[#0b2341]"}`}>
+                  {label}
+                  <span className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold leading-none text-white ring-2 ring-white">
+                    {count}
+                  </span>
                 </button>
               );
             })}
@@ -604,7 +593,18 @@ export default function TripDetailView({
               ) : (
                 visibleRows.map((row, index) => (
                   <tr key={String(row.trip_line_item_id ?? row.id ?? `${tripId}-item-${index}`)} className="bg-white shadow-[0_1px_2px_rgba(11,35,65,0.04)]">
-                    <td className="rounded-l-2xl px-4 py-3.5 font-semibold text-[#0b2341]">{valueText(row.product_name, "Product not recorded")}</td>
+                    <td className="rounded-l-2xl px-4 py-3.5 font-semibold text-[#0b2341]">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <ImageWithFallback
+                          src={getRecordImageUrls(row, PRODUCT_IMAGE_FIELDS)[0]}
+                          fallbackSrc={getProductPhotoFallback(row)}
+                          alt={`Reference photo for ${valueText(row.product_name, "appliance")}`}
+                          loading="lazy"
+                          className="h-14 w-14 shrink-0 rounded-xl bg-[#f2f6fa] object-cover"
+                        />
+                        <span className="min-w-0">{valueText(row.product_name, "Product not recorded")}</span>
+                      </div>
+                    </td>
                     <td className="px-4 py-3.5 text-slate-600">{valueText(row.sku ?? row.model_code)}</td>
                     <td className="px-4 py-3.5 text-slate-600">{valueText(row.store_name)}</td>
                     <td className="px-4 py-3.5 text-slate-700">{valueText(row.dr_number)}</td>

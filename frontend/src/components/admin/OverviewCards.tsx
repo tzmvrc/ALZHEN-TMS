@@ -2,7 +2,8 @@
 import { useState, type ReactNode } from "react";
 import { ArrowUpRight, RefreshCw } from "lucide-react";
 import type { DispatchRecord } from "../../types/dashboard";
-import { fleetTruckPhoto, surface } from "./dashboardStyles";
+import { getFleetTruckPhoto, surface } from "./dashboardStyles";
+import ImageWithFallback from "./ImageWithFallback";
 
 /* ------------------------------------------------------------------ */
 /* Greeting header                                                      */
@@ -67,7 +68,7 @@ export function TripShortcutRow({
   }
   return (
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-      {shown.map((trip) => {
+      {shown.map((trip, index) => {
         const selected = trip.id === selectedTripId;
         return (
           <button
@@ -80,8 +81,9 @@ export function TripShortcutRow({
             }`}
           >
             <span className="flex h-24 items-center justify-center overflow-hidden rounded-2xl bg-[#f2f6fa]">
-              <img
-                src={fleetTruckPhoto}
+              <ImageWithFallback
+                src={trip.imageUrl}
+                fallbackSrc={getFleetTruckPhoto(undefined, index)}
                 alt=""
                 className="h-full w-full object-contain p-2"
               />
@@ -352,7 +354,7 @@ export function FleetListCard({
         </p>
       ) : (
         <ul className="space-y-2.5">
-          {visible.map((trip) => {
+          {visible.map((trip, index) => {
             const progress = Math.min(Math.max(trip.progressPct ?? 0, 0), 100);
             const selected = trip.id === selectedTripId;
             const barColor =
@@ -375,7 +377,12 @@ export function FleetListCard({
                   className="flex min-w-0 flex-1 items-center gap-2.5 rounded-xl text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0b2341]/40"
                 >
                   <span className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white">
-                    <img src={fleetTruckPhoto} alt="" className="h-full w-full object-contain p-1" />
+                    <ImageWithFallback
+                      src={trip.imageUrl}
+                      fallbackSrc={getFleetTruckPhoto(undefined, index)}
+                      alt=""
+                      className="h-full w-full object-contain p-1"
+                    />
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center justify-between gap-2">

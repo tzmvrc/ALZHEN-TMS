@@ -353,10 +353,13 @@ export default function ResourceView({
         : title;
   const showTitleBar = isTablePage || isTripDetail || showLocalTrip;
   /* Table pages use the full width; everything else is centred and moderately wide. */
+  /* Trip details are a bit wider than the Home dashboard (1440px in OverviewView). */
   const layoutClass =
-    isTablePage
-      ? "w-full"
-      : "mx-auto w-full max-w-[1180px] px-1 sm:px-4 lg:px-8";
+    isTripDetail || showLocalTrip
+      ? "mx-auto w-full max-w-[1640px] px-1 sm:px-4 lg:px-6"
+      : isTablePage
+        ? "w-full"
+        : "mx-auto w-full max-w-[1180px] px-1 sm:px-4 lg:px-8";
 
   return (
     <>

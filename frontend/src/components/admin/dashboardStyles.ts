@@ -1,6 +1,25 @@
-// src/components/admin/dashboardStyles.ts
-export const fleetTruckPhoto =
-  "https://alzhen-website.vercel.app/images/company/hino-enhanced.png";
+export const fleetTruckPhotos = [
+  "/images/trucks/alzhen-truck-01.jpg",
+  "/images/trucks/alzhen-truck-02.jpg",
+  "/images/trucks/alzhen-truck-03.jpg",
+  "/images/trucks/alzhen-truck-06.jpg",
+] as const;
+
+export function getFleetTruckPhoto(
+  seed?: string | null,
+  index?: number,
+): string {
+  if (index !== undefined) {
+    return fleetTruckPhotos[index % fleetTruckPhotos.length];
+  }
+  if (!seed) return fleetTruckPhotos[0];
+
+  let hash = 2166136261;
+  for (let position = 0; position < seed.length; position += 1) {
+    hash = Math.imul(hash ^ seed.charCodeAt(position), 16777619);
+  }
+  return fleetTruckPhotos[(hash >>> 0) % fleetTruckPhotos.length];
+}
 
 /* Alzhen brand palette (same navy + yellow as the top navigation) */
 export const accent = {

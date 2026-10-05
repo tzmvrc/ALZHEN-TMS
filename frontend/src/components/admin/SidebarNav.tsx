@@ -482,7 +482,7 @@ export default function SidebarNav({
       </aside>
 
       {/* ───────── Right: notifications + profile ───────── */}
-      <div className="fixed right-4 top-4 z-40 flex h-11 items-center gap-1 rounded-full border border-[#203954] bg-[#0b2341] p-1 shadow-[0_8px_20px_rgba(11,35,65,0.2)]">
+      <div className="fixed right-4 top-4 z-[1101] flex h-11 items-center gap-1 rounded-full border border-[#203954] bg-[#0b2341] p-1 shadow-[0_8px_20px_rgba(11,35,65,0.2)]">
         {canAccessNotifications && (
           <div ref={notifRef} className="contents">
             <button

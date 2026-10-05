@@ -494,7 +494,7 @@ function uniqueValues(rows: ReportRow[], ...keys: string[]): string[] {
 function groupRows(rows: ReportRow[], byTrip: boolean): ReportRow[][] {
   const groups = new Map<string, ReportRow[]>();
   rows.forEach((row, index) => {
-    const tripId = rowText(row, "trip_id");
+    const tripId = rowText(row, "_trip_id", "trip_id");
     const key = byTrip && tripId ? `trip:${tripId}` : `row:${index}`;
     const list = groups.get(key);
     if (list) list.push(row);
@@ -616,7 +616,7 @@ function ReportVisualCards({
           "sku",
         );
         const showExtras = group.length === 1 && extraColumns.length > 0;
-        const tripId = isStoreCall ? "" : firstValue(group, "trip_id");
+        const tripId = firstValue(group, "_trip_id", "trip_id");
 
         return (
           <article
@@ -2047,7 +2047,6 @@ export default function ReportDataView({
               <Search aria-hidden="true" className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input id="report-search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search report" className={tableUi.search} />
             </label>
-            <button type="submit" className="h-10 shrink-0 rounded-full bg-[#ffd43b] px-4 text-sm font-semibold text-[#0b2341] transition hover:bg-[#f2c200]">Search</button>
             {reportFilters.length > 0 && (
               <button type="button" aria-label={filtersExpanded ? "Hide filters" : "Show filters"} aria-expanded={filtersExpanded} aria-controls="report-filter-controls" title={filtersExpanded ? "Hide filters" : "Show filters"} onClick={() => setFiltersExpanded((expanded) => !expanded)} className={`${tableUi.iconBtn} relative shrink-0 ${filtersExpanded ? "bg-[#e6f0f9] text-[#0b2341]" : ""}`}>
                 <SlidersHorizontal aria-hidden="true" className="h-4 w-4" />

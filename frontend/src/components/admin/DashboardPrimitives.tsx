@@ -31,7 +31,8 @@ import type {
   SalesPoint,
   SnapshotRecord,
 } from "../../types/dashboard";
-import { fleetTruckPhoto, toneClasses, toneHex, surface } from "./dashboardStyles";
+import { getFleetTruckPhoto, toneClasses, toneHex, surface } from "./dashboardStyles";
+import ImageWithFallback from "./ImageWithFallback";
 
 /* ================================================================ */
 /* TopBar                                                            */
@@ -1134,11 +1135,13 @@ function FleetTripCard({
   onSelect,
   onViewTrip,
   selected,
+  imageIndex,
 }: {
   trip: DispatchRecord;
   onSelect?: (id: string) => void;
   onViewTrip?: (id: string) => void;
   selected?: boolean;
+  imageIndex: number;
 }) {
   const progress = Math.min(Math.max(trip.progressPct ?? 0, 0), 100);
   const statusTheme =
@@ -1195,8 +1198,9 @@ function FleetTripCard({
 
         <div className="mt-1.5 flex items-center gap-1.5 rounded-lg border border-white/80 bg-white/75 p-1">
           <span className="h-8 w-10 shrink-0 overflow-hidden rounded-md bg-white shadow-sm ring-1 ring-slate-200/70">
-            <img
-              src={fleetTruckPhoto}
+            <ImageWithFallback
+              src={trip.imageUrl}
+              fallbackSrc={getFleetTruckPhoto(undefined, imageIndex)}
               alt="Alzhen fleet truck at origin"
               className="h-full w-full object-cover object-center"
             />
@@ -1331,13 +1335,14 @@ export function FleetBoardPanel({
 
       <div className="min-h-0 flex-1 overflow-y-auto pt-3">
         <div className="grid gap-3 xl:grid-cols-1">
-          {filteredRows.slice(0, 6).map((trip) => (
+          {filteredRows.slice(0, 6).map((trip, index) => (
             <FleetTripCard
               key={trip.id}
               trip={trip}
               onSelect={onSelectTrip}
               onViewTrip={onViewTrip}
               selected={trip.id === selectedTripId}
+              imageIndex={index}
             />
           ))}
         </div>
