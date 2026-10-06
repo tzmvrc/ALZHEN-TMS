@@ -115,6 +115,8 @@ export default function ClientWebsiteWorkspace({
     import.meta.env.VITE_CLIENT_WEBSITE_URL || "https://alzhen-website.vercel.app"
   ).replace(/\/$/, "");
   const [preview, setPreview] = useState(true);
+  const [previewLoadedAt, setPreviewLoadedAt] = useState<Date | null>(null);
+  const [previewReload, setPreviewReload] = useState(0);
   const [archived, setArchived] = useState(false);
   const [confirmation, setConfirmation] = useState<{action:"archive" | "delete"; record:WebsiteRecord} | null>(null);
   const navEntries: NavEntry[] = [
@@ -303,7 +305,7 @@ export default function ClientWebsiteWorkspace({
     }
   };
   return (
-    <div className="cw-shell dotted-surface">
+    <div className="cw-shell dotted-surface mx-auto min-h-[calc(100vh-4.5rem)] w-full px-3 sm:px-4 lg:px-5">
       <SidebarNav
         entries={navEntries}
         activeId={preview ? "website-preview" : kind}
@@ -331,7 +333,7 @@ export default function ClientWebsiteWorkspace({
         onCollapseChange={(collapsed) => setSidebarCollapsed(collapsed)}
       />
       <div className={`cw-content transition-[padding-left] duration-300 motion-reduce:transition-none ${sidebarCollapsed ? "" : "lg:pl-[17rem]"}`}>
-      <main className={`cw-workspace cw-main cw-workspace--${kind}${preview ? " cw-preview-page" : ""}`}>
+      <main className={`cw-workspace cw-main cw-workspace--${kind}${preview ? " cw-preview-page" : ""}${sidebarCollapsed ? "" : " cw-sidebar-open"}`}>
         {!preview && <header className="cw-header">
           <div>
             <p className="cw-eyebrow">CLIENT WEBSITE</p>
@@ -367,8 +369,32 @@ export default function ClientWebsiteWorkspace({
           </p>
         )}
         {preview ? <section className="cw-preview">
-          <h1>Alzhen Website Preview</h1>
-          <iframe src={website} title="Alzhen client website preview" />
+          <header className="cw-preview-header">
+            <h1>Alzhen Website Preview</h1>
+            <div className="cw-preview-meta">
+              <span>
+                {previewLoadedAt
+                  ? `Reload Website`
+                  : "Waiting for update"}
+              </span>
+              <button
+                type="button"
+                aria-label="Refresh website preview"
+                onClick={() => {
+                  setPreviewLoadedAt(null);
+                  setPreviewReload((n) => n + 1);
+                }}
+              >
+                <RefreshCw aria-hidden="true" size={14} />
+              </button>
+            </div>
+          </header>
+          <iframe
+            key={previewReload}
+            src={website}
+            title="Alzhen client website preview"
+            onLoad={() => setPreviewLoadedAt(new Date())}
+          />
         </section> : <>
         <div className={`cw-filters cw-filters--${kind}`} aria-label="Post status">
           {[false, true].map(value => <button key={String(value)} aria-pressed={archived === value} onClick={() => { if (!discard()) return; setDraft(null); setDirty(false); setArchived(value); }}>

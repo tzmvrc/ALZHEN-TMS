@@ -405,7 +405,7 @@ export default function DashboardPage({
   }
 
   return (
-    <div className="relative min-h-screen bg-[#f2f4f5] text-slate-900">
+    <div className="relative min-h-screen overflow-x-hidden bg-[#f2f4f5] text-slate-900">
       {profile?.role === "ADMIN" && newNotification && (
         <div role="status" aria-live="polite" className="fixed right-4 top-20 z-[90] w-[min(25rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-blue-200 bg-white shadow-xl">
           <div className="flex items-start gap-3 p-3.5">
@@ -463,6 +463,7 @@ export default function DashboardPage({
               <div className="w-full">
                 <h1 className="sr-only">Operations overview</h1>
                 <OverviewView
+                  sidebarExpanded={!sidebarCollapsed}
                   onOpenTrip={(tripId) =>
                     setActiveId(`trip-detail:${tripId}:overview`)
                   }
@@ -481,6 +482,7 @@ export default function DashboardPage({
                 />
               ) : (
                 <OverviewView
+                  sidebarExpanded={!sidebarCollapsed}
                   onOpenTrip={(tripId) =>
                     setActiveId(`trip-detail:${tripId}:overview`)
                   }

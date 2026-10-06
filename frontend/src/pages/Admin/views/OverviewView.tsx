@@ -317,9 +317,11 @@ function CustomSparkline({ values, color = "#2678b9" }: { values: number[]; colo
 
 export default function OverviewView({
   onOpenTrip,
+  sidebarExpanded = false,
 }: {
   onOpenTrip?: (tripId: string) => void;
   onMetricNavigate?: (sectionId: string) => void;
+  sidebarExpanded?: boolean;
 }) {
   const { accessToken, refreshSession, profile } = useAuth();
   const navigate = useNavigate();
@@ -604,13 +606,23 @@ export default function OverviewView({
 
   // --- Render ---
   return (
-    <div className="min-h-screen px-4 pb-4 pt-4 sm:px-6 sm:pb-6 lg:px-8">
+    <div
+      className={`min-h-screen pb-4 pt-4 sm:pb-6 ${
+        sidebarExpanded ? "px-5" : "px-7"
+      } max-[1098px]:px-3`}
+    >
       <div className="mx-auto max-w-[1600px] space-y-6">
-        <header className="-mt-[4.5rem] flex min-h-11 flex-col items-start justify-center gap-1">
-          <h1 className="text-2xl font-bold leading-tight tracking-tight text-[#0b2341] sm:text-[28px]">
+        <header
+          className={`-mt-[5rem] flex min-h-11 w-full flex-col items-start justify-center gap-1 text-left ${
+            sidebarExpanded
+              ? "px-6 max-[1098px]:items-center max-[1098px]:px-4 max-[1098px]:text-center"
+              : "px-10 max-[1098px]:items-center max-[1098px]:px-4 max-[1098px]:text-center"
+          }`}
+        >
+          <h1 className="w-full min-w-0 truncate text-2xl font-bold leading-tight tracking-tight text-[#0b2341] sm:text-[28px] max-[1098px]:text-[22px]">
             Welcome back, {greetingName}!
           </h1>
-          <div className="flex items-center gap-2 text-xs text-slate-500">
+          <div className="flex items-center gap-2 text-xs text-slate-500 max-[1098px]:justify-center">
             <span>
               {updatedLabel ? `Updated ${updatedLabel}` : "Waiting for update"}
             </span>
@@ -625,6 +637,7 @@ export default function OverviewView({
           </div>
         </header>
 
+        <div className={`space-y-6 max-[1098px]:px-4 ${sidebarExpanded ? "px-6" : "px-10"}`}>
         {/* KPI Cards */}
         <section className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-4">
           <KpiCard
@@ -666,7 +679,7 @@ export default function OverviewView({
         <SpotlightTrips rows={fleetRows} onViewTrip={onOpenTrip} />
 
         {/* Main Content Grid */}
-        <div className="grid grid-cols-1 items-stretch gap-6 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+        <div className="grid grid-cols-1 items-stretch gap-6 xl:grid-cols-2">
           <div className="min-w-0 xl:h-full">
             <LiveTripMap
               tracks={snapshot?.tracks ?? []}
@@ -717,6 +730,7 @@ export default function OverviewView({
           unlocatedTrips={unlocatedTrips}
           isLoading={isLoading}
         />
+        </div>
       </div>
     </div>
   );

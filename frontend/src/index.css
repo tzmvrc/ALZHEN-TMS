@@ -60,7 +60,13 @@
 
 body {
   min-height: 100dvh;
+  overflow-x: hidden;
   background: #f2f4f5;
+}
+
+#root {
+  min-height: 100dvh;
+  overflow-x: hidden;
 }
 
 .dotted-surface {

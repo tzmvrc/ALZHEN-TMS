@@ -13,12 +13,13 @@ import L from "leaflet";
 import type { TripEvent, TripRecord } from "../../services/trip.service";
 
 const CARTO_API_KEY = import.meta.env.VITE_CARTO_API_KEY?.trim();
+/* Dark base map, tinted navy by the SVG filter below (Waze-style night map). */
 const TILE_URL = CARTO_API_KEY
-  ? `https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png?key=${encodeURIComponent(CARTO_API_KEY)}`
-  : "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
-const TILE_ATTRIBUTION = CARTO_API_KEY
-  ? '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
-  : '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
+  ? `https://{s}.basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}{r}.png?key=${encodeURIComponent(CARTO_API_KEY)}`
+  : "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png";
+const TILE_ATTRIBUTION =
+  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>';
+const MAP_NAVY = "#0b2341";
 
 export type TripEventTrack = {
   trip: TripRecord;
@@ -139,24 +140,158 @@ function AnimatedTruckMarker({
   );
 }
 
-function statusColor(status: unknown): string {
+/* Re-colours the neutral dark tiles into the dashboard navy palette and
+   styles the Leaflet tooltips, popups and attribution to match. */
+function NavyMapTheme() {
+  return (
+    <>
+      <svg
+        aria-hidden="true"
+        focusable="false"
+        width="0"
+        height="0"
+        style={{ position: "absolute" }}
+      >
+        <filter id="alzhen-navy-map" colorInterpolationFilters="sRGB">
+          <feColorMatrix
+            type="matrix"
+            values="1.03 0 0 0 0.04  0 1.03 0 0 0.13  0 0 1.02 0 0.24  0 0 0 1 0"
+          />
+        </filter>
+      </svg>
+      <style>{`
+        .navy-map { background: ${MAP_NAVY}; font-family: inherit; }
+        .navy-map .leaflet-tile-pane { filter: url(#alzhen-navy-map); }
+        .navy-map .leaflet-control-attribution {
+          background: rgba(11, 35, 65, 0.78);
+          color: #9fb6d0;
+          font-size: 10px;
+        }
+        .navy-map .leaflet-control-attribution a { color: #c9dcf0; }
+        .navy-map .leaflet-bar a {
+          background: ${MAP_NAVY};
+          color: #fff;
+          border-color: rgba(255, 255, 255, 0.12);
+        }
+        .navy-map .leaflet-bar a:hover { background: #163a63; }
+        .navy-map .leaflet-tooltip {
+          background: ${MAP_NAVY};
+          color: #fff;
+          border: 1px solid rgba(255, 255, 255, 0.14);
+          border-radius: 10px;
+          box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+          font-weight: 600;
+        }
+        .navy-map .leaflet-tooltip-top:before { border-top-color: ${MAP_NAVY}; }
+        .navy-map .leaflet-tooltip-bottom:before { border-bottom-color: ${MAP_NAVY}; }
+        .navy-map .leaflet-popup-content-wrapper,
+        .navy-map .leaflet-popup-tip {
+          background: ${MAP_NAVY};
+          color: #fff;
+          box-shadow: 0 10px 28px rgba(0, 0, 0, 0.4);
+        }
+        .navy-map .leaflet-popup-content-wrapper { border-radius: 16px; }
+        .navy-map .leaflet-popup-close-button { color: #9fb6d0; }
+        .truck-badge {
+          position: absolute;
+          top: -7px;
+          right: -7px;
+          z-index: 2;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 19px;
+          height: 19px;
+          border: 2px solid #fff;
+          border-radius: 9999px;
+          box-shadow: 0 3px 8px rgba(0, 0, 0, 0.45);
+          animation: truck-badge-pop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+        }
+        .truck-badge--alert { animation: truck-badge-pop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) both, truck-badge-pulse 1.8s ease-out 0.4s infinite; }
+        @keyframes truck-badge-pop { from { transform: scale(0); } to { transform: scale(1); } }
+        @keyframes truck-badge-pulse {
+          0% { box-shadow: 0 3px 8px rgba(0, 0, 0, 0.45), 0 0 0 0 rgba(245, 158, 11, 0.7); }
+          70%, 100% { box-shadow: 0 3px 8px rgba(0, 0, 0, 0.45), 0 0 0 9px rgba(245, 158, 11, 0); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .truck-badge, .truck-badge--alert { animation: none; }
+        }
+      `}</style>
+    </>
+  );
+}
+
+type TruckKind = "completed" | "in-progress" | "cancelled" | "delayed" | "error";
+
+function truckKind(status: unknown): TruckKind {
   const normalized = String(status ?? "").toUpperCase();
-  if (/COMPLET|DELIVER|FINISH/.test(normalized)) return "#94a3b8";
-  if (/DELAY/.test(normalized)) return "#f59e0b";
-  return "#2678b9";
+  if (/CANCEL|VOID/.test(normalized)) return "cancelled";
+  if (/ERROR|FAIL|EXCEPTION|INCIDENT|BREAKDOWN/.test(normalized)) return "error";
+  if (/COMPLET|DELIVER|FINISH/.test(normalized)) return "completed";
+  if (/DELAY/.test(normalized)) return "delayed";
+  return "in-progress";
+}
+
+function statusColor(status: unknown): string {
+  switch (truckKind(status)) {
+    case "completed":
+      return "#94a3b8";
+    case "cancelled":
+    case "error":
+      return "#f87171";
+    case "delayed":
+      return "#fbbf24";
+    default:
+      return "#38bdf8";
+  }
+}
+
+/* Notification-style badge on the truck circle: check, road, X or exclamation. */
+const BADGE_STYLE: Record<TruckKind, { bg: string; icon: string; label: string; pulse?: boolean }> = {
+  completed: {
+    bg: "#10b981",
+    label: "Completed",
+    icon: '<polyline points="5 12.5 10 17.5 19 7"/>',
+  },
+  "in-progress": {
+    bg: "#2678b9",
+    label: "On the road",
+    icon: '<path d="M8.5 3 4.5 21"/><path d="M15.5 3 19.5 21"/><path d="M12 4.5v3.5"/><path d="M12 10.5v3.5"/><path d="M12 16.5v3.5"/>',
+  },
+  cancelled: {
+    bg: "#ef4444",
+    label: "Cancelled",
+    icon: '<path d="M6.5 6.5l11 11"/><path d="M17.5 6.5l-11 11"/>',
+  },
+  delayed: {
+    bg: "#f59e0b",
+    label: "Delayed",
+    pulse: true,
+    icon: '<path d="M12 5v8.5"/><path d="M12 18.5v.01"/>',
+  },
+  error: {
+    bg: "#dc2626",
+    label: "Error",
+    pulse: true,
+    icon: '<path d="M12 5v8.5"/><path d="M12 18.5v.01"/>',
+  },
+};
+
+function truckBadge(kind: TruckKind): string {
+  const badge = BADGE_STYLE[kind];
+  return `<span class="truck-badge${badge.pulse ? " truck-badge--alert" : ""}" role="img" aria-label="${badge.label}" style="background:${badge.bg}"><svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${badge.icon}</svg></span>`;
 }
 
 function truckIcon(status: unknown) {
-  const normalized = String(status ?? "").toUpperCase();
-  const kind =
-    /COMPLET|DELIVER|FINISH/.test(normalized)
-      ? "completed"
-      : /DELAY/.test(normalized)
-        ? "delayed"
-        : "in-progress";
+  const kind = truckKind(status);
+  /* "cancelled" and "error" have no dedicated marker colour in the global CSS,
+     so they reuse the closest existing one and rely on the badge for meaning. */
+  const markerClass =
+    kind === "cancelled" ? "completed" : kind === "error" ? "delayed" : kind;
+  const muted = kind === "cancelled" ? ' style="filter:grayscale(1);opacity:.85"' : "";
   return L.divIcon({
     className: "",
-    html: `<div class="truck-marker truck-marker--${kind}" role="img" aria-label="Truck position"><span class="truck-marker-emoji truck-emoji-right">🚚</span></div>`,
+    html: `<div class="truck-marker-wrap" style="position:relative;width:32px;height:32px"><div class="truck-marker truck-marker--${markerClass}" role="img" aria-label="Truck position"${muted}><span class="truck-marker-emoji truck-emoji-right">🚚</span></div>${truckBadge(kind)}</div>`,
     iconSize: [32, 32],
     iconAnchor: [16, 16],
   });
@@ -235,14 +370,16 @@ export default function LiveTripMap({
           {markerCount} {markerCount === 1 ? "vehicle" : "vehicles"}
         </span>
       </header>
-      <div className={`relative mx-3 overflow-hidden rounded-2xl border border-slate-200/70 ${fillHeight ? "min-h-[360px] min-w-0 flex-1" : ""}`}>
+      <div className={`relative mx-3 overflow-hidden rounded-2xl border border-[#0b2341] bg-[#0b2341] ${fillHeight ? "min-h-[360px] min-w-0 flex-1" : ""}`}>
+        <NavyMapTheme />
         <MapContainer
+          className="navy-map"
           center={center}
           zoom={6}
           style={
             fillHeight
-              ? { position: "absolute", inset: 0 }
-              : { height, width: "100%" }
+              ? { position: "absolute", inset: 0, background: MAP_NAVY }
+              : { height, width: "100%", background: MAP_NAVY }
           }
           scrollWheelZoom={false}
         >
@@ -270,9 +407,9 @@ export default function LiveTripMap({
                     <Polyline
                       positions={positions}
                       pathOptions={{
-                        color: "#ffffff",
-                        weight: 8,
-                        opacity: 0.8,
+                        color: MAP_NAVY,
+                        weight: 9,
+                        opacity: 0.9,
                         lineCap: "round",
                         lineJoin: "round",
                       }}
@@ -287,9 +424,8 @@ export default function LiveTripMap({
                       positions={positions}
                       pathOptions={{
                         color,
-                        weight: 4,
-                        opacity: 0.9,
-                        dashArray: "8 5",
+                        weight: 5,
+                        opacity: 1,
                         lineCap: "round",
                         lineJoin: "round",
                       }}
@@ -302,7 +438,7 @@ export default function LiveTripMap({
                   pathOptions={{
                     color,
                     weight: 2,
-                    fillColor: "#fff",
+                    fillColor: MAP_NAVY,
                     fillOpacity: 1,
                   }}
                 >
@@ -335,7 +471,7 @@ export default function LiveTripMap({
                   position={latest.point}
                   icon={truckIcon(track.trip.status)}
                 >
-                  <Tooltip direction="top" offset={[0, -18]}>
+                  <Tooltip direction="top" offset={[0, -24]}>
                     {`${dispatch} · ${String(track.trip.status ?? "Unknown")}`}
                   </Tooltip>
                   <Popup>
@@ -360,7 +496,7 @@ export default function LiveTripMap({
           })}
         </MapContainer>
         {(markerCount === 0 || !selectedHasGps) && (
-          <div className="pointer-events-none absolute inset-x-4 top-4 rounded-xl border border-slate-200 bg-white/95 px-3 py-2 text-center text-sm text-slate-700 shadow-sm backdrop-blur">
+          <div className="pointer-events-none absolute inset-x-4 top-4 z-[1000] rounded-xl border border-white/10 bg-[#0b2341]/90 px-3 py-2 text-center text-sm text-white shadow-lg backdrop-blur">
             {!selectedHasGps
               ? "No GPS position has been recorded for the selected trip."
               : eventLoadError
@@ -375,14 +511,16 @@ export default function LiveTripMap({
             <span aria-hidden="true">🏬</span> Store stop
           </span>
           <span className="inline-flex items-center gap-1.5">
-            <span className="h-2 w-2 rounded-full bg-blue-500" /> In
-            progress
+            <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-emerald-500 text-[8px] font-bold text-white">✓</span> Completed
           </span>
           <span className="inline-flex items-center gap-1.5">
-            <span className="h-2 w-2 rounded-full bg-emerald-500" /> Completed
+            <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[#2678b9] text-[8px] font-bold text-white">≡</span> On the road
           </span>
           <span className="inline-flex items-center gap-1.5">
-            <span className="h-2 w-2 rounded-full bg-amber-500" /> Delayed
+            <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-red-500 text-[8px] font-bold text-white">✕</span> Cancelled
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-amber-500 text-[8px] font-bold text-white">!</span> Delayed / error
           </span>
           <span className="text-slate-400">
           Routes follow recorded GPS fixes; unreported route segments are not inferred.

@@ -337,14 +337,14 @@ export default function SidebarNav({
         <div className="relative z-10 h-16 shrink-0">
           <button
             type="button"
-            aria-label="Open menu"
+            aria-label={open ? "Close menu" : "Open menu"}
             aria-expanded={open}
             tabIndex={open ? -1 : 0}
             onPointerDown={(event) => {
               lastPointer.current = event.pointerType;
             }}
             onClick={() => {
-              if (lastPointer.current === "touch") setHovered((value) => !value);
+              setHovered((value) => !value);
             }}
             className={`absolute left-0 top-0 flex h-11 w-11 items-center justify-center text-white transition-opacity duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#ffd43b]/70 ${
               open ? "pointer-events-none opacity-0" : "opacity-100"

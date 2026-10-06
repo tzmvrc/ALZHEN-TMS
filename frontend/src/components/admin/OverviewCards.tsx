@@ -1,9 +1,9 @@
 // src/components/admin/OverviewCards.tsx
 import { useState, type ReactNode } from "react";
-import { AlertTriangle, ArrowUpRight, CheckCircle2, MapPin, RefreshCw, Truck, Users } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, CheckCircle2, MapPin, RefreshCw, Users } from "lucide-react";
 import type { DispatchRecord } from "../../types/dashboard";
 import type { ReportRow } from "../../services/report.service";
-import { getFleetTruckPhoto, surface } from "./dashboardStyles";
+import { getFleetTruckCutout, getFleetTruckPhoto, surface } from "./dashboardStyles";
 import ImageWithFallback from "./ImageWithFallback";
 
 /* ------------------------------------------------------------------ */
@@ -270,6 +270,97 @@ function statusTag(status: DispatchRecord["status"]) {
   return "bg-slate-100 text-slate-600";
 }
 
+const ATTENTION_CSS = `
+@keyframes attn-marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+@keyframes attn-lane {
+  to { background-position-x: -80px; }
+}
+.attn-track { position: relative; z-index: 1; animation: attn-marquee 40s linear infinite; will-change: transform; }
+.attn-road { background: #0f1d33; }
+.attn-road::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 3px;
+  margin-top: -1.5px;
+  background: repeating-linear-gradient(90deg, #ffd43b 0 40px, transparent 40px 80px);
+  background-size: 80px 3px;
+  opacity: 0.6;
+  animation: attn-lane 2.4s linear infinite;
+}
+.attn-road::after {
+  content: "";
+  position: absolute;
+  inset: 5px 0;
+  border-top: 2px solid rgba(255, 255, 255, 0.16);
+  border-bottom: 2px solid rgba(255, 255, 255, 0.16);
+  pointer-events: none;
+}
+.attn-ticker:hover .attn-track,
+.attn-ticker:focus-within .attn-track,
+.attn-ticker:hover .attn-road::before,
+.attn-ticker:focus-within .attn-road::before { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) {
+  .attn-track, .attn-road::before { animation: none; }
+  .attn-track > [aria-hidden="true"] { display: none; }
+  .attn-viewport { overflow-x: auto; }
+}
+`;
+
+function attentionTone(status: DispatchRecord["status"]) {
+  if (status === "Delayed")
+    return { label: "Delayed", dot: "bg-amber-400", chip: "bg-amber-400/15 text-amber-300", edge: "border-l-amber-400" };
+  if (status === "In Progress")
+    return { label: "In transit", dot: "bg-sky-400", chip: "bg-sky-400/15 text-sky-300", edge: "border-l-sky-400" };
+  return { label: "Check", dot: "bg-slate-300", chip: "bg-white/10 text-slate-200", edge: "border-l-slate-400" };
+}
+
+function AttentionItem({
+  trip,
+  onViewTrip,
+  duplicate,
+}: {
+  trip: DispatchRecord;
+  onViewTrip?: (id: string) => void;
+  duplicate?: boolean;
+}) {
+  const tone = attentionTone(trip.status);
+  return (
+    <button
+      type="button"
+      tabIndex={duplicate ? -1 : 0}
+      onClick={() => onViewTrip?.(trip.id)}
+      className={`flex shrink-0 items-center gap-3 rounded-2xl border-l-4 ${tone.edge} bg-[#17315a] py-2.5 pl-3 pr-4 text-left shadow-[0_6px_14px_-6px_rgba(0,0,0,0.6)] transition-colors hover:bg-[#1f4170] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#ffd43b]`}
+    >
+      <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${tone.chip}`}>
+        <span className={`h-1.5 w-1.5 rounded-full ${tone.dot}`} />
+        {trip.statusText ?? tone.label}
+      </span>
+      <span className="min-w-0">
+        <span className="block whitespace-nowrap text-[13px] font-semibold text-white">
+          {trip.displayId ?? trip.id}
+        </span>
+        <span className="block whitespace-nowrap text-[11px] text-white/55">
+          {trip.origin} → {trip.destination}
+        </span>
+      </span>
+      <span className="hidden border-l border-white/10 pl-3 sm:block">
+        <span className="block whitespace-nowrap text-[11px] font-medium text-white/80">
+          {trip.driver || "Unassigned"}
+        </span>
+        <span className="block whitespace-nowrap text-[11px] text-white/45">
+          ETA {trip.eta}
+        </span>
+      </span>
+    </button>
+  );
+}
+
 export function SpotlightTrips({
   rows,
   onViewTrip,
@@ -279,81 +370,71 @@ export function SpotlightTrips({
   onViewTrip?: (id: string) => void;
   action?: ReactNode;
 }) {
-  const ordered = [
+  /* Completed trips don't need attention; delayed and flagged ones come first. */
+  const items = [
     ...rows.filter((trip) => trip.status === "Delayed"),
-    ...rows.filter((trip) => trip.status === "In Progress"),
     ...rows.filter((trip) => trip.status === "Other"),
-    ...rows.filter((trip) => trip.status === "Completed"),
+    ...rows.filter((trip) => trip.status === "In Progress"),
   ];
-  const [featured, next] = ordered;
+  const duration = Math.max(items.length * 10, 36);
 
   return (
-    <section className={`${surface.card} p-5`}>
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <h2 className={surface.heading}>Needs your attention</h2>
-        {action}
+    <section
+      aria-label="Needs your attention"
+      className="attn-ticker relative flex flex-col overflow-hidden rounded-[28px] bg-[#0b2341] shadow-[0_1px_2px_rgba(11,35,65,0.04),0_10px_30px_-18px_rgba(11,35,65,0.4)] sm:flex-row sm:items-stretch"
+    >
+      <style>{ATTENTION_CSS}</style>
+
+      <div className="relative z-10 flex shrink-0 items-center gap-3 bg-[#ffd43b] px-5 py-4 text-[#0b2341] sm:w-64 sm:pr-10 sm:[clip-path:polygon(0_0,100%_0,calc(100%-22px)_100%,0_100%)]">
+        <span className="relative flex h-2.5 w-2.5 shrink-0">
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#0b2341]/50 motion-reduce:animate-none" />
+          <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-[#0b2341]" />
+        </span>
+        <div className="min-w-0">
+          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#0b2341]/70">Urgent</p>
+          <h2 className="text-[15px] font-bold leading-tight">Needs your attention</h2>
+          <p className="mt-0.5 text-[11px] font-medium text-[#0b2341]/75">
+            {items.length === 0 ? "All clear" : `${items.length} trip${items.length === 1 ? "" : "s"} flagged`}
+          </p>
+        </div>
       </div>
-      {!featured ? (
-        <p className="py-8 text-center text-sm text-slate-400">
-          No trips to review right now.
+
+      {items.length === 0 ? (
+        <p className="flex flex-1 items-center gap-2 px-5 py-4 text-sm text-white/70 sm:pl-8">
+          <span className="h-2 w-2 rounded-full bg-emerald-400" />
+          No trips need attention right now.
         </p>
       ) : (
-        <div className="grid gap-3 md:grid-cols-2">
-          <button
-            type="button"
-            onClick={() => onViewTrip?.(featured.id)}
-            className="flex min-h-[148px] flex-col justify-between rounded-3xl bg-[#0b2341] p-4 text-left text-white shadow-[0_18px_36px_-18px_rgba(0,0,0,0.6)] transition hover:-translate-y-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#ffd43b]"
-          >
-            <span className="flex items-start justify-between gap-3">
-              <span className="text-[17px] font-semibold leading-tight">
-                {featured.displayId ?? featured.id}
-                <span className="mt-1 block text-[12px] font-normal text-white/60">
-                  {featured.origin} → {featured.destination}
-                </span>
-              </span>
-              <span className="shrink-0 rounded-full bg-white/90 px-2.5 py-1 text-[10px] font-semibold text-[#0b2341]">
-                {featured.statusText ?? featured.status}
-              </span>
-            </span>
-            <span className="flex items-end justify-between gap-3">
-              <span className="rounded-full bg-[#ffd43b] px-3 py-1.5 text-[11px] font-semibold text-[#0b2341]">
-                {featured.tripType ?? "Regular"}
-              </span>
-              <span className="truncate text-[11px] text-white/70">
-                {featured.driver} · ETA {featured.eta}
-              </span>
-            </span>
-          </button>
-
-          {next ? (
-            <button
-              type="button"
-              onClick={() => onViewTrip?.(next.id)}
-              className="flex min-h-[148px] flex-col justify-between rounded-3xl bg-[#f2f6fa] p-4 text-left transition hover:-translate-y-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0b2341]/30"
-            >
-              <span className="flex items-start justify-between gap-3">
-                <span className="text-[17px] font-semibold leading-tight text-[#0b2341]">
-                  {next.displayId ?? next.id}
-                  <span className="mt-1 block text-[12px] font-normal text-slate-500">
-                    {next.origin} → {next.destination}
-                  </span>
-                </span>
-                <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold ${statusTag(next.status)}`}>
-                  {next.statusText ?? next.status}
-                </span>
-              </span>
-              <span className="flex items-end justify-between gap-3">
-                <span className="rounded-full bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-600 ring-1 ring-slate-200">
-                  {next.tripType ?? "Regular"}
-                </span>
-                <span className="truncate text-[11px] text-slate-500">
-                  {next.driver} · ETA {next.eta}
-                </span>
-              </span>
-            </button>
-          ) : null}
+        <div
+          className="attn-viewport attn-road relative min-w-0 flex-1 overflow-hidden py-3 sm:-ml-3"
+          style={{
+            containerType: "inline-size",
+            maskImage: "linear-gradient(to right, transparent 0, #000 28px, #000 calc(100% - 28px), transparent 100%)",
+            WebkitMaskImage: "linear-gradient(to right, transparent 0, #000 28px, #000 calc(100% - 28px), transparent 100%)",
+          }}
+        >
+          <div className="attn-track flex w-max" style={{ animationDuration: `${duration}s` }}>
+            {[0, 1].map((copy) => (
+              <div
+                key={copy}
+                aria-hidden={copy === 1 ? true : undefined}
+                className="flex min-w-[100cqw] shrink-0 items-center gap-3 pl-6 pr-3"
+              >
+                {items.map((trip) => (
+                  <AttentionItem
+                    key={`${copy}-${trip.id}`}
+                    trip={trip}
+                    onViewTrip={onViewTrip}
+                    duplicate={copy === 1}
+                  />
+                ))}
+              </div>
+            ))}
+          </div>
         </div>
       )}
+
+      {action ? <div className="relative z-10 flex items-center px-4 pb-3 sm:pb-0">{action}</div> : null}
     </section>
   );
 }
@@ -362,6 +443,12 @@ export function SpotlightTrips({
 /* Active fleet list (assignments style)                                */
 /* ------------------------------------------------------------------ */
 type FleetTab = "all" | "delayed" | "in-progress" | "completed" | "other";
+
+function initials(name?: string | null) {
+  const parts = (name ?? "").trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  return ((parts[0][0] ?? "") + (parts.length > 1 ? parts[parts.length - 1][0] : "")).toUpperCase();
+}
 
 export function FleetListCard({
   rows,
@@ -430,7 +517,7 @@ export function FleetListCard({
           No trips in this view.
         </p>
       ) : (
-        <ul className="min-h-0 flex-1 space-y-2.5 overflow-y-auto overscroll-contain pr-1">
+        <ul className="grid min-h-0 flex-1 grid-cols-[repeat(auto-fill,minmax(210px,1fr))] content-start gap-3 overflow-y-auto overscroll-contain p-1">
           {visible.map((trip) => {
             const progress = Math.min(Math.max(trip.progressPct ?? 0, 0), 100);
             const selected = trip.id === selectedTripId;
@@ -439,90 +526,102 @@ export function FleetListCard({
                 ? "#f59e0b"
                 : trip.status === "Completed"
                   ? "#10b981"
-                  : "#2678b9";
+                  : "#4aa3e8";
+            const displayId = trip.displayId ?? trip.id;
             return (
               <li
                 key={trip.id}
-                className={`flex items-center gap-2 rounded-2xl bg-[#f2f6fa] p-2.5 transition ${
-                  selected ? "ring-2 ring-[#ffd43b]" : ""
+                className={`flex flex-col rounded-2xl p-3 ring-2 transition duration-200 motion-reduce:transition-none ${
+                  selected
+                    ? "bg-[#0b2341] ring-transparent"
+                    : "bg-[#f2f6fa] ring-transparent hover:ring-[#2678b9]/40"
                 }`}
               >
                 <button
                   type="button"
                   onClick={() => onSelectTrip?.(trip.id)}
                   aria-pressed={selected}
-                  className="flex min-w-0 flex-1 items-center gap-2.5 rounded-xl text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0b2341]/40"
+                  className="block w-full rounded-xl text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-[#ffd43b]"
                 >
-                  <span className="block h-14 w-14 shrink-0 overflow-hidden rounded-2xl bg-white">
-                    <FleetPhoto key={trip.imageUrl ?? trip.id} src={trip.imageUrl} />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="flex items-center justify-between gap-2">
-                      <span className="truncate text-[13px] font-semibold text-[#0b2341]">
-                        {trip.displayId ?? trip.id}
+                  <span className="flex items-start justify-between gap-2">
+                    <span className="min-w-0">
+                      <span className={`block truncate text-[13px] font-semibold ${selected ? "text-white" : "text-[#0b2341]"}`}>
+                        {displayId}
                       </span>
-                      <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${statusTag(trip.status)}`}>
-                        {trip.statusText ?? trip.status}
+                      <span className={`mt-0.5 block truncate text-[10px] ${selected ? "text-white/60" : "text-slate-400"}`}>
+                        {trip.origin} → {trip.destination}
                       </span>
                     </span>
-                    <span className="mt-0.5 block truncate text-[11px] text-slate-500">
-                      {trip.origin} → {trip.destination}
-                    </span>
-                    <span className="mt-1.5 flex items-center gap-2">
-                      <span className="block h-1.5 flex-1 overflow-hidden rounded-full bg-white">
-                        <span
-                          className="block h-full rounded-full"
-                          style={{ width: `${progress}%`, backgroundColor: barColor }}
-                        />
-                      </span>
-                      <span className="text-[10px] font-semibold tabular-nums text-slate-600">
-                        {progress}%
-                      </span>
-                    </span>
-                    <span className="mt-1 block truncate text-[10px] text-slate-400">
-                      {trip.driver} · ETA {trip.eta}
+                    <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold ${statusTag(trip.status)}`}>
+                      {trip.statusText ?? trip.status}
                     </span>
                   </span>
+                  <span className="mt-2 flex h-24 items-center justify-center">
+                    <img
+                      src={getFleetTruckCutout(trip.id)}
+                      alt=""
+                      loading="lazy"
+                      draggable={false}
+                      className="max-h-full max-w-full object-contain drop-shadow-[0_6px_6px_rgba(11,35,65,0.12)]"
+                    />
+                  </span>
                 </button>
-                <button
-                  type="button"
-                  onClick={() => onViewTrip?.(trip.id)}
-                  aria-label={`View trip details for ${trip.displayId ?? trip.id}`}
-                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white text-slate-600 transition hover:bg-[#ffd43b] hover:text-[#0b2341] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0b2341]/40"
-                >
-                  <ArrowUpRight className="h-4 w-4" />
-                </button>
+
+                <div className={`mt-2 rounded-xl p-2.5 transition-colors duration-200 motion-reduce:transition-none ${selected ? "bg-white/10" : "bg-white"}`}>
+                  <p className={`text-[10px] font-medium ${selected ? "text-white/60" : "text-slate-400"}`}>Driver</p>
+                  <div className="mt-1.5 flex items-center gap-2">
+                    <span
+                      aria-hidden="true"
+                      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#e6f0f9] text-[10px] font-bold text-[#1d5f94]"
+                    >
+                      {initials(trip.driver)}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className={`block truncate text-[12px] font-semibold ${selected ? "text-white" : "text-[#0b2341]"}`}>
+                        {trip.driver || "Unassigned"}
+                      </span>
+                      <span className={`block truncate text-[10px] ${selected ? "text-white/60" : "text-slate-400"}`}>
+                        ETA {trip.eta}
+                      </span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => onViewTrip?.(trip.id)}
+                      aria-label={`View trip details for ${displayId}`}
+                      className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition hover:!bg-[#ffd43b] hover:!text-[#0b2341] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#ffd43b] ${selected ? "bg-white/15 text-white" : "bg-[#f2f6fa] text-slate-600"}`}
+                    >
+                      <ArrowUpRight className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+
+                  <div className="mt-2.5 flex items-center justify-between text-[10px]">
+                    <span className={`font-medium ${selected ? "text-white/60" : "text-slate-400"}`}>Trip progress</span>
+                    <span className={`font-semibold tabular-nums ${selected ? "text-white" : "text-slate-700"}`}>{progress}%</span>
+                  </div>
+                  <div
+                    role="progressbar"
+                    aria-valuenow={progress}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-label={`Trip progress for ${displayId}`}
+                    className={`mt-1 h-2 w-full overflow-hidden rounded-full ${
+                      selected
+                        ? "bg-[repeating-linear-gradient(135deg,rgba(255,255,255,0.22)_0_3px,rgba(255,255,255,0.06)_3px_6px)]"
+                        : "bg-[repeating-linear-gradient(135deg,#e3eaf2_0_3px,#f2f6fa_3px_6px)]"
+                    }`}
+                  >
+                    <span
+                      className="block h-full rounded-full transition-[width] duration-700 motion-reduce:transition-none"
+                      style={{ width: `${progress}%`, backgroundColor: barColor }}
+                    />
+                  </div>
+                </div>
               </li>
             );
           })}
         </ul>
       )}
     </section>
-  );
-}
-
-function FleetPhoto({ src }: { src?: string }) {
-  const [failed, setFailed] = useState(false);
-
-  if (!src || failed) {
-    return (
-      <span
-        role="img"
-        aria-label="No trip photo available"
-        className="flex h-full w-full items-center justify-center bg-slate-200 text-slate-400"
-      >
-        <Truck aria-hidden="true" className="h-6 w-6" />
-      </span>
-    );
-  }
-
-  return (
-    <img
-      src={src}
-      alt=""
-      className="h-full w-full object-cover object-center"
-      onError={() => setFailed(true)}
-    />
   );
 }
 

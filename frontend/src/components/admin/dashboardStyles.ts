@@ -21,6 +21,31 @@ export function getFleetTruckPhoto(
   return fleetTruckPhotos[(hash >>> 0) % fleetTruckPhotos.length];
 }
 
+/* Transparent truck cut-outs used by the Active fleet cards */
+export const fleetTruckCutouts = [
+  "/images/trucks/fleet-01.webp",
+  "/images/trucks/fleet-02.webp",
+  "/images/trucks/fleet-03.webp",
+  "/images/trucks/fleet-04.webp",
+  "/images/trucks/fleet-05.webp",
+  "/images/trucks/fleet-06.webp",
+  "/images/trucks/fleet-07.webp",
+  "/images/trucks/fleet-08.webp",
+  "/images/trucks/fleet-09.webp",
+  "/images/trucks/fleet-10.webp",
+  "/images/trucks/fleet-11.webp",
+  "/images/trucks/fleet-12.webp",
+] as const;
+
+/* Stable pick: the same trip always gets the same truck picture */
+export function getFleetTruckCutout(seed: string): string {
+  let hash = 2166136261;
+  for (let position = 0; position < seed.length; position += 1) {
+    hash = Math.imul(hash ^ seed.charCodeAt(position), 16777619);
+  }
+  return fleetTruckCutouts[(hash >>> 0) % fleetTruckCutouts.length];
+}
+
 /* Alzhen brand palette (same navy + yellow as the top navigation) */
 export const accent = {
   navy: "#0b2341",
