@@ -59,6 +59,19 @@ function FitBounds({ coords }: { coords: [number, number][] }) {
   return null;
 }
 
+function ResizeMap() {
+  const map = useMap();
+  useEffect(() => {
+    const container = map.getContainer();
+    const observer = new ResizeObserver(() => {
+      map.invalidateSize({ pan: false, debounceMoveend: true });
+    });
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [map]);
+  return null;
+}
+
 function FocusTrip({
   tripId,
   tracks,
@@ -163,11 +176,13 @@ export default function LiveTripMap({
   focusTripId,
   eventLoadError = false,
   height = 420,
+  fillHeight = false,
 }: {
   tracks: TripEventTrack[];
   focusTripId?: string | null;
   eventLoadError?: boolean;
   height?: number;
+  fillHeight?: boolean;
 }) {
   const plotted = useMemo(
     () =>
@@ -206,25 +221,32 @@ export default function LiveTripMap({
     !focusTripId || latestMarkers.some((marker) => marker.id === focusTripId);
 
   return (
-    <section className="overflow-hidden rounded-[28px] bg-white shadow-[0_1px_2px_rgba(20,24,16,0.03),0_10px_30px_-18px_rgba(20,24,16,0.10)]">
-      <header className="flex items-center justify-between gap-3 px-5 pb-3 pt-5">
+    <section className={`overflow-hidden rounded-[28px] border border-slate-200/70 bg-white shadow-[0_8px_28px_-20px_rgba(11,35,65,0.25)] ${fillHeight ? "flex h-full min-h-[460px] flex-col" : ""}`}>
+      <header className="flex shrink-0 items-center justify-between gap-3 px-5 pb-3 pt-5">
         <div>
-          <h2 className="text-[17px] font-semibold tracking-tight text-[#17181a]">
-            Trip routes
+          <h2 className="text-[17px] font-semibold tracking-tight text-[#0b2341]">
+            Live location
           </h2>
-          <p className="text-[10px] text-slate-500">Recorded GPS routes and stops</p>
+          <p className="text-[11px] text-slate-500">
+            Latest GPS positions, recorded routes, and stops
+          </p>
         </div>
-        <span className="rounded-full bg-[#eef7c4] px-3 py-1 text-[11px] font-semibold text-[#5a7010]">
+        <span className="rounded-full bg-[#e6f0f9] px-3 py-1 text-[11px] font-semibold text-[#1d5f94]">
           {markerCount} {markerCount === 1 ? "vehicle" : "vehicles"}
         </span>
       </header>
-      <div className="relative">
+      <div className={`relative mx-3 overflow-hidden rounded-2xl border border-slate-200/70 ${fillHeight ? "min-h-[360px] min-w-0 flex-1" : ""}`}>
         <MapContainer
           center={center}
           zoom={6}
-          style={{ height, width: "100%" }}
+          style={
+            fillHeight
+              ? { position: "absolute", inset: 0 }
+              : { height, width: "100%" }
+          }
           scrollWheelZoom={false}
         >
+          <ResizeMap />
           <TileLayer
             attribution={TILE_ATTRIBUTION}
             url={TILE_URL}
@@ -347,7 +369,7 @@ export default function LiveTripMap({
           </div>
         )}
       </div>
-      <footer className="px-5 py-3 text-[11px] text-slate-500">
+      <footer className="shrink-0 px-5 py-3 text-[11px] text-slate-500">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
           <span>
             <span aria-hidden="true">🏬</span> Store stop

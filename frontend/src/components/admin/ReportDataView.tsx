@@ -59,10 +59,17 @@ import {
   updateTripStopRecord,
 } from "../../services/trip.service";
 import SearchableRelationshipEditor from "./SearchableRelationshipEditor";
+import SlidingSegmentedControl from "./SlidingSegmentedControl";
 import { tableUi } from "./dashboardStyles";
 import ReportDropdownEditor, { type ReportDropdownChoice } from "./ReportDropdownEditor";
 import type { AdminNotificationTarget } from "../../services/notification.service";
 import { StatusBadge, TableSkeleton } from "./DashboardPrimitives";
+
+const tripScopeOptions = [
+  { value: "dispatches", label: "All trips" },
+  { value: "monitoring", label: "Dispatch monitoring" },
+  { value: "deliveries", label: "Deliveries" },
+] as const;
 
 const reportKeys = Object.keys(REPORTS) as ReportKey[];
 type ExportMode = "all-workbook" | "separate-zip" | "current-report";
@@ -1997,15 +2004,14 @@ export default function ReportDataView({
       <div className={`${tableUi.toolbar} flex-wrap`}>
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3">
           {tripScope && onTripScopeChange && (
-            <div role="tablist" aria-label="Trip views" className={`${tableUi.segment} max-w-full gap-1 overflow-x-auto`}>
-              {([
-                ["dispatches", "All trips"],
-                ["monitoring", "Dispatch monitoring"],
-                ["deliveries", "Deliveries"],
-              ] as const).map(([scope, label]) => (
-                <button key={scope} type="button" role="tab" aria-selected={tripScope === scope} onClick={() => onTripScopeChange(scope)} className={`${tableUi.segmentBtn} shrink-0 ${tripScope === scope ? tableUi.segmentOn : tableUi.segmentOff}`}>{label}</button>
-              ))}
-            </div>
+            <SlidingSegmentedControl
+              role="tablist"
+              aria-label="Trip views"
+              className="max-w-full gap-1 overflow-x-auto"
+              options={tripScopeOptions}
+              value={tripScope}
+              onChange={onTripScopeChange}
+            />
           )}
           {showReportPicker ? (
             <label className="sr-only" htmlFor="report-select">

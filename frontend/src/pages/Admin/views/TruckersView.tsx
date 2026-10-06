@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { MoreHorizontal, RefreshCw, Search, SlidersHorizontal, UserRound, Pencil, Plus, X } from "lucide-react";
 import { useAuth } from "../../../context/AuthContext";
 import { tableUi } from "../../../components/admin/dashboardStyles";
+import SlidingSegmentedControl from "../../../components/admin/SlidingSegmentedControl";
 import TruckerDetailDrawer from "../../../components/admin/TruckerDetailDrawer";
 import { apiGetCached, invalidateApiCache, type ApiResponse } from "../../../services/api.service";
 import { fetchTruckerDetail, fetchTruckers, type TruckerListItem } from "../../../services/trucker.service";
@@ -9,6 +10,10 @@ import UserManagementModal from "../../../components/admin/UserManagementModal";
 import { fetchManagedUsers, type ManagedUser } from "../../../services/user-management.service";
 
 const PAGE_SIZE = 12;
+const userCategoryOptions = [
+  { value: "staff", label: "Admin & Staff" },
+  { value: "truckers", label: "Truckers" },
+] as const;
 
 type ProfileLookupRow = {
   id: string;
@@ -163,10 +168,12 @@ export default function TruckersView() {
       <div>
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div className="flex flex-wrap items-center gap-2">
-            <div role="group" aria-label="User category" className={tableUi.segment}>
-              <button type="button" aria-pressed={category === "staff"} onClick={() => changeCategory("staff")} className={`${tableUi.segmentBtn} ${category === "staff" ? tableUi.segmentOn : tableUi.segmentOff}`}>Admin &amp; Staff</button>
-              <button type="button" aria-pressed={category === "truckers"} onClick={() => changeCategory("truckers")} className={`${tableUi.segmentBtn} ${category === "truckers" ? tableUi.segmentOn : tableUi.segmentOff}`}>Truckers</button>
-            </div>
+            <SlidingSegmentedControl
+              aria-label="User category"
+              options={userCategoryOptions}
+              value={category}
+              onChange={changeCategory}
+            />
             {category === "staff" ? (
               <select aria-label="Filter by role" value={roleFilter} onChange={(event) => { setPage(1); setRoleFilter(event.target.value as "all" | "ADMIN" | "STAFF"); }} className={`${tableUi.select} pr-4`}>
                 <option value="all">All roles</option>

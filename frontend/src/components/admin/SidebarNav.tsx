@@ -7,7 +7,6 @@ import {
   LogOut,
   Menu,
   Pin,
-  PinOff,
   Settings,
   UserCircle2,
 } from "lucide-react";
@@ -138,11 +137,10 @@ export interface SidebarNavProps {
 const workspaceOptions: WorkspaceName[] = ["Operational Admin", "Client Website"];
 const workspaceShortLabel: Record<WorkspaceName, string> = {
   "Operational Admin": "Operational",
-  "Client Website": "Client site",
+  "Client Website": "Client Side",
 };
 const CLOSE_DELAY_MS = 140;
 const PIN_KEY = "admin-sidebar-pinned";
-const SIDEBAR_OFFSET = "18rem"; // 16rem panel + 1rem gap + 1rem breathing room
 const DESKTOP_QUERY = "(min-width: 1024px)";
 
 export default function SidebarNav({
@@ -234,22 +232,6 @@ export default function SidebarNav({
   useEffect(() => {
     collapseCallback.current?.(!open);
   }, [open]);
-
-  /* Push the whole page: the sidebar pads <body> so no parent edits are needed. */
-  useEffect(() => {
-    const body = document.body;
-    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    body.style.transition = reduceMotion ? "none" : "padding-left 300ms ease-out";
-    body.style.paddingLeft = isDesktop && open ? SIDEBAR_OFFSET : "";
-  }, [open, isDesktop]);
-
-  useEffect(
-    () => () => {
-      document.body.style.paddingLeft = "";
-      document.body.style.transition = "";
-    },
-    [],
-  );
 
   /* Outside click (touch devices) + Escape */
   useEffect(() => {
@@ -392,14 +374,14 @@ export default function SidebarNav({
             aria-pressed={pinned}
             aria-label={pinned ? "Unpin sidebar" : "Pin sidebar"}
             title={pinned ? "Unpin sidebar" : "Pin sidebar"}
-            className={`absolute right-3 top-4 hidden h-8 w-8 items-center justify-center rounded-lg transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#ffd43b]/70 lg:flex ${
+            className={`absolute right-3 top-4 hidden h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#ffd43b]/70 lg:flex ${
               open ? "opacity-100 delay-100" : "pointer-events-none opacity-0"
             } ${
               pinned
                 ? "bg-[#ffd43b] text-[#0b2341]"
                 : "text-white/60 hover:bg-[#ffd43b]/15 hover:text-[#ffd43b]"
             }`}>
-            {pinned ? <PinOff className="h-4 w-4" /> : <Pin className="h-4 w-4" />}
+            <Pin className={`h-4 w-4 transition-transform ${pinned ? "rotate-0" : "rotate-45"}`} />
           </button>
         </div>
 
@@ -553,7 +535,7 @@ export default function SidebarNav({
               profileOpen ? "bg-white/20" : "hover:bg-white/10"
             }`}>
             <span className="flex h-full w-full items-center justify-center overflow-hidden rounded-full bg-[#ffd43b] text-[12px] font-semibold text-[#0b2341]">
-              {avatarContent}
+              {avatarLabel}
             </span>
           </button>
 

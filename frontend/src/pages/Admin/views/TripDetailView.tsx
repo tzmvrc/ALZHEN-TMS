@@ -1,12 +1,16 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
   ChevronLeft,
   ChevronRight,
   Clock,
+  Eye,
+  ImagePlus,
   Package,
+  Trash2,
   Truck,
   UserRound,
+  X,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../../context/AuthContext";
@@ -21,14 +25,15 @@ import {
   type TripRecord,
 } from "../../../services/trip.service";
 import LiveTripMap, { type TripEventTrack } from "../../../components/admin/LiveTripMap";
-import { fleetTruckPhotos, getFleetTruckPhoto, surface } from "../../../components/admin/dashboardStyles";
-import ImageWithFallback from "../../../components/admin/ImageWithFallback";
+import { surface } from "../../../components/admin/dashboardStyles";
+import ProductPhotoManager from "../../../components/admin/ProductPhotoManager";
+import truckBg from "../../../assets/trip-truck.png";
 import {
-  getProductPhotoFallback,
-  getRecordImageUrls,
-  PRODUCT_IMAGE_FIELDS,
-  TRIP_IMAGE_FIELDS,
-} from "../../../services/image.service";
+  deleteTripImage,
+  fetchTripImages,
+  uploadTripImage,
+  type TripImage,
+} from "../../../services/trip-image.service";
 
 type BookingPage = {
   rows: Record<string, unknown>[];
@@ -42,7 +47,31 @@ type DetailState = {
   events: TripEvent[];
   bookingRows: Record<string, unknown>[];
   bookingError: string | null;
+  truckCapacityCbm: number | null;
+  truckCapacityError: string | null;
   sectionErrors: string[];
+};
+
+function ProductPhotoThumb({ src }: { src: string | null }) {
+  const [failed, setFailed] = useState(false);
+  if (!src || failed) {
+    return <Package aria-hidden="true" className="h-5 w-5 text-slate-300" />;
+  }
+  return (
+    <img
+      src={src}
+      alt=""
+      loading="lazy"
+      className="h-14 w-14 rounded-xl bg-[#f2f6fa] object-cover"
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
+type TruckLookupRow = {
+  id: string;
+  plate_number: string | null;
+  capacity_cbm: number | null;
 };
 
 function valueText(value: unknown, fallback = "Not recorded"): string {
@@ -116,52 +145,157 @@ function stopIsDone(stop: TripChildRecord): boolean {
 
 /* Photo gallery: one large photo, thumbnails underneath. Photos never sit behind other cards. */
 function TripGallery({
-  trip,
-  seed,
   plate,
+  tripId,
+  accessToken,
 }: {
-  trip: TripRecord;
-  seed: string;
   plate: string;
+  tripId: string;
+  accessToken: string | null;
 }) {
-  const photos = useMemo(() => {
-    const backendPhotos = getRecordImageUrls(trip, TRIP_IMAGE_FIELDS);
-    if (backendPhotos.length > 0) return backendPhotos;
-
-    const first = getFleetTruckPhoto(seed);
-    const start = Math.max((fleetTruckPhotos as readonly string[]).indexOf(first), 0);
-    return [...fleetTruckPhotos.slice(start), ...fleetTruckPhotos.slice(0, start)];
-  }, [seed, trip]);
+  const [savedPhotos, setSavedPhotos] = useState<TripImage[] | null>(null);
   const [active, setActive] = useState(0);
-  const go = (step: number) => setActive((current) => (current + step + photos.length) % photos.length);
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const [photoError, setPhotoError] = useState<string | null>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const photos = savedPhotos?.map((photo) => photo.signed_url) ?? [];
+  const activeSavedPhoto = savedPhotos?.length ? savedPhotos[active] : undefined;
+
+  useEffect(() => {
+    if (!accessToken) return;
+    let current = true;
+    void fetchTripImages(accessToken, tripId).then(
+      (images) => {
+        if (!current) return;
+        setSavedPhotos(images);
+        setActive(0);
+        setPhotoError(null);
+      },
+      (cause: unknown) => {
+        if (!current) return;
+        setSavedPhotos([]);
+        setPhotoError(
+          cause instanceof Error ? cause.message : "Unable to load saved trip photos.",
+        );
+      },
+    );
+    return () => {
+      current = false;
+    };
+  }, [accessToken, tripId]);
+
+  const go = (step: number) => {
+    if (photos.length < 2) return;
+    setActive((current) => (current + step + photos.length) % photos.length);
+  };
   const navBtn =
     "absolute top-1/2 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-white/90 text-[#0b2341] shadow-[0_2px_8px_rgba(11,35,65,0.18)] transition hover:bg-[#ffd43b] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0b2341]/40";
+
+  const uploadPhotos = async (files: FileList | null) => {
+    if (!files?.length || !accessToken) return;
+    const selectedFiles = Array.from(files);
+    setPhotoBusy(true);
+    setPhotoError(null);
+    let uploaded = 0;
+    try {
+      for (const file of selectedFiles) {
+        if (!["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size > 5 * 1024 * 1024) {
+          throw new Error("Choose JPEG, PNG, or WebP photos up to 5 MB each.");
+        }
+        const saved = await uploadTripImage(accessToken, tripId, file);
+        setSavedPhotos((current) => {
+          const updated = [...(current ?? []), saved];
+          setActive(updated.length - 1);
+          return updated;
+        });
+        uploaded += 1;
+      }
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : "Unable to upload trip photo.";
+      setPhotoError(uploaded > 0 ? `${message} ${uploaded} photo${uploaded === 1 ? "" : "s"} were saved.` : message);
+    } finally {
+      setPhotoBusy(false);
+      if (fileInput.current) fileInput.current.value = "";
+    }
+  };
+
+  const removeActivePhoto = async () => {
+    if (!activeSavedPhoto || !accessToken || photoBusy) return;
+    setPhotoBusy(true);
+    setPhotoError(null);
+    try {
+      await deleteTripImage(accessToken, tripId, activeSavedPhoto.id);
+      setSavedPhotos((current) => (current ?? []).filter((photo) => photo.id !== activeSavedPhoto.id));
+      setActive((current) => Math.max(0, Math.min(current, (savedPhotos?.length ?? 1) - 2)));
+    } catch (cause) {
+      setPhotoError(cause instanceof Error ? cause.message : "Unable to delete trip photo.");
+    } finally {
+      setPhotoBusy(false);
+    }
+  };
 
   return (
     <div className={`${surface.card} p-3`}>
       <div className="relative aspect-[16/10] overflow-hidden rounded-2xl bg-slate-100">
-        <ImageWithFallback
-          key={photos[active]}
-          src={photos[active]}
-          fallbackSrc={getFleetTruckPhoto(seed)}
-          alt={`Truck photo ${active + 1} of ${photos.length}`}
-          className="h-full w-full object-cover"
-        />
-        <button type="button" aria-label="Previous photo" onClick={() => go(-1)} className={`${navBtn} left-3`}>
-          <ChevronLeft aria-hidden="true" className="h-4 w-4" />
-        </button>
-        <button type="button" aria-label="Next photo" onClick={() => go(1)} className={`${navBtn} right-3`}>
-          <ChevronRight aria-hidden="true" className="h-4 w-4" />
-        </button>
-        <span className="absolute bottom-3 left-3 inline-flex items-center gap-2 rounded-full bg-[#0b2341]/90 px-3 py-1.5 text-xs font-semibold text-white backdrop-blur">
-          <Truck aria-hidden="true" className="h-3.5 w-3.5 text-[#ffd43b]" />
-          {plate}
-        </span>
-        <span className="absolute bottom-3 right-3 rounded-full bg-white/90 px-2.5 py-1 text-[11px] font-semibold tabular-nums text-[#0b2341]">
-          {active + 1} / {photos.length}
-        </span>
+        {photos.length > 0 ? (
+          <>
+            <img
+              key={photos[active]}
+              src={photos[active]}
+              alt={`Truck photo ${active + 1} of ${photos.length}`}
+              className="h-full w-full object-cover"
+            />
+            {photos.length > 1 && (
+              <>
+                <button type="button" aria-label="Previous photo" onClick={() => go(-1)} className={`${navBtn} left-3`}>
+                  <ChevronLeft aria-hidden="true" className="h-4 w-4" />
+                </button>
+                <button type="button" aria-label="Next photo" onClick={() => go(1)} className={`${navBtn} right-3`}>
+                  <ChevronRight aria-hidden="true" className="h-4 w-4" />
+                </button>
+              </>
+            )}
+            {activeSavedPhoto && (
+              <button
+                type="button"
+                aria-label="Delete saved photo"
+                title="Delete saved photo"
+                disabled={photoBusy}
+                onClick={() => void removeActivePhoto()}
+                className="absolute right-3 top-3 inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/90 text-rose-600 shadow transition hover:bg-rose-50 disabled:opacity-50"
+              >
+                <Trash2 aria-hidden="true" className="h-4 w-4" />
+              </button>
+            )}
+            <span className="absolute bottom-3 left-3 inline-flex items-center gap-2 rounded-full bg-[#0b2341]/90 px-3 py-1.5 text-xs font-semibold text-white backdrop-blur">
+              <Truck aria-hidden="true" className="h-3.5 w-3.5 text-[#ffd43b]" />
+              {plate}
+            </span>
+            <span className="absolute bottom-3 right-3 rounded-full bg-white/90 px-2.5 py-1 text-[11px] font-semibold tabular-nums text-[#0b2341]">
+              {active + 1} / {photos.length}
+            </span>
+          </>
+        ) : (
+          <label className={`flex h-full cursor-pointer flex-col items-center justify-center gap-2 border-2 border-dashed border-slate-300 px-6 text-center transition hover:border-[#2678b9] hover:bg-[#e6f0f9]/40 ${photoBusy || !accessToken ? "pointer-events-none opacity-60" : ""}`}>
+            <ImagePlus aria-hidden="true" className="h-8 w-8 text-[#2678b9]" />
+            <span className="text-sm font-semibold text-[#0b2341]">
+              {photoBusy ? "Saving photo…" : savedPhotos === null ? "Loading trip photos…" : "Upload a trip photo"}
+            </span>
+            <span className="text-xs text-slate-500">Choose a JPEG, PNG, or WebP image</span>
+            <input
+              ref={fileInput}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              multiple
+              disabled={photoBusy || !accessToken}
+              className="sr-only"
+              onChange={(event) => void uploadPhotos(event.target.files)}
+            />
+          </label>
+        )}
       </div>
-      <div className="mt-3 grid grid-cols-4 gap-2" role="group" aria-label="Truck photos">
+      {photos.length > 1 && (
+      <div className="mt-3 flex snap-x gap-2 overflow-x-auto pb-1" role="group" aria-label="Truck photos">
         {photos.map((photo, index) => (
           <button
             key={photo}
@@ -169,23 +303,178 @@ function TripGallery({
             aria-label={`Show photo ${index + 1}`}
             aria-pressed={index === active}
             onClick={() => setActive(index)}
-            className={`aspect-[4/3] overflow-hidden rounded-xl bg-slate-100 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0b2341]/40 ${
+            style={{ flex: "0 0 calc((100% - 1.5rem) / 4)" }}
+            className={`aspect-[4/3] snap-start overflow-hidden rounded-xl bg-slate-100 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0b2341]/40 ${
               index === active ? "ring-2 ring-[#ffd43b] ring-offset-2" : "opacity-60 hover:opacity-100"
             }`}>
-            <ImageWithFallback
-              src={photo}
-              fallbackSrc={getFleetTruckPhoto(seed)}
-              alt=""
-              loading="lazy"
-              className="h-full w-full object-cover"
-            />
+            <img src={photo} alt="" loading="lazy" className="h-full w-full object-cover" />
           </button>
         ))}
+      </div>
+      )}
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+        {photos.length > 0 && (
+        <label className={`${surface.chip} ${photoBusy || !accessToken ? "pointer-events-none opacity-60" : "cursor-pointer"}`}>
+          <ImagePlus aria-hidden="true" className="mr-1.5 h-3.5 w-3.5" />
+          {photoBusy ? "Saving photo…" : "Add photos"}
+          <input
+            ref={fileInput}
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            multiple
+            disabled={photoBusy || !accessToken}
+            className="sr-only"
+            onChange={(event) => void uploadPhotos(event.target.files)}
+          />
+        </label>
+        )}
+        <span className="text-[10px] text-slate-400">JPEG, PNG, or WebP · up to 5 MB each</span>
+      </div>
+      {photoError && (
+        <p role="alert" className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700">
+          {photoError}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// --- Speedometer Gauge Component ---
+function LoadGauge({ percentage }: { percentage: number }) {
+  const radius = 60;
+  const stroke = 12;
+  const circumference = Math.PI * radius;
+  const offset = circumference - (percentage / 100) * circumference;
+  const color = percentage > 90 ? "#ef4444" : percentage > 70 ? "#f59e0b" : "#2678b9";
+
+  return (
+    <div className="relative flex flex-col items-center justify-center">
+      <svg width="160" height="90" viewBox="0 0 160 90" className="overflow-visible">
+        <defs>
+          <linearGradient id="gauge-grad" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor="#3b82f6" />
+            <stop offset="50%" stopColor="#10b981" />
+            <stop offset="100%" stopColor="#ef4444" />
+          </linearGradient>
+        </defs>
+        <path
+          d="M 20 80 A 60 60 0 0 1 140 80"
+          fill="none"
+          stroke="#e2e8f0"
+          strokeWidth={stroke}
+          strokeLinecap="round"
+        />
+        <path
+          d="M 20 80 A 60 60 0 0 1 140 80"
+          fill="none"
+          stroke={color}
+          strokeWidth={stroke}
+          strokeLinecap="round"
+          strokeDasharray={circumference}
+          strokeDashoffset={offset}
+          className="transition-[stroke-dashoffset] duration-1000 ease-out"
+        />
+      </svg>
+      <div className="absolute bottom-0 flex flex-col items-center">
+        <span className="text-3xl font-bold tabular-nums text-[#0b2341]">{percentage}%</span>
+        <span className="text-[10px] font-medium text-slate-500">Loaded</span>
       </div>
     </div>
   );
 }
 
+// --- Truck Visualization Component ---
+function TruckVisualization({
+  cargoRows,
+  selectedItem,
+  onSelectItem,
+  truckCapacityCbm,
+  totalCbm,
+}: {
+  cargoRows: Record<string, unknown>[];
+  selectedItem: Record<string, unknown> | null;
+  onSelectItem: (item: Record<string, unknown>) => void;
+  truckCapacityCbm: number | null;
+  totalCbm: number;
+}) {
+  const totalSlots = 12;
+  const slots = Array.from({ length: totalSlots }, (_, i) => cargoRows[i] || null);
+  const remainingCbm = truckCapacityCbm !== null ? Math.max(0, truckCapacityCbm - totalCbm) : null;
+  const loadPercentage = truckCapacityCbm !== null && truckCapacityCbm > 0
+    ? Math.min(100, Math.round((totalCbm / truckCapacityCbm) * 100))
+    : 0;
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="relative w-full overflow-hidden rounded-2xl bg-[#f8fafc] p-2">
+        <img
+          src={truckBg}
+          alt="Delivery truck side view"
+          className="w-full h-auto object-contain"
+        />
+        <div className="absolute left-[28%] right-[4%] top-[20%] bottom-[40%] grid grid-cols-6 grid-rows-2 gap-1 p-3">
+          {slots.map((item, index) => {
+            const isSelected = selectedItem && item && selectedItem.id === item.id;
+            const hasItem = !!item;
+            const itemName = item ? valueText(item.product_name ?? item.item_name ?? `Item ${index + 1}`) : "";
+            const itemCbm = item ? Number(item.cbm) : 0;
+            return (
+              <div
+                key={index}
+                onClick={() => item && onSelectItem(item)}
+                className={`relative flex flex-col items-center justify-center rounded-md border text-[8px] font-medium transition-all cursor-pointer ${
+                  isSelected
+                    ? "border-blue-500 bg-blue-50 ring-1 ring-blue-400"
+                    : hasItem
+                      ? "border-slate-300 bg-white/95 hover:border-slate-400"
+                      : "border-dashed border-slate-300/70 bg-white/60"
+                }`}
+              >
+                {hasItem ? (
+                  <>
+                    <span className="line-clamp-2 text-center leading-tight">{itemName}</span>
+                    {itemCbm > 0 && (
+                      <span className="text-[7px] text-slate-500">{formatNumber(itemCbm)} CBM</span>
+                    )}
+                  </>
+                ) : (
+                  <span className="text-slate-300">+</span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between gap-6 px-4">
+        <div className="shrink-0">
+          <LoadGauge percentage={loadPercentage} />
+        </div>
+
+        <div className="grid flex-1 grid-cols-3 gap-3">
+          <div className="flex flex-col items-center rounded-2xl bg-[#f2f6fa] p-3 text-center">
+            <span className="text-[10px] font-medium text-slate-500">Max CBM</span>
+            <span className="text-lg font-bold tabular-nums text-[#0b2341]">
+              {truckCapacityCbm !== null ? formatNumber(truckCapacityCbm) : "—"}
+            </span>
+          </div>
+          <div className="flex flex-col items-center rounded-2xl bg-[#f2f6fa] p-3 text-center">
+            <span className="text-[10px] font-medium text-slate-500">Load CBM</span>
+            <span className="text-lg font-bold tabular-nums text-[#2678b9]">
+              {formatNumber(totalCbm)}
+            </span>
+          </div>
+          <div className="flex flex-col items-center rounded-2xl bg-[#f2f6fa] p-3 text-center">
+            <span className="text-[10px] font-medium text-slate-500">Remaining</span>
+            <span className="text-lg font-bold tabular-nums text-emerald-600">
+              {remainingCbm !== null ? formatNumber(remainingCbm) : "—"}
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function TripDetailView({
   tripId,
@@ -201,6 +490,10 @@ export default function TripDetailView({
   const [failure, setFailure] = useState<{ key: string; message: string } | null>(null);
   const [retry, setRetry] = useState(0);
   const [selectedStop, setSelectedStop] = useState<string | null>(null);
+  const [selectedCargoItem, setSelectedCargoItem] = useState<Record<string, unknown> | null>(null);
+  const [photoProduct, setPhotoProduct] = useState<{ id: string; name: string } | null>(null);
+  const [viewProduct, setViewProduct] = useState<Record<string, unknown> | null>(null);
+  const [productPhotoOverrides, setProductPhotoOverrides] = useState<Record<string, string | null>>({});
   const requestKey = `${accessToken ?? "no-session"}:${tripId}:${retry}`;
 
   useEffect(() => {
@@ -243,6 +536,8 @@ export default function TripDetailView({
         });
         let bookingRows: Record<string, unknown>[] = [];
         let bookingError: string | null = null;
+        let truckCapacityCbm: number | null = null;
+        let truckCapacityError: string | null = null;
         try {
           const bookingResponse = await apiGet<ApiResponse<BookingPage>>(
             `/reports/trip-booking?${params.toString()}`,
@@ -258,6 +553,28 @@ export default function TripDetailView({
           if (cause instanceof ApiError && cause.status === 401) throw cause;
           bookingError = cause instanceof Error ? cause.message : "Trip report enrichment unavailable.";
         }
+        const truckPlate = String(bookingRows.find((row) => row.plate_number)?.plate_number ?? "").trim();
+        if (truckPlate) {
+          try {
+            const truckResponse = await apiGet<ApiResponse<TruckLookupRow[]>>(
+              `/lookups/trucks?q=${encodeURIComponent(truckPlate)}`,
+              accessToken,
+            );
+            if (!truckResponse.success || !truckResponse.data) {
+              throw new Error(truckResponse.message ?? "Unable to load truck capacity.");
+            }
+            const matchedTruck = truckResponse.data.find(
+              (row) => row.plate_number?.trim().toLowerCase() === truckPlate.toLowerCase(),
+            );
+            if (typeof matchedTruck?.capacity_cbm === "number" && matchedTruck.capacity_cbm > 0) {
+              truckCapacityCbm = matchedTruck.capacity_cbm;
+            }
+          } catch (cause) {
+            if (cause instanceof ApiError && cause.status === 401) throw cause;
+            truckCapacityError =
+              cause instanceof Error ? cause.message : "Truck capacity is unavailable.";
+          }
+        }
         if (!active) return;
         setDetail({
           trip: tripResponse.trip,
@@ -266,6 +583,8 @@ export default function TripDetailView({
           events,
           bookingRows,
           bookingError,
+          truckCapacityCbm,
+          truckCapacityError,
           sectionErrors,
         });
       } catch (cause) {
@@ -338,50 +657,58 @@ export default function TripDetailView({
 
   const doneStops = stops.filter(stopIsDone).length;
   const progress = stops.length ? Math.round((doneStops / stops.length) * 100) : 0;
-  const totalQty = sumOf(reportRows, "quantity");
-  const totalCbm = sumOf(reportRows, "cbm");
+  const cargoRows = reportRows.length > 0 ? reportRows : detail?.lineItems ?? [];
+  const totalQty = sumOf(cargoRows, "quantity");
+  const totalCbm = sumOf(cargoRows, "cbm");
   const lineItemCount = detail?.lineItems.length ?? reportRows.length;
   const driverName = getBookingValue(reportRows, "driver_name");
   const placeholder = isLoading ? "…" : undefined;
-
   const timelineEvents = orderedEvents.slice().reverse();
 
   return (
     <div className="space-y-4">
-      {/* Top bar */}
+      {/* Top Bar: Back button + Status Pill */}
       <header className="flex items-center justify-between gap-3">
         <button
           type="button"
           onClick={onBack}
-          className="inline-flex h-10 items-center gap-2 rounded-full border border-white/70 bg-white/80 pl-3 pr-4 text-xs font-semibold text-[#0b2341] shadow-[0_1px_2px_rgba(11,35,65,0.08)] backdrop-blur transition hover:bg-[#ffd43b] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0b2341]/40">
-          <ArrowLeft aria-hidden="true" className="h-4 w-4" />
+          className="inline-flex h-10 items-center gap-2 rounded-full border border-slate-200 bg-white pl-3 pr-4 text-xs font-semibold text-[#0b2341] shadow-sm transition hover:bg-slate-50"
+        >
+          <ArrowLeft className="h-4 w-4" />
           Back to trips
         </button>
-        <p className="truncate text-xs text-slate-500">
-          {placeholder ?? `${valueText(trip?.status, "Status not recorded").replaceAll("_", " ")} · loading ${shortDate(trip?.loading_date)}`}
-        </p>
+        <StatusPill status={trip?.status} fallback="Loading" />
       </header>
 
-      {detail?.bookingError && (
-        <p className="rounded-2xl border-l-2 border-amber-500 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-          Some customer, store, truck, or product labels could not be loaded: {detail.bookingError}
-        </p>
-      )}
-      {(detail?.sectionErrors.length ?? 0) > 0 && (
-        <div role="status" className="rounded-2xl border-l-2 border-amber-500 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-          Some trip sections are temporarily unavailable: {detail?.sectionErrors.join("; ")}
+      {/* Top Section: Gallery + Truck Visualization */}
+      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)] gap-4 items-start">
+        {/* Photo Gallery */}
+        <div className="min-w-0">
+          <TripGallery
+            key={tripId}
+            plate={getBookingValue(reportRows, "plate_number", "No plate recorded")}
+            tripId={tripId}
+            accessToken={accessToken}
+          />
         </div>
-      )}
 
-      {/* Overview: gallery on the left, trip summary on the right. Nothing overlaps. */}
-      <section className="grid items-start gap-4 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
-        <TripGallery
-          key={tripId}
-          trip={trip ?? {}}
-          seed={tripId}
-          plate={getBookingValue(reportRows, "plate_number", "No plate recorded")}
-        />
+        {/* Truck Visualization */}
+        <div className="min-w-0">
+          <div className="rounded-3xl bg-white p-6 shadow-[0_4px_20px_-4px_rgba(11,35,65,0.08)]">
+            <TruckVisualization
+              cargoRows={cargoRows}
+              selectedItem={selectedCargoItem}
+              onSelectItem={setSelectedCargoItem}
+              truckCapacityCbm={detail?.truckCapacityCbm ?? null}
+              totalCbm={totalCbm}
+            />
+          </div>
+        </div>
+      </div>
 
+      {/* Trip Summary & Stops */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Trip Summary */}
         <div className={`${surface.card} p-6`}>
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
@@ -451,51 +778,44 @@ export default function TripDetailView({
             <p className={`${surface.inner} mt-5 px-4 py-3 text-xs text-slate-600`}>{String(trip?.remarks)}</p>
           )}
         </div>
-      </section>
 
-      {/* Stop selector strip */}
-      <section aria-label="Stops" className="-mx-1 flex gap-3 overflow-x-auto px-1 pb-2 pt-1">
-        {stops.length === 0 ? (
-          <p className={`${surface.card} w-full px-5 py-6 text-center text-sm text-slate-500`}>
-            {placeholder ?? "No stops recorded for this trip."}
-          </p>
-        ) : (
-          stops.map((stop, index) => {
-            const key = stopKey(stop, index);
-            const match = rowsForStop(key)[0] ?? {};
-            const selected = selectedStop === key;
-            return (
-              <button
-                key={String(stop.id ?? stop.trip_stop_id ?? `${tripId}-${index}`)}
-                type="button"
-                aria-pressed={selected}
-                onClick={() => setSelectedStop((current) => (current === key ? null : key))}
-                className={`relative min-w-[250px] max-w-[280px] shrink-0 overflow-hidden rounded-2xl border p-4 text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0b2341]/40 ${
-                  selected
-                    ? "border-transparent bg-white shadow-[0_12px_28px_-14px_rgba(11,35,65,0.3)] ring-2 ring-[#ffd43b]"
-                    : "border-slate-200/70 bg-white hover:border-slate-300"
-                }`}>
-                <div className="relative flex items-center gap-2">
-                  <span className={`flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-bold ${selected ? "bg-[#ffd43b] text-[#0b2341]" : "bg-[#e6f0f9] text-[#0b2341]"}`}>
-                    {key}
-                  </span>
-                  <StatusPill status={stop.delivery_status ?? match.delivery_status} fallback="Pending" />
-                </div>
-                <p className="relative mt-3 truncate text-sm font-bold text-[#0b2341]">
-                  {valueText(match.store_name, valueText(stop.store_id, "Store not recorded"))}
-                </p>
-                <p className="relative mt-0.5 truncate text-[11px] text-slate-500">
-                  {valueText(match.customer_name, valueText(stop.customer_id, "Customer not recorded"))}
-                </p>
-                <p className="relative mt-2 flex items-center gap-1.5 text-[11px] text-slate-500">
-                  <Clock aria-hidden="true" className="h-3 w-3" />
-                  {stop.arrival_time ? dateText(stop.arrival_time, true) : "No arrival yet"}
-                </p>
-              </button>
-            );
-          })
-        )}
-      </section>
+        {/* Stops */}
+        <div className={`${surface.card} p-6`}>
+          <h3 className={surface.heading}>Stops</h3>
+          {stops.length === 0 ? (
+            <p className="py-6 text-center text-sm text-slate-500">
+              {placeholder ?? "No stops recorded for this trip."}
+            </p>
+          ) : (
+            <ul className="mt-4 space-y-3">
+              {stops.map((stop, index) => {
+                const key = stopKey(stop, index);
+                const match = rowsForStop(key)[0] ?? {};
+                return (
+                  <li key={String(stop.id ?? stop.trip_stop_id ?? `${tripId}-${index}`)} className="flex items-start gap-3 rounded-xl border border-slate-100 p-3">
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#e6f0f9] text-[11px] font-bold text-[#0b2341]">
+                      {key}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold text-[#0b2341]">
+                        {valueText(match.store_name, valueText(stop.store_id, "Store not recorded"))}
+                      </p>
+                      <p className="truncate text-[11px] text-slate-500">
+                        {valueText(match.customer_name, valueText(stop.customer_id, "Customer not recorded"))}
+                      </p>
+                      <p className="mt-1 flex items-center gap-1.5 text-[11px] text-slate-500">
+                        <Clock aria-hidden="true" className="h-3 w-3" />
+                        {stop.arrival_time ? dateText(stop.arrival_time, true) : "No arrival yet"}
+                      </p>
+                    </div>
+                    <StatusPill status={stop.delivery_status ?? match.delivery_status} fallback="Pending" />
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      </div>
 
       {/* Fleet tracking: timeline beside the map */}
       <div className="grid gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
@@ -591,18 +911,52 @@ export default function TripDetailView({
                   </td>
                 </tr>
               ) : (
-                visibleRows.map((row, index) => (
+                visibleRows.map((row, index) => {
+                  const productId = String(row.product_id ?? row._product_id ?? "");
+                  const productName = valueText(row.product_name, "Product not recorded");
+                  const photoUrl = Object.hasOwn(productPhotoOverrides, productId)
+                    ? productPhotoOverrides[productId]
+                    : typeof row.product_photo_url === "string"
+                      ? row.product_photo_url
+                      : null;
+                  return (
                   <tr key={String(row.trip_line_item_id ?? row.id ?? `${tripId}-item-${index}`)} className="bg-white shadow-[0_1px_2px_rgba(11,35,65,0.04)]">
-                    <td className="rounded-l-2xl px-4 py-3.5 font-semibold text-[#0b2341]">
+                    <td
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => setViewProduct(row)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          setViewProduct(row);
+                        }
+                      }}
+                      aria-label={`View appliance details for ${productName}`}
+                      className="group/product cursor-pointer rounded-l-2xl px-4 py-3.5 font-semibold text-[#0b2341] transition-colors hover:bg-[#eaf3fb] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2678b9]"
+                    >
                       <div className="flex min-w-0 items-center gap-3">
-                        <ImageWithFallback
-                          src={getRecordImageUrls(row, PRODUCT_IMAGE_FIELDS)[0]}
-                          fallbackSrc={getProductPhotoFallback(row)}
-                          alt={`Reference photo for ${valueText(row.product_name, "appliance")}`}
-                          loading="lazy"
-                          className="h-14 w-14 shrink-0 rounded-xl bg-[#f2f6fa] object-cover"
-                        />
-                        <span className="min-w-0">{valueText(row.product_name, "Product not recorded")}</span>
+                        <span className="group relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[#f2f6fa]">
+                          <ProductPhotoThumb key={`${productId}:${photoUrl ?? "empty"}`} src={photoUrl} />
+                          {productId && (
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setPhotoProduct({ id: productId, name: productName });
+                              }}
+                              onKeyDown={(event) => event.stopPropagation()}
+                              aria-label={`${photoUrl ? "Change" : "Upload"} photo for ${productName}`}
+                              title={photoUrl ? "Change product photo" : "Upload product photo"}
+                              className="invisible absolute inset-0 flex flex-col items-center justify-center gap-0.5 bg-[#0b2341]/65 text-[9px] font-semibold leading-none text-white opacity-0 transition hover:bg-[#0b2341]/75 focus-visible:visible focus-visible:opacity-100 group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100 [@media(hover:none)]:visible [@media(hover:none)]:opacity-100"
+                            >
+                              <ImagePlus aria-hidden="true" className="h-4 w-4" />
+                              {photoUrl ? "Change" : "Upload"}
+                            </button>
+                          )}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          {productName}
+                        </span>
                       </div>
                     </td>
                     <td className="px-4 py-3.5 text-slate-600">{valueText(row.sku ?? row.model_code)}</td>
@@ -614,7 +968,8 @@ export default function TripDetailView({
                       <StatusPill status={row.delivery_status} fallback="Pending" />
                     </td>
                   </tr>
-                ))
+                );
+                })
               )}
             </tbody>
           </table>
@@ -624,6 +979,81 @@ export default function TripDetailView({
           {visibleRows.length} {visibleRows.length === 1 ? "line" : "lines"} · {formatNumber(sumOf(visibleRows, "quantity"))} units · {formatNumber(sumOf(visibleRows, "cbm"))} CBM
         </footer>
       </section>
+      {accessToken && photoProduct && (
+        <ProductPhotoManager
+          token={accessToken}
+          productId={photoProduct.id}
+          productLabel={photoProduct.name}
+          onClose={() => setPhotoProduct(null)}
+          onPhotoChange={(url) => {
+            setProductPhotoOverrides((current) => ({ ...current, [photoProduct.id]: url }));
+          }}
+        />
+      )}
+      {viewProduct && (
+        <div
+          className="fixed inset-0 z-[1250] flex items-center justify-center bg-[#0b2341]/45 p-4"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setViewProduct(null);
+          }}
+        >
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="appliance-details-title"
+            className="w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl"
+          >
+            <header className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+              <div className="flex min-w-0 items-center gap-2">
+                <Eye aria-hidden="true" className="h-4 w-4 shrink-0 text-[#2678b9]" />
+                <h3 id="appliance-details-title" className="truncate font-semibold text-[#0b2341]">
+                  Appliance details
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setViewProduct(null)}
+                aria-label="Close appliance details"
+                className="rounded-full p-2 text-slate-500 hover:bg-slate-100"
+              >
+                <X aria-hidden="true" className="h-4 w-4" />
+              </button>
+            </header>
+            <div className="grid gap-4 p-5 sm:grid-cols-[120px_minmax(0,1fr)]">
+              <div className="flex aspect-square items-center justify-center overflow-hidden rounded-xl bg-[#f2f6fa]">
+                <ProductPhotoThumb
+                  key={`${String(viewProduct.product_id ?? viewProduct._product_id ?? "")}:${String(viewProduct.product_photo_url ?? "")}`}
+                  src={typeof viewProduct.product_photo_url === "string" ? viewProduct.product_photo_url : null}
+                />
+              </div>
+              <div className="min-w-0">
+                <h4 className="font-semibold text-[#0b2341]">
+                  {valueText(viewProduct.product_name, "Product not recorded")}
+                </h4>
+                <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3 text-xs">
+                  {[
+                    ["SKU / Model", viewProduct.sku ?? viewProduct.model_code],
+                    ["Category", viewProduct.product_category ?? viewProduct.category],
+                    ["Store", viewProduct.store_name],
+                    ["Delivery receipt", viewProduct.dr_number],
+                    ["Quantity", viewProduct.quantity],
+                    ["CBM", viewProduct.cbm],
+                    ["Status", viewProduct.delivery_status],
+                  ].map(([label, value]) => (
+                    <div key={String(label)} className="min-w-0">
+                      <dt className="text-slate-400">{String(label)}</dt>
+                      <dd className="mt-0.5 truncate font-medium text-slate-700">
+                        {valueText(value, "—")}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              </div>
+            </div>
+          </section>
+        </div>
+      )}
     </div>
   );
 }

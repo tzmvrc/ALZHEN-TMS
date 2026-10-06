@@ -14,15 +14,15 @@ import {
   Truck,
   Megaphone,
   ExternalLink,
-  LogOut,
   RefreshCw,
   Trash2,
   Pencil,
   ImagePlus,
   X,
 } from "lucide-react";
-import {
-  WorkspaceSwitcher,
+import SidebarNav, {
+  type NavEntry,
+  type SidebarNavProps,
   type WorkspaceName,
 } from "../../components/admin/SidebarNav";
 import { useAuth } from "../../context/AuthContext";
@@ -82,12 +82,27 @@ export default function ClientWebsiteWorkspace({
   userName,
   onWorkspaceChange,
   onLogout,
+  notificationProps,
 }: {
   userName: string;
   onWorkspaceChange: (workspace: WorkspaceName) => void;
   onLogout: () => void;
+  notificationProps: Pick<
+    SidebarNavProps,
+    | "onNotificationsClick"
+    | "onNotificationBellOpen"
+    | "onNotificationOpen"
+    | "notificationItems"
+    | "notificationLoading"
+    | "notificationError"
+    | "onNotificationRetry"
+    | "onNotificationRead"
+    | "notificationCount"
+    | "canAccessNotifications"
+  >;
 }) {
-  const { accessToken, isAdmin } = useAuth();
+  const { accessToken, isAdmin, profile } = useAuth();
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
   const [kind, setKind] = useState<Collection>("trucks"),
     [records, setRecords] = useState<WebsiteRecord[]>([]),
     [draft, setDraft] = useState<WebsiteRecord | null>(null);
@@ -97,12 +112,23 @@ export default function ClientWebsiteWorkspace({
     [error, setError] = useState(""),
     [notice, setNotice] = useState("");
   const website = (
-    import.meta.env.VITE_CLIENT_WEBSITE_URL || "http://localhost:3000"
+    import.meta.env.VITE_CLIENT_WEBSITE_URL || "https://alzhen-website.vercel.app"
   ).replace(/\/$/, "");
-  const [preview, setPreview] = useState(false);
-  const [previewKey, setPreviewKey] = useState(0);
+  const [preview, setPreview] = useState(true);
   const [archived, setArchived] = useState(false);
   const [confirmation, setConfirmation] = useState<{action:"archive" | "delete"; record:WebsiteRecord} | null>(null);
+  const navEntries: NavEntry[] = [
+    {
+      id: "public-website",
+      label: "Public website",
+      children: [
+        { id: "website-preview", label: "Website Preview", icon: <Monitor /> },
+        { id: "trucks", label: "Trucks", icon: <Truck /> },
+        { id: "announcements", label: "Announcements", icon: <Megaphone /> },
+        { id: "careers", label: "Careers", icon: <BriefcaseBusiness /> },
+      ],
+    },
+  ];
   const visibleRecords = records.filter(r => (r.status === "archived") === archived).sort((a,b) => kind !== "trucks" ? (b._createdAt || b.date || "").localeCompare(a._createdAt || a.date || "") : 0);
   const requestNumber = useRef(0);
   const refresh = useCallback(async () => {
@@ -261,62 +287,61 @@ export default function ClientWebsiteWorkspace({
       />
     </label>
   );
+  const navigateClientSection = (id: string) => {
+    if (busy) return;
+    if (id === "website-preview") {
+      if (!discard()) return;
+      setDraft(null);
+      setDirty(false);
+      setPreview(true);
+      setNotice("");
+      setError("");
+      return;
+    }
+    if (id === "trucks" || id === "announcements" || id === "careers") {
+      switchKind(id);
+    }
+  };
   return (
-    <div className="cw-workspace">
-      <aside className="cw-sidebar">
-        <WorkspaceSwitcher
-          workspace="Client Website"
-          onChange={(w) => {
-            if (!busy && discard()) onWorkspaceChange(w);
-          }}
-        />
-        <p className="cw-eyebrow">PUBLIC WEBSITE</p>
-        <button
-          className={!preview && kind === "trucks" ? "active" : ""}
-          disabled={busy}
-          onClick={() => switchKind("trucks")}
-        >
-          <Truck size={19} />
-          Trucks
-        </button>
-        <button
-          className={!preview && kind === "announcements" ? "active" : ""}
-          disabled={busy}
-          onClick={() => switchKind("announcements")}
-        >
-          <Megaphone size={19} />
-          Announcements
-        </button>
-        <button className={!preview && kind === "careers" ? "active" : ""} disabled={busy} onClick={() => switchKind("careers")}><BriefcaseBusiness size={19}/>Careers</button>
-        <button className={preview ? "active" : ""} disabled={busy} onClick={() => {
-          if (!discard()) return;
-          setDraft(null); setDirty(false); setPreview(true); setNotice(""); setError("");
-        }}><Monitor size={19}/>Website Preview</button>
-        <div className="cw-user">
-          <strong>{userName}</strong>
-          <span>Website management</span>
-          <button
-            disabled={busy}
-            onClick={() => {
-              if (discard()) onLogout();
-            }}
-          >
-            <LogOut size={16} />
-            Log out
-          </button>
-        </div>
-      </aside>
-      <main className="cw-main">
-        <header className="cw-header">
+    <div className="cw-shell dotted-surface">
+      <SidebarNav
+        entries={navEntries}
+        activeId={preview ? "website-preview" : kind}
+        onNavigate={navigateClientSection}
+        {...notificationProps}
+        onNotificationsClick={() => {
+          onWorkspaceChange("Operational Admin");
+          notificationProps.onNotificationsClick?.();
+        }}
+        onNotificationOpen={(item) => {
+          onWorkspaceChange("Operational Admin");
+          notificationProps.onNotificationOpen?.(item);
+        }}
+        onLogout={() => {
+          if (discard()) onLogout();
+        }}
+        workspace="Client Website"
+        onWorkspaceChange={(workspace) => {
+          if (!busy && discard()) onWorkspaceChange(workspace);
+        }}
+        userName={userName}
+        userRole={profile?.role === "ADMIN" ? "Website management" : profile?.role}
+        userInitial={userName.charAt(0).toUpperCase()}
+        userPictureUrl={profile?.profile_picture_url}
+        onCollapseChange={(collapsed) => setSidebarCollapsed(collapsed)}
+      />
+      <div className={`cw-content transition-[padding-left] duration-300 motion-reduce:transition-none ${sidebarCollapsed ? "" : "lg:pl-[17rem]"}`}>
+      <main className={`cw-workspace cw-main cw-workspace--${kind}${preview ? " cw-preview-page" : ""}`}>
+        {!preview && <header className="cw-header">
           <div>
             <p className="cw-eyebrow">CLIENT WEBSITE</p>
             <h1>
-              {preview ? "See it as your clients do." : kind === "trucks"
+              {kind === "trucks"
                 ? "Your fleet, on display."
                 : kind === "careers" ? "Find your next team member." : "Keep your clients updated."}
             </h1>
             <p>
-              {preview ? "Check your published content and open the full website." : kind === "trucks"
+              {kind === "trucks"
                 ? "Manage truck photos, specifications, and common cargos."
                 : kind === "careers" ? "Publish hiring posts with job details, requirements, and application instructions." : "Publish company news, updates, and advisories."}
             </p>
@@ -325,8 +350,8 @@ export default function ClientWebsiteWorkspace({
             View website
             <ExternalLink size={16} />
           </a>
-        </header>
-        {!isAdmin && (
+        </header>}
+        {!preview && !isAdmin && (
           <p role="alert" className="cw-error">
             An administrator account is required to edit website content.
           </p>
@@ -336,25 +361,26 @@ export default function ClientWebsiteWorkspace({
             {error}
           </p>
         )}
-        {notice && (
+        {!preview && notice && (
           <p role="status" className="cw-notice">
             {notice}
           </p>
         )}
         {preview ? <section className="cw-preview">
-          <div className="cw-toolbar"><strong>Live website preview</strong><button onClick={() => setPreviewKey(k => k + 1)}><RefreshCw size={16}/>Reload preview</button></div>
-          <iframe key={previewKey} src={`${website}/#${kind}`} title="Alzhen client website preview" />
+          <h1>Alzhen Website Preview</h1>
+          <iframe src={website} title="Alzhen client website preview" />
         </section> : <>
-        <div className="cw-filters" aria-label="Post status">
+        <div className={`cw-filters cw-filters--${kind}`} aria-label="Post status">
           {[false, true].map(value => <button key={String(value)} aria-pressed={archived === value} onClick={() => { if (!discard()) return; setDraft(null); setDirty(false); setArchived(value); }}>
             {value ? "Archive" : "Published"} ({records.filter(r => (r.status === "archived") === value).length})
           </button>)}
           <p>Archived posts stay here until you restore or permanently delete them.</p>
         </div>
-        <div className="cw-toolbar">
-          <strong>
-            {visibleRecords.length} {archived ? `archived ${kind}` : kind}
-          </strong>
+        <div className="cw-toolbar cw-list-toolbar">
+          <div className="cw-list-heading">
+            <strong>{visibleRecords.length} {archived ? `archived ${kind}` : kind}</strong>
+            <span>{kind === "trucks" ? "Fleet catalog" : kind === "careers" ? "Open opportunities" : "Company updates"}</span>
+          </div>
           <div>
             <button
               disabled={busy || loading}
@@ -392,26 +418,35 @@ export default function ClientWebsiteWorkspace({
               </div>
             ) : (
               visibleRecords.map((r) => (
-                <article className="cw-record" key={r.id}>
-                  {kind === "careers" ? null : r.images?.[0]?.url || r.imageUrl ? (
+                <article className={`cw-record cw-record--${kind}`} key={r.id}>
+                  {kind === "careers" ? (
+                    <div className="cw-placeholder cw-placeholder--careers">
+                      <BriefcaseBusiness size={28} />
+                    </div>
+                  ) : r.images?.[0]?.url || r.imageUrl ? (
                     <img
                       className="cw-cover"
                       src={r.images?.[0]?.url || r.imageUrl}
                       alt={title(r)}
                     />
                   ) : (
-                    <div className="cw-placeholder">
-                      <Megaphone size={32} />
+                    <div className={`cw-placeholder cw-placeholder--${kind}`}>
+                      {kind === "trucks" ? <Truck size={30} /> : <Megaphone size={30} />}
                     </div>
                   )}
                   <div className="cw-record-body">
+                    <div className="cw-record-kicker">
+                      <span>{kind === "trucks" ? "Fleet vehicle" : kind === "careers" ? "Career opportunity" : "Company announcement"}</span>
+                      {kind !== "trucks" && <time>{r.date}</time>}
+                    </div>
                     <h2>{title(r)}</h2>
-                    <p>
-                      {kind === "trucks"
-                        ? `${r.maxLoad} · ${r.dimensions}`
-                        : r.date}
-                    </p>
-                    {kind !== "trucks" && (
+                    {kind === "trucks" ? (
+                      <dl className="cw-truck-specs">
+                        <div><dt>Max load</dt><dd>{r.maxLoad || "Not specified"}</dd></div>
+                        <div><dt>Dimensions</dt><dd>{r.dimensions || "Not specified"}</dd></div>
+                        {r.volume && <div><dt>Volume</dt><dd>{r.volume}</dd></div>}
+                      </dl>
+                    ) : (
                       <p className="cw-excerpt">{r.content}</p>
                     )}
                     <div className="cw-actions">
@@ -695,6 +730,7 @@ export default function ClientWebsiteWorkspace({
           </div>
         </ContentDialog>}
       </main>
+      </div>
     </div>
   );
 }

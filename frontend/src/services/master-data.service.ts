@@ -1,6 +1,6 @@
 import { apiGet, apiPatch, apiPost, type ApiResponse } from "./api.service";
 
-export type MasterDataKey = "warehouses" | "trucks" | "stores" | "store-contacts";
+export type MasterDataKey = "warehouses" | "trucks" | "stores" | "store-contacts" | "products";
 export type MasterDataRow = Record<string, unknown> & { id: string };
 export type MasterDataPage = { rows: MasterDataRow[]; pagination: { page: number; limit: number; total: number; totalPages: number } };
 

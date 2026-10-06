@@ -1,6 +1,6 @@
 import { supabaseAdmin } from "../config/supabase.js";
 
-export type MasterDataResource = "warehouses" | "trucks" | "stores" | "store-contacts";
+export type MasterDataResource = "warehouses" | "trucks" | "stores" | "store-contacts" | "products";
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -40,6 +40,15 @@ const configs = {
     fields: ["store_id", "name", "phone", "email", "position", "is_primary", "notes"],
     required: ["store_id", "name"],
     types: { store_id: "uuid", name: "text", phone: "nullable", email: "nullable", position: "nullable", is_primary: "boolean", notes: "nullable" },
+  },
+  products: {
+    table: "products",
+    select: "id, sku, model_code, name, category, description, unit_cbm, status, notes, photo_path, created_at, updated_at",
+    orderBy: "name",
+    search: ["sku", "model_code", "name", "category"],
+    fields: ["sku", "model_code", "name", "category", "description", "unit_cbm", "status", "notes"],
+    required: ["name"],
+    types: { sku: "nullable", model_code: "nullable", name: "text", category: "nullable", description: "nullable", unit_cbm: "number", status: "text", notes: "nullable" },
   },
 } as const;
 

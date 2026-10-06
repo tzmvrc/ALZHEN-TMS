@@ -1,6 +1,12 @@
 import { Router } from "express";
+import express from "express";
 import { authMiddleware } from "../middleware/auth.middleware.js";
 import { requireRole } from "../middleware/role.middleware.js";
+import {
+  listImages,
+  removeImage,
+  uploadImage,
+} from "../controllers/trip-image.controller.js";
 import {
   createAssignment,
   deleteAssignment,
@@ -28,6 +34,25 @@ import {
 
 const router = Router();
 
+router.get(
+  "/:id/images",
+  authMiddleware,
+  requireRole("ADMIN", "STAFF"),
+  listImages,
+);
+router.post(
+  "/:id/images",
+  authMiddleware,
+  requireRole("ADMIN", "STAFF"),
+  express.raw({ type: ["image/jpeg", "image/png", "image/webp"], limit: "5mb" }),
+  uploadImage,
+);
+router.delete(
+  "/:id/images/:imageId",
+  authMiddleware,
+  requireRole("ADMIN", "STAFF"),
+  removeImage,
+);
 router.get("/", authMiddleware, requireRole("ADMIN", "STAFF"), listTrips);
 router.post("/", authMiddleware, requireRole("ADMIN", "STAFF"), createTrip);
 router.get(

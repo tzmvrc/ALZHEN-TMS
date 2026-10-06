@@ -244,6 +244,46 @@ async function attachOperationalRecordIds(rows: Record<string, unknown>[]) {
     }
   }
 
+  const productIds = [
+    ...new Set(
+      rows
+        .map((row) => row.product_id)
+        .filter((id): id is string => typeof id === "string"),
+    ),
+  ];
+  if (productIds.length > 0) {
+    const { data: products, error } = await supabaseAdmin
+      .from("products")
+      .select("id, photo_path")
+      .in("id", productIds);
+    if (error) {
+      console.error("Report product photo enrichment failed:", error);
+    } else {
+      const photoUrls = await Promise.all(
+        (products ?? []).map(async (product) => {
+          if (!product.photo_path) return [String(product.id), null] as const;
+          const { data, error: photoError } = await supabaseAdmin.storage
+            .from("product-photos")
+            .createSignedUrl(product.photo_path, 60 * 60);
+          if (photoError || !data?.signedUrl) {
+            console.error("Report product photo URL failed:", {
+              productId: product.id,
+              error: photoError,
+            });
+            return [String(product.id), null] as const;
+          }
+          return [String(product.id), data.signedUrl] as const;
+        }),
+      );
+      const photoByProductId = new Map(photoUrls);
+      for (const row of rows) {
+        if (typeof row.product_id === "string") {
+          row.product_photo_url = photoByProductId.get(row.product_id) ?? null;
+        }
+      }
+    }
+  }
+
   // Enrich assigned_to_name for Store Calling
   const storeCallIds = [
     ...new Set(

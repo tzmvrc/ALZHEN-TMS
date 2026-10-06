@@ -82,6 +82,7 @@ export default function DashboardPage({
     data.user.name;
   const [workspace, setWorkspace] =
     useState<WorkspaceName>("Operational Admin");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [logoutLoading, setLogoutLoading] = useState(false);
   const [activeId, setActiveId] = useState(() =>
@@ -377,6 +378,18 @@ export default function DashboardPage({
           userName={displayName}
           onWorkspaceChange={setWorkspace}
           onLogout={() => setShowLogoutConfirm(true)}
+          notificationProps={{
+            onNotificationsClick: () => handleNavigate("notifications"),
+            onNotificationBellOpen: () => void handleNotificationBellOpen(),
+            onNotificationOpen: handleNotificationOpen,
+            notificationCount: profile?.role === "ADMIN" ? notificationCount : 0,
+            canAccessNotifications: profile?.role === "ADMIN",
+            notificationItems,
+            notificationLoading,
+            notificationError,
+            onNotificationRetry: () => notificationReload.current(),
+            onNotificationRead: markNotificationReadLocally,
+          }}
         />
         <ConfirmDialog
           open={showLogoutConfirm}
@@ -411,7 +424,11 @@ export default function DashboardPage({
         style={{ backgroundImage: `url("${dottedBackground}")`, backgroundRepeat: "repeat", backgroundSize: "20px 20px" }}
       />
 
-      <div className="relative z-10">
+      <div
+        className={`relative z-10 transition-[padding-left] duration-300 motion-reduce:transition-none ${
+          sidebarCollapsed ? "" : "lg:pl-[17rem]"
+        }`}
+      >
         <div className="dotted-surface mx-auto max-w-[1500px] px-3 sm:px-4 lg:px-6">
           <SidebarNav
             entries={navEntries}
@@ -433,87 +450,102 @@ export default function DashboardPage({
             userName={displayName}
             userInitial={displayName.charAt(0).toUpperCase()}
             userPictureUrl={profile?.profile_picture_url}
+            onCollapseChange={setSidebarCollapsed}
           />
         </div>
 
         <main className="dotted-surface mx-auto min-h-[calc(100vh-4.5rem)] w-full px-3 py-3 sm:px-4 lg:px-5">
-          {activeId === "overview" ? (
-            <div className="w-full">
-              <h1 className="sr-only">Operations overview</h1>
-              <OverviewView
-                onOpenTrip={(tripId) =>
-                  setActiveId(`trip-detail:${tripId}:overview`)
-                }
-                onMetricNavigate={handleMetricNavigate}
+          <div
+            key={activeId}
+            className="page-enter"
+          >
+            {activeId === "overview" ? (
+              <div className="w-full">
+                <h1 className="sr-only">Operations overview</h1>
+                <OverviewView
+                  onOpenTrip={(tripId) =>
+                    setActiveId(`trip-detail:${tripId}:overview`)
+                  }
+                  onMetricNavigate={handleMetricNavigate}
+                />
+              </div>
+            ) : activeId === "notifications" ? (
+              profile?.role === "ADMIN" ? (
+                <NotificationsView
+                  items={notificationItems}
+                  loading={notificationLoading}
+                  error={notificationError}
+                  onRetry={() => notificationReload.current()}
+                  onNotificationRead={markNotificationReadLocally}
+                  onOpen={handleNotificationOpen}
+                />
+              ) : (
+                <OverviewView
+                  onOpenTrip={(tripId) =>
+                    setActiveId(`trip-detail:${tripId}:overview`)
+                  }
+                  onMetricNavigate={handleMetricNavigate}
+                />
+              )
+            ) : activeId === "trips" ? (
+              <ResourceView
+                id={tripView}
+                data={filteredData}
+                onNavigate={handleNavigate}
+                tripScope={tripView}
+                onTripScopeChange={(next) => {
+                  setTripView(next);
+                  setActiveId("trips");
+                }}
               />
-            </div>
-          ) : activeId === "notifications" ? (
-            profile?.role === "ADMIN" ? <NotificationsView
-              items={notificationItems}
-              loading={notificationLoading}
-              error={notificationError}
-              onRetry={() => notificationReload.current()}
-              onNotificationRead={markNotificationReadLocally}
-              onOpen={handleNotificationOpen}
-            /> : <OverviewView onOpenTrip={(tripId) => setActiveId(`trip-detail:${tripId}:overview`)} onMetricNavigate={handleMetricNavigate} />
-          ) : activeId === "trips" ? (
-            <ResourceView
-              id={tripView}
-              data={filteredData}
-              onNavigate={handleNavigate}
-              tripScope={tripView}
-              onTripScopeChange={(next) => {
-                setTripView(next);
-                setActiveId("trips");
-              }}
-            />
-          ) : activeId === "truckers" ? (
-            <ResourceView
-              id="truckers"
-              data={filteredData}
-              onNavigate={handleNavigate}
-            />
-          ) : activeId === "pod" ? (
-            <ResourceView
-              id="pod"
-              data={filteredData}
-              onNavigate={handleNavigate}
-            />
-          ) : activeId === "reports" ? (
-            <ResourceView
-              id={reportView}
-              data={filteredData}
-              onNavigate={handleNavigate}
-              notificationTarget={notificationTarget}
-              onReportScopeChange={(next) => {
-                setReportView(next);
-                setActiveId("reports");
-              }}
-            />
-          ) : activeId === "billing" ? (
-            <ResourceView
-              id={billingView}
-              data={filteredData}
-              onNavigate={handleNavigate}
-              billingScope={billingView}
-              onBillingScopeChange={(next) => {
-                setBillingView(next);
-                setActiveId("billing");
-              }}
-            />
-          ) : activeId === "settings" ? (
-            <ResourceView
-              id="settings"
-              data={filteredData}
-              onNavigate={handleNavigate}
-            />
-          ) : (
-            <ResourceView
-              id={activeId}
-              data={filteredData}
-              onNavigate={handleNavigate}
-            />
-          )}
+            ) : activeId === "truckers" ? (
+              <ResourceView
+                id="truckers"
+                data={filteredData}
+                onNavigate={handleNavigate}
+              />
+            ) : activeId === "pod" ? (
+              <ResourceView
+                id="pod"
+                data={filteredData}
+                onNavigate={handleNavigate}
+              />
+            ) : activeId === "reports" ? (
+              <ResourceView
+                id={reportView}
+                data={filteredData}
+                onNavigate={handleNavigate}
+                notificationTarget={notificationTarget}
+                onReportScopeChange={(next) => {
+                  setReportView(next);
+                  setActiveId("reports");
+                }}
+              />
+            ) : activeId === "billing" ? (
+              <ResourceView
+                id={billingView}
+                data={filteredData}
+                onNavigate={handleNavigate}
+                billingScope={billingView}
+                onBillingScopeChange={(next) => {
+                  setBillingView(next);
+                  setActiveId("billing");
+                }}
+              />
+            ) : activeId === "settings" ? (
+              <ResourceView
+                id="settings"
+                data={filteredData}
+                onNavigate={handleNavigate}
+              />
+            ) : (
+              <ResourceView
+                id={activeId}
+                data={filteredData}
+                onNavigate={handleNavigate}
+              />
+            )}
+          </div>
         </main>
 
         <ConfirmDialog

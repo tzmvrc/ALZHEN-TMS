@@ -1,7 +1,8 @@
 // src/components/admin/OverviewCards.tsx
 import { useState, type ReactNode } from "react";
-import { ArrowUpRight, RefreshCw } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, CheckCircle2, MapPin, RefreshCw, Truck, Users } from "lucide-react";
 import type { DispatchRecord } from "../../types/dashboard";
+import type { ReportRow } from "../../services/report.service";
 import { getFleetTruckPhoto, surface } from "./dashboardStyles";
 import ImageWithFallback from "./ImageWithFallback";
 
@@ -49,54 +50,122 @@ export function GreetingHeader({
 /* ------------------------------------------------------------------ */
 /* Trip shortcut cards (top-right row)                                  */
 /* ------------------------------------------------------------------ */
-export function TripShortcutRow({
-  rows,
-  selectedTripId,
-  onSelectTrip,
+export function FleetHealthRow({
+  delayed,
+  tripsChecked,
+  activeDrivers,
+  gpsReporting,
+  gpsExpected,
+  stopsCompleted,
+  isLoading,
+  onDelayedClick,
 }: {
-  rows: DispatchRecord[];
-  selectedTripId?: string | null;
-  onSelectTrip?: (id: string) => void;
+  delayed: number;
+  tripsChecked: number;
+  activeDrivers: number;
+  gpsReporting: number;
+  gpsExpected: number;
+  stopsCompleted: number;
+  isLoading: boolean;
+  onDelayedClick?: () => void;
 }) {
-  const shown = rows.slice(0, 4);
-  if (shown.length === 0) {
-    return (
-      <div className={`${surface.card} flex items-center justify-center p-6 text-sm text-slate-400`}>
-        No trips yet.
-      </div>
-    );
-  }
+  const show = (value: number) => (isLoading ? "..." : value.toLocaleString());
+  const gpsPercent =
+    gpsExpected > 0 ? Math.round((gpsReporting / gpsExpected) * 100) : null;
+  const hasDelays = !isLoading && delayed > 0;
+
+  const tileBase = `${surface.card} flex min-w-0 flex-col gap-3 p-4 text-left`;
+
   return (
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-      {shown.map((trip, index) => {
-        const selected = trip.id === selectedTripId;
-        return (
-          <button
-            key={trip.id}
-            type="button"
-            onClick={() => onSelectTrip?.(trip.id)}
-            aria-pressed={selected}
-            className={`${surface.card} flex min-w-0 flex-col p-3 text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0b2341]/30 ${
-              selected ? "ring-2 ring-[#ffd43b]" : "hover:-translate-y-0.5"
+      {/* Delayed trips: the one number an operator must act on */}
+      <button
+        type="button"
+        onClick={onDelayedClick}
+        className={`${tileBase} transition hover:-translate-y-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0b2341]/30 ${
+          hasDelays ? "ring-2 ring-amber-300/80" : ""
+        }`}
+      >
+        <span className="flex items-center justify-between gap-2">
+          <span className={surface.eyebrow}>Delayed trips</span>
+          <span
+            className={`flex h-8 w-8 items-center justify-center rounded-full ${
+              hasDelays ? "bg-amber-100 text-amber-600" : "bg-emerald-50 text-emerald-600"
             }`}
           >
-            <span className="flex h-24 items-center justify-center overflow-hidden rounded-2xl bg-[#f2f6fa]">
-              <ImageWithFallback
-                src={trip.imageUrl}
-                fallbackSrc={getFleetTruckPhoto(undefined, index)}
-                alt=""
-                className="h-full w-full object-contain p-2"
-              />
-            </span>
-            <span className="mt-3 truncate text-[13px] font-semibold text-[#0b2341]">
-              {trip.displayId ?? trip.id}
-            </span>
-            <span className="truncate text-[11px] text-slate-400">
-              {trip.driver}
-            </span>
-          </button>
-        );
-      })}
+            {hasDelays ? (
+              <AlertTriangle aria-hidden="true" className="h-4 w-4" />
+            ) : (
+              <CheckCircle2 aria-hidden="true" className="h-4 w-4" />
+            )}
+          </span>
+        </span>
+        <span className="text-[28px] font-bold leading-none tabular-nums text-[#0b2341]">
+          {show(delayed)}
+        </span>
+        <span className="truncate text-[11px] text-slate-500">
+          {isLoading
+            ? "Checking trips"
+            : hasDelays
+              ? `Needs follow-up · of latest ${tripsChecked}`
+              : `None in the latest ${tripsChecked} trips`}
+        </span>
+      </button>
+
+      <div className={tileBase}>
+        <span className="flex items-center justify-between gap-2">
+          <span className={surface.eyebrow}>Active drivers</span>
+          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#e6f0f9] text-[#1d5f94]">
+            <Users aria-hidden="true" className="h-4 w-4" />
+          </span>
+        </span>
+        <span className="text-[28px] font-bold leading-none tabular-nums text-[#0b2341]">
+          {show(activeDrivers)}
+        </span>
+        <span className="truncate text-[11px] text-slate-500">
+          On in-progress trips
+        </span>
+      </div>
+
+      <div className={tileBase}>
+        <span className="flex items-center justify-between gap-2">
+          <span className={surface.eyebrow}>GPS coverage</span>
+          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-violet-50 text-violet-600">
+            <MapPin aria-hidden="true" className="h-4 w-4" />
+          </span>
+        </span>
+        <span className="text-[28px] font-bold leading-none tabular-nums text-[#0b2341]">
+          {isLoading ? "..." : gpsPercent === null ? "—" : `${gpsPercent}%`}
+        </span>
+        <span className="flex flex-col gap-1.5">
+          <span className="h-1.5 w-full overflow-hidden rounded-full bg-[#e3eaf2]">
+            <span
+              className="block h-full rounded-full bg-violet-500 transition-[width] duration-700 motion-reduce:transition-none"
+              style={{ width: `${gpsPercent ?? 0}%` }}
+            />
+          </span>
+          <span className="truncate text-[11px] text-slate-500">
+            {gpsExpected > 0
+              ? `${gpsReporting} of ${gpsExpected} active trips reporting`
+              : "No active trips"}
+          </span>
+        </span>
+      </div>
+
+      <div className={tileBase}>
+        <span className="flex items-center justify-between gap-2">
+          <span className={surface.eyebrow}>Stops completed</span>
+          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
+            <CheckCircle2 aria-hidden="true" className="h-4 w-4" />
+          </span>
+        </span>
+        <span className="text-[28px] font-bold leading-none tabular-nums text-[#0b2341]">
+          {show(stopsCompleted)}
+        </span>
+        <span className="truncate text-[11px] text-slate-500">
+          Store arrivals recorded
+        </span>
+      </div>
     </div>
   );
 }
@@ -160,7 +229,13 @@ export function RingStatCard({
   onAction?: () => void;
 }) {
   return (
-    <div className={`${surface.card} flex min-w-0 flex-col justify-between gap-3 p-4`}>
+    <div
+      className={`${surface.card} flex min-w-0 flex-col justify-between gap-3 p-4 ${
+        onAction
+          ? "transition-[transform,box-shadow] duration-300 ease-out hover:-translate-y-0.5 hover:shadow-[0_12px_28px_-16px_rgba(11,35,65,0.35)] motion-reduce:transition-none"
+          : ""
+      }`}
+    >
       <div className="flex items-center gap-3">
         <ProgressRing percent={percent} color={color} />
         <div className="min-w-0">
@@ -293,11 +368,13 @@ export function FleetListCard({
   selectedTripId,
   onSelectTrip,
   onViewTrip,
+  className = "",
 }: {
   rows: DispatchRecord[];
   selectedTripId?: string | null;
   onSelectTrip?: (id: string) => void;
   onViewTrip?: (id: string) => void;
+  className?: string;
 }) {
   const [tab, setTab] = useState<FleetTab>("all");
   const tabs: { id: FleetTab; label: string; count: number }[] = [
@@ -324,7 +401,7 @@ export function FleetListCard({
     .slice(0, 6);
 
   return (
-    <section className={`${surface.card} p-5`}>
+    <section className={`${surface.card} flex min-h-0 flex-col overflow-hidden p-5 ${className}`}>
       <h2 className={`${surface.heading} mb-3`}>Active fleet</h2>
       <div
         className="mb-4 flex gap-1 overflow-x-auto rounded-full bg-[#f2f6fa] p-1"
@@ -353,8 +430,8 @@ export function FleetListCard({
           No trips in this view.
         </p>
       ) : (
-        <ul className="space-y-2.5">
-          {visible.map((trip, index) => {
+        <ul className="min-h-0 flex-1 space-y-2.5 overflow-y-auto overscroll-contain pr-1">
+          {visible.map((trip) => {
             const progress = Math.min(Math.max(trip.progressPct ?? 0, 0), 100);
             const selected = trip.id === selectedTripId;
             const barColor =
@@ -376,13 +453,8 @@ export function FleetListCard({
                   aria-pressed={selected}
                   className="flex min-w-0 flex-1 items-center gap-2.5 rounded-xl text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0b2341]/40"
                 >
-                  <span className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white">
-                    <ImageWithFallback
-                      src={trip.imageUrl}
-                      fallbackSrc={getFleetTruckPhoto(undefined, index)}
-                      alt=""
-                      className="h-full w-full object-contain p-1"
-                    />
+                  <span className="block h-14 w-14 shrink-0 overflow-hidden rounded-2xl bg-white">
+                    <FleetPhoto key={trip.imageUrl ?? trip.id} src={trip.imageUrl} />
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center justify-between gap-2">
@@ -429,6 +501,183 @@ export function FleetListCard({
   );
 }
 
+function FleetPhoto({ src }: { src?: string }) {
+  const [failed, setFailed] = useState(false);
+
+  if (!src || failed) {
+    return (
+      <span
+        role="img"
+        aria-label="No trip photo available"
+        className="flex h-full w-full items-center justify-center bg-slate-200 text-slate-400"
+      >
+        <Truck aria-hidden="true" className="h-6 w-6" />
+      </span>
+    );
+  }
+
+  return (
+    <img
+      src={src}
+      alt=""
+      className="h-full w-full object-cover object-center"
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
+const TRUCK_CARD_PHOTOS = [
+  "https://images.unsplash.com/photo-1711942179703-fce59b6afac6?auto=format&fit=crop&w=900&q=80",
+  "https://images.unsplash.com/photo-1733662095268-7a88cb5fa10e?auto=format&fit=crop&w=900&q=80",
+  "https://images.unsplash.com/photo-1605705658744-45f0fe8f9663?auto=format&fit=crop&w=900&q=80",
+];
+
+function reportText(value: unknown): string {
+  return typeof value === "string" || typeof value === "number"
+    ? String(value).trim()
+    : "";
+}
+
+export function StackedTripCard({
+  rows,
+  bookingRows,
+  className = "",
+}: {
+  rows: DispatchRecord[];
+  bookingRows: ReportRow[];
+  className?: string;
+}) {
+  const [activeIndex, setActiveIndex] = useState(0);
+  const cards = rows.slice(0, 5).map((trip, index) => {
+    const matchingRows = bookingRows.filter(
+      (row) =>
+        reportText(row.dispatch_number) ===
+        (trip.displayId ?? trip.id),
+    );
+    const cbmValues = matchingRows
+      .map((row) => reportText(row.cbm).replaceAll(",", ""))
+      .filter(Boolean)
+      .map(Number)
+      .filter(Number.isFinite);
+    const cbm = cbmValues.length
+      ? cbmValues.reduce((total, value) => total + value, 0)
+      : null;
+    const plate = matchingRows
+      .map((row) => reportText(row.plate_number))
+      .find(Boolean);
+
+    return {
+      trip,
+      index,
+      cbm,
+      plate,
+      image: TRUCK_CARD_PHOTOS[index % TRUCK_CARD_PHOTOS.length],
+    };
+  });
+
+  if (!cards.length) {
+    return (
+      <section className={`${surface.card} flex min-h-64 flex-1 items-center justify-center p-5 text-center text-sm text-slate-400 ${className}`}>
+        Truck and trip details will appear when trips are available.
+      </section>
+    );
+  }
+
+  const activeCard = activeIndex % cards.length;
+
+  return (
+    <section aria-label="Truck and driver cards" className={`flex flex-none flex-col ${className}`}>
+      <div className="mb-3 flex items-center justify-between px-1">
+        <h2 className={surface.heading}>Truck &amp; driver</h2>
+        <span className="text-[11px] text-slate-400">
+          {activeCard + 1} / {cards.length} · Click to cycle
+        </span>
+      </div>
+      <div className="relative h-[270px] flex-none">
+        {cards.map(({ trip, index, cbm, plate, image }) => {
+          const depth = (index - activeCard + cards.length) % cards.length;
+
+          return (
+            <button
+              key={trip.id}
+              type="button"
+              aria-label={`Trip ${trip.displayId ?? trip.id}, driver ${trip.driver}, ${trip.status}. Show next truck`}
+              aria-hidden={depth !== 0}
+              tabIndex={depth === 0 ? 0 : -1}
+              onClick={() => setActiveIndex((current) => (current + 1) % cards.length)}
+              className={`absolute inset-x-0 top-0 h-[246px] overflow-hidden rounded-3xl border border-white/15 bg-[#0b2341] text-left text-white shadow-[0_18px_35px_-18px_rgba(11,35,65,0.65)] transition-[transform,opacity,box-shadow] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#ffd43b] motion-reduce:transition-none ${
+                depth === 0 ? "cursor-pointer" : "pointer-events-none"
+              }`}
+              style={{
+                zIndex: Math.max(1, 3 - depth),
+                transform: `translateY(${Math.min(depth, 3) * 11}px) scale(${Math.max(0.86, 1 - depth * 0.045)})`,
+                opacity: Math.max(0, 1 - depth * 0.25),
+              }}
+            >
+              <ImageWithFallback
+                src={image}
+                fallbackSrc={getFleetTruckPhoto(undefined, index)}
+                alt=""
+                className="absolute inset-0 h-full w-full object-cover object-center"
+                loading="lazy"
+              />
+              <span aria-hidden="true" className="absolute inset-0 bg-gradient-to-r from-[#0b2341] via-[#0b2341]/90 to-[#0b2341]/10" />
+              <span aria-hidden="true" className="absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-[#0b2341]/90 to-transparent" />
+              <span className="relative flex h-full flex-col justify-between p-4 sm:p-5">
+                <span className="flex items-start justify-between gap-3">
+                  <span>
+                    <span className="block text-[10px] font-semibold uppercase tracking-[0.16em] text-white/65">
+                      Assigned truck
+                    </span>
+                    <span className="mt-1 block max-w-[75%] truncate text-lg font-bold tracking-tight">
+                      {trip.displayId ?? trip.id}
+                    </span>
+                  </span>
+                  <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold ${statusTag(trip.status)}`}>
+                    {trip.statusText ?? trip.status}
+                  </span>
+                </span>
+
+                <span className="grid grid-cols-2 gap-x-4 gap-y-3 border-t border-white/20 pt-3">
+                  <span className="min-w-0">
+                    <span className="block text-[10px] text-white/60">Driver</span>
+                    <span className="mt-0.5 block truncate text-[13px] font-semibold">
+                      {trip.driver || "Not assigned"}
+                    </span>
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-[10px] text-white/60">Truck / plate</span>
+                    <span className="mt-0.5 block truncate text-[13px] font-semibold">
+                      {plate || "Not recorded"}
+                    </span>
+                  </span>
+                  <span>
+                    <span className="block text-[10px] text-white/60">Cargo volume</span>
+                    <span className="mt-0.5 block text-[13px] font-semibold">
+                      {cbm === null ? "—" : `${cbm.toLocaleString(undefined, { maximumFractionDigits: 2 })} CBM`}
+                    </span>
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-[10px] text-white/60">Route</span>
+                    <span className="mt-0.5 block truncate pr-8 text-[12px] font-medium">
+                      {trip.origin || trip.hub || "Origin not set"} → {trip.destination || "Destination not set"}
+                    </span>
+                  </span>
+                </span>
+              </span>
+              {cards.length > 1 && depth === 0 && (
+                <span aria-hidden="true" className="absolute bottom-4 right-4 flex h-8 w-8 items-center justify-center rounded-full bg-[#ffd43b] text-[#0b2341] shadow">
+                  <ArrowUpRight className="h-4 w-4 rotate-45" />
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 /* ------------------------------------------------------------------ */
 /* Recent activity (notifications style)                                */
 /* ------------------------------------------------------------------ */
@@ -441,12 +690,14 @@ const feedDot = {
 export function ActivityFeedCard({
   events,
   title = "Recent activity",
+  className = "",
 }: {
   events: { id: string; time: string; message: string; tone: string }[];
   title?: string;
+  className?: string;
 }) {
   return (
-    <section className={`${surface.card} flex min-h-0 flex-col p-5`}>
+    <section className={`${surface.card} flex min-h-[300px] min-w-0 flex-1 flex-col overflow-hidden p-5 ${className}`}>
       <div className="mb-3 flex items-center justify-between gap-3">
         <h2 className={surface.heading}>{title}</h2>
         <span className="text-[11px] text-slate-400">{events.length} events</span>
@@ -454,7 +705,7 @@ export function ActivityFeedCard({
       {events.length === 0 ? (
         <p className="py-8 text-center text-sm text-slate-400">No recent activity.</p>
       ) : (
-        <ul className="max-h-[420px] space-y-2 overflow-y-auto pr-1">
+        <ul className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain pr-1">
           {events.map((event) => (
             <li key={event.id} className="rounded-2xl bg-[#f2f6fa] px-3.5 py-3">
               <p className="flex items-start gap-2 text-[12px] font-semibold capitalize leading-snug text-[#0b2341]">

@@ -2,10 +2,12 @@
 import { useState, type ReactNode } from "react";
 import {
   Area,
-  AreaChart,
+  Bar,
+  BarChart,
   CartesianGrid,
-  Line,
-  LineChart,
+  Cell,
+  ComposedChart,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -825,6 +827,38 @@ export function DeliveryPerformanceChart({
 /* ================================================================ */
 export type FleetMovementPoint = { label: string; distanceKm: number };
 
+type ChartTipProps = {
+  active?: boolean;
+  payload?: { payload?: Record<string, unknown> }[];
+  label?: string | number;
+};
+
+function MovementTooltip({ active, payload, label }: ChartTipProps) {
+  const row = payload?.[0]?.payload as
+    | { daily: number; cumulative: number }
+    | undefined;
+  if (!active || !row) return null;
+  return (
+    <div className="rounded-2xl bg-[#0b2341] px-3.5 py-2.5 text-white shadow-[0_16px_40px_-12px_rgba(11,35,65,0.5)]">
+      <p className="text-[10px] font-medium text-white/60">{label}</p>
+      <p className="mt-1.5 flex items-center justify-between gap-6 text-[12px]">
+        <span className="flex items-center gap-1.5 text-white/70">
+          <span className="h-2 w-2 rounded-full bg-[#5aa3d8]" />
+          That day
+        </span>
+        <span className="font-semibold tabular-nums">{row.daily.toFixed(1)} km</span>
+      </p>
+      <p className="mt-1 flex items-center justify-between gap-6 text-[12px]">
+        <span className="flex items-center gap-1.5 text-white/70">
+          <span className="h-2 w-2 rounded-full bg-[#ffd43b]" />
+          Running total
+        </span>
+        <span className="font-semibold tabular-nums">{row.cumulative.toFixed(1)} km</span>
+      </p>
+    </div>
+  );
+}
+
 export function FleetMovementPanel({
   data,
   isLoading,
@@ -834,14 +868,39 @@ export function FleetMovementPanel({
   isLoading: boolean;
   activeRoutes: number;
 }) {
+  const [hovered, setHovered] = useState<number | null>(null);
+  const [hidden, setHidden] = useState({ daily: false, cumulative: false });
   const totalDistance = data.at(-1)?.distanceKm ?? 0;
+
+  const rows = data.map((point, index) => ({
+    label: point.label,
+    cumulative: point.distanceKm,
+    daily: Math.max(
+      Math.round((point.distanceKm - (data[index - 1]?.distanceKm ?? 0)) * 10) / 10,
+      0,
+    ),
+  }));
+  const best = rows.reduce(
+    (top, row) => (row.daily > top.daily ? row : top),
+    rows[0] ?? { label: "", daily: 0, cumulative: 0 },
+  );
+  const average = rows.length > 0 ? totalDistance / rows.length : 0;
+
+  const legend: { key: "daily" | "cumulative"; label: string; dot: string }[] = [
+    { key: "daily", label: "Daily distance", dot: "bg-[#2678b9]" },
+    { key: "cumulative", label: "Running total", dot: "bg-[#ffd43b]" },
+  ];
 
   return (
     <CardShell className="flex min-w-0 flex-col p-5">
       <CardHeader
         title="Fleet movement"
-        right={<span className="text-[10px] font-medium text-slate-500">{totalDistance.toFixed(1)} km GPS distance</span>}
-        className="mb-2"
+        right={
+          <span className="rounded-full bg-[#e6f0f9] px-3 py-1 text-[11px] font-semibold text-[#1d5f94]">
+            {totalDistance.toFixed(1)} km GPS distance
+          </span>
+        }
+        className="mb-3"
       />
       {isLoading ? (
         <p className="flex min-h-[200px] items-center justify-center text-sm text-slate-500">Loading route history...</p>
@@ -850,51 +909,88 @@ export function FleetMovementPanel({
           GPS movement will appear after trips record more than one location.
         </p>
       ) : (
-        <div className="flex flex-col">
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap gap-2">
+              {legend.map((item) => (
+                <button
+                  key={item.key}
+                  type="button"
+                  aria-pressed={!hidden[item.key]}
+                  onClick={() => setHidden((current) => ({ ...current, [item.key]: !current[item.key] }))}
+                  className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9] ${
+                    hidden[item.key]
+                      ? "bg-white text-slate-400 ring-1 ring-slate-200"
+                      : "bg-[#f2f6fa] text-[#0b2341]"
+                  }`}
+                >
+                  <span className={`h-2 w-2 rounded-full ${hidden[item.key] ? "bg-slate-300" : item.dot}`} />
+                  {item.label}
+                </button>
+              ))}
+            </div>
+            <p className="text-[11px] text-slate-500">
+              Best day <span className="font-semibold text-[#0b2341]">{best.label} · {best.daily.toFixed(1)} km</span>
+              <span className="mx-1.5 text-slate-300">•</span>
+              Avg <span className="font-semibold text-[#0b2341]">{average.toFixed(1)} km/day</span>
+              <span className="mx-1.5 text-slate-300">•</span>
+              {activeRoutes} active {activeRoutes === 1 ? "route" : "routes"}
+            </p>
+          </div>
+
           <ResponsiveContainer width="100%" height={280}>
-            <AreaChart data={data} margin={{ top: 14, right: 10, left: 0, bottom: 0 }}>
+            <ComposedChart data={rows} margin={{ top: 10, right: 4, left: 0, bottom: 0 }}>
               <defs>
-                <linearGradient id="fleet-movement-fill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#2678b9" stopOpacity={0.2} />
-                  <stop offset="100%" stopColor="#2678b9" stopOpacity={0.01} />
+                <linearGradient id="fleet-bar-fill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#2678b9" stopOpacity={1} />
+                  <stop offset="100%" stopColor="#8dbfe6" stopOpacity={0.9} />
+                </linearGradient>
+                <linearGradient id="fleet-total-fill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#ffd43b" stopOpacity={0.35} />
+                  <stop offset="100%" stopColor="#ffd43b" stopOpacity={0.02} />
                 </linearGradient>
               </defs>
               <CartesianGrid vertical={false} stroke="#e7ecf1" strokeDasharray="3 5" />
-              <XAxis dataKey="label" tickLine={false} axisLine={{ stroke: "#dce3ea" }} tick={{ fill: "#718096", fontSize: 10 }} />
-              <YAxis allowDecimals={false} width={62} tickLine={false} axisLine={false} tick={{ fill: "#718096", fontSize: 10 }} tickFormatter={(value: number) => `${value} km`} />
-              <Tooltip
-                formatter={(value) => [`${Number(value).toFixed(1)} km`, "Recorded distance"]}
-                contentStyle={{ borderRadius: 8, borderColor: "#dce3ea", fontSize: 12 }}
-              />
-              <Area
-                type="monotone"
-                dataKey="distanceKm"
-                stroke="#2678b9"
-                strokeWidth={2.5}
-                strokeDasharray="7 4"
-                fill="url(#fleet-movement-fill)"
-                dot={(props) => {
-                  const { cx, cy, index } = props;
-                  if (typeof cx !== "number" || typeof cy !== "number") return null;
-                  if (index === data.length - 1) {
-                    return (
-                      <g key="latest-truck" transform={`translate(${cx - 14}, ${cy - 14})`}>
-                        <circle cx="14" cy="14" r="13" fill="white" stroke="#cbd5e1" />
-                        <text className="truck-emoji-right" x="14" y="20" textAnchor="middle" fontSize="18">
-                          🚚
-                        </text>
-                      </g>
-                    );
-                  }
-                  return <circle key={`gps-point-${index}`} cx={cx} cy={cy} r="3" fill="#2678b9" stroke="white" strokeWidth="2" />;
-                }}
-                activeDot={{ r: 5, fill: "#2678b9", stroke: "#fff", strokeWidth: 2 }}
-                isAnimationActive={false}
-              />
-            </AreaChart>
+              <XAxis dataKey="label" tickLine={false} axisLine={false} tick={{ fill: "#718096", fontSize: 10 }} />
+              <YAxis yAxisId="day" width={40} tickLine={false} axisLine={false} tick={{ fill: "#718096", fontSize: 10 }} />
+              <YAxis yAxisId="total" orientation="right" width={44} tickLine={false} axisLine={false} tick={{ fill: "#b08a00", fontSize: 10 }} />
+              <Tooltip content={<MovementTooltip />} cursor={{ fill: "rgba(38,120,185,0.07)" }} />
+              {!hidden.cumulative && (
+                <Area
+                  yAxisId="total"
+                  type="monotone"
+                  dataKey="cumulative"
+                  stroke="#f2c200"
+                  strokeWidth={3}
+                  fill="url(#fleet-total-fill)"
+                  dot={false}
+                  activeDot={{ r: 6, fill: "#ffd43b", stroke: "#fff", strokeWidth: 2 }}
+                  animationDuration={900}
+                />
+              )}
+              {!hidden.daily && (
+                <Bar
+                  yAxisId="day"
+                  dataKey="daily"
+                  radius={[10, 10, 0, 0]}
+                  maxBarSize={38}
+                  animationDuration={700}
+                  onMouseEnter={(_data: unknown, index: number) => setHovered(index)}
+                  onMouseLeave={() => setHovered(null)}
+                >
+                  {rows.map((row, index) => (
+                    <Cell
+                      key={row.label}
+                      fill="url(#fleet-bar-fill)"
+                      fillOpacity={hovered === null || hovered === index ? 1 : 0.4}
+                    />
+                  ))}
+                </Bar>
+              )}
+            </ComposedChart>
           </ResponsiveContainer>
           <p className="text-center text-[10px] text-slate-400">
-            Cumulative GPS distance · {activeRoutes} active routes
+            Hover a day for details · tap a legend chip to show or hide a series
           </p>
         </div>
       )}
@@ -905,6 +1001,24 @@ export function FleetMovementPanel({
 /* ================================================================ */
 /* EventVolumePanel                                                   */
 /* ================================================================ */
+function OpsTooltip({ active, payload, label }: ChartTipProps) {
+  const row = payload?.[0]?.payload as { count: number; isPeak: boolean } | undefined;
+  if (!active || !row) return null;
+  return (
+    <div className="rounded-2xl bg-[#0b2341] px-3.5 py-2.5 text-white shadow-[0_16px_40px_-12px_rgba(11,35,65,0.5)]">
+      <p className="text-[10px] font-medium text-white/60">{label}</p>
+      <p className="mt-1 text-[13px] font-semibold tabular-nums">
+        {row.count} {row.count === 1 ? "event" : "events"}
+        {row.isPeak && (
+          <span className="ml-2 rounded-full bg-[#ffd43b] px-2 py-0.5 text-[9px] font-bold text-[#0b2341]">
+            PEAK
+          </span>
+        )}
+      </p>
+    </div>
+  );
+}
+
 export function OperationsActivityPanel({
   dailyCounts,
   totalEvents,
@@ -920,6 +1034,7 @@ export function OperationsActivityPanel({
   isLoading: boolean;
   unavailable?: boolean;
 }) {
+  const [hovered, setHovered] = useState<number | null>(null);
   const peak = dailyCounts.reduce(
     (best, entry) => (entry.count > best.count ? entry : best),
     dailyCounts[0] ?? { date: "", count: 0 },
@@ -930,6 +1045,14 @@ export function OperationsActivityPanel({
       month: "short",
       day: "numeric",
     });
+
+  const rows = dailyCounts.map(({ date, count }) => ({
+    label: dayLabel(date),
+    count,
+    isPeak: date === peak.date,
+  }));
+  const average =
+    rows.length > 0 ? rows.reduce((sum, row) => sum + row.count, 0) / rows.length : 0;
 
   return (
     <CardShell className="flex min-w-0 flex-col p-5">
@@ -942,31 +1065,21 @@ export function OperationsActivityPanel({
         }
       />
 
-      <div className="mb-3 grid grid-cols-3 divide-x divide-slate-100 rounded-lg border border-slate-200/70 bg-slate-50/50">
-        <div className="px-3 py-2.5 text-center">
-          <p className="text-xl font-bold tabular-nums text-slate-900">
-            {isLoading ? "..." : totalEvents}
-          </p>
-          <p className="text-[10px] font-medium uppercase tracking-wider text-slate-500">
-            Total events
-          </p>
-        </div>
-        <div className="px-3 py-2.5 text-center">
-          <p className="text-xl font-bold tabular-nums text-slate-900">
-            {isLoading ? "..." : tripsUpdated}
-          </p>
-          <p className="text-[10px] font-medium uppercase tracking-wider text-slate-500">
-            Trips updated
-          </p>
-        </div>
-        <div className="px-3 py-2.5 text-center">
-          <p className="text-xl font-bold tabular-nums text-slate-900">
-            {isLoading ? "..." : stopsCompleted}
-          </p>
-          <p className="text-[10px] font-medium uppercase tracking-wider text-slate-500">
-            Stops completed
-          </p>
-        </div>
+      <div className="mb-3 grid grid-cols-3 gap-2">
+        {[
+          { label: "Total events", value: totalEvents },
+          { label: "Trips updated", value: tripsUpdated },
+          { label: "Stops completed", value: stopsCompleted },
+        ].map((stat) => (
+          <div key={stat.label} className="rounded-2xl bg-[#f2f6fa] px-3 py-2.5 text-center">
+            <p className="text-xl font-bold tabular-nums text-[#0b2341]">
+              {isLoading ? "..." : stat.value}
+            </p>
+            <p className="text-[10px] font-medium uppercase tracking-wider text-slate-500">
+              {stat.label}
+            </p>
+          </div>
+        ))}
       </div>
 
       {unavailable && (
@@ -986,33 +1099,47 @@ export function OperationsActivityPanel({
       ) : (
         <div className="flex flex-col">
           <ResponsiveContainer width="100%" height={240}>
-            <LineChart
-              data={dailyCounts.map(({ date, count }) => ({
-                label: dayLabel(date),
-                count,
-              }))}
-              margin={{ top: 14, right: 10, left: 0, bottom: 0 }}
-            >
+            <BarChart data={rows} margin={{ top: 14, right: 6, left: 0, bottom: 0 }}>
+              <defs>
+                <linearGradient id="ops-bar-fill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#2678b9" stopOpacity={1} />
+                  <stop offset="100%" stopColor="#8dbfe6" stopOpacity={0.9} />
+                </linearGradient>
+                <linearGradient id="ops-peak-fill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#ffd43b" stopOpacity={1} />
+                  <stop offset="100%" stopColor="#f2c200" stopOpacity={0.85} />
+                </linearGradient>
+              </defs>
               <CartesianGrid vertical={false} stroke="#e7ecf1" strokeDasharray="3 5" />
-              <XAxis dataKey="label" tickLine={false} axisLine={{ stroke: "#dce3ea" }} tick={{ fill: "#718096", fontSize: 10 }} />
-              <YAxis allowDecimals={false} width={38} tickLine={false} axisLine={false} tick={{ fill: "#718096", fontSize: 10 }} />
-              <Tooltip
-                formatter={(value) => [Number(value), "Events"]}
-                contentStyle={{ borderRadius: 8, borderColor: "#dce3ea", fontSize: 12 }}
+              <XAxis dataKey="label" tickLine={false} axisLine={false} tick={{ fill: "#718096", fontSize: 10 }} />
+              <YAxis allowDecimals={false} width={34} tickLine={false} axisLine={false} tick={{ fill: "#718096", fontSize: 10 }} />
+              <Tooltip content={<OpsTooltip />} cursor={{ fill: "rgba(38,120,185,0.07)" }} />
+              <ReferenceLine
+                y={average}
+                stroke="#94a3b8"
+                strokeDasharray="4 4"
+                label={{ value: `avg ${average.toFixed(1)}`, position: "insideTopRight", fill: "#64748b", fontSize: 10 }}
               />
-              <Line
-                type="monotone"
+              <Bar
                 dataKey="count"
-                stroke="#2678b9"
-                strokeWidth={2.5}
-                dot={{ r: 4, fill: "#fff", stroke: "#2678b9", strokeWidth: 2 }}
-                activeDot={{ r: 6, fill: "#2678b9", stroke: "#fff", strokeWidth: 2 }}
-                isAnimationActive={false}
-              />
-            </LineChart>
+                radius={[10, 10, 0, 0]}
+                maxBarSize={34}
+                animationDuration={700}
+                onMouseEnter={(_data: unknown, index: number) => setHovered(index)}
+                onMouseLeave={() => setHovered(null)}
+              >
+                {rows.map((row, index) => (
+                  <Cell
+                    key={row.label}
+                    fill={row.isPeak ? "url(#ops-peak-fill)" : "url(#ops-bar-fill)"}
+                    fillOpacity={hovered === null || hovered === index ? 1 : 0.4}
+                  />
+                ))}
+              </Bar>
+            </BarChart>
           </ResponsiveContainer>
           <p className="pt-1 text-center text-[10px] text-slate-400">
-            Events by date · last {dailyCounts.length} days
+            Events by date · last {dailyCounts.length} days · yellow marks the busiest day
           </p>
         </div>
       )}
