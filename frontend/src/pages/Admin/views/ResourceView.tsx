@@ -245,15 +245,15 @@ const TABLE_PAGE_IDS = new Set([
   "calendar",
 ]);
 
-/* Title centred in the same row as the menu toggle and the
-   notifications/profile pill (both are fixed at top-4, h-11). */
-function PageTitleBar({ title }: { title: string }) {
+/* Heading under the top bar, left aligned like the Home page. */
+function PageHeading({ title, subtitle }: { title: string; subtitle?: string }) {
   return (
-    <div className="pointer-events-none fixed inset-x-0 top-4 z-30 flex h-11 items-center justify-center px-20 sm:px-32">
-      <h1 className="min-w-0 max-w-full truncate text-xl font-bold leading-none tracking-tight text-[#0b2341]">
+    <header className="mb-4 min-w-0">
+      <h1 className="truncate text-[26px] font-bold leading-tight tracking-tight text-[#0b2341]">
         {title}
       </h1>
-    </div>
+      {subtitle && <p className="mt-1 text-[13px] text-slate-500">{subtitle}</p>}
+    </header>
   );
 }
 
@@ -315,6 +315,7 @@ export default function ResourceView({
   const isPrototype =
     !isTripDetail &&
     ![
+      "requests",
       "dispatches",
       "deliveries",
       "monitoring",
@@ -331,7 +332,7 @@ export default function ResourceView({
       "rates-fuel",
       "invoices",
     ].includes(id);
-  /* Table pages already show their title in the top bar, so no title/subtitle block. */
+  /* Table pages get a compact PageHeading instead of the larger PageIntro block. */
   const showPageIntro = !TABLE_PAGE_IDS.has(id) && !isTripDetail;
 
   const showLocalTrip = !isTripDetail && localTripId !== null;
@@ -348,28 +349,33 @@ export default function ResourceView({
     "dispatch-monitoring",
     "store-calling",
   ].includes(id);
-  const barTitle = showLocalTrip
-    ? "Trip details"
-    : isTripsScope
-      ? "Trips"
-      : isReportsScope
-        ? "Reports"
-        : title;
-  const showTitleBar = isTablePage || isTripDetail || showLocalTrip;
-  /* Table pages use the full width; everything else is centred and moderately wide. */
-  /* Trip details are a bit wider than the Home dashboard (1440px in OverviewView). */
+  const barTitle = isTripsScope
+    ? "Trips"
+    : isReportsScope
+      ? "Reports"
+      : title;
+  const barSubtitle = isTripsScope
+    ? (titleMap.dispatches?.[1] ?? subtitle)
+    : isReportsScope
+      ? (titleMap.reports?.[1] ?? subtitle)
+      : subtitle;
+  /* The page shell (DashboardPage) already offsets the content from the rail and top bar,
+     so the pages add no horizontal padding of their own. Table pages use the full width;
+     everything else is centred and moderately wide. The Requests board also runs full width. */
   const layoutClass =
     isTripDetail || showLocalTrip
-      ? "mx-auto w-full max-w-[1640px] px-1 sm:px-4 lg:px-6"
-      : isTablePage
+      ? "mx-auto w-full max-w-[1640px]"
+      : id === "requests"
         ? "w-full"
-        : "mx-auto w-full max-w-[1180px] px-1 sm:px-4 lg:px-8";
+        : isTablePage
+          ? "w-full"
+          : "mx-auto w-full max-w-[1180px]";
 
   return (
     <>
-      {showTitleBar && <PageTitleBar title={barTitle} />}
       <div className={layoutClass}>
       <div hidden={showLocalTrip}>
+      {isTablePage && <PageHeading title={barTitle} subtitle={barSubtitle} />}
       {showPageIntro && <PageIntro title={title} subtitle={subtitle} />}
       {isPrototype && <PrototypeNotice />}
 

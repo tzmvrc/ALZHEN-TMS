@@ -61,7 +61,7 @@
 body {
   min-height: 100dvh;
   overflow-x: hidden;
-  background: #f2f4f5;
+  background: transparent;
 }
 
 #root {
@@ -86,23 +86,11 @@ body {
   background-size: 18px 18px;
 }
 
-button.bg-slate-900:not(:disabled) {
-  border-color: #ffd43b;
-  background-color: #ffd43b;
-  color: #0b2341;
-}
-
-button.bg-slate-900:not(:disabled):hover {
-  border-color: #f0c32c;
-  background-color: #f0c32c;
-  color: #0b2341;
-}
-
 button:focus-visible,
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible {
-  outline: 2px solid #d9ad00;
+  outline: 2px solid #0b2341;
   outline-offset: 2px;
 }
 

@@ -13,13 +13,14 @@ import L from "leaflet";
 import type { TripEvent, TripRecord } from "../../services/trip.service";
 
 const CARTO_API_KEY = import.meta.env.VITE_CARTO_API_KEY?.trim();
-/* Dark base map, tinted navy by the SVG filter below (Waze-style night map). */
+/* Light base map, desaturated by the CSS filter below so the navy route stands out. */
 const TILE_URL = CARTO_API_KEY
-  ? `https://{s}.basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}{r}.png?key=${encodeURIComponent(CARTO_API_KEY)}`
-  : "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png";
+  ? `https://{s}.basemaps.cartocdn.com/rastertiles/light_all/{z}/{x}/{y}{r}.png?key=${encodeURIComponent(CARTO_API_KEY)}`
+  : "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png";
 const TILE_ATTRIBUTION =
   '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>';
 const MAP_NAVY = "#0b2341";
+const MAP_BG = "#eceff3";
 
 export type TripEventTrack = {
   trip: TripRecord;
@@ -140,40 +141,32 @@ function AnimatedTruckMarker({
   );
 }
 
-/* Re-colours the neutral dark tiles into the dashboard navy palette and
-   styles the Leaflet tooltips, popups and attribution to match. */
+/* Softens the light tiles to a clean grey map and styles the Leaflet controls,
+   tooltips, popups and attribution to match the dashboard. */
 function NavyMapTheme() {
   return (
     <>
-      <svg
-        aria-hidden="true"
-        focusable="false"
-        width="0"
-        height="0"
-        style={{ position: "absolute" }}
-      >
-        <filter id="alzhen-navy-map" colorInterpolationFilters="sRGB">
-          <feColorMatrix
-            type="matrix"
-            values="1.03 0 0 0 0.04  0 1.03 0 0 0.13  0 0 1.02 0 0.24  0 0 0 1 0"
-          />
-        </filter>
-      </svg>
       <style>{`
-        .navy-map { background: ${MAP_NAVY}; font-family: inherit; }
-        .navy-map .leaflet-tile-pane { filter: url(#alzhen-navy-map); }
+        .navy-map { background: ${MAP_BG}; font-family: inherit; }
+        .navy-map .leaflet-tile-pane { filter: grayscale(1) contrast(0.9) brightness(1.04); }
         .navy-map .leaflet-control-attribution {
-          background: rgba(11, 35, 65, 0.78);
-          color: #9fb6d0;
+          background: rgba(255, 255, 255, 0.72);
+          color: #64748b;
           font-size: 10px;
         }
-        .navy-map .leaflet-control-attribution a { color: #c9dcf0; }
-        .navy-map .leaflet-bar a {
-          background: ${MAP_NAVY};
-          color: #fff;
-          border-color: rgba(255, 255, 255, 0.12);
+        .navy-map .leaflet-control-attribution a { color: #334155; }
+        .navy-map .leaflet-bar {
+          border: 0;
+          border-radius: 14px;
+          overflow: hidden;
+          box-shadow: 0 1px 2px rgba(11, 35, 65, 0.08), 0 6px 16px -8px rgba(11, 35, 65, 0.25);
         }
-        .navy-map .leaflet-bar a:hover { background: #163a63; }
+        .navy-map .leaflet-bar a {
+          background: #fff;
+          color: ${MAP_NAVY};
+          border-color: #eef1f5;
+        }
+        .navy-map .leaflet-bar a:hover { background: #f2f6fa; }
         .navy-map .leaflet-tooltip {
           background: ${MAP_NAVY};
           color: #fff;
@@ -235,14 +228,14 @@ function truckKind(status: unknown): TruckKind {
 function statusColor(status: unknown): string {
   switch (truckKind(status)) {
     case "completed":
-      return "#94a3b8";
+      return "#64748b";
     case "cancelled":
     case "error":
-      return "#f87171";
+      return "#ef4444";
     case "delayed":
-      return "#fbbf24";
+      return "#f59e0b";
     default:
-      return "#38bdf8";
+      return MAP_NAVY;
   }
 }
 
@@ -356,11 +349,11 @@ export default function LiveTripMap({
     !focusTripId || latestMarkers.some((marker) => marker.id === focusTripId);
 
   return (
-    <section className={`overflow-hidden rounded-[28px] border border-slate-200/70 bg-white shadow-[0_8px_28px_-20px_rgba(11,35,65,0.25)] ${fillHeight ? "flex h-full min-h-[460px] flex-col" : ""}`}>
+    <section className={`overflow-hidden rounded-[28px] bg-white ring-1 ring-slate-900/[0.04] shadow-[0_1px_2px_rgba(11,35,65,0.03)] ${fillHeight ? "flex h-full min-h-[460px] flex-col" : ""}`}>
       <header className="flex shrink-0 items-center justify-between gap-3 px-5 pb-3 pt-5">
         <div>
           <h2 className="text-[17px] font-semibold tracking-tight text-[#0b2341]">
-            Live location
+            Map overview
           </h2>
           <p className="text-[11px] text-slate-500">
             Latest GPS positions, recorded routes, and stops
@@ -370,7 +363,7 @@ export default function LiveTripMap({
           {markerCount} {markerCount === 1 ? "vehicle" : "vehicles"}
         </span>
       </header>
-      <div className={`relative mx-3 overflow-hidden rounded-2xl border border-[#0b2341] bg-[#0b2341] ${fillHeight ? "min-h-[360px] min-w-0 flex-1" : ""}`}>
+      <div className={`relative mx-3 overflow-hidden rounded-2xl bg-[#eceff3] ${fillHeight ? "min-h-[360px] min-w-0 flex-1" : ""}`}>
         <NavyMapTheme />
         <MapContainer
           className="navy-map"
@@ -378,8 +371,8 @@ export default function LiveTripMap({
           zoom={6}
           style={
             fillHeight
-              ? { position: "absolute", inset: 0, background: MAP_NAVY }
-              : { height, width: "100%", background: MAP_NAVY }
+              ? { position: "absolute", inset: 0, background: MAP_BG }
+              : { height, width: "100%", background: MAP_BG }
           }
           scrollWheelZoom={false}
         >
@@ -407,9 +400,9 @@ export default function LiveTripMap({
                     <Polyline
                       positions={positions}
                       pathOptions={{
-                        color: MAP_NAVY,
+                        color: "#ffffff",
                         weight: 9,
-                        opacity: 0.9,
+                        opacity: 0.95,
                         lineCap: "round",
                         lineJoin: "round",
                       }}
@@ -514,7 +507,7 @@ export default function LiveTripMap({
             <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-emerald-500 text-[8px] font-bold text-white">✓</span> Completed
           </span>
           <span className="inline-flex items-center gap-1.5">
-            <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[#2678b9] text-[8px] font-bold text-white">≡</span> On the road
+            <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[#0b2341] text-[8px] font-bold text-white">≡</span> On the road
           </span>
           <span className="inline-flex items-center gap-1.5">
             <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-red-500 text-[8px] font-bold text-white">✕</span> Cancelled

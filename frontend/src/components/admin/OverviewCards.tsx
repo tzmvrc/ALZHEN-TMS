@@ -1,10 +1,12 @@
 // src/components/admin/OverviewCards.tsx
 import { useState, type ReactNode } from "react";
-import { AlertTriangle, ArrowUpRight, CheckCircle2, MapPin, RefreshCw, Users } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, CheckCircle2, ChevronLeft, ChevronRight, MapPin, RefreshCw, Users } from "lucide-react";
 import type { DispatchRecord } from "../../types/dashboard";
 import type { ReportRow } from "../../services/report.service";
+import type { DispatchRequest } from "../../types/requests";
 import { getFleetTruckCutout, getFleetTruckPhoto, surface } from "./dashboardStyles";
 import ImageWithFallback from "./ImageWithFallback";
+import { regionTagClass, senderInitials, timeAgo } from "./requestFormat";
 
 /* ------------------------------------------------------------------ */
 /* Greeting header                                                      */
@@ -275,38 +277,11 @@ const ATTENTION_CSS = `
   from { transform: translateX(0); }
   to { transform: translateX(-50%); }
 }
-@keyframes attn-lane {
-  to { background-position-x: -80px; }
-}
 .attn-track { position: relative; z-index: 1; animation: attn-marquee 40s linear infinite; will-change: transform; }
-.attn-road { background: #0f1d33; }
-.attn-road::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 50%;
-  height: 3px;
-  margin-top: -1.5px;
-  background: repeating-linear-gradient(90deg, #ffd43b 0 40px, transparent 40px 80px);
-  background-size: 80px 3px;
-  opacity: 0.6;
-  animation: attn-lane 2.4s linear infinite;
-}
-.attn-road::after {
-  content: "";
-  position: absolute;
-  inset: 5px 0;
-  border-top: 2px solid rgba(255, 255, 255, 0.16);
-  border-bottom: 2px solid rgba(255, 255, 255, 0.16);
-  pointer-events: none;
-}
 .attn-ticker:hover .attn-track,
-.attn-ticker:focus-within .attn-track,
-.attn-ticker:hover .attn-road::before,
-.attn-ticker:focus-within .attn-road::before { animation-play-state: paused; }
+.attn-ticker:focus-within .attn-track { animation-play-state: paused; }
 @media (prefers-reduced-motion: reduce) {
-  .attn-track, .attn-road::before { animation: none; }
+  .attn-track { animation: none; }
   .attn-track > [aria-hidden="true"] { display: none; }
   .attn-viewport { overflow-x: auto; }
 }
@@ -314,10 +289,10 @@ const ATTENTION_CSS = `
 
 function attentionTone(status: DispatchRecord["status"]) {
   if (status === "Delayed")
-    return { label: "Delayed", dot: "bg-amber-400", chip: "bg-amber-400/15 text-amber-300", edge: "border-l-amber-400" };
+    return { label: "Delayed", dot: "bg-amber-500", chip: "bg-amber-50 text-amber-700" };
   if (status === "In Progress")
-    return { label: "In transit", dot: "bg-sky-400", chip: "bg-sky-400/15 text-sky-300", edge: "border-l-sky-400" };
-  return { label: "Check", dot: "bg-slate-300", chip: "bg-white/10 text-slate-200", edge: "border-l-slate-400" };
+    return { label: "In transit", dot: "bg-sky-500", chip: "bg-sky-50 text-sky-700" };
+  return { label: "Check", dot: "bg-slate-400", chip: "bg-slate-100 text-slate-600" };
 }
 
 function AttentionItem({
@@ -335,25 +310,25 @@ function AttentionItem({
       type="button"
       tabIndex={duplicate ? -1 : 0}
       onClick={() => onViewTrip?.(trip.id)}
-      className={`flex shrink-0 items-center gap-3 rounded-2xl border-l-4 ${tone.edge} bg-[#17315a] py-2.5 pl-3 pr-4 text-left shadow-[0_6px_14px_-6px_rgba(0,0,0,0.6)] transition-colors hover:bg-[#1f4170] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#ffd43b]`}
+      className="flex shrink-0 items-center gap-3 rounded-2xl bg-[#f2f6fa] py-2.5 pl-3 pr-4 text-left transition-colors hover:bg-[#e6f0f9] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9]"
     >
-      <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${tone.chip}`}>
+      <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold ${tone.chip}`}>
         <span className={`h-1.5 w-1.5 rounded-full ${tone.dot}`} />
         {trip.statusText ?? tone.label}
       </span>
       <span className="min-w-0">
-        <span className="block whitespace-nowrap text-[13px] font-semibold text-white">
+        <span className="block whitespace-nowrap text-[13px] font-semibold text-[#0b2341]">
           {trip.displayId ?? trip.id}
         </span>
-        <span className="block whitespace-nowrap text-[11px] text-white/55">
+        <span className="block whitespace-nowrap text-[11px] text-slate-500">
           {trip.origin} → {trip.destination}
         </span>
       </span>
-      <span className="hidden border-l border-white/10 pl-3 sm:block">
-        <span className="block whitespace-nowrap text-[11px] font-medium text-white/80">
+      <span className="hidden border-l border-slate-200 pl-3 sm:block">
+        <span className="block whitespace-nowrap text-[11px] font-medium text-slate-700">
           {trip.driver || "Unassigned"}
         </span>
-        <span className="block whitespace-nowrap text-[11px] text-white/45">
+        <span className="block whitespace-nowrap text-[11px] text-slate-400">
           ETA {trip.eta}
         </span>
       </span>
@@ -381,32 +356,31 @@ export function SpotlightTrips({
   return (
     <section
       aria-label="Needs your attention"
-      className="attn-ticker relative flex flex-col overflow-hidden rounded-[28px] bg-[#0b2341] shadow-[0_1px_2px_rgba(11,35,65,0.04),0_10px_30px_-18px_rgba(11,35,65,0.4)] sm:flex-row sm:items-stretch"
+      className={`attn-ticker relative flex flex-col overflow-hidden ${surface.card} sm:flex-row sm:items-center`}
     >
       <style>{ATTENTION_CSS}</style>
 
-      <div className="relative z-10 flex shrink-0 items-center gap-3 bg-[#ffd43b] px-5 py-4 text-[#0b2341] sm:w-64 sm:pr-10 sm:[clip-path:polygon(0_0,100%_0,calc(100%-22px)_100%,0_100%)]">
+      <div className="flex shrink-0 items-center gap-3 px-5 py-3.5 sm:w-60 sm:border-r sm:border-slate-100">
         <span className="relative flex h-2.5 w-2.5 shrink-0">
-          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#0b2341]/50 motion-reduce:animate-none" />
-          <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-[#0b2341]" />
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400/60 motion-reduce:animate-none" />
+          <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-amber-500" />
         </span>
         <div className="min-w-0">
-          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#0b2341]/70">Urgent</p>
-          <h2 className="text-[15px] font-bold leading-tight">Needs your attention</h2>
-          <p className="mt-0.5 text-[11px] font-medium text-[#0b2341]/75">
+          <h2 className="text-[14px] font-semibold leading-tight text-[#0b2341]">Needs attention</h2>
+          <p className="mt-0.5 text-[11px] text-slate-500">
             {items.length === 0 ? "All clear" : `${items.length} trip${items.length === 1 ? "" : "s"} flagged`}
           </p>
         </div>
       </div>
 
       {items.length === 0 ? (
-        <p className="flex flex-1 items-center gap-2 px-5 py-4 text-sm text-white/70 sm:pl-8">
-          <span className="h-2 w-2 rounded-full bg-emerald-400" />
+        <p className="flex flex-1 items-center gap-2 px-5 py-4 text-sm text-slate-500">
+          <span className="h-2 w-2 rounded-full bg-emerald-500" />
           No trips need attention right now.
         </p>
       ) : (
         <div
-          className="attn-viewport attn-road relative min-w-0 flex-1 overflow-hidden py-3 sm:-ml-3"
+          className="attn-viewport relative min-w-0 flex-1 overflow-hidden py-3"
           style={{
             containerType: "inline-size",
             maskImage: "linear-gradient(to right, transparent 0, #000 28px, #000 calc(100% - 28px), transparent 100%)",
@@ -491,7 +465,7 @@ export function FleetListCard({
     <section className={`${surface.card} flex min-h-0 flex-col overflow-hidden p-5 ${className}`}>
       <h2 className={`${surface.heading} mb-3`}>Active fleet</h2>
       <div
-        className="mb-4 flex gap-1 overflow-x-auto rounded-full bg-[#f2f6fa] p-1"
+        className="mb-4 flex gap-1 overflow-x-auto rounded-full bg-[#f5f7fa] p-1"
         role="tablist"
       >
         {tabs.map((t) => (
@@ -534,7 +508,7 @@ export function FleetListCard({
                 className={`flex flex-col rounded-2xl p-3 ring-2 transition duration-200 motion-reduce:transition-none ${
                   selected
                     ? "bg-[#0b2341] ring-transparent"
-                    : "bg-[#f2f6fa] ring-transparent hover:ring-[#2678b9]/40"
+                    : "bg-[#f5f7fa] ring-transparent hover:ring-[#0b2341]/15"
                 }`}
               >
                 <button
@@ -778,14 +752,230 @@ export function StackedTripCard({
 }
 
 /* ------------------------------------------------------------------ */
+/* Requests to approve: stack of blue cards, swipe to browse            */
+/* ------------------------------------------------------------------ */
+/* ------------------------------------------------------------------ */
+/* Email requests to approve (detail card)                              */
+/* ------------------------------------------------------------------ */
+export function PendingRequestsCard({
+  requests,
+  onReview,
+  onViewAll,
+  className = "",
+}: {
+  /** Only the requests that still need a decision. */
+  requests: DispatchRequest[];
+  onReview?: (id: string) => void;
+  onViewAll?: () => void;
+  className?: string;
+}) {
+  const [activeIndex, setActiveIndex] = useState(0);
+
+  const cards = requests
+    .slice()
+    .sort((a, b) => Date.parse(b.receivedAt) - Date.parse(a.receivedAt))
+    .slice(0, 8);
+
+  if (cards.length === 0) {
+    return (
+      <section
+        aria-label="Requests to approve"
+        className={`${surface.card} flex min-h-[200px] min-w-0 flex-col items-center justify-center gap-2 p-5 text-center ${className}`}
+      >
+        <CheckCircle2 aria-hidden="true" className="h-6 w-6 text-emerald-500" />
+        <h2 className={surface.heading}>All caught up</h2>
+        <p className="text-xs text-slate-400">New client requests will show up here for approval.</p>
+        {onViewAll && (
+          <button type="button" onClick={onViewAll} className={`${surface.chipGhost} mt-1`}>
+            Open requests
+          </button>
+        )}
+      </section>
+    );
+  }
+
+  const total = cards.length;
+  const active = activeIndex % total;
+  const go = (step: number) => setActiveIndex((current) => (current + step + total) % total);
+  const request = cards[active];
+  const qty = request.items.reduce((sum, item) => sum + item.qty, 0);
+  const lines = request.items.length;
+  const stats = [
+    { label: "Lines", value: String(lines) },
+    { label: "Pieces", value: String(qty) },
+    { label: "Amount", value: request.amount || "—" },
+  ];
+  const pagerBtn =
+    "inline-flex h-7 w-7 items-center justify-center rounded-full bg-[#f5f7fa] text-slate-500 transition hover:text-[#0b2341] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0b2341]/40 disabled:opacity-30";
+
+  return (
+    <section
+      aria-label="Requests to approve"
+      className={`${surface.card} flex min-h-0 min-w-0 flex-col p-5 ${className}`}
+      onKeyDown={(event) => {
+        if (event.key === "ArrowRight") go(1);
+        if (event.key === "ArrowLeft") go(-1);
+      }}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className={surface.heading}>Email requests</h2>
+          <p className="mt-0.5 truncate text-[11px] text-slate-400">
+            {total} to approve · {timeAgo(request.receivedAt)}
+          </p>
+        </div>
+        <div className="flex shrink-0 items-center gap-1" aria-live="polite">
+          <button type="button" onClick={() => go(-1)} disabled={total < 2} aria-label="Previous request" className={pagerBtn}>
+            <ChevronLeft aria-hidden="true" className="h-4 w-4" />
+          </button>
+          <span className="min-w-[2.25rem] text-center text-[11px] tabular-nums text-slate-400">
+            {active + 1} / {total}
+          </span>
+          <button type="button" onClick={() => go(1)} disabled={total < 2} aria-label="Next request" className={pagerBtn}>
+            <ChevronRight aria-hidden="true" className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+
+      <div className="mt-4 flex items-center gap-2">
+        <p className="min-w-0 truncate text-[22px] font-semibold tracking-tight text-[#0b2341]">{request.reference}</p>
+        <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold ${regionTagClass(request.region)}`}>
+          {request.region}
+        </span>
+      </div>
+      <p className="mt-0.5 truncate text-[11px] text-slate-400">{request.warehouse || request.courier || "Warehouse not set"}</p>
+
+      <dl className="mt-2 grid grid-cols-3 gap-2">
+        {stats.map((stat) => (
+          <div key={stat.label} className="min-w-0 rounded-2xl bg-[#f5f7fa] px-2 py-2.5 text-center">
+            <dd className="truncate text-[13px] font-semibold text-[#0b2341]">{stat.value}</dd>
+            <dt className="mt-0.5 text-[10px] text-slate-400">{stat.label}</dt>
+          </div>
+        ))}
+      </dl>
+
+      <div className="mt-auto pt-4">
+        <p className="mb-2 text-[13px] font-semibold text-[#0b2341]">Sender</p>
+        <div className="flex items-center gap-3">
+          <span
+            aria-hidden="true"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#e6f0f9] text-[12px] font-bold text-[#0b2341]"
+          >
+            {senderInitials(request.fromEmail)}
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[13px] font-semibold text-[#0b2341]">{request.fromName || request.fromEmail}</p>
+            <p className="truncate text-[11px] text-slate-400">{request.fromEmail}</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => onReview?.(request.id)}
+            aria-label={`Review request ${request.reference} from ${request.fromEmail}`}
+            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#0b2341] text-white transition hover:bg-[#17365f] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0b2341]/40 focus-visible:ring-offset-2"
+          >
+            <ArrowUpRight aria-hidden="true" className="h-5 w-5" />
+          </button>
+        </div>
+        {onViewAll && (
+          <button
+            type="button"
+            onClick={onViewAll}
+            className="mt-3 inline-flex items-center gap-1 text-[11px] font-medium text-slate-400 transition hover:text-[#0b2341] focus:outline-none focus-visible:underline"
+          >
+            View all requests
+            <ChevronRight aria-hidden="true" className="h-3 w-3" />
+          </button>
+        )}
+      </div>
+    </section>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Trip status ring (segmented dial)                                    */
+/* ------------------------------------------------------------------ */
+export function TripStatusRing({
+  segments,
+  total,
+  title = "Trip status",
+  hint = "Share of all recorded trips",
+  className = "",
+}: {
+  segments: { label: string; value: number; color: string }[];
+  total: number;
+  title?: string;
+  hint?: string;
+  className?: string;
+}) {
+  const TICKS = 60;
+  const sum = segments.reduce((acc, segment) => acc + segment.value, 0);
+  const raw = segments.map((segment) => (sum > 0 ? (segment.value / sum) * TICKS : 0));
+  const counts = raw.map(Math.floor);
+  let left = sum > 0 ? TICKS - counts.reduce((a, b) => a + b, 0) : 0;
+  raw
+    .map((value, index) => ({ index, fraction: value - Math.floor(value) }))
+    .sort((a, b) => b.fraction - a.fraction)
+    .forEach(({ index }) => {
+      if (left > 0 && segments[index].value > 0) {
+        counts[index] += 1;
+        left -= 1;
+      }
+    });
+  const colors: string[] = [];
+  segments.forEach((segment, index) => {
+    for (let n = 0; n < counts[index]; n += 1) colors.push(segment.color);
+  });
+  while (colors.length < TICKS) colors.push("#e8edf3");
+
+  return (
+    <section className={`${surface.card} flex min-h-0 min-w-0 flex-col p-5 ${className}`}>
+      <h2 className={surface.heading}>{title}</h2>
+      <p className="mt-0.5 text-[11px] text-slate-400">{hint}</p>
+
+      <div className="relative mx-auto my-3 min-h-0 w-full max-w-[210px] flex-1">
+        <svg
+          viewBox="0 0 220 220"
+          className="h-full w-full"
+          role="img"
+          aria-label={`Trip status: ${segments.map((segment) => `${segment.value} ${segment.label.toLowerCase()}`).join(", ")}`}
+        >
+          {colors.map((color, index) => (
+            <rect
+              key={index}
+              x={107}
+              y={8}
+              width={6}
+              height={20}
+              rx={3}
+              fill={color}
+              transform={`rotate(${(index * 360) / TICKS} 110 110)`}
+            />
+          ))}
+        </svg>
+        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+          <span className="text-[44px] font-semibold leading-none tracking-tight tabular-nums text-[#0b2341]">
+            {total.toLocaleString()}
+          </span>
+          <span className="mt-1 text-[11px] text-slate-400">trips</span>
+        </div>
+      </div>
+
+      <ul className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[11px] text-slate-500">
+        {segments.map((segment) => (
+          <li key={segment.label} className="flex min-w-0 items-center gap-2">
+            <span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: segment.color }} />
+            <span className="min-w-0 flex-1 truncate">{segment.label}</span>
+            <span className="font-semibold tabular-nums text-[#0b2341]">{segment.value}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /* Recent activity (notifications style)                                */
 /* ------------------------------------------------------------------ */
-const feedDot = {
-  emerald: "bg-emerald-500",
-  blue: "bg-blue-500",
-  amber: "bg-amber-500",
-} as const;
-
 export function ActivityFeedCard({
   events,
   title = "Recent activity",
@@ -796,32 +986,39 @@ export function ActivityFeedCard({
   className?: string;
 }) {
   return (
-    <section className={`${surface.card} flex min-h-[300px] min-w-0 flex-1 flex-col overflow-hidden p-5 ${className}`}>
-      <div className="mb-3 flex items-center justify-between gap-3">
+    <section className={`${surface.card} flex min-h-0 min-w-0 flex-col p-5 ${className}`}>
+      <div className="mb-4 flex items-center justify-between gap-3">
         <h2 className={surface.heading}>{title}</h2>
         <span className="text-[11px] text-slate-400">{events.length} events</span>
       </div>
       {events.length === 0 ? (
         <p className="py-8 text-center text-sm text-slate-400">No recent activity.</p>
       ) : (
-        <ul className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain pr-1">
-          {events.map((event) => (
-            <li key={event.id} className="rounded-2xl bg-[#f2f6fa] px-3.5 py-3">
-              <p className="flex items-start gap-2 text-[12px] font-semibold capitalize leading-snug text-[#0b2341]">
-                <span
-                  aria-hidden="true"
-                  className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${
-                    feedDot[event.tone as keyof typeof feedDot] ?? "bg-slate-400"
+        <ol className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1">
+          {events.map((event, index) => (
+            <li key={event.id} className="relative flex gap-3 pb-4 last:pb-0">
+              {index < events.length - 1 && (
+                <span aria-hidden="true" className="absolute bottom-0 left-[5px] top-4 w-px bg-slate-200" />
+              )}
+              <span
+                aria-hidden="true"
+                className={`relative mt-1 h-[11px] w-[11px] shrink-0 rounded-full bg-white ${
+                  index === 0 ? "border-[3px] border-[#0b2341]" : "border-2 border-slate-300"
+                }`}
+              />
+              <div className="min-w-0 flex-1">
+                <p
+                  className={`break-words text-[12px] capitalize leading-snug ${
+                    index === 0 ? "font-semibold text-[#0b2341]" : "font-medium text-slate-600"
                   }`}
-                />
-                <span className="min-w-0 break-words">{event.message}</span>
-              </p>
-              <time className="mt-1 block pl-4 text-[10px] tabular-nums text-slate-400">
-                {event.time}
-              </time>
+                >
+                  {event.message}
+                </p>
+                <time className="mt-0.5 block text-[10px] tabular-nums text-slate-400">{event.time}</time>
+              </div>
             </li>
           ))}
-        </ul>
+        </ol>
       )}
     </section>
   );

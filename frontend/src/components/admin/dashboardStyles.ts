@@ -90,8 +90,8 @@ export const statusColor = (status: string) => {
 
 /* Shared surface tokens for consistent card styling */
 export const surface = {
-  card: "rounded-[28px] bg-white shadow-[0_1px_2px_rgba(11,35,65,0.04),0_10px_30px_-18px_rgba(11,35,65,0.14)]",
-  inner: "rounded-2xl bg-[#f2f6fa]",
+  card: "rounded-[28px] bg-white ring-1 ring-slate-900/[0.04] shadow-[0_1px_2px_rgba(11,35,65,0.03)]",
+  inner: "rounded-2xl bg-[#f5f7fa]",
   /* Bordered cell used inside a card (e.g. loading-status grid, tab strips) */
   cell: "rounded-2xl border border-slate-200/70 bg-white",
   pill: "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold",
@@ -107,7 +107,7 @@ export const surface = {
 
 /* Shared table tokens: every table page (trips, reports, users, database...) uses these */
 export const tableUi = {
-  shell: "overflow-hidden rounded-[28px] bg-white shadow-[0_1px_2px_rgba(11,35,65,0.04),0_10px_30px_-18px_rgba(11,35,65,0.14)]",
+  shell: "overflow-hidden rounded-[28px] bg-white ring-1 ring-slate-900/[0.04] shadow-[0_1px_2px_rgba(11,35,65,0.03)]",
   toolbar: "flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between",
   search: "h-10 w-full rounded-full border border-transparent bg-white pl-10 pr-4 text-sm text-slate-700 shadow-[0_1px_2px_rgba(11,35,65,0.06)] outline-none placeholder:text-slate-400 focus:border-[#2678b9]/40 focus:ring-2 focus:ring-[#2678b9]/15",
   select: "h-10 appearance-none rounded-full border border-transparent bg-white pl-4 pr-9 text-sm text-slate-600 shadow-[0_1px_2px_rgba(11,35,65,0.06)] outline-none transition focus:border-[#2678b9]/40 focus:ring-2 focus:ring-[#2678b9]/15",

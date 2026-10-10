@@ -3,12 +3,12 @@ import { useEffect, useState } from "react";
 import {
   CheckCircle2,
   Clock,
-  MoreHorizontal,
   Package,
   RefreshCw,
   Truck,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useRequests } from "../../../components/admin/requestsStore";
 import type { DispatchRecord } from "../../../types/dashboard";
 import { useAuth } from "../../../context/AuthContext";
 import { ApiError } from "../../../services/api.service";
@@ -29,12 +29,15 @@ import {
 import {
   ActivityFeedCard,
   FleetListCard,
-  StackedTripCard,
+  PendingRequestsCard,
   SpotlightTrips,
+  TripStatusRing,
 } from "../../../components/admin/OverviewCards";
 import FleetAnalytics, {
   type FlowRow,
 } from "../../../components/admin/FleetAnalytics";
+import OverviewCalendarCard from "../../../components/admin/OverviewCalendarCard";
+import PayablesMiniTable from "../../../components/admin/PayablesMiniTable";
 import type { RegionTrip } from "../../../components/admin/RegionComparison";
 import {
   regionFromPoint,
@@ -233,83 +236,79 @@ function toFleetRow(
 
 // --- New Sub-components for the redesigned layout ---
 
-function KpiCard({
-  title,
-  value,
-  change,
-  changeType = "increase",
-  icon,
-  children,
-}: {
-  title: string;
-  value: string;
-  change: string;
-  changeType?: "increase" | "decrease";
-  icon: React.ReactNode;
-  children?: React.ReactNode;
-}) {
-  const isIncrease = changeType === "increase";
+/** Tiny bar chart: the last bar (today) is the navy accent. */
+function MiniBars({ values }: { values: number[] }) {
+  const recent = values.slice(-6);
+  const padded = [...Array(6 - recent.length).fill(0), ...recent] as number[];
+  const max = Math.max(...padded, 1);
   return (
-    <div className="flex flex-col justify-between rounded-3xl bg-white p-5 shadow-[0_4px_20px_-4px_rgba(11,35,65,0.08)]">
-      <div className="flex items-start justify-between">
-        <div className="flex items-center gap-3">
-          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-600">
-            {icon}
-          </span>
-          <p className="text-sm font-medium text-slate-500">{title}</p>
-        </div>
-        <button className="text-slate-400 hover:text-slate-600">
-          <MoreHorizontal className="h-5 w-5" />
-        </button>
-      </div>
-      <div className="mt-4">
-        <p className="text-3xl font-bold tracking-tight text-[#0b2341]">{value}</p>
-        <div className="mt-1 flex items-center gap-2 text-sm">
-          <span className={`font-semibold ${isIncrease ? "text-emerald-600" : "text-rose-600"}`}>
-            {change}
-          </span>
-          <span className="text-slate-400">vs last month</span>
-        </div>
-      </div>
-      {children && <div className="mt-4">{children}</div>}
+    <div aria-hidden="true" className="flex h-11 w-[4.25rem] items-end justify-between gap-1">
+      {padded.map((value, index) => (
+        <span
+          key={index}
+          className={`w-2 rounded-full ${index === padded.length - 1 ? "bg-[#0b2341]" : "bg-[#d3deec]"}`}
+          style={{ height: `${Math.max((value / max) * 100, 14)}%` }}
+        />
+      ))}
     </div>
   );
 }
 
-function CustomSparkline({ values, color = "#2678b9" }: { values: number[]; color?: string }) {
-  if (values.length < 2) return null;
-  const w = 100;
-  const h = 30;
-  const max = Math.max(...values, 1);
-  const min = Math.min(...values, 0);
-  const range = max - min || 1;
-  const points = values.map((v, i) => {
-    const x = (i / (values.length - 1)) * w;
-    const y = h - ((v - min) / range) * h;
-    return `${x},${y}`;
-  }).join(" ");
-
+/** Tiny ring showing a share of all trips. */
+function MiniRing({ percent, color = "#0b2341" }: { percent: number; color?: string }) {
+  const radius = 17;
+  const circumference = 2 * Math.PI * radius;
+  const clamped = Math.min(Math.max(percent, 0), 100);
   return (
-    <svg viewBox={`0 0 ${w} ${h}`} className="h-8 w-full" preserveAspectRatio="none">
-      <polyline
+    <svg aria-hidden="true" viewBox="0 0 44 44" className="h-11 w-11">
+      <circle cx="22" cy="22" r={radius} fill="none" stroke="#e8edf3" strokeWidth="5" />
+      <circle
+        cx="22"
+        cy="22"
+        r={radius}
         fill="none"
         stroke={color}
-        strokeWidth="2"
+        strokeWidth="5"
         strokeLinecap="round"
-        strokeLinejoin="round"
-        points={points}
-      />
-      <defs>
-        <linearGradient id={`sparkline-grad-${color.replace('#', '')}`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={color} stopOpacity="0.3" />
-          <stop offset="100%" stopColor={color} stopOpacity="0" />
-        </linearGradient>
-      </defs>
-      <polygon
-        fill={`url(#sparkline-grad-${color.replace('#', '')})`}
-        points={`0,${h} ${points} ${w},${h}`}
+        strokeDasharray={`${(clamped / 100) * circumference} ${circumference}`}
+        transform="rotate(-90 22 22)"
       />
     </svg>
+  );
+}
+
+/** Stat card: navy icon circle, big figure, quiet note and a tiny chart on the right. */
+function KpiCard({
+  title,
+  value,
+  note,
+  icon,
+  chart,
+  alert = false,
+}: {
+  title: string;
+  value: string;
+  note: string;
+  icon: React.ReactNode;
+  chart: React.ReactNode;
+  alert?: boolean;
+}) {
+  return (
+    <div className="flex min-w-0 items-center gap-3.5 rounded-[28px] bg-white px-5 py-4 ring-1 ring-slate-900/[0.04] shadow-[0_1px_2px_rgba(11,35,65,0.03)]">
+      <span
+        aria-hidden="true"
+        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#0b2341] text-white [&>svg]:h-5 [&>svg]:w-5">
+        {icon}
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-[12px] font-medium text-slate-500">{title}</p>
+        <p className="mt-0.5 text-[30px] font-semibold leading-none tracking-tight tabular-nums text-[#0b2341]">
+          {value}
+        </p>
+        <p className={`mt-1 truncate text-[11px] ${alert ? "font-medium text-amber-600" : "text-slate-400"}`}>{note}</p>
+      </div>
+      <div className="shrink-0">{chart}</div>
+    </div>
   );
 }
 
@@ -317,14 +316,16 @@ function CustomSparkline({ values, color = "#2678b9" }: { values: number[]; colo
 
 export default function OverviewView({
   onOpenTrip,
-  sidebarExpanded = false,
+  onMetricNavigate,
 }: {
   onOpenTrip?: (tripId: string) => void;
   onMetricNavigate?: (sectionId: string) => void;
+  /** Still accepted so existing callers compile; the page shell now handles the sidebar offset. */
   sidebarExpanded?: boolean;
 }) {
   const { accessToken, refreshSession, profile } = useAuth();
   const navigate = useNavigate();
+  const { pending: pendingRequests, select: selectRequest } = useRequests();
   const [snapshot, setSnapshot] = useState<OverviewSnapshot | null>(null);
   const [loadedKey, setLoadedKey] = useState<string | null>(null);
   const [failure, setFailure] = useState<{
@@ -490,6 +491,8 @@ export default function OverviewView({
 
   // --- Derived Data (kept from original) ---
   const totalTrips = snapshot?.total ?? 0;
+  const pctOfTrips = (count: number) =>
+    totalTrips > 0 ? Math.round((count / totalTrips) * 100) : 0;
   const profileName = (
     profile as { full_name?: string | null; name?: string | null } | null
   );
@@ -546,6 +549,7 @@ export default function OverviewView({
       },
     ];
   });
+
   const tripsPerDay = Object.entries(
     (snapshot?.recent ?? []).reduce<Record<string, number>>((counts, trip) => {
       const day = textValue(trip.loading_date ?? trip.created_at).slice(0, 10);
@@ -553,13 +557,12 @@ export default function OverviewView({
       return counts;
     }, {}),
   )
-    .sort(([a], [b]) => a.localeCompare(b))
-    .slice(-7)
+    .sort(([first], [second]) => first.localeCompare(second))
+    .slice(-6)
     .map(([, count]) => count);
-  const usingTripTrend = tripsPerDay.length >= 2;
-  const kpiTrend = usingTripTrend
-    ? tripsPerDay
-    : dailyEventCounts.map((day) => day.count);
+  const inProgressTrips = snapshot?.inProgress ?? 0;
+  const completedTrips = snapshot?.completed ?? 0;
+  const otherTrips = Math.max(totalTrips - inProgressTrips - completedTrips - delayedTrips, 0);
 
   const regionTrips: RegionTrip[] = [];
   let unlocatedTrips = 0;
@@ -606,120 +609,122 @@ export default function OverviewView({
 
   // --- Render ---
   return (
-    <div
-      className={`min-h-screen pb-4 pt-4 sm:pb-6 ${
-        sidebarExpanded ? "px-5" : "px-7"
-      } max-[1098px]:px-3`}
-    >
-      <div className="mx-auto max-w-[1600px] space-y-6">
-        <header
-          className={`-mt-[5rem] flex min-h-11 w-full flex-col items-start justify-center gap-1 text-left ${
-            sidebarExpanded
-              ? "px-6 max-[1098px]:items-center max-[1098px]:px-4 max-[1098px]:text-center"
-              : "px-10 max-[1098px]:items-center max-[1098px]:px-4 max-[1098px]:text-center"
-          }`}
-        >
-          <h1 className="w-full min-w-0 truncate text-2xl font-bold leading-tight tracking-tight text-[#0b2341] sm:text-[28px] max-[1098px]:text-[22px]">
-            Welcome back, {greetingName}!
-          </h1>
-          <div className="flex items-center gap-2 text-xs text-slate-500 max-[1098px]:justify-center">
-            <span>
-              {updatedLabel ? `Updated ${updatedLabel}` : "Waiting for update"}
-            </span>
-            <button
-              type="button"
-              onClick={() => setReloadCount((count) => count + 1)}
-              aria-label="Refresh dashboard"
-              className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-white text-slate-500 shadow-sm transition-colors hover:bg-[#e6f0f9] hover:text-[#0b2341] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0b2341]/30"
-            >
-              <RefreshCw aria-hidden="true" className="h-3.5 w-3.5" />
-            </button>
+    <div className="w-full">
+      <div className="w-full space-y-4">
+        <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <h1 className="truncate text-[26px] font-bold leading-tight tracking-tight text-[#0b2341]">
+              Welcome back, {greetingName}!
+            </h1>
+            <div className="mt-1 flex items-center gap-2 text-[13px] text-slate-500">
+              <span>
+                {updatedLabel ? `Updated ${updatedLabel}` : "Waiting for update"}
+              </span>
+              <button
+                type="button"
+                onClick={() => setReloadCount((count) => count + 1)}
+                aria-label="Refresh dashboard"
+                className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-white text-slate-500 shadow-sm transition-colors hover:bg-[#e6f0f9] hover:text-[#0b2341] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0b2341]/30"
+              >
+                <RefreshCw aria-hidden="true" className="h-3.5 w-3.5" />
+              </button>
+            </div>
           </div>
         </header>
 
-        <div className={`space-y-6 max-[1098px]:px-4 ${sidebarExpanded ? "px-6" : "px-10"}`}>
-        {/* KPI Cards */}
-        <section className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="space-y-4">
+        {/* Top row: the 4 stat cards only */}
+        <section aria-label="Fleet summary" className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <KpiCard
-            title="Total Trips"
-            value={totalTrips.toLocaleString()}
-            change="+12%"
-            icon={<Truck className="h-5 w-5" />}
-          >
-            <CustomSparkline values={kpiTrend} color="#2678b9" />
-          </KpiCard>
+            title="Total trips"
+            value={snapshot ? totalTrips.toLocaleString() : "…"}
+            note="All recorded trips"
+            icon={<Truck />}
+            chart={<MiniBars values={tripsPerDay} />}
+          />
           <KpiCard
-            title="In Transit"
-            value={snapshot?.inProgress.toString() ?? "0"}
-            change="+5%"
-            icon={<Package className="h-5 w-5" />}
-          >
-            <CustomSparkline values={dailyEventCounts.map(d => d.count)} color="#10b981" />
-          </KpiCard>
+            title="In transit"
+            value={snapshot ? inProgressTrips.toLocaleString() : "…"}
+            note={`${pctOfTrips(inProgressTrips)}% of trips`}
+            icon={<Package />}
+            chart={<MiniRing percent={pctOfTrips(inProgressTrips)} />}
+          />
           <KpiCard
             title="Completed"
-            value={snapshot?.completed.toString() ?? "0"}
-            change="+8%"
-            icon={<CheckCircle2 className="h-5 w-5" />}
-          >
-            <CustomSparkline values={dailyEventCounts.map(d => d.count).reverse()} color="#3b82f6" />
-          </KpiCard>
+            value={snapshot ? completedTrips.toLocaleString() : "…"}
+            note={`${pctOfTrips(completedTrips)}% of trips`}
+            icon={<CheckCircle2 />}
+            chart={<MiniRing percent={pctOfTrips(completedTrips)} />}
+          />
           <KpiCard
             title="Delayed"
-            value={delayedTrips.toString()}
-            change="-2%"
-            changeType="decrease"
-            icon={<Clock className="h-5 w-5" />}
-          >
-            <CustomSparkline values={dailyEventCounts.map(d => d.count)} color="#f59e0b" />
-          </KpiCard>
+            value={snapshot ? delayedTrips.toLocaleString() : "…"}
+            note={delayedTrips > 0 ? "Needs follow-up" : "On schedule"}
+            alert={delayedTrips > 0}
+            icon={<Clock />}
+            chart={<MiniRing percent={pctOfTrips(delayedTrips)} color="#f59e0b" />}
+          />
         </section>
 
         {/* Spotlight Trips (Attention Card) */}
         <SpotlightTrips rows={fleetRows} onViewTrip={onOpenTrip} />
 
-        {/* Main Content Grid */}
-        <div className="grid grid-cols-1 items-stretch gap-6 xl:grid-cols-2">
-          <div className="min-w-0 xl:h-full">
+        {/* Bento grid: requests + status | activity + fleet | map */}
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-12 xl:grid-rows-[340px_430px]">
+          <div className="relative flex min-w-0 xl:col-span-3">
+          <PendingRequestsCard
+            className="h-full w-full"
+            requests={pendingRequests}
+            onReview={(id) => {
+              selectRequest(id);
+              onMetricNavigate?.("requests");
+            }}
+            onViewAll={() => onMetricNavigate?.("requests")}
+          />
+          </div>
+
+          <OverviewCalendarCard
+            className="xl:col-span-5 xl:min-h-0"
+            onOpenCalendar={() => onMetricNavigate?.("calendar")}
+          />
+
+          <div className="min-w-0 xl:col-span-4 xl:row-span-2">
             <LiveTripMap
               tracks={snapshot?.tracks ?? []}
               focusTripId={focusedTripId}
               eventLoadError={snapshot?.eventsUnavailable ?? false}
-              height={360}
+              height={460}
               fillHeight
             />
-            {snapshot?.bookingUnavailable && (
-              <p className="mt-3 px-2 text-xs text-amber-800">
-                Warehouse and store labels are unavailable; trip and GPS data
-                remain visible.
-              </p>
-            )}
           </div>
 
-          <div className="min-w-0 xl:h-full">
-            <FleetListCard
-              rows={fleetPhotoRows}
-              selectedTripId={focusedTripId}
-              onSelectTrip={(tripId) =>
-                setFocusedTripId((current) => (current === tripId ? null : tripId))
-              }
-              onViewTrip={onOpenTrip}
-              className="xl:h-full"
-            />
-          </div>
-
-          <ActivityFeedCard
-            events={timelineEvents}
-            title="Recent activity"
-            className="h-[302px]"
+          <TripStatusRing
+            className="min-h-[380px] xl:col-span-3 xl:min-h-0"
+            total={totalTrips}
+            segments={[
+              { label: "Completed", value: completedTrips, color: "#0b2341" },
+              { label: "In transit", value: inProgressTrips, color: "#4f7bb0" },
+              { label: "Delayed", value: delayedTrips, color: "#f59e0b" },
+              { label: "Other", value: otherTrips, color: "#cbd5e1" },
+            ]}
           />
 
-          <StackedTripCard
-            rows={fleetRows}
-            bookingRows={snapshot?.bookingRows ?? []}
-            className="h-[302px]"
+          <FleetListCard
+            rows={fleetPhotoRows}
+            selectedTripId={focusedTripId}
+            onSelectTrip={(tripId) =>
+              setFocusedTripId((current) => (current === tripId ? null : tripId))
+            }
+            onViewTrip={onOpenTrip}
+            className="xl:col-span-5"
           />
         </div>
+        {snapshot?.bookingUnavailable && (
+          <p className="px-2 text-xs text-amber-800">
+            Warehouse and store labels are unavailable; trip and GPS data
+            remain visible.
+          </p>
+        )}
 
         {/* Fleet Analytics (Full Width) */}
         <FleetAnalytics
@@ -730,6 +735,19 @@ export default function OverviewView({
           unlocatedTrips={unlocatedTrips}
           isLoading={isLoading}
         />
+
+        {/* Bottom row: payables beside recent activity */}
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
+          <PayablesMiniTable
+            className="xl:col-span-7"
+            onViewAll={() => onMetricNavigate?.("payables")}
+          />
+          <ActivityFeedCard
+            events={timelineEvents}
+            title="Recent activity"
+            className="max-h-[420px] min-h-[300px] xl:col-span-5"
+          />
+        </div>
         </div>
       </div>
     </div>

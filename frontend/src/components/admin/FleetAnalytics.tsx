@@ -205,7 +205,7 @@ export default function FleetAnalytics({
 
   return (
     <section aria-labelledby="analytics-title" className="space-y-3">
-      <div className="flex flex-wrap items-end justify-between gap-3 px-1">
+      {/* <div className="flex flex-wrap items-end justify-between gap-3 px-1">
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#2678b9]">Performance</p>
           <h2 id="analytics-title" className="mt-0.5 text-lg font-bold tracking-tight text-[#0b2341]">Fleet analytics</h2>
@@ -262,7 +262,7 @@ export default function FleetAnalytics({
             )}
           </Panel>
         </div>
-      </div>
+      </div> */}
     </section>
   );
 }

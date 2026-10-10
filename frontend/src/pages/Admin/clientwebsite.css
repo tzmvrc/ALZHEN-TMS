@@ -181,6 +181,7 @@
 }
 .cw-excerpt {
   display: -webkit-box;
+  line-clamp: 3;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
@@ -505,9 +506,8 @@
   --cw-gutter: 2.5rem;
   min-height: 100vh;
   min-height: 100dvh;
-  margin-top: -5rem;
-  max-width: calc(1600px + (var(--cw-outer) * 2));
-  padding: 28px var(--cw-outer) 16px;
+  max-width: calc(1680px + (var(--cw-outer) * 2));
+  padding: 46px var(--cw-outer) 16px;
   overflow-x: clip;
 }
 .cw-workspace.cw-main.cw-preview-page.cw-sidebar-open {
@@ -520,8 +520,8 @@
   gap: 18px;
   width: 100%;
   min-width: 0;
-  height: calc(100vh - 60px);
-  height: calc(100dvh - 60px);
+  height: calc(100vh - 150px);
+  height: calc(100dvh - 150px);
   min-height: 420px;
 }
 .cw-preview-header {
@@ -532,14 +532,14 @@
   gap: 4px;
   width: 100%;
   min-width: 0;
-  padding: 0 var(--cw-gutter);
+  padding: 0 calc(var(--cw-gutter) + 11px);
 }
 .cw-preview h1 {
   width: 100%;
   min-width: 0;
   margin: 0;
   color: #0b2341;
-  font-size: 28px;
+  font-size: 26px;
   font-weight: 700;
   line-height: 1.25;
   letter-spacing: -0.025em;
@@ -599,13 +599,12 @@
     --cw-gutter: 1rem;
   }
   .cw-preview-header {
-    /* keep the title clear of the fixed menu + bell/avatar buttons */
-    align-items: center;
-    padding: 0 3.5rem;
+    align-items: flex-start;
+    padding: 0 41px;
   }
   .cw-preview h1 {
-    font-size: 22px;
-    text-align: center;
+    font-size: 26px;
+    text-align: left;
   }
 }
 @media (max-width: 480px) {
@@ -853,6 +852,7 @@
   color: #5f6f81;
   font-size: 12px;
   line-height: 1.5;
+  line-clamp: 3;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
 }
