@@ -75,7 +75,7 @@ router.get(
 router.get(
   "/profiles",
   authMiddleware,
-  requireRole("ADMIN", "STAFF"),
+  requireRole("ADMIN"),
   getProfileLookup,
 );
 router.get(

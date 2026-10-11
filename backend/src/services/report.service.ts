@@ -11,6 +11,7 @@ import {
   normalizePagination,
 } from "../utils/pagination.js";
 import { normalizeSortOrder, normalizeText } from "../utils/validation.js";
+import { buildIlikeOrFilter } from "../utils/postgrest-search.js";
 
 const REPORT_ROUTE_MAP = {
   combined: "v_tms_combined",
@@ -77,14 +78,16 @@ function applySearch(
   searchValue: string | undefined,
   columns: ReportDefinition["columns"],
 ) {
-  if (!searchValue) {
-    return queryBuilder;
-  }
+  const searchFilter = buildIlikeOrFilter(
+    columns
+      .filter((column) => !column.key.endsWith("_id") && column.type === "text")
+      .map((column) => column.key),
+    searchValue,
+  );
+  if (!searchValue) return queryBuilder;
 
   const safeColumns = columns.filter((column) => !column.key.endsWith("_id"));
-  const clauses = safeColumns
-    .filter((column) => column.type === "text")
-    .map((column) => `${column.key}.ilike.%${searchValue}%`);
+  const clauses = searchFilter ? [searchFilter] : [];
   const numericSearch = searchValue.trim();
   if (/^-?\d+(\.\d+)?$/.test(numericSearch)) {
     clauses.push(

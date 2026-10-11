@@ -15,6 +15,7 @@ import {
   normalizeSortOrder,
   normalizeText,
 } from "../utils/validation.js";
+import { buildIlikeOrFilter } from "../utils/postgrest-search.js";
 
 const DOCUMENT_TYPE_VALUES = ["POD", "ACCOUNTING_COPY"] as const;
 const DOCUMENT_STATUS_VALUES = ["PENDING", "VERIFIED"] as const;
@@ -432,9 +433,11 @@ export async function getDocumentList(
 
   const searchText = normalizeText(query.search);
   if (searchText) {
-    queryBuilder = queryBuilder.or(
-      `document_number.ilike.%${searchText}%,file_name.ilike.%${searchText}%,remarks.ilike.%${searchText}%`,
+    const filter = buildIlikeOrFilter(
+      ["document_number", "file_name", "remarks"],
+      searchText,
     );
+    if (filter) queryBuilder = queryBuilder.or(filter);
   }
 
   queryBuilder = queryBuilder.order(sortBy, {

@@ -1,6 +1,11 @@
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabase";
-import type { ReportKey } from "./report.service";
+import { invalidateApiCache } from "./api.service";
+import {
+  invalidateReportPageCache,
+  REPORTS,
+  type ReportKey,
+} from "./report.service";
 
 export type RealtimePayload = {
   eventType: string;
@@ -86,6 +91,124 @@ export const REPORT_REALTIME_TABLES: Record<ReportKey, readonly string[]> = {
     "drivers",
   ],
 };
+
+/** Existing source tables used by authenticated admin pages. Publication
+ * membership is a deployment setting and cannot be inferred from this list. */
+export const ADMIN_REALTIME_TABLES = [...new Set([
+  ...Object.values(REPORT_REALTIME_TABLES).flat(),
+  "trip_images",
+  "documents",
+  "truck_images",
+  "store_contacts",
+  "admin_notifications",
+])];
+
+export type AdminRealtimeEvent =
+  | { kind: "change"; payload: RealtimePayload }
+  | { kind: "recovered"; table: string }
+  | { kind: "resume" };
+type AdminRealtimeListener = (event: AdminRealtimeEvent) => void;
+const adminRealtimeListeners = new Set<AdminRealtimeListener>();
+let adminRealtimeSession: string | null = null;
+let stopAdminRealtime: (() => void) | null = null;
+
+export function subscribeToAdminRealtime(listener: AdminRealtimeListener) {
+  adminRealtimeListeners.add(listener);
+  return () => {
+    adminRealtimeListeners.delete(listener);
+  };
+}
+
+function emitAdminRealtime(event: AdminRealtimeEvent) {
+  [...adminRealtimeListeners].forEach((listener) => listener(event));
+}
+
+function invalidateForTable(table: string, payload?: RealtimePayload) {
+  const affectedReports = Object.entries(REPORT_REALTIME_TABLES)
+    .filter(([, tables]) => tables.includes(table))
+    .map(([key]) => key as ReportKey);
+  for (const key of affectedReports) {
+    invalidateApiCache(REPORTS[key].endpoint);
+    invalidateReportPageCache(key);
+  }
+
+  if (table === "trips") invalidateApiCache("/trips");
+  if (["trips", "trip_events", "trip_stops", "store_calls", "customer_stores", "warehouses"].includes(table)) {
+    invalidateApiCache("/calendar/events");
+  }
+  if (["trip_events", "trip_images", "trip_stops", "trip_line_items", "trip_truck_assignments"].includes(table)) {
+    const resource = table === "trip_events" ? "events" : table === "trip_images" ? "images" : table === "trip_stops" ? "stops" : table === "trip_line_items" ? "line-items" : null;
+    const tripIds = new Set(
+      [payload?.new?.trip_id, payload?.old?.trip_id].filter(
+        (value): value is string => typeof value === "string" && value.length > 0,
+      ),
+    );
+    for (const tripId of tripIds) {
+      if (resource) invalidateApiCache(`/trips/${encodeURIComponent(tripId)}/${resource}`);
+      if (table === "trip_truck_assignments") invalidateApiCache(`/trips/${encodeURIComponent(tripId)}`);
+    }
+  }
+  if (table === "profiles" || table === "drivers") {
+    invalidateApiCache("/users");
+    invalidateApiCache("/lookups/profiles");
+    invalidateApiCache("/truckers");
+  }
+  if (table === "trips" || table === "trip_truck_assignments") {
+    invalidateApiCache("/truckers");
+  }
+  if (table === "documents") invalidateApiCache("/documents");
+  if (["trucks", "truck_images", "warehouses", "customer_stores", "store_contacts", "products"].includes(table)) {
+    invalidateApiCache("/master-data/");
+  }
+}
+
+/** Keep one authenticated table-channel set for the admin session, independent
+ * of which page is mounted. Returned cleanup is safe across token/account swaps. */
+export function startAdminRealtime(
+  token: string | null,
+  profileId: string | null | undefined,
+  role: string | null | undefined,
+) {
+  const sessionKey = token && profileId && (role === "ADMIN" || role === "STAFF")
+    ? `${profileId}:${token}`
+    : null;
+  if (adminRealtimeSession === sessionKey) return () => {};
+
+  stopAdminRealtime?.();
+  stopAdminRealtime = null;
+  adminRealtimeSession = sessionKey;
+  if (!sessionKey) return () => {};
+
+  const onVisible = () => {
+    if (document.visibilityState === "visible") emitAdminRealtime({ kind: "resume" });
+  };
+  document.addEventListener("visibilitychange", onVisible);
+  const unsubscribers = ADMIN_REALTIME_TABLES.map((table) =>
+    subscribeToTable(
+      table,
+      (payload) => {
+        invalidateForTable(table, payload);
+        emitAdminRealtime({ kind: "change", payload });
+      },
+      () => {
+        invalidateForTable(table);
+        emitAdminRealtime({ kind: "recovered", table });
+      },
+    ),
+  );
+
+  const cleanup = () => {
+    document.removeEventListener("visibilitychange", onVisible);
+    unsubscribers.forEach((unsubscribe) => unsubscribe());
+  };
+  stopAdminRealtime = cleanup;
+  return () => {
+    if (adminRealtimeSession !== sessionKey) return;
+    cleanup();
+    stopAdminRealtime = null;
+    adminRealtimeSession = null;
+  };
+}
 
 type Listener = (event: RealtimePayload) => void;
 type Entry = {

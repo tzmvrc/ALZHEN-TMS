@@ -1,3 +1,5 @@
+import { getAppSessionHeaders, handleSessionExpiredResponse } from "./api.service";
+
 export type Photo = { url: string; alt: string };
 export type Cargo = {
   id: string;
@@ -35,10 +37,12 @@ async function request(
     ...options,
     headers: {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(token ? getAppSessionHeaders() : {}),
       ...options.headers,
     },
   });
   const data = await response.json().catch(() => null);
+  if (!response.ok) await handleSessionExpiredResponse(response.status, data, Boolean(token));
   if (!response.ok)
     throw new Error(
       data?.error ||

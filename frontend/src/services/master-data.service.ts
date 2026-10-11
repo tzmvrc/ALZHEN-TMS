@@ -1,4 +1,4 @@
-import { apiGet, apiPatch, apiPost, type ApiResponse } from "./api.service";
+import { apiGet, apiPatch, apiPost, getAppSessionHeaders, handleSessionExpiredResponse, type ApiResponse } from "./api.service";
 
 export type MasterDataKey = "warehouses" | "trucks" | "stores" | "store-contacts" | "products";
 export type MasterDataRow = Record<string, unknown> & { id: string };
@@ -24,8 +24,9 @@ export type TruckImage = { id: string; truck_id: string; storage_path: string; f
 const apiBaseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:5000/api";
 
 async function imageRequest<T>(path: string, token: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${apiBaseUrl}${path}`, { ...init, headers: { Authorization: `Bearer ${token}`, ...(init?.headers ?? {}) } });
+  const response = await fetch(`${apiBaseUrl}${path}`, { ...init, headers: { Authorization: `Bearer ${token}`, ...getAppSessionHeaders(), ...(init?.headers ?? {}) } });
   const payload = await response.json().catch(() => null) as ApiResponse<T> | null;
+  if (!response.ok) await handleSessionExpiredResponse(response.status, payload, true);
   if (!response.ok || !payload?.success || payload.data === undefined) throw new Error(payload?.message ?? "Truck image request failed.");
   return payload.data;
 }

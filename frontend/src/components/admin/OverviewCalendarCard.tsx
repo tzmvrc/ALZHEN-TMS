@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { fetchCalendarEvents } from "../../services/master-data.service";
+import { subscribeToAdminRealtime } from "../../services/realtime.service";
 import { surface } from "./dashboardStyles";
 
 type CalendarEvent = Awaited<ReturnType<typeof fetchCalendarEvents>>[number];
@@ -81,6 +82,7 @@ export default function OverviewCalendarCard({
   const [selectedDay, setSelectedDay] = useState(today);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [error, setError] = useState("");
+  const [refreshVersion, setRefreshVersion] = useState(0);
 
   const from = dateKey(new Date(month.getFullYear(), month.getMonth(), 1));
   const until = dateKey(new Date(month.getFullYear(), month.getMonth() + 1, 1));
@@ -100,7 +102,17 @@ export default function OverviewCalendarCard({
     return () => {
       active = false;
     };
-  }, [accessToken, from, until]);
+  }, [accessToken, from, until, refreshVersion]);
+
+  useEffect(() => subscribeToAdminRealtime((event) => {
+    if (event.kind === "resume") {
+      setRefreshVersion((version) => version + 1);
+      return;
+    }
+    const table = event.kind === "change" ? event.payload.table : event.kind === "recovered" ? event.table : null;
+    if (!table || !["trips", "trip_events", "trip_stops", "store_calls", "customer_stores", "warehouses"].includes(table)) return;
+    setRefreshVersion((version) => version + 1);
+  }), []);
 
   const gridDays = useMemo(() => {
     const first = new Date(month.getFullYear(), month.getMonth(), 1);

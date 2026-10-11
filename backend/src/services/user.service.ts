@@ -49,12 +49,12 @@ function normalizeEmail(value: string): string {
   return trimmed.toLowerCase();
 }
 
-function normalizeRole(value: unknown): "ADMIN" | "TRUCKER" {
-  if (value === "ADMIN" || value === "TRUCKER") {
+function normalizeRole(value: unknown): "ADMIN" | "STAFF" | "TRUCKER" {
+  if (value === "ADMIN" || value === "STAFF" || value === "TRUCKER") {
     return value;
   }
 
-  throw new UserServiceError("Role must be ADMIN or TRUCKER.", 400);
+  throw new UserServiceError("Role must be ADMIN, STAFF, or TRUCKER.", 400);
 }
 
 async function rollbackCreatedUser(userId: string, profileId?: string) {
@@ -106,9 +106,9 @@ export async function createUserAccount(input: CreateUserAccountInput) {
     throw new UserServiceError("is_admin must be a boolean value.", 400);
   }
 
-  if (role === "TRUCKER" && input.is_admin === true) {
+  if (role !== "ADMIN" && input.is_admin === true) {
     throw new UserServiceError(
-      "TRUCKER users cannot have admin privileges.",
+      "Only ADMIN users can have admin privileges.",
       400,
     );
   }
@@ -278,14 +278,14 @@ async function normalizeDriverFields(input: { contact_number?: unknown; license_
 }
 
 export type ManagedUser = {
-  id: string; first_name: string | null; last_name: string | null; role: string; is_admin: boolean;
+  id: string; first_name: string | null; last_name: string | null; role: "ADMIN" | "STAFF" | "TRUCKER"; is_admin: boolean;
   profile_picture_path: string | null; email: string | null; driver: Record<string, unknown> | null;
 };
 
 export async function listManagedUsers(): Promise<ManagedUser[]> {
   const { data: profileRows, error } = await supabaseAdmin.from("profiles")
     .select("id,first_name,last_name,role,is_admin,profile_picture_path")
-    .in("role", ["ADMIN", "TRUCKER"]).order("created_at", { ascending: false });
+    .in("role", ["ADMIN", "STAFF", "TRUCKER"]).order("created_at", { ascending: false });
   if (error) throw new UserServiceError("Unable to load user profiles.", 502);
   const profiles = profileRows ?? [];
   const ids = profiles.map((profile) => profile.id);
@@ -307,7 +307,7 @@ export async function listManagedUsers(): Promise<ManagedUser[]> {
     }
     return {
       ...profile,
-      role: String(profile.role),
+      role: profile.role as ManagedUser["role"],
       is_admin: Boolean(profile.is_admin),
       profile_picture_path: path,
       profile_picture_url: profilePictureUrl,
@@ -323,8 +323,8 @@ export async function updateManagedUser(id: string, input: Record<string, unknow
   const lastName = normalizeRequiredString(input.last_name, "Last name");
   const email = normalizeEmail(normalizeRequiredString(input.email, "Email"));
   const { data: profile, error: profileReadError } = await supabaseAdmin.from("profiles").select("id,role,is_admin").eq("id", id).maybeSingle();
-  if (profileReadError || !profile || !["ADMIN", "TRUCKER"].includes(String(profile.role))) throw new UserServiceError("User profile not found.", 404);
-  const role = String(profile.role);
+  if (profileReadError || !profile || !["ADMIN", "STAFF", "TRUCKER"].includes(String(profile.role))) throw new UserServiceError("User profile not found.", 404);
+  const role = profile.role as "ADMIN" | "STAFF" | "TRUCKER";
   let driverFields: Awaited<ReturnType<typeof normalizeDriverFields>> | null = null;
   if (role === "TRUCKER") driverFields = await normalizeDriverFields(input);
   const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(id, { email, email_confirm: true, user_metadata: { first_name: firstName, last_name: lastName } });

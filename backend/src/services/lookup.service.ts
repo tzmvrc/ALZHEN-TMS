@@ -1,6 +1,7 @@
 import { supabaseAdmin } from "../config/supabase.js";
 import { ApiError } from "../utils/api-response.js";
 import { normalizeSortOrder, normalizeText } from "../utils/validation.js";
+import { buildIlikeOrFilter } from "../utils/postgrest-search.js";
 import type {
   DriverOption,
   IncidentReasonOption,
@@ -41,18 +42,16 @@ function applySearch(
   q: string | undefined,
   columns: string[],
 ) {
-  if (!q || columns.length === 0) {
+  if (columns.length === 0) {
     return queryBuilder;
   }
 
-  const cleaned = q.trim();
-  if (!cleaned) {
+  const filter = buildIlikeOrFilter(columns, q);
+  if (!filter) {
     return queryBuilder;
   }
 
-  return queryBuilder.or(
-    columns.map((column) => `${column}.ilike.%${cleaned}%`).join(","),
-  );
+  return queryBuilder.or(filter);
 }
 
 function applyStatusFlag(

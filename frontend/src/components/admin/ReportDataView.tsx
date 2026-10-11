@@ -1,4 +1,5 @@
-import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent, type ReactNode } from "react";
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type FormEvent, type MouseEvent, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import {
   Building2,
@@ -20,22 +21,38 @@ import {
   X,
   Download,
   Pin,
+  GripVertical,
+  EyeOff,
+  EllipsisVertical,
+  Trash2,
+  Bold,
+  Palette,
+  Paintbrush,
 } from "lucide-react";
 import type ExcelJS from "exceljs";
 import { useAuth } from "../../context/AuthContext";
+import FlexibleTableSectionTabs from "./FlexibleTableSectionTabs";
 import { ApiError, invalidateApiCache } from "../../services/api.service";
 import {
+  fetchReportPage,
   fetchReportColumns,
   fetchReportRows,
+  getCachedReportPage,
+  getStaleReportPage,
+  invalidateReportData,
   getReportFilters,
   getSortableFields,
   REPORTS,
+  REPORT_PAGE_STALE_TTL_MS,
+  setCachedReportPage,
+  updateCachedReportPages,
   type Pagination,
   type ReportColumn,
   type ReportFilter,
   type ReportKey,
   type ReportRow,
 } from "../../services/report.service";
+import type { FlexSectionKey } from "../../services/flexible-table.service";
 import {
   addDropdownOption,
   editDropdownOption,
@@ -48,7 +65,7 @@ import {
   type ReportEditDefinition,
 } from "../../services/report-editing.config";
 import type { RelationshipOption } from "../../services/lookup.service";
-import { REPORT_REALTIME_TABLES, subscribeToTable } from "../../services/realtime.service";
+import { REPORT_REALTIME_TABLES, subscribeToAdminRealtime } from "../../services/realtime.service";
 import { searchRelationshipOptions } from "../../services/lookup.service";
 import {
   updateTripAssignmentRecord,
@@ -59,25 +76,37 @@ import {
   updateTripStopRecord,
 } from "../../services/trip.service";
 import SearchableRelationshipEditor from "./SearchableRelationshipEditor";
-import SlidingSegmentedControl from "./SlidingSegmentedControl";
 import { tableUi } from "./dashboardStyles";
 import ReportDropdownEditor, { type ReportDropdownChoice } from "./ReportDropdownEditor";
 import type { AdminNotificationTarget } from "../../services/notification.service";
 import { StatusBadge, TableSkeleton } from "./DashboardPrimitives";
 
-const tripScopeOptions = [
-  { value: "dispatches", label: "All trips" },
-  { value: "monitoring", label: "Dispatch monitoring" },
-  { value: "deliveries", label: "Deliveries" },
-] as const;
-
 const reportKeys = Object.keys(REPORTS) as ReportKey[];
 type ExportMode = "all-workbook" | "separate-zip" | "current-report";
+const FLEX_SECTION_BY_REPORT: Record<ReportKey, FlexSectionKey> = {
+  combined: "combined_report",
+  "dispatch-monitoring": "dispatch_monitoring",
+  dispatch: "dispatch_report",
+  "trip-booking": "trip_booking",
+  "store-calling": "store_calling",
+};
 const BOOLEAN_DROPDOWN_CHOICES: ReportDropdownChoice[] = [
   { value: "true", label: "Yes" },
   { value: "false", label: "No" },
 ];
-const reportPageCache = new Map<string, { columns: ReportColumn[]; rows: ReportRow[]; pagination: Pagination }>();
+const REPORT_COLUMN_COLORS = [
+  "#fef2f2", "#fecaca", "#f87171", "#b91c1c",
+  "#fff7ed", "#fed7aa", "#fb923c", "#c2410c",
+  "#fefce8", "#fef08a", "#facc15", "#a16207",
+  "#f0fdf4", "#bbf7d0", "#4ade80", "#15803d",
+  "#ecfdf5", "#a7f3d0", "#34d399", "#047857",
+  "#ecfeff", "#a5f3fc", "#22d3ee", "#0e7490",
+  "#eff6ff", "#bfdbfe", "#60a5fa", "#1d4ed8",
+  "#eef2ff", "#c7d2fe", "#818cf8", "#4338ca",
+  "#faf5ff", "#e9d5ff", "#c084fc", "#7e22ce",
+  "#fdf2f8", "#fbcfe8", "#f472b6", "#be185d",
+  "#f8fafc", "#cbd5e1", "#64748b", "#1e293b",
+];
 
 async function loadExportLibraries() {
   try {
@@ -111,7 +140,7 @@ function appendReportWorksheet(workbook: ExcelJS.Workbook, reportKey: ReportKey,
     !column.key.startsWith("_") &&
     !["trip_id", "trip_stop_id", "trip_line_item_id"].includes(column.key),
   );
-  const name = REPORTS[reportKey].title.replace(/[:\\/?*\[\]]/g, " ").slice(0, 31);
+  const name = REPORTS[reportKey].title.replace(/[:\\/?*\x5B\x5D]/g, " ").slice(0, 31);
   const worksheet = workbook.addWorksheet(name || "Report");
   worksheet.columns = visibleColumns.map((column) => ({
     header: column.title,
@@ -198,6 +227,53 @@ function getReportRowKey(reportKey: ReportKey, row: ReportRow): string | null {
     ["billing", row.billing_id],
   ].filter(([, id]) => typeof id === "string" && id) as [string, string][];
   return ids.length ? `${reportKey}:${ids.map(([kind, id]) => `${kind}:${id}`).join(":")}` : null;
+}
+
+function reportEditDiagnostic(event: string, details: Record<string, unknown>) {
+  if (import.meta.env.DEV) {
+    // info is visible with the browser console's standard Info level; debug
+    // messages may be hidden when Verbose logging is filtered out.
+    console.info(`[report-edit-diagnostic] ${event}`, details);
+  }
+}
+
+function diagnosticCellValue(field: string, value: unknown): unknown {
+  if (value === null || value === undefined) return value;
+  if (typeof value === "number" || typeof value === "boolean") return value;
+  if (typeof value !== "string") return `[${typeof value} redacted]`;
+  if (["delivery_status", "trip_status", "letter_status", "status", "confirmation_status"].includes(field)) {
+    return value.slice(0, 80);
+  }
+  return `[text redacted; ${value.length} characters]`;
+}
+
+function summarizeReportEditRow(row: ReportRow, reportKey: ReportKey, field: string) {
+  return {
+    trip_id: row.trip_id ?? null,
+    trip_stop_id: row.trip_stop_id ?? null,
+    _trip_stop_id: row._trip_stop_id ?? null,
+    trip_line_item_id: row.trip_line_item_id ?? null,
+    identity: getReportRowKey(reportKey, row),
+    editedField: field,
+    currentValue: diagnosticCellValue(field, row[field]),
+  };
+}
+
+function reportEditEndpoint(target: EditableCellTarget): string {
+  switch (target.sourceEntity) {
+    case "stop":
+      return `/trips/${encodeURIComponent(target.tripId ?? "")}/stops/${encodeURIComponent(target.stopId ?? "")}`;
+    case "lineItem":
+      return `/trips/${encodeURIComponent(target.tripId ?? "")}/stops/${encodeURIComponent(target.stopId ?? "")}/line-items/${encodeURIComponent(target.lineItemId ?? "")}`;
+    case "assignment":
+      return `/trips/${encodeURIComponent(target.tripId ?? "")}/assignments/${encodeURIComponent(target.assignmentId ?? "")}`;
+    case "billing":
+      return `/trips/${encodeURIComponent(target.tripId ?? "")}/billings/${encodeURIComponent(target.billingId ?? "")}`;
+    case "trip":
+      return `/trips/${encodeURIComponent(target.tripId ?? "")}`;
+    case "storeCall":
+      return `/store-calls/${encodeURIComponent(target.storeCallId ?? "")}`;
+  }
 }
 
 const reportSelection = (() => {
@@ -389,6 +465,58 @@ type EditingCell = {
   mentionEventKey?: string;
   assignmentEventKey?: string;
 };
+
+type ReportColumnLayout = { order: string[]; hidden: string[]; colors?: Record<string, string> };
+type FillGesture = {
+  sourceRowKey: string;
+  sourceField: string;
+  sourceValue: string;
+  targetRowKey: string;
+  targetField: string;
+  baseline: Map<string, unknown>;
+};
+type ReportCellFormat = { bold?: boolean; color?: string; backgroundColor?: string };
+type CellSelection = { anchorRowKey: string; anchorField: string; focusRowKey: string; focusField: string };
+type DropdownOptionDraft = DropdownOption & { draftKey: string; originalLabel: string; isNew: boolean; removePending: boolean };
+
+function readReportColumnLayout(storageKey: string): ReportColumnLayout {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(storageKey) ?? "null") as Partial<ReportColumnLayout> | null;
+    return {
+      order: Array.isArray(parsed?.order) ? parsed.order.filter((key): key is string => typeof key === "string") : [],
+      hidden: Array.isArray(parsed?.hidden) ? parsed.hidden.filter((key): key is string => typeof key === "string") : [],
+      colors: parsed?.colors && typeof parsed.colors === "object"
+        ? Object.fromEntries(Object.entries(parsed.colors).filter((entry): entry is [string, string] => typeof entry[1] === "string" && /^#[0-9a-f]{6}$/i.test(entry[1])))
+        : {},
+    };
+  } catch {
+    return { order: [], hidden: [] };
+  }
+}
+
+function readCellFormats(storageKey: string): Record<string, ReportCellFormat> {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(storageKey) ?? "{}") as Record<string, unknown>;
+    return Object.fromEntries(Object.entries(parsed).flatMap(([key, value]) => {
+      if (!value || typeof value !== "object") return [];
+      const item = value as Record<string, unknown>;
+      const color = typeof item.color === "string" && /^#[0-9a-f]{6}$/i.test(item.color) ? item.color : undefined;
+      const backgroundColor = typeof item.backgroundColor === "string" && /^#[0-9a-f]{6}$/i.test(item.backgroundColor) ? item.backgroundColor : undefined;
+      return [[key, { bold: item.bold === true, color, backgroundColor } satisfies ReportCellFormat]];
+    }));
+  } catch {
+    return {};
+  }
+}
+
+function columnForeground(color?: string): string | undefined {
+  if (!color || !/^#[0-9a-f]{6}$/i.test(color)) return undefined;
+  const red = Number.parseInt(color.slice(1, 3), 16);
+  const green = Number.parseInt(color.slice(3, 5), 16);
+  const blue = Number.parseInt(color.slice(5, 7), 16);
+  const luminance = (0.2126 * red + 0.7152 * green + 0.0722 * blue) / 255;
+  return luminance < 0.55 ? "#ffffff" : "#172b43";
+}
 
 function getEditableCellTarget(
   row: ReportRow,
@@ -819,32 +947,71 @@ export default function ReportDataView({
   initialReport = "combined",
   notificationTarget,
   showReportPicker = true,
+  pageTitle,
+  pageSubtitle,
   onOpenTrip,
   onReportScopeChange,
-  tripScope,
-  onTripScopeChange,
   toolbarActions,
 }: {
   initialReport?: ReportKey;
   notificationTarget?: AdminNotificationTarget | null;
   showReportPicker?: boolean;
+  pageTitle?: string;
+  pageSubtitle?: string;
   onOpenTrip?: (tripId: string) => void;
   onReportScopeChange?: (value: ReportKey) => void;
-  tripScope?: "dispatches" | "monitoring" | "deliveries";
-  onTripScopeChange?: (value: "dispatches" | "monitoring" | "deliveries") => void;
   /** Extra action buttons rendered at the end of the controls row above the table. */
   toolbarActions?: ReactNode;
 }) {
   const { accessToken, refreshSession, profile } = useAuth();
   const navigate = useNavigate();
   const [reportKey, setReportKey] = useState<ReportKey>(initialReport);
+  useEffect(() => {
+    reportEditDiagnostic("ReportDataView mounted", {
+      mode: import.meta.env.MODE,
+      development: import.meta.env.DEV,
+    });
+  }, []);
   const [viewMode, setViewMode] = useState<"visual" | "table">("table");
   const [columns, setColumns] = useState<ReportColumn[]>([]);
+  const columnLayoutStorageKey = `alzhen:report-column-layout:${profile?.id ?? "user"}:${reportKey}`;
+  const [columnLayout, setColumnLayout] = useState<ReportColumnLayout>(() =>
+    typeof window === "undefined" ? { order: [], hidden: [] } : readReportColumnLayout(`alzhen:report-column-layout:${profile?.id ?? "user"}:${initialReport}`),
+  );
+  const cellFormatStorageKey = `alzhen:report-cell-format:${profile?.id ?? "user"}:${reportKey}`;
+  const [cellFormats, setCellFormats] = useState<Record<string, ReportCellFormat>>(() =>
+    typeof window === "undefined" ? {} : readCellFormats(`alzhen:report-cell-format:${profile?.id ?? "user"}:${initialReport}`),
+  );
+  const [cellSelection, setCellSelection] = useState<CellSelection | null>(null);
+  const [openColorPicker, setOpenColorPicker] = useState<"text" | "background" | null>(null);
+  const [draggedColumnKey, setDraggedColumnKey] = useState<string | null>(null);
+  const [fillGesture, setFillGesture] = useState<FillGesture | null>(null);
+  const fillGestureRef = useRef<FillGesture | null>(null);
   const [rows, setRows] = useState<ReportRow[]>([]);
   const [pinnedColumnSides, setPinnedColumnSides] = useState<Record<string, "left" | "right">>({});
   const [leftPinOffsets, setLeftPinOffsets] = useState<Record<string, number>>({});
   const [rightPinOffsets, setRightPinOffsets] = useState<Record<string, number>>({});
   const [pinningNotice, setPinningNotice] = useState("");
+  const [openColumnMenu, setOpenColumnMenu] = useState<{ key: string; left: number; top: number } | null>(null);
+  const [editingColumnColor, setEditingColumnColor] = useState<string | null>(null);
+  const [managingDropdownField, setManagingDropdownField] = useState<DropdownField | null>(null);
+  const [newDropdownLabel, setNewDropdownLabel] = useState("");
+  const [dropdownOptionDrafts, setDropdownOptionDrafts] = useState<DropdownOptionDraft[]>([]);
+  const [dropdownManagerError, setDropdownManagerError] = useState("");
+  const [dropdownManagerNotice, setDropdownManagerNotice] = useState("");
+  const [dropdownManagerBusy, setDropdownManagerBusy] = useState(false);
+  useEffect(() => {
+    if (!openColumnMenu && !editingColumnColor && !managingDropdownField) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setOpenColumnMenu(null);
+      setEditingColumnColor(null);
+      if (!dropdownManagerBusy && managingDropdownField && dropdownOptionDrafts.some((option) => option.isNew || option.display_label.trim() !== option.originalLabel) && !window.confirm("Discard the unsaved dropdown-option changes?")) return;
+      if (!dropdownManagerBusy) setManagingDropdownField(null);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [dropdownManagerBusy, dropdownOptionDrafts, editingColumnColor, managingDropdownField, openColumnMenu]);
   const [editModalFields, setEditModalFields] = useState<{
     column: ReportColumn;
     cell: EditingCell;
@@ -933,6 +1100,34 @@ export default function ReportDataView({
       return values.some((value) => searchableValue(value).toLocaleLowerCase().includes(term));
     }));
   }, [appliedSearch, columns, reportKey, rows]);
+  const displayedRowsRef = useRef<ReportRow[]>(displayedRows);
+  displayedRowsRef.current = displayedRows;
+  const layoutColumnKeys = useMemo(() => {
+    const availableKeys = new Set(columns.map((column) => column.key));
+    const orderedKeys = [
+      ...columnLayout.order.filter((key) => availableKeys.has(key)),
+      ...columns.map((column) => column.key).filter((key) => !columnLayout.order.includes(key)),
+    ];
+    return orderedKeys;
+  }, [columnLayout.order, columns]);
+  const hiddenColumnKeys = useMemo(
+    () => new Set(columnLayout.hidden.filter((key) => columns.some((column) => column.key === key))),
+    [columnLayout.hidden, columns],
+  );
+  const gridColumns = useMemo(
+    () => layoutColumnKeys.filter((key) => !hiddenColumnKeys.has(key)).flatMap((key) => {
+      const column = columns.find((item) => item.key === key);
+      return column ? [column] : [];
+    }),
+    [columns, hiddenColumnKeys, layoutColumnKeys],
+  );
+  const hiddenColumns = useMemo(
+    () => layoutColumnKeys.filter((key) => hiddenColumnKeys.has(key)).flatMap((key) => {
+      const column = columns.find((item) => item.key === key);
+      return column ? [column] : [];
+    }),
+    [columns, hiddenColumnKeys, layoutColumnKeys],
+  );
   const visibleSelectionKeys = useMemo(
     () => displayedRows.flatMap((row) => {
       const key = getReportRowKey(reportKey, row);
@@ -940,12 +1135,48 @@ export default function ReportDataView({
     }),
     [displayedRows, reportKey],
   );
-  const leftPinnedColumnKeys = columns
-    .filter((column) => pinnedColumnSides[column.key] === "left")
-    .map((column) => column.key);
-  const rightPinnedColumnKeys = columns
-    .filter((column) => pinnedColumnSides[column.key] === "right")
-    .map((column) => column.key);
+  const leftPinnedColumnKeys = useMemo(
+    () => gridColumns.filter((column) => pinnedColumnSides[column.key] === "left").map((column) => column.key),
+    [gridColumns, pinnedColumnSides],
+  );
+  const rightPinnedColumnKeys = useMemo(
+    () => gridColumns.filter((column) => pinnedColumnSides[column.key] === "right").map((column) => column.key),
+    [gridColumns, pinnedColumnSides],
+  );
+  // A sticky table cell left in the middle of the table is still constrained
+  // by that in-flow table position; right insets do not create a separate edge
+  // band. Render pinned columns at the physical edges so their sticky ranges,
+  // stacking, and measured offsets agree with the visible grid order.
+  const renderedGridColumns = useMemo(() => {
+    const columnByKey = new Map(gridColumns.map((column) => [column.key, column]));
+    const left = leftPinnedColumnKeys.flatMap((key) => {
+      const column = columnByKey.get(key);
+      return column ? [column] : [];
+    });
+    const right = rightPinnedColumnKeys.flatMap((key) => {
+      const column = columnByKey.get(key);
+      return column ? [column] : [];
+    });
+    const pinnedKeys = new Set([...leftPinnedColumnKeys, ...rightPinnedColumnKeys]);
+    return [...left, ...gridColumns.filter((column) => !pinnedKeys.has(column.key)), ...right];
+  }, [gridColumns, leftPinnedColumnKeys, rightPinnedColumnKeys]);
+  const selectedFormatCellKeys = useMemo(() => {
+    if (!cellSelection) return new Set<string>();
+    const rowStart = displayedRows.findIndex((row) => getReportRowKey(reportKey, row) === cellSelection.anchorRowKey);
+    const rowEnd = displayedRows.findIndex((row) => getReportRowKey(reportKey, row) === cellSelection.focusRowKey);
+    const columnStart = renderedGridColumns.findIndex((column) => column.key === cellSelection.anchorField);
+    const columnEnd = renderedGridColumns.findIndex((column) => column.key === cellSelection.focusField);
+    if ([rowStart, rowEnd, columnStart, columnEnd].some((index) => index < 0)) return new Set<string>();
+    const selected = new Set<string>();
+    for (let rowIndex = Math.min(rowStart, rowEnd); rowIndex <= Math.max(rowStart, rowEnd); rowIndex += 1) {
+      const rowKey = getReportRowKey(reportKey, displayedRows[rowIndex]);
+      if (!rowKey) continue;
+      for (let columnIndex = Math.min(columnStart, columnEnd); columnIndex <= Math.max(columnStart, columnEnd); columnIndex += 1) {
+        selected.add(`${rowKey}\u0000${renderedGridColumns[columnIndex].key}`);
+      }
+    }
+    return selected;
+  }, [cellSelection, displayedRows, renderedGridColumns, reportKey]);
   const queryKey = JSON.stringify({
     accessToken,
     activeSortBy,
@@ -958,7 +1189,16 @@ export default function ReportDataView({
     sortOrder,
   });
   const snapshotKey = JSON.stringify({ accessToken, activeSortBy, appliedFilters, appliedSearch: effectiveSearch, page, reportKey, sortOrder });
+  const pageOptions = useMemo(() => ({
+    page,
+    limit: 50,
+    search: effectiveSearch,
+    sortBy: activeSortBy,
+    sortOrder,
+    filters: appliedFilters,
+  }), [activeSortBy, appliedFilters, effectiveSearch, page, sortOrder]);
   const snapshotKeyRef = useRef(snapshotKey);
+  const loadedSnapshotKeyRef = useRef<string | null>(null);
   const reportKeyRef = useRef(reportKey);
   const appliedNotificationTarget = useRef<string | null>(null);
   const handledNotificationTarget = useRef<string | null>(null);
@@ -967,13 +1207,45 @@ export default function ReportDataView({
   const realtimeRefreshQueuedFor = useRef<string | null>(null);
   const realtimeRefreshTimer = useRef<number | null>(null);
   const realtimeRefreshMaxTimer = useRef<number | null>(null);
+  const diagnosticEditTarget = useRef<{ reportKey: ReportKey; tripId?: string; stopId?: string; field: string } | null>(null);
   const successfulSaveVersion = useRef(0);
   const savedRowReconciliations = useRef<SavedRowReconciliation[]>([]);
   snapshotKeyRef.current = snapshotKey;
   reportKeyRef.current = reportKey;
 
+  useEffect(() => {
+    setColumnLayout(readReportColumnLayout(columnLayoutStorageKey));
+  }, [columnLayoutStorageKey]);
+
+  useEffect(() => {
+    setCellFormats(readCellFormats(cellFormatStorageKey));
+    setCellSelection(null);
+    setOpenColorPicker(null);
+  }, [cellFormatStorageKey]);
+
   useLayoutEffect(() => {
     const measurePinnedColumns = () => {
+      const viewportWidth = tableViewportRef.current?.clientWidth ?? window.innerWidth;
+      const selectionWidth = selectionColumnRef.current?.getBoundingClientRect().width ?? 44;
+      let pinnedWidth = selectionWidth + [...leftPinnedColumnKeys, ...rightPinnedColumnKeys].reduce(
+        (total, key) => total + (headerCellRefs.current.get(key)?.getBoundingClientRect().width ?? 160),
+        0,
+      );
+      if (pinnedWidth > Math.max(180, viewportWidth - 120)) {
+        const adjustedSides = { ...pinnedColumnSides };
+        const candidates = [...rightPinnedColumnKeys, ...leftPinnedColumnKeys.slice().reverse()];
+        for (const key of candidates) {
+          if (pinnedWidth <= Math.max(180, viewportWidth - 120)) break;
+          if (!adjustedSides[key]) continue;
+          pinnedWidth -= headerCellRefs.current.get(key)?.getBoundingClientRect().width ?? 160;
+          delete adjustedSides[key];
+        }
+        if (Object.keys(adjustedSides).length !== Object.keys(pinnedColumnSides).length) {
+          setPinnedColumnSides(adjustedSides);
+          setPinningNotice("Some pinned columns were unpinned to keep both sides clear at this viewport width.");
+          return;
+        }
+      }
       let left = selectionColumnRef.current?.getBoundingClientRect().width ?? 44;
       const nextLeftOffsets: Record<string, number> = {};
       for (const key of leftPinnedColumnKeys) {
@@ -1007,6 +1279,7 @@ export default function ReportDataView({
     const observer = typeof ResizeObserver === "undefined"
       ? null
       : new ResizeObserver(measurePinnedColumns);
+    if (tableViewportRef.current) observer?.observe(tableViewportRef.current);
     if (selectionColumnRef.current) observer?.observe(selectionColumnRef.current);
     for (const key of [...leftPinnedColumnKeys, ...rightPinnedColumnKeys]) {
       const cell = headerCellRefs.current.get(key);
@@ -1017,7 +1290,7 @@ export default function ReportDataView({
       observer?.disconnect();
       window.removeEventListener("resize", measurePinnedColumns);
     };
-  }, [columns, leftPinnedColumnKeys.join("|"), rightPinnedColumnKeys.join("|"), rows]);
+  }, [gridColumns, leftPinnedColumnKeys, pinnedColumnSides, rightPinnedColumnKeys, rows]);
 
   const flushRealtimeRefresh = () => {
     if (realtimeRefreshTimer.current !== null) {
@@ -1038,7 +1311,7 @@ export default function ReportDataView({
       return;
     }
     realtimeRefreshQueuedFor.current = targetSnapshot;
-    invalidateApiCache(REPORTS[reportKeyRef.current].endpoint);
+    invalidateReportData(reportKeyRef.current);
     setRetryVersion((version) => version + 1);
   };
   const scheduleRealtimeRefresh = () => {
@@ -1055,6 +1328,7 @@ export default function ReportDataView({
 
   useEffect(() => {
     setReportKey(initialReport);
+    setColumnLayout(readReportColumnLayout(`alzhen:report-column-layout:${profile?.id ?? "user"}:${initialReport}`));
     setViewMode("table");
     setPage(1);
     setSearch("");
@@ -1063,7 +1337,7 @@ export default function ReportDataView({
     reportSelection.clear();
     setPinnedColumnSides({});
     setEditModalOpen(false);
-  }, [initialReport]);
+  }, [initialReport, profile?.id]);
 
   useEffect(() => {
     reportSelection.clear(reportKey);
@@ -1095,18 +1369,32 @@ export default function ReportDataView({
     };
   }, [accessToken]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!accessToken) {
       navigate("/login", { replace: true });
       return;
     }
 
     let active = true;
-    const cached = reportPageCache.get(snapshotKey);
-    if (cached) {
-      setColumns(cached.columns);
-      setRows(cached.rows);
-      setPagination(cached.pagination);
+    const cached = getCachedReportPage(reportKey, accessToken, pageOptions);
+    const displayCache = cached ?? getStaleReportPage(reportKey, accessToken, pageOptions);
+    let staleCacheTimer: number | null = null;
+    if (displayCache) {
+      setColumns(displayCache.columns);
+      setRows(displayCache.rows);
+      setPagination(displayCache.pagination);
+      setLoadedQueryKey(queryKey);
+      loadedSnapshotKeyRef.current = snapshotKey;
+      if (!cached) {
+        staleCacheTimer = window.setTimeout(() => {
+          if (!active) return;
+          setColumns([]);
+          setRows([]);
+          setPagination(null);
+          setRequestError({ key: queryKey, message: "Cached report data expired. Retry to load current records." });
+        }, REPORT_PAGE_STALE_TTL_MS);
+      }
+    } else if (loadedSnapshotKeyRef.current === snapshotKey) {
       setLoadedQueryKey(queryKey);
     } else {
       setColumns([]);
@@ -1125,16 +1413,40 @@ export default function ReportDataView({
 
     void (async () => {
       try {
-        const nextColumns = await fetchReportColumns(reportKey, accessToken);
-        const result = await fetchReportRows(reportKey, accessToken, {
-          page,
-          limit: 50,
-          search: effectiveSearch,
-          sortBy: activeSortBy,
-          sortOrder,
-          filters: appliedFilters,
+        const result = await fetchReportPage(reportKey, accessToken, pageOptions, !cached && Boolean(displayCache));
+        reportEditDiagnostic("report fetch completed", {
+          reportEndpoint: REPORTS[reportKey].endpoint,
+          reportKey,
+          page: pageOptions.page,
+          limit: pageOptions.limit,
+          rowCount: result.rows.length,
+          source: cached ? "fresh page cache" : displayCache ? "request refresh" : "request",
+          viewIsActive: active,
         });
         if (!active) return;
+        const diagnosticTarget = diagnosticEditTarget.current;
+        if (import.meta.env.DEV && diagnosticTarget?.reportKey === reportKey && diagnosticTarget.tripId) {
+          const matchingTripRows = result.rows.filter((row) => row.trip_id === diagnosticTarget.tripId);
+          const diagnosticRows = [
+            ...matchingTripRows.filter((row) => row.trip_stop_id === diagnosticTarget.stopId),
+            ...matchingTripRows.filter((row) => row.trip_stop_id !== diagnosticTarget.stopId),
+          ].slice(0, 2);
+          reportEditDiagnostic("report rows returned to the grid", {
+            reportEndpoint: REPORTS[reportKey].endpoint,
+            reportKey,
+            query: {
+              page: pageOptions.page,
+              limit: pageOptions.limit,
+              sortBy: pageOptions.sortBy,
+              sortOrder: pageOptions.sortOrder,
+              hasSearch: Boolean(pageOptions.search),
+              activeFilterKeys: Object.keys(pageOptions.filters).filter((key) => Boolean(pageOptions.filters[key]?.trim())),
+            },
+            source: cached ? "fresh page cache" : displayCache ? "request refresh" : "request",
+            editedField: diagnosticTarget.field,
+            rows: diagnosticRows.map((row) => summarizeReportEditRow(row, reportKey, diagnosticTarget.field)),
+          });
+        }
         const applicableReconciliations = savedRowReconciliations.current.filter(
           (reconciliation) =>
             reconciliation.reportKey === reportKey &&
@@ -1151,22 +1463,42 @@ export default function ReportDataView({
               ),
             )
           : result.rows;
-        setColumns(nextColumns);
+        setRequestError((current) => current?.key === queryKey ? null : current);
+        setColumns(result.columns);
         setRows(reconciledRows);
         setPagination(result.pagination);
-        reportPageCache.set(snapshotKey, { columns: nextColumns, rows: reconciledRows, pagination: result.pagination });
+        setCachedReportPage(reportKey, accessToken, pageOptions, {
+          columns: result.columns,
+          rows: reconciledRows,
+          pagination: result.pagination,
+        });
+        if (staleCacheTimer !== null) window.clearTimeout(staleCacheTimer);
+        loadedSnapshotKeyRef.current = snapshotKey;
         savedRowReconciliations.current = savedRowReconciliations.current.filter(
           (reconciliation) =>
             reconciliation.reportKey !== reportKey ||
             reconciliation.version > requestSaveVersion,
         );
       } catch (cause) {
+        reportEditDiagnostic("report fetch failed", {
+          reportEndpoint: REPORTS[reportKey].endpoint,
+          reportKey,
+          page: pageOptions.page,
+          errorType: cause instanceof ApiError ? "api" : cause instanceof Error ? cause.name : "unknown",
+          status: cause instanceof ApiError ? cause.status : undefined,
+        });
         if (!active) return;
+        if (staleCacheTimer !== null) window.clearTimeout(staleCacheTimer);
         if (cause instanceof ApiError && cause.status === 401) {
           await refreshSession();
           return;
         }
-        setRequestError({
+        if (!cached && displayCache) {
+          setColumns([]);
+          setRows([]);
+          setPagination(null);
+        }
+        if (!displayCache || !cached) setRequestError({
           key: queryKey,
           message:
             cause instanceof ApiError && cause.status === 403
@@ -1176,6 +1508,7 @@ export default function ReportDataView({
                 : "Unable to load this report.",
         });
       } finally {
+        if (staleCacheTimer !== null) window.clearTimeout(staleCacheTimer);
         const remaining = (inFlightReportQueries.current.get(snapshotKey) ?? 1) - 1;
         if (remaining > 0) inFlightReportQueries.current.set(snapshotKey, remaining);
         else inFlightReportQueries.current.delete(snapshotKey);
@@ -1195,14 +1528,14 @@ export default function ReportDataView({
 
     return () => {
       active = false;
+      if (staleCacheTimer !== null) window.clearTimeout(staleCacheTimer);
     };
   }, [
     accessToken,
-    activeSortBy,
-    appliedFilters,
     effectiveSearch,
     navigate,
     page,
+    pageOptions,
     queryKey,
     reportKey,
     refreshSession,
@@ -1214,23 +1547,46 @@ export default function ReportDataView({
 
   useEffect(() => {
     if (!accessToken) return;
-    const unsubscribers = REPORT_REALTIME_TABLES[reportKey].map((table) =>
-      subscribeToTable(
-        table,
-        scheduleRealtimeRefreshRef.current,
-        scheduleRealtimeRefreshRef.current,
-      ),
-    );
-    // Realtime is best effort: refresh when returning to the tab and periodically
-    // so a disconnected subscription cannot leave this report stale indefinitely.
-    const onVisible = () => {
-      if (document.visibilityState === "visible") scheduleRealtimeRefreshRef.current();
-    };
-    document.addEventListener("visibilitychange", onVisible);
+    const reportTables = REPORT_REALTIME_TABLES[reportKey];
+    const unsubscribe = subscribeToAdminRealtime((event) => {
+      if (event.kind === "resume") {
+        scheduleRealtimeRefreshRef.current();
+      } else if (event.kind === "recovered") {
+        if (reportTables.includes(event.table)) scheduleRealtimeRefreshRef.current();
+      } else if (reportTables.includes(event.payload.table)) {
+        const diagnosticTarget = diagnosticEditTarget.current;
+        if (import.meta.env.DEV && diagnosticTarget?.reportKey === reportKey) {
+          const payload = event.payload;
+          const nextRow = payload.new ?? {};
+          const oldRow = payload.old ?? {};
+          const tripId = payload.table === "trips"
+            ? nextRow.id ?? oldRow.id
+            : nextRow.trip_id ?? oldRow.trip_id;
+          const stopId = payload.table === "trip_stops"
+            ? nextRow.id ?? oldRow.id
+            : nextRow.trip_stop_id ?? oldRow.trip_stop_id;
+          const relevantToEdit = (diagnosticTarget.tripId && tripId === diagnosticTarget.tripId)
+            || (diagnosticTarget.stopId && stopId === diagnosticTarget.stopId);
+          if (relevantToEdit) {
+            reportEditDiagnostic("realtime event and report refresh", {
+              table: payload.table,
+              eventType: payload.eventType,
+              trip_id: tripId ?? null,
+              trip_stop_id: stopId ?? null,
+              editedField: diagnosticTarget.field,
+              eventValue: diagnosticCellValue(diagnosticTarget.field, nextRow[diagnosticTarget.field] ?? oldRow[diagnosticTarget.field]),
+              effect: "shared realtime handler invalidates affected report cache; this view queues an active report refresh",
+            });
+          }
+        }
+        scheduleRealtimeRefreshRef.current();
+      }
+    });
+    // Keep an active report reconciled if Postgres Changes are unavailable or
+    // an event was missed. The shared channels themselves live for the session.
     const recovery = window.setInterval(() => scheduleRealtimeRefreshRef.current(), 60_000);
     return () => {
-      unsubscribers.forEach((unsubscribe) => unsubscribe());
-      document.removeEventListener("visibilitychange", onVisible);
+      unsubscribe();
       window.clearInterval(recovery);
       if (realtimeRefreshTimer.current !== null) {
         window.clearTimeout(realtimeRefreshTimer.current);
@@ -1265,6 +1621,7 @@ export default function ReportDataView({
     onReportScopeChange?.(nextReport);
     setPage(1);
     setReportKey(nextReport);
+    setColumnLayout(readReportColumnLayout(`alzhen:report-column-layout:${profile?.id ?? "user"}:${nextReport}`));
     setViewMode("table");
     setSearch("");
     setAppliedSearch("");
@@ -1325,6 +1682,41 @@ export default function ReportDataView({
     cancelNextBlur.current = false;
     const nextCell = createEditingCell(row, index, columnKey);
     if (!nextCell) return;
+    diagnosticEditTarget.current = {
+      reportKey,
+      tripId: nextCell.tripId,
+      stopId: nextCell.stopId,
+      field: columnKey,
+    };
+    if (import.meta.env.DEV) {
+      const sameTripRows = typeof nextCell.tripId === "string"
+        ? displayedRowsRef.current.filter((candidate) => candidate.trip_id === nextCell.tripId)
+        : [row];
+      const diagnosticRows = [row, ...sameTripRows.filter((candidate) => candidate !== row)].slice(0, 2);
+      reportEditDiagnostic("cell selected for editing", {
+        reportEndpoint: REPORTS[reportKey].endpoint,
+        reportKey,
+        query: {
+          page: pageOptions.page,
+          limit: pageOptions.limit,
+          sortBy: pageOptions.sortBy,
+          sortOrder: pageOptions.sortOrder,
+          hasSearch: Boolean(pageOptions.search),
+          activeFilterKeys: Object.keys(pageOptions.filters).filter((key) => Boolean(pageOptions.filters[key]?.trim())),
+        },
+        selected: summarizeReportEditRow(row, reportKey, columnKey),
+        canonicalIdentity: getReportRowKey(reportKey, row),
+        editableTarget: {
+          sourceEntity: nextCell.definition.sourceEntity,
+          recordIdField: nextCell.definition.recordIdField,
+          sourceField: nextCell.definition.sourceField,
+          tripId: nextCell.tripId ?? null,
+          stopId: nextCell.stopId ?? null,
+          lineItemId: nextCell.lineItemId ?? null,
+        },
+        rowsWithSameTripId: diagnosticRows.map((candidate) => summarizeReportEditRow(candidate, reportKey, columnKey)),
+      });
+    }
     setMentionOptions([]);
     setEditingCell(nextCell);
     setCellSaveState({
@@ -1340,7 +1732,7 @@ export default function ReportDataView({
     if (side) next[columnKey] = side;
     else delete next[columnKey];
     const viewportWidth = tableViewportRef.current?.clientWidth ?? window.innerWidth;
-    const pinnedWidth = columns.reduce((total, column) => {
+    const pinnedWidth = gridColumns.reduce((total, column) => {
       if (!next[column.key]) return total;
       return total + (headerCellRefs.current.get(column.key)?.getBoundingClientRect().width ?? 160);
     }, selectionColumnRef.current?.getBoundingClientRect().width ?? 44);
@@ -1351,6 +1743,337 @@ export default function ReportDataView({
     setPinningNotice("");
     setPinnedColumnSides(next);
   }
+
+  function toggleColumnPinAutomatically(columnKey: string) {
+    if (pinnedColumnSides[columnKey]) {
+      setColumnPinSide(columnKey, null);
+      return;
+    }
+    const columnRect = headerCellRefs.current.get(columnKey)?.getBoundingClientRect();
+    const viewportRect = tableViewportRef.current?.getBoundingClientRect();
+    if (!columnRect || !viewportRect) return;
+    const center = (columnRect.left + columnRect.right) / 2;
+    setColumnPinSide(columnKey, Math.abs(center - viewportRect.left) <= Math.abs(viewportRect.right - center) ? "left" : "right");
+  }
+
+  function saveColumnLayout(next: ReportColumnLayout) {
+    setColumnLayout(next);
+    try {
+      localStorage.setItem(columnLayoutStorageKey, JSON.stringify(next));
+    } catch {
+      // Keep the current session usable when browser storage is unavailable.
+    }
+  }
+
+  function setReportColumnColor(columnKey: string, color: string | null) {
+    const colors = { ...(columnLayout.colors ?? {}) };
+    if (color) colors[columnKey] = color;
+    else delete colors[columnKey];
+    saveColumnLayout({ ...columnLayout, order: layoutColumnKeys, colors });
+  }
+
+  function showColumnMenu(event: MouseEvent<HTMLButtonElement>, columnKey: string) {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const menuWidth = 232;
+    const menuHeight = 336;
+    setOpenColumnMenu({
+      key: columnKey,
+      left: Math.max(8, Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - 8)),
+      top: rect.bottom + menuHeight > window.innerHeight - 8
+        ? Math.max(8, rect.top - menuHeight)
+        : rect.bottom + 4,
+    });
+  }
+
+  function openDropdownManager(field: DropdownField) {
+    setDropdownOptionDrafts(dropdownOptions.filter((option) => option.field_key === field).map((option) => ({
+      ...option,
+      draftKey: option.id,
+      originalLabel: option.display_label,
+      isNew: false,
+      removePending: false,
+    })));
+    setManagingDropdownField(field);
+    setDropdownManagerError("");
+    setDropdownManagerNotice("");
+    setNewDropdownLabel("");
+    setOpenColumnMenu(null);
+  }
+
+  function hasDropdownDraftChanges() {
+    return dropdownOptionDrafts.some((option) => option.isNew || option.display_label.trim() !== option.originalLabel);
+  }
+
+  function closeDropdownManager() {
+    if (dropdownManagerBusy) return;
+    if (hasDropdownDraftChanges() && !window.confirm("Discard the unsaved dropdown-option changes?")) return;
+    setManagingDropdownField(null);
+  }
+
+  function stageDropdownOption() {
+    if (!managingDropdownField) return;
+    setDropdownManagerError("");
+    const label = newDropdownLabel.trim();
+    const value = label.toUpperCase();
+    if (!label) return setDropdownManagerError("Enter an option label.");
+    if (label.length > 80) return setDropdownManagerError("Option labels can contain at most 80 characters.");
+    if (managingDropdownField === "letter_status") return setDropdownManagerError("Letter status values are fixed by the system.");
+    if (!/^[A-Z0-9][A-Z0-9 _-]{0,59}$/.test(value)) return setDropdownManagerError("Use letters, numbers, spaces, hyphens, or underscores.");
+    const duplicate = dropdownOptionDrafts.some((option) => !option.removePending && (
+      option.option_value.toLocaleLowerCase() === value.toLocaleLowerCase() ||
+      option.display_label.trim().toLocaleLowerCase() === label.toLocaleLowerCase()
+    ));
+    if (duplicate) return setDropdownManagerError("An option with this value or label already exists.");
+    setDropdownOptionDrafts((current) => [...current, {
+      id: `draft:${crypto.randomUUID()}`,
+      draftKey: crypto.randomUUID(),
+      field_key: managingDropdownField,
+      option_value: value,
+      display_label: label,
+      sort_order: current.length * 10,
+      active: true,
+      is_system: false,
+      usage_count: 0,
+      originalLabel: label,
+      isNew: true,
+      removePending: false,
+    }]);
+    setNewDropdownLabel("");
+  }
+
+  function removeDropdownDraft(draft: DropdownOptionDraft) {
+    if (!draft.isNew) return;
+    setDropdownOptionDrafts((current) => current.filter((option) => option.draftKey !== draft.draftKey));
+  }
+
+  async function saveDropdownOptionChanges() {
+    if (!accessToken || !managingDropdownField) {
+      setDropdownManagerError("Your session has expired. Please log in again.");
+      return;
+    }
+    setDropdownManagerError("");
+    setDropdownManagerNotice("");
+    const pending = dropdownOptionDrafts.filter((option) => option.isNew || option.display_label.trim() !== option.originalLabel);
+    if (pending.some((option) => !option.display_label.trim())) {
+      setDropdownManagerError("Option labels cannot be empty.");
+      return;
+    }
+    const duplicateLabels = new Set<string>();
+    const duplicateValues = new Set<string>();
+    for (const option of dropdownOptionDrafts.filter((item) => !item.removePending)) {
+      const label = option.display_label.trim().toLocaleLowerCase();
+      const value = option.option_value.trim().toLocaleLowerCase();
+      if (duplicateLabels.has(label) || duplicateValues.has(value)) {
+        setDropdownManagerError("Each option needs a unique label and stored value.");
+        return;
+      }
+      duplicateLabels.add(label);
+      duplicateValues.add(value);
+    }
+    setDropdownManagerBusy(true);
+    let completed = 0;
+    try {
+      for (const draft of pending) {
+        if (draft.isNew) {
+          const created = await createConfigurableOption(managingDropdownField, draft.display_label, false);
+          setDropdownOptionDrafts((current) => current.map((item) => item.draftKey === draft.draftKey ? {
+            ...created,
+            draftKey: created.id,
+            originalLabel: created.display_label,
+            isNew: false,
+            removePending: false,
+          } : item));
+        } else {
+          const original = dropdownOptions.find((option) => option.id === draft.id);
+          if (!original) throw new Error(`Option ${draft.option_value} no longer exists. Refresh and review changes.`);
+          const saved = await saveDropdownOption(original, draft.display_label, false);
+          if (!saved) throw new Error("Option changes were cancelled.");
+          setDropdownOptionDrafts((current) => current.map((item) => item.draftKey === draft.draftKey ? { ...item, originalLabel: draft.display_label.trim(), display_label: draft.display_label.trim() } : item));
+        }
+        completed += 1;
+      }
+      await reloadDropdownOptions();
+      setDropdownManagerNotice(completed ? `${completed} change(s) saved.` : "There are no pending changes.");
+    } catch (cause) {
+      await reloadDropdownOptions().catch(() => undefined);
+      setDropdownManagerError(`${cause instanceof Error ? cause.message : "Unable to save dropdown options."}${completed ? ` ${completed} earlier change(s) were saved; review the remaining drafts before retrying.` : ""}`);
+    } finally {
+      setDropdownManagerBusy(false);
+    }
+  }
+
+  function selectFormatCell(row: ReportRow, field: string, extend: boolean) {
+    const key = getReportRowKey(reportKey, row);
+    if (!key || displayedRowsRef.current.filter((candidate) => getReportRowKey(reportKey, candidate) === key).length !== 1) return;
+    setCellSelection((current) => extend && current
+      ? { ...current, focusRowKey: key, focusField: field }
+      : { anchorRowKey: key, anchorField: field, focusRowKey: key, focusField: field });
+  }
+
+  function applyCellFormat(change: Partial<ReportCellFormat>) {
+    if (!selectedFormatCellKeys.size) return;
+    const next = { ...cellFormats };
+    for (const key of selectedFormatCellKeys) {
+      const format = { ...next[key], ...change };
+      if (format.bold === false) delete format.bold;
+      if (format.color === "") delete format.color;
+      if (format.backgroundColor === "") delete format.backgroundColor;
+      if (Object.keys(format).length) next[key] = format;
+      else delete next[key];
+    }
+    setCellFormats(next);
+    setOpenColorPicker(null);
+    try {
+      localStorage.setItem(cellFormatStorageKey, JSON.stringify(next));
+    } catch {
+      // Keep current-session formatting usable if browser storage is unavailable.
+    }
+  }
+
+  const selectedFormats = [...selectedFormatCellKeys].map((key) => cellFormats[key] ?? {});
+  const selectionIsBold = selectedFormats.length > 0 && selectedFormats.every((format) => format.bold === true);
+  const selectedTextColor = selectedFormats.length > 0 && selectedFormats.every((format) => format.color === selectedFormats[0].color) ? selectedFormats[0].color ?? "" : null;
+  const selectedBackgroundColor = selectedFormats.length > 0 && selectedFormats.every((format) => format.backgroundColor === selectedFormats[0].backgroundColor) ? selectedFormats[0].backgroundColor ?? "" : null;
+
+  function hideReportColumn(columnKey: string) {
+    saveColumnLayout({
+      ...columnLayout,
+      order: layoutColumnKeys,
+      hidden: [...new Set([...columnLayout.hidden, columnKey])],
+    });
+  }
+
+  function restoreReportColumn(columnKey: string) {
+    saveColumnLayout({
+      ...columnLayout,
+      order: layoutColumnKeys,
+      hidden: columnLayout.hidden.filter((key) => key !== columnKey),
+    });
+  }
+
+  function reorderReportColumn(sourceKey: string, targetKey: string) {
+    if (sourceKey === targetKey) return;
+    const nextOrder = [...layoutColumnKeys];
+    const sourceIndex = nextOrder.indexOf(sourceKey);
+    const targetIndex = nextOrder.indexOf(targetKey);
+    if (sourceIndex < 0 || targetIndex < 0) return;
+    nextOrder.splice(sourceIndex, 1);
+    nextOrder.splice(sourceIndex < targetIndex ? targetIndex - 1 : targetIndex, 0, sourceKey);
+    saveColumnLayout({ ...columnLayout, order: nextOrder });
+  }
+
+  function beginFillGesture(row: ReportRow, index: number, column: ReportColumn) {
+    const sourceTarget = getEditableCellTarget(row, column.key, reportKey);
+    if (!accessToken || cellSaveInFlight.current || !sourceTarget || sourceTarget.editor === "relationship") return;
+    const sourceRowKey = getReportRowKey(reportKey, row);
+    if (!sourceRowKey || displayedRowsRef.current.filter((candidate) => getReportRowKey(reportKey, candidate) === sourceRowKey).length !== 1) {
+      setCellSaveState({ rowKey: rowKey(row, index), field: column.key, status: "warning", message: "Fill is unavailable because this report row does not have a unique stable identity." });
+      return;
+    }
+    const baseline = new Map<string, unknown>();
+    const identityCounts = new Map<string, number>();
+    for (const candidate of displayedRowsRef.current) {
+      const candidateKey = getReportRowKey(reportKey, candidate);
+      if (candidateKey) identityCounts.set(candidateKey, (identityCounts.get(candidateKey) ?? 0) + 1);
+    }
+    for (const candidate of displayedRowsRef.current) {
+      const candidateKey = getReportRowKey(reportKey, candidate);
+      if (!candidateKey || identityCounts.get(candidateKey) !== 1) continue;
+      for (const visibleColumn of gridColumns) {
+        baseline.set(`${candidateKey}\u0000${visibleColumn.key}`, candidate[visibleColumn.key]);
+      }
+    }
+    const gesture: FillGesture = {
+      sourceRowKey,
+      sourceField: column.key,
+      sourceValue: createEditingCell(row, index, column.key)?.value ?? String(row[column.key] ?? ""),
+      targetRowKey: sourceRowKey,
+      targetField: column.key,
+      baseline,
+    };
+    fillGestureRef.current = gesture;
+    setFillGesture(gesture);
+  }
+
+  function extendFillGesture(row: ReportRow, column: ReportColumn) {
+    const current = fillGestureRef.current;
+    if (!current) return;
+    const targetRowKey = getReportRowKey(reportKey, row);
+    if (!targetRowKey || displayedRowsRef.current.filter((candidate) => getReportRowKey(reportKey, candidate) === targetRowKey).length !== 1) return;
+    const next = { ...current, targetRowKey, targetField: column.key };
+    fillGestureRef.current = next;
+    setFillGesture(next);
+  }
+
+  async function finishFillGesture() {
+    const gesture = fillGestureRef.current;
+    if (!gesture) return;
+    fillGestureRef.current = null;
+    setFillGesture(null);
+    const currentRows = displayedRowsRef.current;
+    const identityCounts = new Map<string, number>();
+    for (const row of currentRows) {
+      const key = getReportRowKey(reportKey, row);
+      if (key) identityCounts.set(key, (identityCounts.get(key) ?? 0) + 1);
+    }
+    const sourceRowIndex = currentRows.findIndex((row) => getReportRowKey(reportKey, row) === gesture.sourceRowKey);
+    const targetRowIndex = currentRows.findIndex((row) => getReportRowKey(reportKey, row) === gesture.targetRowKey);
+    const sourceColumnIndex = renderedGridColumns.findIndex((column) => column.key === gesture.sourceField);
+    const targetColumnIndex = renderedGridColumns.findIndex((column) => column.key === gesture.targetField);
+    if (sourceRowIndex < 0 || targetRowIndex < 0 || sourceColumnIndex < 0 || targetColumnIndex < 0) return;
+    if (!Object.is(currentRows[sourceRowIndex][gesture.sourceField], gesture.baseline.get(`${gesture.sourceRowKey}\u0000${gesture.sourceField}`))) {
+      setCellSaveState({ rowKey: rowKey(currentRows[sourceRowIndex], sourceRowIndex), field: gesture.sourceField, status: "warning", message: "Fill cancelled because the source cell changed." });
+      return;
+    }
+    const rowStart = Math.min(sourceRowIndex, targetRowIndex);
+    const rowEnd = Math.max(sourceRowIndex, targetRowIndex);
+    const columnStart = Math.min(sourceColumnIndex, targetColumnIndex);
+    const columnEnd = Math.max(sourceColumnIndex, targetColumnIndex);
+    const targets: Array<{ rowKey: string; field: string }> = [];
+    for (let rowIndex = rowStart; rowIndex <= rowEnd; rowIndex += 1) {
+      for (let columnIndex = columnStart; columnIndex <= columnEnd; columnIndex += 1) {
+        const row = currentRows[rowIndex];
+        const column = renderedGridColumns[columnIndex];
+        const targetRowKey = getReportRowKey(reportKey, row);
+        if (!targetRowKey || identityCounts.get(targetRowKey) !== 1) continue;
+        if (targetRowKey !== gesture.sourceRowKey || column.key !== gesture.sourceField) targets.push({ rowKey: targetRowKey, field: column.key });
+      }
+    }
+    for (const target of targets) {
+      const latestRows = displayedRowsRef.current;
+      const rowIndex = latestRows.findIndex((row) => getReportRowKey(reportKey, row) === target.rowKey);
+      if (rowIndex < 0) continue;
+      const row = latestRows[rowIndex];
+      const targetKey = `${target.rowKey}\u0000${target.field}`;
+      const editableTarget = getEditableCellTarget(row, target.field, reportKey);
+      const sourceTarget = getEditableCellTarget(currentRows[sourceRowIndex], gesture.sourceField, reportKey);
+      if (!editableTarget || !sourceTarget || editableTarget.editor === "relationship" || editableTarget.editor !== sourceTarget.editor) continue;
+      if (editableTarget.editor === "status" && editableTarget.dropdownField !== sourceTarget.dropdownField) continue;
+      if (!Object.is(row[target.field], gesture.baseline.get(targetKey))) {
+        setCellSaveState({ rowKey: target.rowKey, field: target.field, status: "warning", message: "Skipped: this cell changed while the fill range was selected." });
+        continue;
+      }
+      const candidate = createEditingCell(row, rowIndex, target.field);
+      if (!candidate) continue;
+      candidate.value = gesture.sourceValue;
+      const saved = await commitEditableCell(candidate);
+      if (!saved) return;
+    }
+  }
+
+  const finishFillGestureRef = useRef(finishFillGesture);
+  finishFillGestureRef.current = finishFillGesture;
+
+  useEffect(() => {
+    if (!fillGesture) return;
+    const finishOnPointerUp = () => void finishFillGestureRef.current();
+    window.addEventListener("pointerup", finishOnPointerUp);
+    window.addEventListener("pointercancel", finishOnPointerUp);
+    return () => {
+      window.removeEventListener("pointerup", finishOnPointerUp);
+      window.removeEventListener("pointercancel", finishOnPointerUp);
+    };
+  }, [fillGesture]);
 
   function openSelectedRowEditor() {
     const keys = reportSelection.getKeys(reportKey);
@@ -1445,15 +2168,15 @@ export default function ReportDataView({
     setMentionLoading(true);
     try {
       const options = await searchRelationshipOptions(accessToken, "assignees", "");
-      const admins = options.filter((option) => option.secondary?.toUpperCase() === "ADMIN");
-      setMentionOptions(admins);
-      if (admins.length === 0) {
+      const eligibleUsers = options.filter((option) => ["ADMIN", "STAFF"].includes(option.secondary?.toUpperCase() ?? ""));
+      setMentionOptions(eligibleUsers);
+      if (eligibleUsers.length === 0) {
         mentionControlActive.current = false;
-        setCellSaveState((current) => current ? { ...current, status: "error", message: "No eligible active admin profiles found." } : current);
+        setCellSaveState((current) => current ? { ...current, status: "error", message: "No eligible active admin or staff profiles found." } : current);
       }
     } catch (cause) {
       mentionControlActive.current = false;
-      setCellSaveState((current) => current ? { ...current, status: "error", message: cause instanceof Error ? cause.message : "Unable to load eligible admins." } : current);
+      setCellSaveState((current) => current ? { ...current, status: "error", message: cause instanceof Error ? cause.message : "Unable to load eligible admin or staff profiles." } : current);
     } finally {
       setMentionLoading(false);
     }
@@ -1622,6 +2345,31 @@ export default function ReportDataView({
         updatePayload.customer_id =
           targetCell.relationshipOption.values.customer_id;
       }
+      const diagnosticTarget: EditableCellTarget = {
+        ...definition,
+        tripId: targetCell.tripId,
+        stopId: targetCell.stopId,
+        lineItemId: targetCell.lineItemId,
+        assignmentId: targetCell.assignmentId,
+        billingId: targetCell.billingId,
+        storeCallId: targetCell.storeCallId,
+      };
+      reportEditDiagnostic("save request", {
+        reportKey,
+        reportEndpoint: REPORTS[reportKey].endpoint,
+        endpoint: reportEditEndpoint(diagnosticTarget),
+        canonicalIdentity: targetCell.rowKey,
+        sourceEntity: definition.sourceEntity,
+        recordIds: {
+          trip_id: targetCell.tripId ?? null,
+          trip_stop_id: targetCell.stopId ?? null,
+          trip_line_item_id: targetCell.lineItemId ?? null,
+        },
+        editedField: definition.sourceField,
+        payload: Object.fromEntries(Object.entries(updatePayload)
+          .filter(([key]) => !key.startsWith("_") || key === definition.sourceField)
+          .map(([key, value]) => [key, diagnosticCellValue(key, value)])),
+      });
       if (definition.sourceEntity === "storeCall" && targetCell.storeCallId) {
         savedRecord = await updateStoreCallRecord(accessToken, targetCell.storeCallId, {
           ...updatePayload,
@@ -1679,6 +2427,17 @@ export default function ReportDataView({
       } else {
         throw new Error("This report row is missing its update record ID.");
       }
+
+      reportEditDiagnostic("save response", {
+        endpoint: reportEditEndpoint(diagnosticTarget),
+        sourceEntity: definition.sourceEntity,
+        responseRecordId: savedRecord.id ?? null,
+        trip_id: savedRecord.trip_id ?? targetCell.tripId ?? null,
+        trip_stop_id: definition.sourceEntity === "stop" ? savedRecord.id ?? targetCell.stopId ?? null : targetCell.stopId ?? null,
+        trip_line_item_id: definition.sourceEntity === "lineItem" ? savedRecord.id ?? targetCell.lineItemId ?? null : targetCell.lineItemId ?? null,
+        editedField: definition.sourceField,
+        responseValue: diagnosticCellValue(definition.sourceField, savedRecord[definition.sourceField]),
+      });
 
       const mentionWarning = typeof savedRecord._mention_notification_warning === "string"
         ? savedRecord._mention_notification_warning
@@ -1761,28 +2520,55 @@ export default function ReportDataView({
       };
       savedRowReconciliations.current.push(reconciliation);
 
+      if (import.meta.env.DEV) {
+        const sameTripRows = targetCell.tripId
+          ? rows.filter((row) => row.trip_id === targetCell.tripId)
+          : rows;
+        reportEditDiagnostic("optimistic row reconciliation", {
+          sourceEntity: definition.sourceEntity,
+          editedField: targetCell.field,
+          intendedRecordIds: {
+            trip_id: targetCell.tripId ?? null,
+            trip_stop_id: targetCell.stopId ?? null,
+            trip_line_item_id: targetCell.lineItemId ?? null,
+          },
+          matchingRowCount: sameTripRows.filter((row) => matchesEditedRecord(row, recordTarget)).length,
+          rowsWithSameTripIdBeforeUpdate: sameTripRows.slice(0, 10).map((row) => ({
+            ...summarizeReportEditRow(row, reportKey, targetCell.field),
+            willReceivePatch: matchesEditedRecord(row, recordTarget),
+          })),
+        });
+      }
+
       setRows((currentRows) =>
         currentRows.map((row) => {
           if (!matchesEditedRecord(row, recordTarget)) return row;
           return { ...row, ...savedRowPatch };
         }),
       );
-      for (const [cacheKey, cachedPage] of reportPageCache) {
-        try {
-          const cachedReportKey = (JSON.parse(cacheKey) as { reportKey?: ReportKey }).reportKey;
-          if (cachedReportKey !== reportKey) continue;
-          reportPageCache.set(cacheKey, {
-            ...cachedPage,
-            rows: cachedPage.rows.map((row) =>
-              matchesEditedRecord(row, recordTarget)
-                ? { ...row, ...savedRowPatch }
-                : row,
-            ),
+      updateCachedReportPages(reportKey, accessToken, (cachedPage) => {
+        if (import.meta.env.DEV) {
+          const sameTripRows = targetCell.tripId
+            ? cachedPage.rows.filter((row) => row.trip_id === targetCell.tripId)
+            : cachedPage.rows;
+          reportEditDiagnostic("cached report page reconciliation", {
+            reportKey,
+            sourceEntity: definition.sourceEntity,
+            editedField: targetCell.field,
+            matchingRowCount: sameTripRows.filter((row) => matchesEditedRecord(row, recordTarget)).length,
+            rowsWithSameTripIdBeforeUpdate: sameTripRows.slice(0, 10).map((row) => ({
+              ...summarizeReportEditRow(row, reportKey, targetCell.field),
+              willReceivePatch: matchesEditedRecord(row, recordTarget),
+            })),
           });
-        } catch {
-          // Ignore cache entries whose keys are not report snapshot JSON.
         }
-      }
+        return {
+          ...cachedPage,
+          rows: cachedPage.rows.map((row) => matchesEditedRecord(row, recordTarget)
+            ? { ...row, ...savedRowPatch }
+            : row),
+        };
+      });
 
       setCellSaveState({
         rowKey: targetCell.rowKey,
@@ -1803,12 +2589,15 @@ export default function ReportDataView({
       } else {
         setEditingCell(null);
       }
-      invalidateApiCache(REPORTS[reportKey].endpoint);
-      if (
-        appliedSearch ||
-        Object.values(appliedFilters).some((value) => value.trim()) ||
-        activeSortBy === targetCell.field
-      ) {
+      const shouldReloadReportPage = Boolean(appliedSearch.trim())
+        || Object.values(appliedFilters).some((value) => value.trim())
+        || activeSortBy === targetCell.field;
+      if (shouldReloadReportPage) {
+        invalidateReportData(reportKey);
+      } else {
+        invalidateApiCache(REPORTS[reportKey].endpoint);
+      }
+      if (shouldReloadReportPage) {
         setRetryVersion((version) => version + 1);
       }
       return true;
@@ -1860,7 +2649,7 @@ export default function ReportDataView({
     }
   }
 
-  async function createConfigurableOption(field: DropdownField, rawLabel: string): Promise<void> {
+  async function createConfigurableOption(field: DropdownField, rawLabel: string, refresh = true): Promise<DropdownOption> {
     if (!accessToken) throw new Error("Your session has expired. Please log in again.");
     const displayLabel = rawLabel.trim();
     const value = displayLabel.toUpperCase();
@@ -1874,13 +2663,14 @@ export default function ReportDataView({
       option.display_label.trim().toLocaleLowerCase() === displayLabel.toLocaleLowerCase()
     ));
     if (duplicate) throw new Error("An option with this value or display label already exists.");
-    await addDropdownOption(accessToken, {
+    const created = await addDropdownOption(accessToken, {
       field_key: field,
       option_value: value,
       display_label: displayLabel,
       sort_order: dropdownOptions.filter((item) => item.field_key === field).length * 10,
     });
-    await reloadDropdownOptions();
+    if (refresh) await reloadDropdownOptions();
+    return created;
   }
 
   async function addTypedOptionAndSave(target: EditingCell, typedValue = target.value): Promise<boolean> {
@@ -1890,7 +2680,7 @@ export default function ReportDataView({
     return true;
   }
 
-  async function saveDropdownOption(option: DropdownOption, displayLabel: string): Promise<boolean> {
+  async function saveDropdownOption(option: DropdownOption, displayLabel: string, refresh = true): Promise<boolean> {
     if (!accessToken) throw new Error("Your session has expired. Please log in again.");
     const normalizedLabel = displayLabel.trim();
     if (!normalizedLabel) throw new Error("Display labels cannot be empty.");
@@ -1906,7 +2696,7 @@ export default function ReportDataView({
       display_label: normalizedLabel,
       ...(confirmInUse ? { confirm_in_use: true } : {}),
     });
-    await reloadDropdownOptions();
+    if (refresh) await reloadDropdownOptions();
     return true;
   }
 
@@ -1924,7 +2714,7 @@ export default function ReportDataView({
       : !accessToken
         ? "Your session has expired. Please log in again."
         : null;
-  const isLoading = Boolean(accessToken) && loadedQueryKey !== queryKey && !reportPageCache.has(snapshotKey);
+  const isLoading = Boolean(accessToken) && loadedQueryKey !== queryKey;
 
   useEffect(() => {
     if (!notificationTarget || notificationTarget.reportKey !== reportKey || appliedNotificationTarget.current === notificationTarget.navigationKey) return;
@@ -2001,27 +2791,19 @@ export default function ReportDataView({
 
   return (
     <div className="space-y-4">
-      <div className={`${tableUi.toolbar} flex-wrap`}>
-        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3">
-          {tripScope && onTripScopeChange && (
-            <SlidingSegmentedControl
-              role="tablist"
-              aria-label="Trip views"
-              className="max-w-full gap-1 overflow-x-auto"
-              options={tripScopeOptions}
-              value={tripScope}
-              onChange={onTripScopeChange}
-            />
-          )}
+      <div className={`${tableUi.toolbar} flex-wrap items-center justify-between gap-3`}>
+        {pageTitle && (
+          <div className="min-w-0 flex-1 basis-64">
+            <h1 className="truncate text-xl font-bold leading-tight tracking-tight text-[#0b2341]">{pageTitle}</h1>
+            {pageSubtitle && <p className="mt-1 text-xs leading-snug text-slate-600">{pageSubtitle}</p>}
+          </div>
+        )}
+        <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-3">
           {showReportPicker ? (
             <label className="sr-only" htmlFor="report-select">
               Select report
             </label>
-          ) : (
-            <h2 className="sr-only">
-              {REPORTS[reportKey].title}
-            </h2>
-          )}
+          ) : null}
           {showReportPicker && (
             <div className="relative">
               <select
@@ -2297,6 +3079,13 @@ export default function ReportDataView({
         </div>
       )}
 
+      <FlexibleTableSectionTabs
+        key={reportKey}
+        sectionKey={FLEX_SECTION_BY_REPORT[reportKey]}
+        sectionLabel={REPORTS[reportKey].title}
+        hideSectionTab
+        accessToken={accessToken}
+        role={profile?.role ?? ""}>
       <section className={tableUi.shell}>
       {activeError ? (
         <div className="flex min-h-48 flex-col items-center justify-center gap-3 p-6 text-center">
@@ -2319,7 +3108,19 @@ export default function ReportDataView({
             .report-data-row:has([data-report-row-select]:checked):hover > td { background-color: #deefff; }
             .report-data-row > td:hover { outline: 1px solid rgba(38, 120, 185, 0.2); outline-offset: -1px; }
           `}</style>
-          <div ref={tableViewportRef} className="relative min-h-48 overflow-x-auto">
+          {viewMode === "table" && <div role="toolbar" aria-label="Cell formatting" className="flex min-h-9 items-center gap-1 border-b border-slate-100 bg-slate-50/70 px-3 py-1.5">
+            <button type="button" title="Bold selected cells" aria-label="Bold selected cells" aria-pressed={selectionIsBold} disabled={!selectedFormatCellKeys.size} onMouseDown={(event) => event.preventDefault()} onClick={() => applyCellFormat({ bold: !selectionIsBold })} className={`inline-flex h-7 w-7 items-center justify-center rounded border disabled:cursor-not-allowed disabled:opacity-40 ${selectionIsBold ? "border-blue-300 bg-blue-100 text-blue-800" : "border-transparent text-slate-600 hover:bg-white hover:text-slate-900"}`}><Bold aria-hidden="true" className="h-4 w-4" /></button>
+            <div className="relative">
+              <button type="button" title="Text color" aria-label="Text color" aria-expanded={openColorPicker === "text"} disabled={!selectedFormatCellKeys.size} onMouseDown={(event) => event.preventDefault()} onClick={() => setOpenColorPicker((current) => current === "text" ? null : "text")} className={`inline-flex h-7 w-7 items-center justify-center rounded border disabled:cursor-not-allowed disabled:opacity-40 ${openColorPicker === "text" ? "border-blue-300 bg-blue-100 text-blue-800" : "border-transparent text-slate-600 hover:bg-white hover:text-slate-900"}`}><Palette aria-hidden="true" className="h-4 w-4" /></button>
+              {openColorPicker === "text" && <div className="absolute left-0 top-full z-50 mt-1 flex gap-1 rounded-lg border border-slate-200 bg-white p-2 shadow-lg" aria-label="Text color palette">{["#111827", "#b91c1c", "#d97706", "#15803d", "#1d4ed8", "#7e22ce"].map((color) => <button key={color} type="button" title={`Text color ${color}`} aria-label={`Text color ${color}`} aria-pressed={selectedTextColor === color} onMouseDown={(event) => event.preventDefault()} onClick={() => applyCellFormat({ color })} className={`h-5 w-5 rounded-full border border-slate-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${selectedTextColor === color ? "ring-2 ring-slate-800 ring-offset-1" : ""}`} style={{ backgroundColor: color }} />)}<button type="button" title="Reset text color" aria-label="Reset text color" aria-pressed={selectedTextColor === ""} onMouseDown={(event) => event.preventDefault()} onClick={() => applyCellFormat({ color: "" })} className="rounded px-1.5 text-[10px] text-slate-600 hover:bg-slate-100">Reset</button></div>}
+            </div>
+            <div className="relative">
+              <button type="button" title="Cell color" aria-label="Cell color" aria-expanded={openColorPicker === "background"} disabled={!selectedFormatCellKeys.size} onMouseDown={(event) => event.preventDefault()} onClick={() => setOpenColorPicker((current) => current === "background" ? null : "background")} className={`inline-flex h-7 w-7 items-center justify-center rounded border disabled:cursor-not-allowed disabled:opacity-40 ${openColorPicker === "background" ? "border-blue-300 bg-blue-100 text-blue-800" : "border-transparent text-slate-600 hover:bg-white hover:text-slate-900"}`}><Paintbrush aria-hidden="true" className="h-4 w-4" /></button>
+              {openColorPicker === "background" && <div className="absolute left-0 top-full z-50 mt-1 flex gap-1 rounded-lg border border-slate-200 bg-white p-2 shadow-lg" aria-label="Cell color palette">{["#ffffff", "#fef3c7", "#dcfce7", "#dbeafe", "#fce7f3", "#e5e7eb"].map((color) => <button key={color} type="button" title={`Cell color ${color}`} aria-label={`Cell color ${color}`} aria-pressed={selectedBackgroundColor === (color === "#ffffff" ? "" : color)} onMouseDown={(event) => event.preventDefault()} onClick={() => applyCellFormat({ backgroundColor: color === "#ffffff" ? "" : color })} className={`h-5 w-5 rounded-full border border-slate-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${selectedBackgroundColor === (color === "#ffffff" ? "" : color) ? "ring-2 ring-slate-800 ring-offset-1" : ""}`} style={{ backgroundColor: color }} />)}<button type="button" title="Reset cell color" aria-label="Reset cell color" aria-pressed={selectedBackgroundColor === ""} onMouseDown={(event) => event.preventDefault()} onClick={() => applyCellFormat({ backgroundColor: "" })} className="rounded px-1.5 text-[10px] text-slate-600 hover:bg-slate-100">Reset</button></div>}
+            </div>
+            {cellSelection && <span className="ml-2 text-[10px] text-slate-500">{selectedFormatCellKeys.size} cell{selectedFormatCellKeys.size === 1 ? "" : "s"} selected</span>}
+          </div>}
+          <div ref={tableViewportRef} className="relative min-h-48 w-full min-w-0 max-w-full overflow-x-auto overscroll-x-contain">
             {pinningNotice && <p role="status" className="sticky left-2 z-40 w-fit rounded-md bg-amber-50 px-2.5 py-1.5 text-xs text-amber-900 shadow-sm">{pinningNotice}</p>}
             {viewMode === "visual" ? (
               isLoading ? (
@@ -2347,7 +3148,7 @@ export default function ReportDataView({
             ) : isLoading ? (
               <div className="p-3">
                 <TableSkeleton
-                  columns={Math.max(columns.length || 5, 5)}
+                    columns={Math.max(gridColumns.length || 5, 5)}
                   rows={6}
                 />
               </div>
@@ -2356,16 +3157,16 @@ export default function ReportDataView({
                 No matching records found.
               </div>
             ) : (
-              <table className="w-full min-w-max border-separate border-spacing-0 text-left">
+              <table className="w-max min-w-full border-separate border-spacing-0 text-left">
                 <thead className={tableUi.thead}>
                   <tr>
                     <th
                       ref={selectionColumnRef}
                       scope="col"
-                      className="sticky left-0 z-30 w-11 min-w-11 border-b border-r border-slate-100/70 bg-white px-4 py-3.5">
+                      className="sticky left-0 z-50 w-11 min-w-11 border-b border-r border-slate-100/70 bg-white px-4 py-3.5">
                       <ReportSelectAllCheckbox rowKeys={visibleSelectionKeys} />
                     </th>
-                    {columns.map((column) => {
+                    {renderedGridColumns.map((column) => {
                       const sortable = sortableFields.includes(column.key);
                       const isActiveSort = activeSortBy === column.key;
                       const pinSide = pinnedColumnSides[column.key];
@@ -2373,6 +3174,7 @@ export default function ReportDataView({
                       const isOuterPinnedEdge = pinSide === "left"
                         ? leftPinnedColumnKeys.at(-1) === column.key
                         : pinSide === "right" && rightPinnedColumnKeys[0] === column.key;
+                      const columnColor = columnLayout.colors?.[column.key];
                       const SortIcon = !isActiveSort
                         ? ArrowUpDown
                         : sortOrder === "asc"
@@ -2386,8 +3188,11 @@ export default function ReportDataView({
                           else headerCellRefs.current.delete(column.key);
                         }}
                         scope="col"
-                        style={isPinned ? { position: "sticky", ...(pinSide === "left" ? { left: leftPinOffsets[column.key] ?? 44 } : { right: rightPinOffsets[column.key] ?? 0 }), zIndex: 20 } : undefined}
-                        className={`${tableUi.th} border-r border-slate-100/70 last:border-r-0 ${isPinned ? `bg-white ${isOuterPinnedEdge ? pinSide === "left" ? "shadow-[4px_0_8px_-6px_rgba(11,35,65,0.35)]" : "shadow-[-4px_0_8px_-6px_rgba(11,35,65,0.35)]" : ""}` : ""} ${
+                        draggable={false}
+                        onDragOver={(event) => { if (draggedColumnKey) event.preventDefault(); }}
+                        onDrop={(event) => { event.preventDefault(); if (draggedColumnKey) reorderReportColumn(draggedColumnKey, column.key); setDraggedColumnKey(null); }}
+                        style={{ ...(columnColor ? { "--report-column-color": columnColor, color: columnForeground(columnColor) } as CSSProperties : {}), ...(isPinned ? { position: "sticky" as const, ...(pinSide === "left" ? { left: leftPinOffsets[column.key] ?? 44 } : { right: rightPinOffsets[column.key] ?? 0 }), zIndex: 40 } : {}) }}
+                        className={`${tableUi.th} border-r border-slate-100/70 last:border-r-0 ${columnColor ? "bg-[var(--report-column-color)]" : ""} ${isPinned ? `${columnColor ? "" : "bg-white"} ${isOuterPinnedEdge ? pinSide === "left" ? "shadow-[4px_0_8px_-6px_rgba(11,35,65,0.35)]" : "shadow-[-4px_0_8px_-6px_rgba(11,35,65,0.35)]" : ""}` : ""} ${
                           column.type === "number" ||
                           ["quantity", "cbm", "subcon_rate_manual"].includes(
                             column.key,
@@ -2395,53 +3200,29 @@ export default function ReportDataView({
                             ? "text-right"
                             : "text-left"
                         }`}>
-                        <div className="group/th flex items-center justify-between gap-2">
-                        {sortable ? (
+                        <div className="flex min-w-0 items-center justify-between gap-2">
                           <button
                             type="button"
-                            onClick={() => {
-                              if (isActiveSort) {
-                                setSortOrder((current) =>
-                                  current === "asc" ? "desc" : "asc",
-                                );
-                              } else {
-                                setSortBy(column.key);
-                                setSortOrder("asc");
-                              }
-                              setPage(1);
-                            }}
-                            aria-label={`Sort by ${column.title}${isActiveSort ? `, currently ${sortOrder === "asc" ? "ascending" : "descending"}` : ""}`}
-                            className="inline-flex items-center gap-1.5 rounded px-1 py-0.5 uppercase text-inherit transition hover:text-[#0b2341] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9]">
+                            draggable
+                            title={`Drag to reorder ${column.title}`}
+                            aria-label={`Drag to reorder ${column.title}`}
+                            onDragStart={(event) => { event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/plain", column.key); setDraggedColumnKey(column.key); }}
+                            onDragEnd={() => setDraggedColumnKey(null)}
+                            className="min-w-0 cursor-grab truncate rounded px-1 py-0.5 text-left uppercase text-inherit active:cursor-grabbing"
+                            >
                             {column.title}
-                            <SortIcon
-                              aria-hidden="true"
-                              className={`h-3 w-3 ${isActiveSort ? "text-[#2678b9]" : "text-slate-300"}`}
-                            />
+                            {sortable && isActiveSort && <SortIcon aria-hidden="true" className={`ml-1 inline h-3 w-3 ${columnColor ? "text-slate-700" : "text-[#2678b9]"}`} />}
                           </button>
-                        ) : (
-                          column.title
-                        )}
-                        <button
-                          type="button"
-                          title={pinSide ? `Unpin ${column.title}` : `Pin ${column.title} to the nearest table edge`}
-                          aria-label={pinSide ? `Unpin ${column.title} column` : `Pin ${column.title} to the nearest table edge`}
-                          aria-pressed={Boolean(pinSide)}
-                          onClick={() => {
-                            if (pinSide) {
-                              setColumnPinSide(column.key, null);
-                              return;
-                            }
-                            const columnRect = headerCellRefs.current.get(column.key)?.getBoundingClientRect();
-                            const viewportRect = tableViewportRef.current?.getBoundingClientRect();
-                            if (!columnRect || !viewportRect) return;
-                            const columnCenter = (columnRect.left + columnRect.right) / 2;
-                            const leftDistance = Math.abs(columnCenter - viewportRect.left);
-                            const rightDistance = Math.abs(viewportRect.right - columnCenter);
-                            setColumnPinSide(column.key, leftDistance <= rightDistance ? "left" : "right");
-                          }}
-                          className={`shrink-0 rounded p-1 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 ${pinSide ? "bg-[#e6f0f9] text-[#2678b9]" : "text-slate-300 opacity-0 hover:text-[#0b2341] focus:opacity-100 group-hover/th:opacity-100"}`}>
-                          <Pin aria-hidden="true" className="h-3.5 w-3.5" />
-                        </button>
+                          <button
+                            type="button"
+                            title={`Actions for ${column.title}`}
+                            aria-label={`Actions for ${column.title}`}
+                            aria-haspopup="menu"
+                            aria-expanded={openColumnMenu?.key === column.key}
+                            onClick={(event) => openColumnMenu?.key === column.key ? setOpenColumnMenu(null) : showColumnMenu(event, column.key)}
+                            className="shrink-0 rounded p-1 text-slate-500 transition hover:bg-slate-100 hover:text-[#0b2341] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400">
+                            <EllipsisVertical aria-hidden="true" className="h-4 w-4" />
+                          </button>
                         </div>
                       </th>
                       );
@@ -2452,7 +3233,7 @@ export default function ReportDataView({
                   {displayedRows.length === 0 && (
                     <tr>
                       <td
-                        colSpan={Math.max(columns.length + 1, 1)}
+                        colSpan={Math.max(gridColumns.length + 1, 1)}
                         className={tableUi.empty}>
                         {appliedSearch ||
                         Object.values(appliedFilters).some((value) => value.trim())
@@ -2469,12 +3250,13 @@ export default function ReportDataView({
                         key={currentRowKey}
                         data-report-selection-key={selectionKey ?? undefined}
                         className={`group report-data-row ${tableUi.row}`}>
-                        <td className="sticky left-0 z-10 w-11 min-w-11 border-r border-slate-100/70 bg-white px-3 py-3.5 shadow-[3px_0_5px_-5px_rgba(11,35,65,0.65)] group-hover:bg-[#f2f6fa]">
+                        <td className="sticky left-0 z-30 w-11 min-w-11 border-r border-slate-100/70 bg-white px-3 py-3.5 shadow-[3px_0_5px_-5px_rgba(11,35,65,0.65)] group-hover:bg-[#f2f6fa]">
                           <ReportRowSelectionCheckbox
                             rowKey={selectionKey}
                             label={rowText(row, "dispatch_number", "trip_number", "store_call_id")} />
                         </td>
-                        {columns.map((column) => {
+                        {renderedGridColumns.map((column) => {
+                          const visibleColumnIndex = renderedGridColumns.findIndex((item) => item.key === column.key);
                           const editableTarget = getEditableCellTarget(
                             row,
                             column.key,
@@ -2489,6 +3271,7 @@ export default function ReportDataView({
                           const isEditable = Boolean(editableTarget);
                           const isRemarksColumn = /remarks|comment|notes/i.test(column.key) || editableTarget?.sourceField === "remarks";
                           const pinSide = pinnedColumnSides[column.key];
+                          const columnColor = columnLayout.colors?.[column.key];
                           const isPinned = Boolean(pinSide);
                           const isOuterPinnedEdge = pinSide === "left"
                             ? leftPinnedColumnKeys.at(-1) === column.key
@@ -2496,18 +3279,37 @@ export default function ReportDataView({
                           const isEditing =
                             editingCell?.rowKey === currentRowKey &&
                             editingCell.field === column.key;
+                          const formatRowKey = getReportRowKey(reportKey, row);
+                          const formatKey = formatRowKey ? `${formatRowKey}\u0000${column.key}` : "";
+                          const cellFormat = formatKey ? cellFormats[formatKey] : undefined;
+                          const isFormatSelected = formatKey !== "" && selectedFormatCellKeys.has(formatKey);
+                          const fillRange = fillGesture ? (() => {
+                            const sourceRow = displayedRows.findIndex((item) => getReportRowKey(reportKey, item) === fillGesture.sourceRowKey);
+                            const targetRow = displayedRows.findIndex((item) => getReportRowKey(reportKey, item) === fillGesture.targetRowKey);
+                            const sourceColumn = renderedGridColumns.findIndex((item) => item.key === fillGesture.sourceField);
+                            const targetColumn = renderedGridColumns.findIndex((item) => item.key === fillGesture.targetField);
+                            return sourceRow >= 0 && targetRow >= 0 && sourceColumn >= 0 && targetColumn >= 0 && index >= Math.min(sourceRow, targetRow) && index <= Math.max(sourceRow, targetRow) && visibleColumnIndex >= Math.min(sourceColumn, targetColumn) && visibleColumnIndex <= Math.max(sourceColumn, targetColumn);
+                          })() : false;
 
                           return (
                             <td
                               key={column.key}
-                              style={isPinned ? { position: "sticky", ...(pinSide === "left" ? { left: leftPinOffsets[column.key] ?? 44 } : { right: rightPinOffsets[column.key] ?? 0 }), zIndex: 10 } : undefined}
+                              style={{
+                                ...(isPinned ? { position: "sticky" as const, ...(pinSide === "left" ? { left: leftPinOffsets[column.key] ?? 44 } : { right: rightPinOffsets[column.key] ?? 0 }), zIndex: 20 } : {}),
+                                ...(cellFormat?.bold ? { fontWeight: 700 } : {}),
+                                ...(cellFormat?.color ? { color: cellFormat.color } : {}),
+                                ...(columnColor ? { "--report-column-color": columnColor, color: cellFormat?.color ?? columnForeground(columnColor) } as CSSProperties : {}),
+                                ...(cellFormat?.backgroundColor ? { backgroundColor: cellFormat.backgroundColor } : {}),
+                              }}
+                              onPointerEnter={() => extendFillGesture(row, column)}
                               onClick={(event) => {
                                 if ((event.target as HTMLElement).closest("button, input, select, textarea")) return;
-                                if (!isEditing) {
+                                selectFormatCell(row, column.key, event.shiftKey);
+                                if (!event.shiftKey && !isEditing) {
                                   beginEditCell(row, index, column.key);
                                 }
                               }}
-                              className={`${isRemarksColumn ? "min-w-[14rem] max-w-[30rem] whitespace-pre-wrap break-words align-top" : "max-w-80"} ${tableUi.td} border-r border-slate-100/70 text-slate-700 last:border-r-0 ${isPinned ? `bg-white group-hover:bg-[#f2f6fa] ${isOuterPinnedEdge ? pinSide === "left" ? "shadow-[4px_0_7px_-5px_rgba(11,35,65,0.75)]" : "shadow-[-4px_0_7px_-5px_rgba(11,35,65,0.75)]" : ""}` : ""} ${
+                              className={`group/cell relative ${isRemarksColumn ? "min-w-[14rem] max-w-[30rem] whitespace-pre-wrap break-words align-top" : "max-w-[22rem]"} ${tableUi.td} border-r border-slate-100/70 text-slate-800 last:border-r-0 ${columnColor && !cellFormat?.backgroundColor ? "bg-[var(--report-column-color)] hover:bg-[#e6f0f9]" : ""} ${isPinned ? `${columnColor && !cellFormat?.backgroundColor ? "" : "bg-white"} group-hover:bg-[#f2f6fa] ${isOuterPinnedEdge ? pinSide === "left" ? "shadow-[4px_0_7px_-5px_rgba(11,35,65,0.75)]" : "shadow-[-4px_0_7px_-5px_rgba(11,35,65,0.75)]" : ""}` : ""} ${fillRange ? "bg-blue-50 ring-2 ring-inset ring-blue-400" : ""} ${isFormatSelected ? "outline outline-2 outline-inset outline-blue-500" : ""} ${
                                 isEditable
                                   ? "cursor-text outline-none transition hover:bg-[#e6f0f9]/50"
                                   : ""
@@ -2681,9 +3483,9 @@ export default function ReportDataView({
                                     className="min-w-[120px] rounded-md border border-[#9cc3e3] bg-white px-2 py-1 text-sm font-medium text-slate-800 shadow-sm outline-none ring-2 ring-[#cfe1f1]" />}
                                   {(editingCell.tripId || editingCell.storeCallId) && editingCell.definition.sourceField === "remarks" && (
                                     <>
-                                      <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => { mentionControlActive.current = true; void loadMentionOptions(); }} className="w-fit rounded-md px-1.5 py-1 text-left text-[11px] font-medium text-[#2678b9] hover:bg-blue-50">@ Mention admin</button>
+                                      <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => { mentionControlActive.current = true; void loadMentionOptions(); }} className="w-fit rounded-md px-1.5 py-1 text-left text-[11px] font-medium text-[#2678b9] hover:bg-blue-50">@ Mention admin or staff</button>
                                       {mentionOptions.length > 0 && mentionControlActive.current && (
-                                        <select aria-label="Select admin to mention" defaultValue="" onBlur={() => { mentionControlActive.current = false; void commitEditableCell(); }} onChange={(event) => {
+                                        <select aria-label="Select admin or staff to mention" defaultValue="" onBlur={() => { mentionControlActive.current = false; void commitEditableCell(); }} onChange={(event) => {
                                           const option = mentionOptions.find((item) => item.id === event.target.value);
                                           if (!option) return;
                                           const current = editingCell;
@@ -2698,12 +3500,12 @@ export default function ReportDataView({
                                           setMentionOptions([]);
                                           keepCellEditLocal(nextCell);
                                         }} className="max-w-[min(22rem,70vw)] rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700">
-                                          <option value="">Choose an eligible admin</option>
+                                          <option value="">Choose an eligible admin or staff member</option>
                                           {mentionOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
                                         </select>
                                       )}
-                                      {mentionLoading && <span className="text-[10px] text-slate-500">Loading admins…</span>}
-                                      {cellSaveState?.status === "error" && cellSaveState.message.includes("eligible admins") && <span role="alert" className="text-[10px] text-rose-600">{cellSaveState.message}</span>}
+                                      {mentionLoading && <span className="text-[10px] text-slate-500">Loading users…</span>}
+                                      {cellSaveState?.status === "error" && cellSaveState.message.includes("eligible admin") && <span role="alert" className="text-[10px] text-rose-600">{cellSaveState.message}</span>}
                                     </>
                                   )}
                                   </div>
@@ -2769,6 +3571,21 @@ export default function ReportDataView({
                                   {cellSaveState.message}
                                 </span>
                               ) : null}
+                              {isEditable && !isEditing && (
+                                <button
+                                  type="button"
+                                  title={`Drag to fill from ${column.title}`}
+                                  aria-label={`Drag to fill from ${column.title}`}
+                                  onPointerDown={(event) => {
+                                    event.preventDefault();
+                                    event.stopPropagation();
+                                    beginFillGesture(row, index, column);
+                                  }}
+                                  onClick={(event) => event.stopPropagation()}
+                                  className="absolute bottom-0.5 right-0.5 z-10 flex h-4 w-4 touch-none items-center justify-center rounded-sm border border-blue-300 bg-white text-blue-600 opacity-0 shadow-sm transition group-hover/cell:opacity-100 focus:opacity-100">
+                                  <GripVertical aria-hidden="true" className="h-3 w-3 rotate-90" />
+                                </button>
+                              )}
                             </td>
                           );
                         })}
@@ -2780,6 +3597,16 @@ export default function ReportDataView({
               </table>
             )}
           </div>
+          {hiddenColumns.length > 0 && (
+            <div aria-label="Hidden report columns" className="flex flex-wrap items-center gap-2 border-t border-slate-100 bg-slate-50/70 px-4 py-2.5">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Hidden columns</span>
+              {hiddenColumns.map((column) => (
+                <button key={column.key} type="button" title={`Restore ${column.title} column`} onClick={() => restoreReportColumn(column.key)} className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs text-slate-600 hover:border-blue-300 hover:text-[#0b2341]">
+                  <EyeOff aria-hidden="true" className="h-3 w-3" />{column.title}<span aria-hidden="true" className="text-slate-400">· Restore</span>
+                </button>
+              ))}
+            </div>
+          )}
           <footer className={tableUi.footer}>
             <span>
               {pagination
@@ -2808,6 +3635,61 @@ export default function ReportDataView({
         </>
       )}
       </section>
+      {openColumnMenu && typeof document !== "undefined" && createPortal((() => {
+        const menuColumn = columns.find((column) => column.key === openColumnMenu.key);
+        if (!menuColumn) return null;
+        const menuDropdownField = getReportEditDefinition(reportKey, menuColumn.key)?.dropdownField;
+        const menuPinSide = pinnedColumnSides[menuColumn.key];
+        const menuItemClass = "flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-slate-700 transition-colors hover:bg-[#0b2341] hover:text-white focus-visible:bg-[#0b2341] focus-visible:text-white focus-visible:outline-none";
+        const menuAction = (action: () => void) => {
+          action();
+          setOpenColumnMenu(null);
+        };
+        return (
+          <div className="fixed inset-0 z-[100]" onMouseDown={() => setOpenColumnMenu(null)}>
+            <div role="menu" aria-label={`${menuColumn.title} column actions`} onMouseDown={(event) => event.stopPropagation()} style={{ left: openColumnMenu.left, top: openColumnMenu.top }} className="fixed z-[101] w-56 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl">
+              <div className="truncate px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500">{menuColumn.title}</div>
+              {sortableFields.includes(menuColumn.key) && <>
+                <button role="menuitem" type="button" onClick={() => menuAction(() => { setSortBy(menuColumn.key); setSortOrder("asc"); setPage(1); })} className={menuItemClass}>Sort ascending {activeSortBy === menuColumn.key && sortOrder === "asc" ? <ArrowUp className="h-3.5 w-3.5" /> : null}</button>
+                <button role="menuitem" type="button" onClick={() => menuAction(() => { setSortBy(menuColumn.key); setSortOrder("desc"); setPage(1); })} className={menuItemClass}>Sort descending {activeSortBy === menuColumn.key && sortOrder === "desc" ? <ArrowDown className="h-3.5 w-3.5" /> : null}</button>
+              </>}
+              <button role="menuitem" type="button" onClick={() => menuAction(() => toggleColumnPinAutomatically(menuColumn.key))} className={`${menuItemClass} justify-start`}><Pin className="h-3.5 w-3.5" />{menuPinSide ? "Unpin" : "Pin"}</button>
+              <button role="menuitem" type="button" onClick={() => menuAction(() => { setEditingColumnColor(menuColumn.key); })} className={`${menuItemClass} justify-start`}><Palette className="h-3.5 w-3.5" />Edit Column</button>
+              {menuDropdownField && canManageDropdowns && <button role="menuitem" type="button" onClick={() => menuAction(() => openDropdownManager(menuDropdownField))} className={`${menuItemClass} justify-start`}><SlidersHorizontal className="h-3.5 w-3.5" />Manage Options</button>}
+              <button role="menuitem" type="button" onClick={() => menuAction(() => hideReportColumn(menuColumn.key))} className={`${menuItemClass} justify-start`}><EyeOff className="h-3.5 w-3.5" />Hide Column</button>
+            </div>
+          </div>
+        );
+      })(), document.body)}
+      {editingColumnColor && typeof document !== "undefined" && createPortal(
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-950/25 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) setEditingColumnColor(null); }}>
+          <section role="dialog" aria-modal="true" aria-labelledby="report-column-color-title" className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl">
+            <div className="flex items-start justify-between gap-3">
+              <div><h2 id="report-column-color-title" className="text-sm font-semibold text-slate-900">Edit Column</h2><p className="mt-1 text-xs text-slate-500">Choose a display color for {columns.find((column) => column.key === editingColumnColor)?.title ?? "this column"}.</p></div>
+              <button type="button" title="Close" aria-label="Close column color dialog" onClick={() => setEditingColumnColor(null)} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100"><X className="h-4 w-4" /></button>
+            </div>
+            <div className="mt-4 flex items-center gap-3"><input aria-label="Column display color" type="color" value={columnLayout.colors?.[editingColumnColor] ?? "#eaf2fb"} onChange={(event) => setReportColumnColor(editingColumnColor, event.target.value)} className="h-9 w-12 cursor-pointer rounded border border-slate-200 bg-white p-1" /><span className="text-xs text-slate-600">Color is saved with this browser’s report column preferences.</span></div>
+            <div className="mt-4 grid grid-cols-8 gap-2" aria-label="Column color palette">
+              {REPORT_COLUMN_COLORS.map((color) => <button key={color} type="button" aria-label={`Set column color ${color}`} title={color} aria-pressed={columnLayout.colors?.[editingColumnColor]?.toLowerCase() === color} onClick={() => setReportColumnColor(editingColumnColor, color)} className="h-7 w-7 rounded-full border border-slate-300 ring-offset-2 hover:ring-2 hover:ring-[#0b2341] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0b2341]" style={{ backgroundColor: color }} />)}
+            </div>
+            <div className="mt-5 flex justify-between"><button type="button" onClick={() => setReportColumnColor(editingColumnColor, null)} className="rounded-lg px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100">Reset to default</button><button type="button" onClick={() => setEditingColumnColor(null)} className="rounded-lg bg-[#0b2341] px-3 py-2 text-xs font-semibold text-white hover:bg-[#17375f]">Done</button></div>
+          </section>
+        </div>, document.body,
+      )}
+      {managingDropdownField && typeof document !== "undefined" && canManageDropdowns && createPortal(
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-950/25 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) closeDropdownManager(); }}>
+          <section role="dialog" aria-modal="true" aria-labelledby="report-dropdown-manager-title" className="max-h-[min(80vh,640px)] w-full max-w-lg overflow-y-auto rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl">
+            <div className="flex items-start justify-between gap-3"><div><h2 id="report-dropdown-manager-title" className="text-sm font-semibold text-slate-900">Manage Options</h2><p className="mt-1 text-xs text-slate-500">Edit several labels or add options, then save once. Requests run in sequence; a failure can leave earlier changes saved.</p></div><button type="button" title="Close" aria-label="Close option manager" disabled={dropdownManagerBusy} onClick={closeDropdownManager} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 disabled:opacity-50"><X className="h-4 w-4" /></button></div>
+            {dropdownManagerError && <p role="alert" className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700">{dropdownManagerError}</p>}
+            {dropdownManagerNotice && <p role="status" className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-700">{dropdownManagerNotice}</p>}
+            <div className="mt-4 space-y-2">{dropdownOptionDrafts.filter((option) => option.field_key === managingDropdownField).map((option) => <div key={option.draftKey} className={`grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 rounded-xl border p-2.5 ${option.isNew || option.display_label !== option.originalLabel ? "border-blue-200 bg-blue-50/40" : "border-slate-200"}`}><label className="min-w-0"><span className="sr-only">Display label for {option.option_value}</span><input aria-label={`Display label for ${option.option_value}`} disabled={dropdownManagerBusy} value={option.display_label} onChange={(event) => setDropdownOptionDrafts((current) => current.map((item) => item.draftKey === option.draftKey ? { ...item, display_label: event.target.value } : item))} className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs text-slate-800 outline-none focus:border-blue-400 disabled:bg-slate-100" /></label><span className="max-w-32 truncate rounded bg-white px-2 py-1 text-[10px] text-slate-500" title={`${option.option_value} · used by ${option.usage_count} record(s)`}>{option.option_value}{option.usage_count ? ` · ${option.usage_count} used` : ""}{!option.active ? " · inactive" : ""}</span><button type="button" title={option.isNew ? "Remove unsaved option" : "Permanent removal is unavailable for saved options"} aria-label={option.isNew ? `Remove new option ${option.display_label}` : `Cannot remove saved option ${option.display_label}`} disabled={dropdownManagerBusy || !option.isNew} onClick={() => removeDropdownDraft(option)} className="rounded-lg p-2 text-slate-500 hover:bg-rose-50 hover:text-rose-700 disabled:cursor-not-allowed disabled:opacity-35"><Trash2 className="h-4 w-4" /></button></div>)}</div>
+            {managingDropdownField === "letter_status" ? <p className="mt-4 text-xs text-slate-500">Letter status values are fixed by the existing system configuration.</p> : <form className="mt-4 flex gap-2" onSubmit={(event) => { event.preventDefault(); stageDropdownOption(); }}><input aria-label="New dropdown option label" value={newDropdownLabel} onChange={(event) => setNewDropdownLabel(event.target.value)} maxLength={80} placeholder="Add an option to this draft" className="min-w-0 flex-1 rounded-lg border border-slate-200 px-3 py-2 text-xs outline-none focus:border-blue-400" /><button type="submit" disabled={dropdownManagerBusy || !newDropdownLabel.trim()} className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-[#0b2341] hover:bg-slate-50 disabled:opacity-50">Add to list</button></form>}
+            <p className="mt-3 text-[11px] text-slate-500">Saved options cannot be safely removed with the current API: report values store text without a foreign key, and the backend has no atomic usage-check-and-delete operation. Removal is available for unsaved additions only.</p>
+            <div className="mt-5 flex justify-end gap-2"><button type="button" disabled={dropdownManagerBusy} onClick={closeDropdownManager} className="rounded-lg px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-50">Cancel</button><button type="button" disabled={dropdownManagerBusy || !dropdownOptionDrafts.some((option) => option.isNew || option.display_label.trim() !== option.originalLabel)} onClick={() => void saveDropdownOptionChanges()} className="rounded-lg bg-[#0b2341] px-3 py-2 text-xs font-semibold text-white hover:bg-[#17375f] disabled:opacity-50">{dropdownManagerBusy ? "Saving changes…" : "Save Changes"}</button></div>
+          </section>
+        </div>, document.body,
+      )}
+      </FlexibleTableSectionTabs>
     </div>
   );
 }

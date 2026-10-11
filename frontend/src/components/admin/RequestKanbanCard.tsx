@@ -7,10 +7,9 @@ import {
   Pencil,
   Eye,
   Truck,
-  FileText,
 } from "lucide-react";
 import type { DispatchRequest, RequestStatus } from "../../types/requests";
-import { regionTagClass, senderInitials, timeAgo } from "./requestFormat";
+import { regionTagClass, senderInitials } from "./requestFormat";
 
 /* Progress + tag styling per status */
 const STATUS_META: Record<

@@ -1,5 +1,6 @@
 // src/pages/Admin/views/ResourceView.tsx
 import { useEffect, useState } from "react";
+import { useAuth } from "../../../context/AuthContext";
 import type { DashboardData } from "../../../types/dashboard";
 import {
   IncidentPanel,
@@ -11,6 +12,7 @@ import {
 } from "../../../components/admin/DashboardPrimitives";
 import { tableUi } from "../../../components/admin/dashboardStyles";
 import ReportDataView from "../../../components/admin/ReportDataView";
+import FlexibleTableSectionTabs from "../../../components/admin/FlexibleTableSectionTabs";
 import TruckCardGrid from "../../../components/admin/TruckCardGrid";
 import RequestsView from "./RequestsView";
 import MasterDataView from "./MasterDataView";
@@ -34,7 +36,7 @@ const titleMap: Record<string, [string, string]> = {
   ],
   requests: ["Requests", "Dispatch requests parsed from incoming TCL emails"],
   dispatches: [
-    "All trips",
+    "Trips",
     "Monitor trips, loading progress, and fleet readiness",
   ],
   deliveries: [
@@ -264,8 +266,6 @@ export default function ResourceView({
   id,
   data,
   onNavigate,
-  tripScope,
-  onTripScopeChange,
   onReportScopeChange,
   notificationTarget,
   billingScope,
@@ -274,10 +274,6 @@ export default function ResourceView({
   id: string;
   data: DashboardData;
   onNavigate?: (id: string) => void;
-  tripScope?: "dispatches" | "monitoring" | "deliveries";
-  onTripScopeChange?: (
-    value: "dispatches" | "monitoring" | "deliveries",
-  ) => void;
   onReportScopeChange?: (
     value:
       | "combined"
@@ -292,6 +288,7 @@ export default function ResourceView({
     value: "rates-fuel" | "invoices" | "payables" | "cash-tracker",
   ) => void;
 }) {
+  const { accessToken, profile } = useAuth();
   const [tripDetailPrefix, tripDetailId, tripReturnView] = id.split(":");
   /* Trip opened from a table/visual card. Held locally so it works even if the
      parent does not route "trip-detail:<id>" ids, and so the list underneath
@@ -349,6 +346,7 @@ export default function ResourceView({
     "dispatch-monitoring",
     "store-calling",
   ].includes(id);
+  const showInlineTableHeading = isTripsScope || isReportsScope;
   const barTitle = isTripsScope
     ? "Trips"
     : isReportsScope
@@ -375,7 +373,7 @@ export default function ResourceView({
     <>
       <div className={layoutClass}>
       <div hidden={showLocalTrip}>
-      {isTablePage && <PageHeading title={barTitle} subtitle={barSubtitle} />}
+      {isTablePage && !showInlineTableHeading && <PageHeading title={barTitle} subtitle={barSubtitle} />}
       {showPageIntro && <PageIntro title={title} subtitle={subtitle} />}
       {isPrototype && <PrototypeNotice />}
 
@@ -385,12 +383,12 @@ export default function ResourceView({
       {id === "dispatches" && (
         <>
           <ReportDataView
-            initialReport="trip-booking"
+            initialReport="dispatch-monitoring"
+            pageTitle={barTitle}
+            pageSubtitle={barSubtitle}
             notificationTarget={notificationTarget}
             showReportPicker={false}
             onOpenTrip={openTrip}
-            tripScope={tripScope ?? "dispatches"}
-            onTripScopeChange={onTripScopeChange}
             toolbarActions={<AddTripButton />}
           />
         </>
@@ -405,7 +403,9 @@ export default function ResourceView({
             action="Add Vehicle"
           />
           <TruckCardGrid rows={data.operations.dispatches} />
-          <GenericResourceTable id="fleet" data={data} />
+          <FlexibleTableSectionTabs sectionKey="fleet" sectionLabel="Fleet" accessToken={accessToken} role={profile?.role ?? ""}>
+            <GenericResourceTable id="fleet" data={data} />
+          </FlexibleTableSectionTabs>
         </div>
       )}
 
@@ -415,11 +415,11 @@ export default function ResourceView({
         <>
           <ReportDataView
             initialReport="dispatch-monitoring"
+            pageTitle={barTitle}
+            pageSubtitle={barSubtitle}
             notificationTarget={notificationTarget}
             showReportPicker={false}
             onOpenTrip={openTrip}
-            tripScope={tripScope ?? "deliveries"}
-            onTripScopeChange={onTripScopeChange}
           />
         </>
       )}
@@ -427,17 +427,19 @@ export default function ResourceView({
         <>
           <ReportDataView
             initialReport="dispatch-monitoring"
+            pageTitle={barTitle}
+            pageSubtitle={barSubtitle}
             notificationTarget={notificationTarget}
             showReportPicker={false}
             onOpenTrip={openTrip}
-            tripScope={tripScope ?? "monitoring"}
-            onTripScopeChange={onTripScopeChange}
           />
         </>
       )}
       {id === "dispatch-monitoring" && (
         <ReportDataView
           initialReport="dispatch-monitoring"
+          pageTitle={barTitle}
+          pageSubtitle={barSubtitle}
           notificationTarget={notificationTarget}
           onOpenTrip={openTrip}
           onReportScopeChange={onReportScopeChange}
@@ -446,6 +448,8 @@ export default function ResourceView({
       {id === "store-calling" && (
         <ReportDataView
           initialReport="store-calling"
+          pageTitle={barTitle}
+          pageSubtitle={barSubtitle}
           notificationTarget={notificationTarget}
           onOpenTrip={openTrip}
           onReportScopeChange={onReportScopeChange}
@@ -453,6 +457,8 @@ export default function ResourceView({
       )}
       {id === "reports" && (
         <ReportDataView
+          pageTitle={barTitle}
+          pageSubtitle={barSubtitle}
           notificationTarget={notificationTarget}
           onOpenTrip={openTrip}
           onReportScopeChange={onReportScopeChange}
@@ -461,6 +467,8 @@ export default function ResourceView({
       {id === "combined" && (
         <ReportDataView
           initialReport="combined"
+          pageTitle={barTitle}
+          pageSubtitle={barSubtitle}
           notificationTarget={notificationTarget}
           onOpenTrip={openTrip}
           onReportScopeChange={onReportScopeChange}
@@ -469,6 +477,8 @@ export default function ResourceView({
       {id === "dispatch" && (
         <ReportDataView
           initialReport="dispatch"
+          pageTitle={barTitle}
+          pageSubtitle={barSubtitle}
           notificationTarget={notificationTarget}
           onOpenTrip={openTrip}
           onReportScopeChange={onReportScopeChange}
@@ -477,6 +487,8 @@ export default function ResourceView({
       {id === "trip-booking" && (
         <ReportDataView
           initialReport="trip-booking"
+          pageTitle={barTitle}
+          pageSubtitle={barSubtitle}
           notificationTarget={notificationTarget}
           onOpenTrip={openTrip}
           onReportScopeChange={onReportScopeChange}

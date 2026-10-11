@@ -5,7 +5,7 @@ export type CreateUserProfileInput = {
   id: string;
   first_name: string;
   last_name: string;
-  role: "ADMIN" | "TRUCKER";
+  role: "ADMIN" | "STAFF" | "TRUCKER";
   is_admin: boolean;
   created_by: string;
   profile_picture_path?: string | null;

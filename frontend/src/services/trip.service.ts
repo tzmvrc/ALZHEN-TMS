@@ -1,4 +1,21 @@
-import { apiGetCached, apiPatch, type ApiResponse } from "./api.service";
+import { apiGetCached, apiPatch, invalidateApiCache, type ApiResponse } from "./api.service";
+import { invalidateReportPageCache } from "./report.service";
+
+export function invalidateTripListCache() {
+  // The query marker keeps this scoped to paginated trip lists, not trip
+  // details, events, images, stops, or line-item responses.
+  invalidateApiCache("/trips?");
+}
+
+export function invalidateTripEventsCache(tripId: string) {
+  invalidateApiCache(`/trips/${encodeURIComponent(tripId)}/events`);
+}
+
+function invalidateTripRelatedCache() {
+  invalidateApiCache("/trips");
+  invalidateApiCache("/reports");
+  invalidateReportPageCache();
+}
 
 export type TripRecord = Record<string, unknown> & {
   id?: string;
@@ -29,6 +46,8 @@ export type TripEvent = {
   notes?: string | null;
   recorded_by?: string | null;
 };
+
+const TRIP_EVENT_CACHE_TTL_MS = 45_000;
 
 export type TripDetail = {
   trip: TripRecord;
@@ -75,6 +94,7 @@ export async function fetchTripEvents(
   const response = await apiGetCached<ApiResponse<TripEvent[]>>(
     `/trips/${encodeURIComponent(tripId)}/events`,
     token,
+    TRIP_EVENT_CACHE_TTL_MS,
   );
   if (!response.success || !response.data) {
     throw new Error(response.message ?? "Unable to load trip events.");
@@ -153,6 +173,7 @@ export async function updateTripRecord(
   if (!response.success || !response.data) {
     throw new Error(response.message ?? "Unable to save trip update.");
   }
+  invalidateTripRelatedCache();
   return response.data;
 }
 
@@ -171,6 +192,7 @@ export async function updateTripStopRecord(
   if (!response.success || !response.data) {
     throw new Error(response.message ?? "Unable to save stop update.");
   }
+  invalidateTripRelatedCache();
   return response.data;
 }
 
@@ -190,6 +212,7 @@ export async function updateTripLineItemRecord(
   if (!response.success || !response.data) {
     throw new Error(response.message ?? "Unable to save line item update.");
   }
+  invalidateTripRelatedCache();
   return response.data;
 }
 
@@ -210,6 +233,7 @@ export async function updateTripAssignmentRecord(
       response.message ?? "Unable to save trip assignment update.",
     );
   }
+  invalidateTripRelatedCache();
   return response.data;
 }
 
@@ -227,6 +251,7 @@ export async function updateTripBillingRecord(
   if (!response.success || !response.data) {
     throw new Error(response.message ?? "Unable to save billing update.");
   }
+  invalidateTripRelatedCache();
   return response.data;
 }
 
@@ -244,5 +269,8 @@ export async function updateStoreCallRecord(
   if (!response.success || !response.data) {
     throw new Error(response.message ?? "Unable to save store call update.");
   }
+  invalidateApiCache("/store-calls");
+  invalidateApiCache("/reports/store-calling");
+  invalidateReportPageCache("store-calling");
   return response.data;
 }

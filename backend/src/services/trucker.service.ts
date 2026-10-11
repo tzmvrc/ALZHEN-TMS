@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "../config/supabase.js";
+import { buildIlikeOrFilter } from "../utils/postgrest-search.js";
 
 export type TruckerListItem = {
   id: string;
@@ -282,9 +283,11 @@ export async function getTruckerList(query: Record<string, unknown>) {
     );
 
   if (search) {
-    driverQuery = driverQuery.or(
-      `first_name.ilike.%${search}%,last_name.ilike.%${search}%,contact_number.ilike.%${search}%`,
+    const searchFilter = buildIlikeOrFilter(
+      ["first_name", "last_name", "contact_number"],
+      search,
     );
+    if (searchFilter) driverQuery = driverQuery.or(searchFilter);
   }
 
   if (status && status !== "ALL") {

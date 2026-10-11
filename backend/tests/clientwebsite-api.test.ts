@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { sha256SessionIdentifier } from "../src/utils/session-rules.js";
 
 process.env.SUPABASE_URL = "http://127.0.0.1:54321";
 process.env.SUPABASE_SERVICE_ROLE_KEY = "isolated-test";
@@ -11,6 +12,8 @@ test("website API enforces admin writes, CRUD revisions and public response shap
   const records: any[] = [];
   let role = "ADMIN",
     count = 0;
+  const appSessionId = "a".repeat(43);
+  const appSessionHash = sha256SessionIdentifier(appSessionId);
   const originalFrom = supabaseAdmin.from,
     originalAuth = supabaseAuth.auth.getUser;
   (supabaseAuth.auth as any).getUser = async () => ({
@@ -29,6 +32,28 @@ test("website API enforces admin writes, CRUD revisions and public response shap
           }),
         }),
       };
+    if (name === "admin_staff_session_days") {
+      let requestedHash: string | undefined;
+      const sessionQuery: any = {
+        select: () => sessionQuery,
+        eq: (column: string, value: string) => {
+          assert.equal(column, "session_hash");
+          requestedHash = value;
+          return sessionQuery;
+        },
+        maybeSingle: async () => ({
+          data: requestedHash === appSessionHash
+            ? {
+                profile_id: "test-admin",
+                role,
+                expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+              }
+            : null,
+          error: null,
+        }),
+      };
+      return sessionQuery;
+    }
     assert.equal(name, "website_content");
     let op = "select",
       payload: any,
@@ -89,7 +114,12 @@ test("website API enforces admin writes, CRUD revisions and public response shap
       method,
       headers: {
         "Content-Type": "application/json",
-        ...(auth ? { Authorization: "Bearer test" } : {}),
+        ...(auth
+          ? {
+              Authorization: "Bearer test",
+              "X-App-Session": appSessionId,
+            }
+          : {}),
       },
       ...(body ? { body: JSON.stringify(body) } : {}),
     });

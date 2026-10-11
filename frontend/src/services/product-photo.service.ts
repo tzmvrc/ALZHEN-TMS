@@ -1,4 +1,4 @@
-import type { ApiResponse } from "./api.service";
+import { getAppSessionHeaders, handleSessionExpiredResponse, type ApiResponse } from "./api.service";
 
 export type ProductPhoto = {
   product_id: string;
@@ -19,11 +19,13 @@ async function photoRequest<T>(
       ...init,
       headers: {
         Authorization: `Bearer ${token}`,
+        ...getAppSessionHeaders(),
         ...(init?.headers ?? {}),
       },
     },
   );
   const payload = (await response.json().catch(() => null)) as ApiResponse<T> | null;
+  if (!response.ok) await handleSessionExpiredResponse(response.status, payload, true);
   if (!response.ok || !payload?.success || payload.data === undefined) {
     throw new Error(payload?.message ?? "Product photo request failed.");
   }

@@ -17,6 +17,7 @@ import {
   normalizeSortOrder,
   normalizeText,
 } from "../utils/validation.js";
+import { buildIlikeOrFilter } from "../utils/postgrest-search.js";
 
 const ALLOWED_TRIP_SORTS = [
   "loading_date",
@@ -133,9 +134,11 @@ function normalizeTripQuery(query: Record<string, unknown>) {
 }
 
 function applyTripSearch(queryBuilder: any, search: string) {
-  return queryBuilder.or(
-    `dispatch_number.ilike.%${search}%,transaction_number.ilike.%${search}%,trip_number.ilike.%${search}%,remarks.ilike.%${search}%`,
+  const filter = buildIlikeOrFilter(
+    ["dispatch_number", "transaction_number", "trip_number", "remarks"],
+    search,
   );
+  return filter ? queryBuilder.or(filter) : queryBuilder;
 }
 
 function sanitizeUuid(value: unknown, fieldName: string) {

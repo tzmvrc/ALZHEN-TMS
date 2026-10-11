@@ -8,6 +8,7 @@ import { apiGetCached, invalidateApiCache, type ApiResponse } from "../../../ser
 import { fetchTruckerDetail, fetchTruckers, type TruckerListItem } from "../../../services/trucker.service";
 import UserManagementModal from "../../../components/admin/UserManagementModal";
 import { fetchManagedUsers, type ManagedUser } from "../../../services/user-management.service";
+import { subscribeToAdminRealtime } from "../../../services/realtime.service";
 
 const PAGE_SIZE = 12;
 const userCategoryOptions = [
@@ -34,7 +35,8 @@ function formatAvatarPath(path: string | null) {
 
 export default function TruckersView() {
   const { accessToken, profile } = useAuth();
-  const [category, setCategory] = useState<"staff" | "truckers">("staff");
+  const [selectedCategory, setSelectedCategory] = useState<"staff" | "truckers">(() => profile?.role === "ADMIN" ? "staff" : "truckers");
+  const category = profile?.role === "ADMIN" ? selectedCategory : "truckers";
   const [roleFilter, setRoleFilter] = useState<"all" | "ADMIN" | "STAFF">("all");
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("all");
@@ -53,6 +55,14 @@ export default function TruckersView() {
   const [userModalOpen, setUserModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<ManagedUser | null>(null);
   const [notice, setNotice] = useState("");
+
+  useEffect(() => subscribeToAdminRealtime((event) => {
+    if (event.kind === "resume") return;
+    const table = event.kind === "recovered" ? event.table : event.payload.table;
+    if (["profiles", "drivers", "trips", "trip_truck_assignments"].includes(table)) {
+      setRefreshVersion((version) => version + 1);
+    }
+  }), []);
 
   useEffect(() => {
     if (!accessToken || profile?.role !== "ADMIN") return;
@@ -132,6 +142,9 @@ export default function TruckersView() {
     return () => { active = false; };
   }, [accessToken, category, selectedId]);
 
+  const visibleUserCategories = profile?.role === "ADMIN"
+    ? userCategoryOptions
+    : userCategoryOptions.filter((option) => option.value === "truckers");
   const matchingProfiles = useMemo(() => {
     const term = search.trim().toLocaleLowerCase();
     return profiles.filter((profile) => {
@@ -155,7 +168,7 @@ export default function TruckersView() {
   }
 
   function changeCategory(next: "staff" | "truckers") {
-    setCategory(next);
+    setSelectedCategory(next);
     setPage(1);
     setSearch("");
     setSelectedId(null);
@@ -170,9 +183,11 @@ export default function TruckersView() {
           <div className="flex flex-wrap items-center gap-2">
             <SlidingSegmentedControl
               aria-label="User category"
-              options={userCategoryOptions}
+              options={visibleUserCategories}
               value={category}
-              onChange={changeCategory}
+              onChange={(value) => {
+                if (value === "truckers" || profile?.role === "ADMIN") changeCategory(value);
+              }}
             />
             {category === "staff" ? (
               <select aria-label="Filter by role" value={roleFilter} onChange={(event) => { setPage(1); setRoleFilter(event.target.value as "all" | "ADMIN" | "STAFF"); }} className={`${tableUi.select} pr-4`}>

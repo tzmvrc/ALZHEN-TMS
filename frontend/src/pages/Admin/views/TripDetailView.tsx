@@ -38,6 +38,7 @@ import {
   uploadTripImage,
   type TripImage,
 } from "../../../services/trip-image.service";
+import { subscribeToAdminRealtime } from "../../../services/realtime.service";
 
 type BookingPage = {
   rows: Record<string, unknown>[];
@@ -209,6 +210,7 @@ function TripGallery({
   const [active, setActive] = useState(0);
   const [photoBusy, setPhotoBusy] = useState(false);
   const [photoError, setPhotoError] = useState<string | null>(null);
+  const [imageRefreshVersion, setImageRefreshVersion] = useState(0);
   const fileInput = useRef<HTMLInputElement>(null);
   const photos = savedPhotos ?? [];
   const activeSavedPhoto = photos[active];
@@ -220,7 +222,7 @@ function TripGallery({
       (images) => {
         if (!current) return;
         setSavedPhotos(images);
-        setActive(0);
+        setActive((index) => Math.min(index, Math.max(images.length - 1, 0)));
         setPhotoError(null);
       },
       (cause: unknown) => {
@@ -232,7 +234,21 @@ function TripGallery({
     return () => {
       current = false;
     };
-  }, [accessToken, tripId]);
+  }, [accessToken, imageRefreshVersion, tripId]);
+
+  useEffect(() => subscribeToAdminRealtime((event) => {
+    if (event.kind === "resume") {
+      setImageRefreshVersion((version) => version + 1);
+      return;
+    }
+    if (event.kind === "recovered") {
+      if (event.table === "trip_images") setImageRefreshVersion((version) => version + 1);
+      return;
+    }
+    if (event.payload.table === "trip_images" && [event.payload.new?.trip_id, event.payload.old?.trip_id].includes(tripId)) {
+      setImageRefreshVersion((version) => version + 1);
+    }
+  }), [tripId]);
 
   const go = (step: number) => {
     if (photos.length < 2) return;
@@ -605,6 +621,34 @@ export default function TripDetailView({
   const [viewProduct, setViewProduct] = useState<Record<string, unknown> | null>(null);
   const [productPhotoOverrides, setProductPhotoOverrides] = useState<Record<string, string | null>>({});
   const requestKey = `${accessToken ?? "no-session"}:${tripId}:${retry}`;
+  const realtimeRefreshTimer = useRef<number | null>(null);
+
+  useEffect(() => subscribeToAdminRealtime((event) => {
+    if (event.kind === "resume") {
+      setRetry((value) => value + 1);
+      return;
+    }
+    const tripTables = ["trips", "trip_stops", "trip_line_items", "trip_events", "trip_truck_assignments", "billings"];
+    if (event.kind === "recovered") {
+      if (!tripTables.includes(event.table)) return;
+    } else {
+      const { table, new: next, old } = event.payload;
+      if (!tripTables.includes(table)) return;
+      const relatedId = table === "trips"
+        ? [next?.id, old?.id].find((value) => typeof value === "string")
+        : [next?.trip_id, old?.trip_id].find((value) => typeof value === "string");
+      if (relatedId !== tripId) return;
+    }
+    if (realtimeRefreshTimer.current !== null) window.clearTimeout(realtimeRefreshTimer.current);
+    realtimeRefreshTimer.current = window.setTimeout(() => {
+      realtimeRefreshTimer.current = null;
+      setRetry((value) => value + 1);
+    }, 250);
+  }), [tripId]);
+
+  useEffect(() => () => {
+    if (realtimeRefreshTimer.current !== null) window.clearTimeout(realtimeRefreshTimer.current);
+  }, []);
 
   useEffect(() => {
     if (!accessToken) {

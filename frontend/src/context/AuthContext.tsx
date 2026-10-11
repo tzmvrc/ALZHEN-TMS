@@ -11,11 +11,16 @@ import {
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import {
-  apiGet,
+  ApiError,
   apiPost,
+  clearApiCache,
+  clearAppSessionId,
   registerSessionExpiredHandler,
+  setAppSessionId,
   unregisterSessionExpiredHandler,
 } from "../services/api.service";
+import { preloadAdminPageData } from "../services/admin-preload.service";
+import { clearReportPageCache } from "../services/report.service";
 import { useToast } from "../components/ui/Toast";
 
 export type AuthProfile = {
@@ -79,6 +84,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<AuthProfile | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [sessionExpiresAt, setSessionExpiresAt] = useState<string | null>(null);
+  const cacheOwnerRef = useRef<string | null>(null);
+  const cacheTokenRef = useRef<string | null>(null);
+  const retryRefreshTimerRef = useRef<number | undefined>(undefined);
+  const refreshSessionRef = useRef<AuthContextValue["refreshSession"] | null>(null);
   const authSyncLockedRef = useRef(false);
   const lastRefreshAtRef = useRef(0);
   const sessionExpiredRef = useRef(false);
@@ -86,9 +96,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const clearSessionState = useCallback(() => {
     sessionExpiredRef.current = false;
+    window.clearTimeout(retryRefreshTimerRef.current);
+    retryRefreshTimerRef.current = undefined;
+    cacheOwnerRef.current = null;
+    cacheTokenRef.current = null;
+    clearAppSessionId();
+    clearApiCache();
+    clearReportPageCache();
     setUser(null);
     setProfile(null);
     setAccessToken(null);
+    setSessionExpiresAt(null);
     setLoading(false);
   }, []);
 
@@ -96,7 +114,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     clearSessionState();
   }, [clearSessionState]);
 
-  const handleSessionExpired = useCallback(async () => {
+  const handleSessionExpired = useCallback(async (reason?: string) => {
     if (sessionExpiredRef.current) {
       return;
     }
@@ -113,19 +131,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     const currentPath = window.location.pathname;
+    const isTruckerSessionError = reason?.startsWith("TRUCKER_") ?? false;
     const loginTarget =
-      profile?.role === "TRUCKER" ? "/trucker/login" : "/login";
+      profile?.role === "TRUCKER" || isTruckerSessionError
+        ? "/trucker/login"
+        : "/login";
 
     if (currentPath !== "/login" && currentPath !== "/trucker/login") {
       navigate(loginTarget, { replace: true });
     }
 
-    addToast({
-      title: "Your session has expired.",
-      description: "Please log in again to continue.",
-      variant: "error",
-      duration: 4000,
-    });
+    if (reason !== "ADMIN_SESSION_EXPIRED") {
+      addToast({
+        title: reason === "TRUCKER_SESSION_REPLACED"
+          ? "This account was signed in on another device."
+          : "Your session has expired.",
+        description: "Please log in again to continue.",
+        variant: "error",
+        duration: 4000,
+      });
+    }
   }, [addToast, clearSessionState, profile?.role]);
 
   const suspendSessionSync = useCallback(() => {
@@ -144,15 +169,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      const now = Date.now();
-      if (now - lastRefreshAtRef.current < 15000 && user) {
-        return;
-      }
-      lastRefreshAtRef.current = now;
-
-      if (!silent && !user) {
-        setLoading(true);
-      }
+      let preserveInitialLoading = false;
 
       try {
         const {
@@ -169,32 +186,90 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return;
         }
 
-        const response = await apiGet<{
+        // Keep API consumers on the latest Supabase token even when the
+        // profile/session bootstrap below is deduplicated.
+        setAccessToken((current) => current === session.access_token ? current : session.access_token);
+
+        const now = Date.now();
+        const sameAccount = cacheOwnerRef.current === session.user.id;
+        if (now - lastRefreshAtRef.current < 15000 && user && sameAccount) {
+          return;
+        }
+        lastRefreshAtRef.current = now;
+
+        if (!silent && !user) {
+          setLoading(true);
+        }
+
+        const response = await apiPost<{
           success: boolean;
           message?: string;
-          data: AuthSessionResponse;
-        }>("/auth/me", session.access_token);
+          data: AuthSessionResponse & { role: string; expiresAt?: string | null };
+        }>("/auth/session/bootstrap", {}, session.access_token);
 
         if (!response.success || !response.data) {
           throw new Error(response.message ?? "Unable to load account profile");
         }
 
+        window.clearTimeout(retryRefreshTimerRef.current);
+        retryRefreshTimerRef.current = undefined;
+
+        if (
+          cacheOwnerRef.current !== response.data.profile.id ||
+          cacheTokenRef.current !== session.access_token
+        ) {
+          clearApiCache();
+          clearReportPageCache();
+        }
+        cacheOwnerRef.current = response.data.profile.id;
+        cacheTokenRef.current = session.access_token;
+        preloadAdminPageData(session.access_token, response.data.profile.role);
+
         sessionExpiredRef.current = false;
         setUser(response.data.authUser);
         setProfile(response.data.profile);
         setAccessToken(session.access_token);
+        setSessionExpiresAt(response.data.expiresAt ?? null);
       } catch (error) {
+        const definitiveAuthFailure = error instanceof ApiError && (
+          error.status === 401 ||
+          (error.status === 403 && /access denied|not authorized|unauthorized/i.test(error.message))
+        );
+        if (definitiveAuthFailure) {
+          // The shared API client has already routed 401 session failures
+          // through the registered expiry handler. Only handle a bootstrap
+          // role denial here; repeating logout for 401 can race that handler.
+          if (error instanceof ApiError && error.status === 403) {
+            await handleSessionExpired();
+          }
+          return;
+        }
+
         console.error("Failed to refresh auth session:", error);
-        clearSessionState();
-        await supabase.auth.signOut().catch(() => undefined);
+        // A transient network or backend failure must not destroy a still-valid
+        // Supabase token or the app-session identifier. Keep the initial route
+        // gated until bootstrap can be retried if no usable profile is loaded.
+        preserveInitialLoading = !user;
+        if (!user && !silent) setLoading(true);
+        if (retryRefreshTimerRef.current === undefined) {
+          retryRefreshTimerRef.current = window.setTimeout(() => {
+            retryRefreshTimerRef.current = undefined;
+            lastRefreshAtRef.current = 0;
+            void refreshSessionRef.current?.({ silent: true });
+          }, 5000);
+        }
       } finally {
-        if (!silent) {
+        if (!silent && !preserveInitialLoading) {
           setLoading(false);
         }
       }
     },
-    [clearSessionState, user],
+    [clearSessionState, handleSessionExpired, user],
   );
+
+  useEffect(() => {
+    refreshSessionRef.current = refreshSession;
+  }, [refreshSession]);
 
   const login = useCallback(
     async (
@@ -205,20 +280,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       authSyncLockedRef.current = true;
 
       try {
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
-
-        if (error || !data.session || !data.user) {
-          throw new Error(error?.message ?? "Unable to sign in.");
-        }
-
-        const response = await apiGet<{
+        const response = await apiPost<{
           success: boolean;
           message?: string;
-          data: AuthSessionResponse;
-        }>("/auth/me", data.session.access_token);
+          data: AuthSessionResponse & {
+            session: { access_token: string; refresh_token: string };
+            appSessionId: string;
+            expiresAt?: string | null;
+          };
+        }>("/auth/login", { email, password });
 
         if (!response.success || !response.data) {
           throw new Error(
@@ -228,21 +298,47 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         const profileRole = response.data.profile.role;
 
-        if (allowedRole && profileRole !== allowedRole) {
+        const persistAppSession = async () => {
           try {
-            await supabase.auth.signOut();
-          } catch {
-            // Wrong portal account is rejected without redirecting the user.
+            setAppSessionId(response.data.appSessionId);
+          } catch (error) {
+            await apiPost("/auth/logout", {}, response.data.session.access_token).catch(() => undefined);
+            clearAppSessionId();
+            throw error;
           }
+        };
 
+        if (allowedRole && profileRole !== allowedRole) {
+          await persistAppSession();
+          await apiPost("/auth/logout", {}, response.data.session.access_token).catch(() => undefined);
+          await supabase.auth.signOut().catch(() => undefined);
           clearSessionState();
           throw new Error("Invalid account or login credentials.");
         }
 
+        await persistAppSession();
+
+        const { error: setSessionError } = await supabase.auth.setSession({
+          access_token: response.data.session.access_token,
+          refresh_token: response.data.session.refresh_token,
+        });
+        if (setSessionError) {
+          await apiPost("/auth/logout", {}, response.data.session.access_token).catch(() => undefined);
+          await supabase.auth.signOut().catch(() => undefined);
+          clearSessionState();
+          throw new Error("Unable to establish the authenticated browser session.");
+        }
+
+        clearApiCache();
+        clearReportPageCache();
+        cacheOwnerRef.current = response.data.profile.id;
+        cacheTokenRef.current = response.data.session.access_token;
+        preloadAdminPageData(response.data.session.access_token, profileRole);
         sessionExpiredRef.current = false;
         setUser(response.data.authUser);
         setProfile(response.data.profile);
-        setAccessToken(data.session.access_token);
+        setAccessToken(response.data.session.access_token);
+        setSessionExpiresAt(response.data.expiresAt ?? null);
         setLoading(false);
 
         return response.data;
@@ -345,6 +441,63 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       document.removeEventListener("visibilitychange", handleFocusOrVisible);
     };
   }, [clearSessionState, refreshSession]);
+
+  useEffect(() => {
+    if (!user || profile?.role !== "TRUCKER" || !accessToken) return;
+    let inFlight = false;
+    const heartbeat = () => {
+      if (document.visibilityState !== "visible" || inFlight) return;
+      inFlight = true;
+      void apiPost("/auth/session/heartbeat", {}, accessToken)
+        .catch(() => undefined)
+        .finally(() => { inFlight = false; });
+    };
+    const interval = window.setInterval(heartbeat, 30_000);
+    window.addEventListener("focus", heartbeat);
+    document.addEventListener("visibilitychange", heartbeat);
+    heartbeat();
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", heartbeat);
+      document.removeEventListener("visibilitychange", heartbeat);
+    };
+  }, [accessToken, profile?.role, user]);
+
+  useEffect(() => {
+    const role = profile?.role;
+    const deadline = sessionExpiresAt ? Date.parse(sessionExpiresAt) : NaN;
+    if (!user || (role !== "ADMIN" && role !== "STAFF") || !Number.isFinite(deadline)) {
+      return;
+    }
+
+    let timer: number | undefined;
+    let loggingOut = false;
+    const checkExpiry = () => {
+      if (Date.now() >= deadline) {
+        if (!loggingOut) {
+          loggingOut = true;
+          void logout().catch(() => undefined);
+        }
+        return;
+      }
+      window.clearTimeout(timer);
+      timer = window.setTimeout(checkExpiry, Math.min(deadline - Date.now(), 2_147_000_000));
+    };
+    const checkWhenAwake = () => {
+      if (document.visibilityState === "visible" || document.hasFocus()) checkExpiry();
+    };
+
+    checkExpiry();
+    window.addEventListener("focus", checkWhenAwake);
+    window.addEventListener("pageshow", checkWhenAwake);
+    document.addEventListener("visibilitychange", checkWhenAwake);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("focus", checkWhenAwake);
+      window.removeEventListener("pageshow", checkWhenAwake);
+      document.removeEventListener("visibilitychange", checkWhenAwake);
+    };
+  }, [logout, profile?.id, profile?.role, sessionExpiresAt, user]);
 
   const value = useMemo<AuthContextValue>(
     () => ({

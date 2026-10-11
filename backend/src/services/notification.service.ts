@@ -104,16 +104,16 @@ export async function createReportMentionNotifications(input: {
     if (error || !storeCall) throw new ApiError("Store call reference was not found", 404, "STORE_CALL_NOT_FOUND");
     dispatch = await getStoreCallDispatchNumber(String(referenceId));
   }
-  const { data: profiles, error: profileError } = await supabaseAdmin.from("profiles").select("id, first_name, role").in("id", recipients).eq("role", "ADMIN");
-  if (profileError) throw new ApiError("Unable to verify mentioned admins", 500, "MENTION_LOOKUP_FAILED");
+  const { data: profiles, error: profileError } = await supabaseAdmin.from("profiles").select("id, first_name, role").in("id", recipients).in("role", ["ADMIN", "STAFF"]);
+  if (profileError) throw new ApiError("Unable to verify mention recipients", 500, "MENTION_LOOKUP_FAILED");
   const eligible: string[] = [];
   for (const profile of profiles ?? []) {
     const { data: authUser, error } = await supabaseAdmin.auth.admin.getUserById(profile.id);
-    if (error) throw new ApiError("Unable to verify mentioned admins", 500, "MENTION_LOOKUP_FAILED");
+    if (error) throw new ApiError("Unable to verify mention recipients", 500, "MENTION_LOOKUP_FAILED");
     if (authUser.user && !authUser.user.banned_until && !("deleted_at" in authUser.user && authUser.user.deleted_at)) eligible.push(profile.id);
   }
   if (eligible.length !== recipients.length) {
-    throw new ApiError("A selected admin is no longer eligible for mentions", 400, "INVALID_MENTION_RECIPIENT");
+    throw new ApiError("A selected user is no longer eligible for mentions", 400, "INVALID_MENTION_RECIPIENT");
   }
   const actorQuery = await supabaseAdmin.from("profiles").select("first_name, last_name").eq("id", actorId).maybeSingle();
   if (actorQuery.error) throw new ApiError("Unable to identify notification actor", 500, "MENTION_ACTOR_LOOKUP_FAILED");

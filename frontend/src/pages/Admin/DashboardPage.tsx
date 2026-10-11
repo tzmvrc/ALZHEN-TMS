@@ -37,6 +37,7 @@ import {
 } from "../../services/notification.service";
 import {
   subscribeToTable,
+  startAdminRealtime,
   type RealtimePayload,
 } from "../../services/realtime.service";
 import { usePendingRequestCount } from "../../components/admin/requestsStore";
@@ -136,6 +137,11 @@ export default function DashboardPage({
     if (workspace === "Client Website") setClientTab("website-preview");
   }, [workspace]);
 
+  useEffect(
+    () => startAdminRealtime(accessToken, profile?.id, profile?.role),
+    [accessToken, profile?.id, profile?.role],
+  );
+
   useEffect(() => {
     if (profile?.role !== "ADMIN" || !accessToken || !profile.id) {
       notificationReload.current = () => {};
@@ -202,8 +208,12 @@ export default function DashboardPage({
     notificationReload.current = () => void load();
 
     const onNotificationEvent = (event: RealtimePayload) => {
+      if (event.eventType !== "INSERT") {
+        const changedRecipient = event.new?.recipient_profile_id ?? event.old?.recipient_profile_id;
+        if (changedRecipient === profile.id) void load();
+        return;
+      }
       if (
-        event.eventType !== "INSERT" ||
         !event.new ||
         event.new.recipient_profile_id !== profile.id
       )
@@ -479,6 +489,7 @@ export default function DashboardPage({
   const handleNavigate = (id: string) => {
     const nextSection = normalizeMainSection(id);
     if (nextSection === "notifications" && profile?.role !== "ADMIN") return;
+    if (nextSection === "trips") setTripView("dispatches");
     setActiveId(nextSection);
     onNavigate(nextSection);
   };
@@ -510,6 +521,10 @@ export default function DashboardPage({
   }
 
   const isClientWebsite = workspace === "Client Website";
+  const showOverview = !isClientWebsite && (
+    activeId === "overview" ||
+    (activeId === "notifications" && profile?.role !== "ADMIN")
+  );
   const currentNavEntries = isClientWebsite ? clientNavEntries : navEntries;
   const currentActiveId = isClientWebsite ? clientTab : activeId;
 
@@ -586,7 +601,21 @@ export default function DashboardPage({
 
         <main className="min-h-[calc(100vh-5.5rem)] w-full px-3 pb-6 pt-4 sm:px-5 lg:px-7">
           <div className="mx-auto min-h-[calc(100vh-7rem)] w-full max-w-[1680px] rounded-[1.75rem] p-4 sm:p-5 lg:p-6">
-            <div key={`${workspace}:${activeId}:${clientTab}`} className="page-enter">
+            <div
+              hidden={!showOverview}
+              className={showOverview ? "page-enter" : "hidden"}
+            >
+              <h1 className="sr-only">Operations overview</h1>
+              <OverviewView
+                key={profile?.id ?? "no-profile"}
+                active={showOverview}
+                onOpenTrip={(tripId) =>
+                  setActiveId(`trip-detail:${tripId}:overview`)
+                }
+                onMetricNavigate={handleMetricNavigate}
+              />
+            </div>
+            <div key={`${workspace}:${activeId}:${clientTab}`} className="page-enter" hidden={showOverview}>
               {isClientWebsite ? (
                 <ClientWebsiteWorkspace
                   userName={displayName}
@@ -610,16 +639,7 @@ export default function DashboardPage({
                   }}
                 />
               ) : activeId === "overview" ? (
-                <div className="w-full">
-                  <h1 className="sr-only">Operations overview</h1>
-                  <OverviewView
-                    sidebarExpanded={!sidebarCollapsed}
-                    onOpenTrip={(tripId) =>
-                      setActiveId(`trip-detail:${tripId}:overview`)
-                    }
-                    onMetricNavigate={handleMetricNavigate}
-                  />
-                </div>
+                null
               ) : activeId === "notifications" ? (
                 profile?.role === "ADMIN" ? (
                   <NotificationsView
@@ -630,25 +650,12 @@ export default function DashboardPage({
                     onNotificationRead={markNotificationReadLocally}
                     onOpen={handleNotificationOpen}
                   />
-                ) : (
-                  <OverviewView
-                    sidebarExpanded={!sidebarCollapsed}
-                    onOpenTrip={(tripId) =>
-                      setActiveId(`trip-detail:${tripId}:overview`)
-                    }
-                    onMetricNavigate={handleMetricNavigate}
-                  />
-                )
+                ) : null
               ) : activeId === "trips" ? (
                 <ResourceView
                   id={tripView}
                   data={filteredData}
                   onNavigate={handleNavigate}
-                  tripScope={tripView}
-                  onTripScopeChange={(next) => {
-                    setTripView(next);
-                    setActiveId("trips");
-                  }}
                 />
               ) : activeId === "truckers" ? (
                 <ResourceView

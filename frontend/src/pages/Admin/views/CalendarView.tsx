@@ -3,6 +3,7 @@ import { CalendarDays, ChevronLeft, ChevronRight, X } from "lucide-react";
 import { useAuth } from "../../../context/AuthContext";
 import { tableUi } from "../../../components/admin/dashboardStyles";
 import { fetchCalendarEvents } from "../../../services/master-data.service";
+import { subscribeToAdminRealtime } from "../../../services/realtime.service";
 
 function dateKey(date: Date) { return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`; }
 function monthLabel(date: Date) { return new Intl.DateTimeFormat("en", { month: "long", year: "numeric" }).format(date); }
@@ -17,6 +18,7 @@ export default function CalendarView() {
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [refreshVersion, setRefreshVersion] = useState(0);
   const from = dateKey(new Date(month.getFullYear(), month.getMonth(), 1));
   const until = dateKey(new Date(month.getFullYear(), month.getMonth() + 1, 1));
 
@@ -27,7 +29,23 @@ export default function CalendarView() {
       .catch((cause) => { if (active) setError(cause instanceof Error ? cause.message : "Unable to load calendar."); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [accessToken, from, until]);
+  }, [accessToken, from, until, refreshVersion]);
+
+  useEffect(() => subscribeToAdminRealtime((event) => {
+    if (event.kind === "resume") {
+      setRefreshVersion((version) => version + 1);
+      return;
+    }
+    const table = event.kind === "change" ? event.payload.table : event.table;
+    if (["trips", "trip_events", "trip_stops", "store_calls", "customer_stores", "warehouses"].includes(table ?? "")) {
+      setRefreshVersion((version) => version + 1);
+    }
+  }), []);
+
+  useEffect(() => subscribeToAdminRealtime((event) => {
+    const table = event.kind === "change" ? event.payload.table : event.kind === "recovered" ? event.table : null;
+    if (table === "trips" || table === "trip_events") setRefreshVersion((version) => version + 1);
+  }), []);
 
   useEffect(() => {
     if (!selectedDay) return;

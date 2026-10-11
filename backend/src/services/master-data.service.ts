@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "../config/supabase.js";
+import { buildIlikeOrFilter } from "../utils/postgrest-search.js";
 
 export type MasterDataResource = "warehouses" | "trucks" | "stores" | "store-contacts" | "products";
 
@@ -57,18 +58,14 @@ function getConfig(resource: string) {
   return configs[resource as MasterDataResource];
 }
 
-function normalizeQueryText(value: unknown) {
-  return typeof value === "string" ? value.trim().replace(/[%,()]/g, " ").replace(/\s+/g, " ").slice(0, 100) : "";
-}
-
 export async function listMasterData(resource: string, query: Record<string, unknown>) {
   const config = getConfig(resource);
   const page = Math.max(1, Math.floor(Number(query.page) || 1));
   const limit = Math.min(100, Math.max(1, Math.floor(Number(query.limit) || 50)));
   const from = (page - 1) * limit;
   let builder = (supabaseAdmin.from(config.table) as any).select(config.select, { count: "exact" }).order(config.orderBy, { ascending: true }).range(from, from + limit - 1);
-  const search = normalizeQueryText(query.search);
-  if (search) builder = builder.or(config.search.map((field) => `${field}.ilike.%${search}%`).join(","));
+  const searchFilter = buildIlikeOrFilter(config.search, query.search);
+  if (searchFilter) builder = builder.or(searchFilter);
   if (resource === "store-contacts" && typeof query.store_id === "string" && uuidPattern.test(query.store_id)) builder = builder.eq("store_id", query.store_id);
   const { data, error, count } = await builder;
   if (error) {

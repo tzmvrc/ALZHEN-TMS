@@ -1,4 +1,4 @@
-import type { ApiResponse } from "./api.service";
+import { apiGetCached, getAppSessionHeaders, handleSessionExpiredResponse, invalidateApiCache, type ApiResponse } from "./api.service";
 
 export type TripImage = {
   id: string;
@@ -12,6 +12,11 @@ export type TripImage = {
 };
 
 const apiBaseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:5000/api";
+const TRIP_IMAGE_CACHE_TTL_MS = 45_000;
+
+export function invalidateTripImagesCache(tripId: string) {
+  invalidateApiCache(`/trips/${encodeURIComponent(tripId)}/images`);
+}
 
 async function imageRequest<T>(
   path: string,
@@ -22,21 +27,31 @@ async function imageRequest<T>(
     ...init,
     headers: {
       Authorization: `Bearer ${token}`,
+      ...getAppSessionHeaders(),
       ...(init?.headers ?? {}),
     },
   });
   const payload = await response.json().catch(() => null) as ApiResponse<T> | null;
+  if (!response.ok) await handleSessionExpiredResponse(response.status, payload, true);
   if (!response.ok || !payload?.success || payload.data === undefined) {
     throw new Error(payload?.message ?? "Trip photo request failed.");
   }
   return payload.data;
 }
 
-export const fetchTripImages = (token: string, tripId: string) =>
-  imageRequest<TripImage[]>(`/trips/${encodeURIComponent(tripId)}/images`, token);
+export async function fetchTripImages(token: string, tripId: string): Promise<TripImage[]> {
+  const endpoint = `/trips/${encodeURIComponent(tripId)}/images`;
+  const response = await apiGetCached<ApiResponse<TripImage[]>>(
+    endpoint,
+    token,
+    TRIP_IMAGE_CACHE_TTL_MS,
+  );
+  if (!response.success || !response.data) throw new Error(response.message ?? "Unable to load trip photos.");
+  return response.data;
+}
 
-export const uploadTripImage = (token: string, tripId: string, file: File) =>
-  imageRequest<TripImage>(`/trips/${encodeURIComponent(tripId)}/images`, token, {
+export async function uploadTripImage(token: string, tripId: string, file: File) {
+  const result = await imageRequest<TripImage>(`/trips/${encodeURIComponent(tripId)}/images`, token, {
     method: "POST",
     headers: {
       "Content-Type": file.type,
@@ -44,6 +59,9 @@ export const uploadTripImage = (token: string, tripId: string, file: File) =>
     },
     body: file,
   });
+  invalidateTripImagesCache(tripId);
+  return result;
+}
 
 export const deleteTripImage = (
   token: string,
@@ -54,4 +72,7 @@ export const deleteTripImage = (
     `/trips/${encodeURIComponent(tripId)}/images/${encodeURIComponent(imageId)}`,
     token,
     { method: "DELETE" },
-  );
+  ).then((result) => {
+    invalidateTripImagesCache(tripId);
+    return result;
+  });

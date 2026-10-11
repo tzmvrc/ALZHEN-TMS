@@ -214,12 +214,12 @@ export default function ReportDropdownEditor({
               </form>
             ) : (
               <>
-                <button type="button" role="option" aria-selected={option.value === value} onMouseDown={(event) => event.preventDefault()} onMouseEnter={() => setActiveIndex(index)} onClick={() => { onSelect(option.value); close(false); requestAnimationFrame(() => triggerRef.current?.focus()); }} className="flex min-h-12 min-w-0 flex-1 items-center justify-between gap-3 px-3 py-2 text-left text-sm text-slate-700">
+                <button type="button" role="option" aria-selected={option.value === value} onMouseDown={(event) => event.preventDefault()} onMouseEnter={() => setActiveIndex(index)} onClick={() => { onSelect(option.value); close(false); requestAnimationFrame(() => triggerRef.current?.focus()); }} className="flex min-h-10 min-w-0 flex-1 items-center justify-between gap-2 px-2.5 py-1.5 text-left text-xs text-slate-700">
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-bold text-slate-800">{option.label}</span>
-                    <span className="block truncate text-[11px] font-normal text-slate-500">{option.value}</span>
+                    <span className="block truncate text-xs font-bold text-slate-800">{option.label}</span>
+                    <span className="block truncate text-[10px] font-normal text-slate-500">{option.value}</span>
                   </span>
-                  {option.value === value && <Check aria-hidden="true" className="h-4 w-4 shrink-0 text-emerald-700" />}
+                  {option.value === value && <Check aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-emerald-700" />}
                 </button>
                 {canManageOptions && managedOption && onEditOption && (
                   <button type="button" title={`Edit ${option.label} display label`} aria-label={`Edit ${option.label} display label`} onMouseDown={(event) => event.preventDefault()} onClick={(event) => { event.stopPropagation(); setEditingOptionId(managedOption.id); setEditingLabel(managedOption.display_label); setManagementError(""); }} className="rounded p-1 text-slate-400 opacity-0 transition hover:bg-white hover:text-[#2678b9] focus:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9] group-hover:opacity-100"><Pencil aria-hidden="true" className="h-3.5 w-3.5" /></button>
@@ -252,13 +252,13 @@ export default function ReportDropdownEditor({
     <>
       <div ref={rootRef} className="relative min-w-[150px] max-w-full">
         {open ? (
-          <input ref={inputRef} type="text" role="combobox" aria-label={`Search ${label} options`} aria-autocomplete="list" aria-expanded="true" aria-controls={listId} autoComplete="off" disabled={disabled || busy} value={query} onChange={(event) => { setQuery(event.target.value); setActiveIndex(0); }} onKeyDown={handleKeyDown} placeholder={(displayValue ?? value) ? `Current: ${displayValue ?? value}` : `Search ${label.toLowerCase()}`} className="w-full rounded-lg border border-amber-300 bg-white px-3 py-2 pr-9 text-sm font-medium text-slate-800 shadow-sm outline-none transition focus:border-amber-500 focus:ring-2 focus:ring-amber-100 disabled:opacity-60" />
+          <input ref={inputRef} type="text" role="combobox" aria-label={`Search ${label} options`} aria-autocomplete="list" aria-expanded="true" aria-controls={listId} autoComplete="off" disabled={disabled || busy} value={query} onChange={(event) => { setQuery(event.target.value); setActiveIndex(0); }} onKeyDown={handleKeyDown} placeholder={(displayValue ?? value) ? `Current: ${displayValue ?? value}` : `Search ${label.toLowerCase()}`} className="w-full rounded-md border border-amber-300 bg-white px-2.5 py-1.5 pr-8 text-xs font-medium text-slate-800 shadow-sm outline-none transition focus:border-amber-500 focus:ring-2 focus:ring-amber-100 disabled:opacity-60" />
         ) : (
-          <button ref={triggerRef} type="button" disabled={disabled} onBlur={() => onCommitBlur?.()} onClick={() => { setQuery(""); setActiveIndex(Math.max(0, options.findIndex((option) => option.value === value))); setOpen(true); }} className="flex w-full items-center justify-between gap-2 rounded-lg border border-amber-300 bg-white px-3 py-2 text-left text-sm font-medium text-slate-800 shadow-sm hover:bg-amber-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 disabled:opacity-60">
-            <span className="truncate">{(displayValue ?? value) || `Choose ${label.toLowerCase()}`}</span><ChevronDown aria-hidden="true" className="h-4 w-4 shrink-0 text-amber-700" />
+          <button ref={triggerRef} type="button" disabled={disabled} onBlur={() => onCommitBlur?.()} onClick={() => { setQuery(""); setActiveIndex(Math.max(0, options.findIndex((option) => option.value === value))); setOpen(true); }} className="flex w-full items-center justify-between gap-1.5 rounded-md border border-amber-300 bg-white px-2.5 py-1.5 text-left text-xs font-medium text-slate-800 shadow-sm hover:bg-amber-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 disabled:opacity-60">
+            <span className="truncate">{(displayValue ?? value) || `Choose ${label.toLowerCase()}`}</span><ChevronDown aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-amber-700" />
           </button>
         )}
-        {open && <ChevronDown aria-hidden="true" className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-amber-700" />}
+        {open && <ChevronDown aria-hidden="true" className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-amber-700" />}
       </div>
       {popover && typeof document !== "undefined" && createPortal(popover, document.body)}
     </>

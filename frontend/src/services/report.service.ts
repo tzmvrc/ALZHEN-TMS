@@ -1,4 +1,4 @@
-import { apiGet, apiGetCached, type ApiResponse } from "./api.service";
+import { apiGet, apiGetCached, invalidateApiCache, type ApiResponse } from "./api.service";
 import type { DropdownField } from "./dropdown-option.service";
 
 export const REPORTS = {
@@ -39,6 +39,114 @@ type ReportData<T> = {
   rows: T[];
   pagination: Pagination;
 };
+
+export type ReportPageOptions = {
+  page: number;
+  limit: number;
+  search: string;
+  sortBy: string;
+  sortOrder: "asc" | "desc";
+  filters: Record<string, string>;
+};
+
+export type ReportPageBundle = {
+  columns: ReportColumn[];
+  rows: ReportRow[];
+  pagination: Pagination;
+};
+
+export const REPORT_PAGE_CACHE_TTL_MS = 90_000;
+export const REPORT_PAGE_STALE_TTL_MS = 5 * 60_000;
+const reportPageCache = new Map<string, { reportKey: ReportKey; token: string; expiresAt: number; staleUntil: number; value: ReportPageBundle }>();
+const reportPageRequests = new Map<string, Promise<ReportPageBundle>>();
+let reportPageCacheGeneration = 0;
+
+function reportPageCacheKey(reportKey: ReportKey, token: string, options: ReportPageOptions) {
+  return JSON.stringify([
+    token,
+    reportKey,
+    options.page,
+    options.limit,
+    options.search.trim(),
+    options.sortBy,
+    options.sortOrder,
+    Object.fromEntries(Object.entries(options.filters).sort(([left], [right]) => left.localeCompare(right))),
+  ]);
+}
+
+export function getCachedReportPage(
+  reportKey: ReportKey,
+  token: string,
+  options: ReportPageOptions,
+): ReportPageBundle | null {
+  const key = reportPageCacheKey(reportKey, token, options);
+  const entry = reportPageCache.get(key);
+  if (!entry) return null;
+  return entry.expiresAt > Date.now() ? entry.value : null;
+}
+
+export function getStaleReportPage(
+  reportKey: ReportKey,
+  token: string,
+  options: ReportPageOptions,
+): ReportPageBundle | null {
+  const key = reportPageCacheKey(reportKey, token, options);
+  const entry = reportPageCache.get(key);
+  if (!entry) return null;
+  if (entry.staleUntil <= Date.now()) {
+    reportPageCache.delete(key);
+    return null;
+  }
+  return entry.value;
+}
+
+export function clearReportPageCache() {
+  reportPageCacheGeneration += 1;
+  reportPageCache.clear();
+  reportPageRequests.clear();
+}
+
+export function invalidateReportPageCache(reportKey?: ReportKey) {
+  reportPageCacheGeneration += 1;
+  for (const [key, entry] of reportPageCache) {
+    if (!reportKey || entry.reportKey === reportKey) reportPageCache.delete(key);
+  }
+  for (const key of reportPageRequests.keys()) {
+    if (!reportKey || key.includes(`"${reportKey}"`)) reportPageRequests.delete(key);
+  }
+}
+
+export function setCachedReportPage(
+  reportKey: ReportKey,
+  token: string,
+  options: ReportPageOptions,
+  value: ReportPageBundle,
+) {
+  reportPageCache.set(reportPageCacheKey(reportKey, token, options), {
+    reportKey,
+    token,
+    expiresAt: Date.now() + REPORT_PAGE_CACHE_TTL_MS,
+    staleUntil: Date.now() + REPORT_PAGE_STALE_TTL_MS,
+    value,
+  });
+}
+
+export function updateCachedReportPages(
+  reportKey: ReportKey,
+  token: string,
+  update: (bundle: ReportPageBundle) => ReportPageBundle,
+) {
+  for (const [key, entry] of reportPageCache) {
+    if (entry.reportKey === reportKey && entry.token === token) {
+      reportPageCache.set(key, { ...entry, value: update(entry.value) });
+    }
+  }
+}
+
+export function invalidateReportData(reportKey: ReportKey) {
+  invalidateApiCache(REPORTS[reportKey].endpoint);
+  invalidateReportPageCache(reportKey);
+}
 
 const sortFields: Record<ReportKey, string[]> = {
   combined: [
@@ -151,25 +259,19 @@ function unwrap<T>(response: ApiResponse<T>, message: string): T {
 export async function fetchReportColumns(
   reportKey: ReportKey,
   token: string,
+  fresh = false,
 ): Promise<ReportColumn[]> {
-  const response = await apiGetCached<
-    ApiResponse<{ report: string; columns: ReportColumn[] }>
-  >(`/reports/${reportKey}/columns`, token);
+  const endpoint = `/reports/${reportKey}/columns`;
+  const response = fresh
+    ? await apiGet<ApiResponse<{ report: string; columns: ReportColumn[] }>>(endpoint, token)
+    : await apiGetCached<ApiResponse<{ report: string; columns: ReportColumn[] }>>(endpoint, token, REPORT_PAGE_CACHE_TTL_MS);
   return unwrap(response, "Unable to load report columns.").columns;
 }
 
 export async function fetchReportRows(
   reportKey: ReportKey,
   token: string,
-  options: {
-    page: number;
-    limit: number;
-    search: string;
-    sortBy: string;
-    sortOrder: "asc" | "desc";
-    filters: Record<string, string>;
-    fresh?: boolean;
-  },
+  options: ReportPageOptions & { fresh?: boolean },
 ): Promise<ReportData<ReportRow>> {
   const params = new URLSearchParams({
     page: String(options.page),
@@ -187,8 +289,45 @@ export async function fetchReportRows(
   const endpoint = `${REPORTS[reportKey].endpoint}?${params.toString()}`;
   const response = options.fresh
     ? await apiGet<ApiResponse<ReportData<ReportRow>>>(endpoint, token)
-    : await apiGetCached<ApiResponse<ReportData<ReportRow>>>(endpoint, token);
+    : await apiGetCached<ApiResponse<ReportData<ReportRow>>>(endpoint, token, REPORT_PAGE_CACHE_TTL_MS);
   return unwrap(response, "Unable to load report rows.");
+}
+
+/** Shared by login preloading and ReportDataView so both warm and consume the same page cache. */
+export async function fetchReportPage(
+  reportKey: ReportKey,
+  token: string,
+  options: ReportPageOptions,
+  refresh = false,
+): Promise<ReportPageBundle> {
+  const key = reportPageCacheKey(reportKey, token, options);
+  const cached = getCachedReportPage(reportKey, token, options);
+  if (cached && !refresh) return cached;
+  const pending = reportPageRequests.get(key);
+  if (pending) return pending;
+
+  const requestGeneration = reportPageCacheGeneration;
+  const request = Promise.all([
+    fetchReportColumns(reportKey, token, refresh),
+    fetchReportRows(reportKey, token, { ...options, fresh: refresh }),
+  ]).then(([columns, result]) => {
+    const bundle = { columns, rows: result.rows, pagination: result.pagination };
+    if (requestGeneration === reportPageCacheGeneration) {
+      const now = Date.now();
+      reportPageCache.set(key, {
+        reportKey,
+        token,
+        expiresAt: now + REPORT_PAGE_CACHE_TTL_MS,
+        staleUntil: now + REPORT_PAGE_STALE_TTL_MS,
+        value: bundle,
+      });
+    }
+    return bundle;
+  }).finally(() => {
+    if (reportPageRequests.get(key) === request) reportPageRequests.delete(key);
+  });
+  reportPageRequests.set(key, request);
+  return request;
 }
 
 export function getSortableFields(reportKey: ReportKey): string[] {

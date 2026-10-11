@@ -17,9 +17,11 @@ export default function AdminRoute({ children }: { children: ReactNode }) {
     return <Navigate to="/login" replace />;
   }
 
-  const isAdminOnly = profile?.role === "ADMIN" && profile.is_admin === true;
+  const canAccessDashboard =
+    (profile?.role === "ADMIN" && profile.is_admin === true) ||
+    profile?.role === "STAFF";
 
-  if (!isAdminOnly) {
+  if (!canAccessDashboard) {
     return (
       <Navigate to={profile?.role === "TRUCKER" ? "/trucker" : "/"} replace />
     );

@@ -30,7 +30,7 @@ const AUTH_SESSION_EXPIRED_PATTERNS = [
 const API_BASE_URL =
   import.meta.env.VITE_API_URL ?? "http://localhost:5000/api";
 
-type SessionExpiredHandler = () => Promise<void> | void;
+type SessionExpiredHandler = (reason?: string) => Promise<void> | void;
 
 let sessionExpiredHandler: SessionExpiredHandler | null = null;
 let sessionExpiredRequestInFlight = false;
@@ -43,7 +43,7 @@ export function unregisterSessionExpiredHandler() {
   sessionExpiredHandler = null;
 }
 
-async function triggerSessionExpired() {
+async function triggerSessionExpired(reason?: string) {
   if (sessionExpiredRequestInFlight) {
     return;
   }
@@ -52,10 +52,44 @@ async function triggerSessionExpired() {
 
   try {
     if (sessionExpiredHandler) {
-      await sessionExpiredHandler();
+      await sessionExpiredHandler(reason);
     }
   } finally {
     sessionExpiredRequestInFlight = false;
+  }
+}
+
+const APP_SESSION_STORAGE_KEY = "alzhen.app-session.v1";
+let memoryAppSessionId: string | null = null;
+
+function readAppSessionId(): string | null {
+  try {
+    return window.localStorage.getItem(APP_SESSION_STORAGE_KEY) ?? memoryAppSessionId;
+  } catch {
+    return memoryAppSessionId;
+  }
+}
+
+export function getAppSessionHeaders(): Record<string, string> {
+  const sessionId = readAppSessionId();
+  return sessionId ? { "X-App-Session": sessionId } : {};
+}
+
+export function setAppSessionId(sessionId: string) {
+  memoryAppSessionId = sessionId;
+  try {
+    window.localStorage.setItem(APP_SESSION_STORAGE_KEY, sessionId);
+  } catch {
+    throw new Error("This browser cannot retain the secure sign-in session. Enable site storage and sign in again.");
+  }
+}
+
+export function clearAppSessionId() {
+  memoryAppSessionId = null;
+  try {
+    window.localStorage.removeItem(APP_SESSION_STORAGE_KEY);
+  } catch {
+    // Session cleanup must still clear in-memory auth state when storage is unavailable.
   }
 }
 
@@ -82,6 +116,17 @@ function hasExpiredSessionSignal(status: number, payload: unknown): boolean {
   );
 }
 
+export async function handleSessionExpiredResponse(
+  status: number,
+  payload: unknown,
+  authenticatedRequest = true,
+): Promise<boolean> {
+  if (!authenticatedRequest || !hasExpiredSessionSignal(status, payload)) return false;
+  const reason = (payload as { code?: unknown } | null)?.code;
+  await triggerSessionExpired(typeof reason === "string" ? reason : undefined);
+  return true;
+}
+
 async function request<T>(
   endpoint: string,
   options: RequestInit = {},
@@ -91,6 +136,9 @@ async function request<T>(
 
   if (token) {
     headers.set("Authorization", `Bearer ${token}`);
+    for (const [name, value] of Object.entries(getAppSessionHeaders())) {
+      headers.set(name, value);
+    }
   }
 
   if (
@@ -108,14 +156,14 @@ async function request<T>(
 
   const payload = (await response.json().catch(() => null)) as {
     success?: boolean;
+    code?: string;
     message?: string;
     data?: T;
   } | null;
 
   if (!response.ok) {
-    if (hasExpiredSessionSignal(response.status, payload)) {
-      await triggerSessionExpired();
-      throw new ApiError("Your session has expired. Please log in again.", 401);
+    if (await handleSessionExpiredResponse(response.status, payload, Boolean(token))) {
+      throw new ApiError(payload?.message ?? "Your session has expired. Please log in again.", 401);
     }
 
     if (response.status === 401) {
@@ -153,18 +201,24 @@ async function request<T>(
 }
 
 const responseCache = new Map<string, { expiresAt: number; value: unknown }>();
+const cachedRequests = new Map<string, Promise<unknown>>();
+const cacheRevisions = new Map<string, number>();
 
 export function invalidateApiCache(prefix?: string) {
-  if (!prefix) {
-    responseCache.clear();
-    return;
-  }
-
-  for (const key of [...responseCache.keys()]) {
-    if (key.includes(prefix)) {
+  const keys = new Set([...responseCache.keys(), ...cachedRequests.keys()]);
+  for (const key of keys) {
+    if (!prefix || key.includes(prefix)) {
+      const hasPendingRequest = cachedRequests.has(key);
       responseCache.delete(key);
+      cachedRequests.delete(key);
+      if (hasPendingRequest) cacheRevisions.set(key, (cacheRevisions.get(key) ?? 0) + 1);
+      else cacheRevisions.delete(key);
     }
   }
+}
+
+export function clearApiCache() {
+  invalidateApiCache();
 }
 
 export async function apiGet<T>(endpoint: string, token?: string): Promise<T> {
@@ -184,9 +238,27 @@ export async function apiGetCached<T>(
     return cached.value as T;
   }
 
-  const value = await request<T>(endpoint, { method: "GET" }, token);
-  responseCache.set(cacheKey, { expiresAt: now + ttlMs, value });
-  return value;
+  const pending = cachedRequests.get(cacheKey);
+  if (pending) return pending as Promise<T>;
+
+  const requestRevision = cacheRevisions.get(cacheKey) ?? 0;
+  const requestPromise = request<T>(endpoint, { method: "GET" }, token)
+    .then((value) => {
+      if (requestRevision === (cacheRevisions.get(cacheKey) ?? 0)) {
+        responseCache.set(cacheKey, { expiresAt: Date.now() + ttlMs, value });
+      }
+      return value;
+    })
+    .finally(() => {
+      if (cachedRequests.get(cacheKey) === requestPromise) cachedRequests.delete(cacheKey);
+      if (
+        !cachedRequests.has(cacheKey) &&
+        !responseCache.has(cacheKey) &&
+        requestRevision !== (cacheRevisions.get(cacheKey) ?? 0)
+      ) cacheRevisions.delete(cacheKey);
+    });
+  cachedRequests.set(cacheKey, requestPromise);
+  return requestPromise;
 }
 
 export async function apiPost<T>(
@@ -229,6 +301,21 @@ export async function apiPut<T>(
     {
       method: "PUT",
       body: JSON.stringify(body),
+    },
+    token,
+  );
+}
+
+export async function apiDelete<T>(
+  endpoint: string,
+  token?: string,
+  body?: unknown,
+): Promise<T> {
+  return request<T>(
+    endpoint,
+    {
+      method: "DELETE",
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     },
     token,
   );

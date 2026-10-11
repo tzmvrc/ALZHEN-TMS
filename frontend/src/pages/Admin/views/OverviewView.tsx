@@ -1,5 +1,5 @@
 // src/pages/Admin/views/OverviewView.tsx
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   CheckCircle2,
   Clock,
@@ -12,18 +12,14 @@ import { useRequests } from "../../../components/admin/requestsStore";
 import type { DispatchRecord } from "../../../types/dashboard";
 import { useAuth } from "../../../context/AuthContext";
 import { ApiError } from "../../../services/api.service";
-import {
-  fetchTripEvents,
-  fetchTrips,
-  type TripEvent,
-  type TripPage,
-} from "../../../services/trip.service";
+import { fetchTripEvents, fetchTrips, type TripEvent, type TripPage } from "../../../services/trip.service";
 import { fetchTripImages } from "../../../services/trip-image.service";
+import { subscribeToAdminRealtime } from "../../../services/realtime.service";
 import LiveTripMap, {
   type TripEventTrack,
 } from "../../../components/admin/LiveTripMap";
 import {
-  fetchReportRows,
+  fetchReportPage,
   type ReportRow,
 } from "../../../services/report.service";
 import {
@@ -314,12 +310,46 @@ function KpiCard({
 
 // --- Main Component ---
 
+function OverviewSkeleton() {
+  const block = "animate-pulse rounded-2xl bg-slate-200/80";
+  return (
+    <div aria-label="Loading operations overview" aria-busy="true" className="w-full space-y-4">
+      <header className="flex min-h-[3.5rem] items-start justify-between">
+        <div className="space-y-2">
+          <div className={`${block} h-8 w-64 max-w-[70vw]`} />
+          <div className={`${block} h-4 w-40`} />
+        </div>
+        <div className={`${block} h-8 w-8 rounded-full`} />
+      </header>
+      <section aria-hidden="true" className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {Array.from({ length: 4 }, (_, index) => <div key={index} className="h-[126px] rounded-2xl border border-slate-200 bg-white p-4"><div className={`${block} h-3 w-24`} /><div className={`${block} mt-4 h-8 w-20`} /><div className={`${block} mt-3 h-3 w-32`} /></div>)}
+      </section>
+      <div aria-hidden="true" className={`${block} h-[116px] w-full`} />
+      <section aria-hidden="true" className="grid grid-cols-1 gap-4 xl:grid-cols-12 xl:grid-rows-[340px_430px]">
+        <div className={`${block} min-h-[260px] xl:col-span-3`} />
+        <div className={`${block} min-h-[260px] xl:col-span-5`} />
+        <div className={`${block} min-h-[360px] xl:col-span-4 xl:row-span-2`} />
+        <div className={`${block} min-h-[300px] xl:col-span-3`} />
+        <div className={`${block} min-h-[300px] xl:col-span-5`} />
+      </section>
+      <div aria-hidden="true" className={`${block} min-h-[360px] w-full`} />
+      <section aria-hidden="true" className="grid grid-cols-1 gap-4 xl:grid-cols-12">
+        <div className={`${block} min-h-[300px] xl:col-span-7`} />
+        <div className={`${block} min-h-[300px] xl:col-span-5`} />
+      </section>
+      <span className="sr-only">Loading dashboard data</span>
+    </div>
+  );
+}
+
 export default function OverviewView({
   onOpenTrip,
   onMetricNavigate,
+  active = true,
 }: {
   onOpenTrip?: (tripId: string) => void;
   onMetricNavigate?: (sectionId: string) => void;
+  active?: boolean;
   /** Still accepted so existing callers compile; the page shell now handles the sidebar offset. */
   sidebarExpanded?: boolean;
 }) {
@@ -334,6 +364,7 @@ export default function OverviewView({
   } | null>(null);
   const [reloadCount, setReloadCount] = useState(0);
   const [focusedTripId, setFocusedTripId] = useState<string | null>(null);
+  const inactiveChanges = useRef(false);
   const requestKey = `${accessToken ?? "no-session"}:${reloadCount}`;
 
   useEffect(() => {
@@ -353,7 +384,7 @@ export default function OverviewView({
         let bookingRows: ReportRow[] = [];
         let bookingUnavailable = false;
         try {
-          const bookingPage = await fetchReportRows(
+          const bookingPage = await fetchReportPage(
             "trip-booking",
             accessToken,
             {
@@ -462,17 +493,57 @@ export default function OverviewView({
   }, [accessToken, navigate, refreshSession, requestKey]);
 
   useEffect(() => {
-    const interval = window.setInterval(
-      () => setReloadCount((count) => count + 1),
-      60_000,
+    if (!accessToken) return;
+    const tripIds = (snapshot?.recent ?? []).flatMap((trip) =>
+      typeof trip.id === "string" && trip.id.length > 0 ? [trip.id] : [],
     );
-    return () => window.clearInterval(interval);
-  }, []);
+    const tripIdSet = new Set(tripIds);
+    let reloadTimer: number | null = null;
+    const scheduleReload = () => {
+      if (reloadTimer !== null) window.clearTimeout(reloadTimer);
+      reloadTimer = window.setTimeout(() => {
+        reloadTimer = null;
+        setReloadCount((count) => count + 1);
+      }, 250);
+    };
+    const relevant = (table: string, payload?: { new?: Record<string, unknown> | null; old?: Record<string, unknown> | null }) => {
+      if (table === "trips") return true;
+      if (table !== "trip_events" && table !== "trip_images") return false;
+      return [payload?.new?.trip_id, payload?.old?.trip_id].some(
+        (id) => typeof id === "string" && tripIdSet.has(id),
+      );
+    };
+    const unsubscribe = subscribeToAdminRealtime((event) => {
+      if (event.kind === "resume") {
+        if (active && inactiveChanges.current) {
+          inactiveChanges.current = false;
+          scheduleReload();
+        }
+        return;
+      }
+      if (event.kind === "recovered") {
+        if (!relevant(event.table)) return;
+      } else if (!relevant(event.payload.table, event.payload)) return;
+      if (active) scheduleReload();
+      else inactiveChanges.current = true;
+    });
+    if (active && inactiveChanges.current) {
+      inactiveChanges.current = false;
+      scheduleReload();
+    }
+    const interval = active ? window.setInterval(scheduleReload, 60_000) : undefined;
+    return () => {
+      unsubscribe();
+      if (interval !== undefined) window.clearInterval(interval);
+      if (reloadTimer !== null) window.clearTimeout(reloadTimer);
+    };
+  }, [accessToken, active, snapshot?.recent]);
 
   const isLoading = Boolean(accessToken) && loadedKey !== requestKey;
+  const isInitialLoading = isLoading && !snapshot;
   const error = failure?.key === requestKey ? failure.message : null;
 
-  if (error) {
+  if (error && !snapshot) {
     return (
       <div className="flex min-h-64 flex-col items-center justify-center gap-3 rounded-3xl border border-slate-200 bg-white p-6 text-center">
         <p role="alert" className="text-sm text-rose-700">
@@ -488,6 +559,8 @@ export default function OverviewView({
       </div>
     );
   }
+
+  if (isInitialLoading) return <OverviewSkeleton />;
 
   // --- Derived Data (kept from original) ---
   const totalTrips = snapshot?.total ?? 0;
@@ -628,9 +701,11 @@ export default function OverviewView({
               >
                 <RefreshCw aria-hidden="true" className="h-3.5 w-3.5" />
               </button>
+              {isLoading && snapshot && <span role="status" className="text-xs">Refreshing…</span>}
             </div>
           </div>
         </header>
+        {error && snapshot && <div role="status" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">Dashboard refresh failed: {error} <button type="button" className="ml-2 underline" onClick={() => setReloadCount((count) => count + 1)}>Retry</button></div>}
 
         <div className="space-y-4">
         {/* Top row: the 4 stat cards only */}
@@ -733,7 +808,7 @@ export default function OverviewView({
           flows={flows}
           regionTrips={regionTrips}
           unlocatedTrips={unlocatedTrips}
-          isLoading={isLoading}
+          isLoading={isInitialLoading}
         />
 
         {/* Bottom row: payables beside recent activity */}
