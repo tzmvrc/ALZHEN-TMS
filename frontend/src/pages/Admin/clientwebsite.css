@@ -520,8 +520,8 @@
   gap: 18px;
   width: 100%;
   min-width: 0;
-  height: calc(100vh - 150px);
-  height: calc(100dvh - 150px);
+  height: calc(100vh - 87px);
+  height: calc(100dvh - 87px);
   min-height: 420px;
 }
 .cw-preview-header {
@@ -582,11 +582,13 @@
 }
 .cw-preview iframe {
   display: block;
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   width: calc(100% - (var(--cw-gutter) * 2));
   max-width: 100%;
   min-width: 0;
   min-height: 0;
+  height: calc(100vh - 200px);
+  height: calc(100dvh - 200px);
   margin: 0 var(--cw-gutter);
   border: 1px solid #d5e0e9;
   border-radius: 16px;

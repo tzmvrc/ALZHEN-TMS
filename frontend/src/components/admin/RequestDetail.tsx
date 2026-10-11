@@ -5,8 +5,8 @@ import {
   ChevronDown,
   ChevronRight,
   MessageSquare,
+  Package,
   Send,
-  Truck,
   X,
 } from "lucide-react";
 import type { DispatchRequest, RequestStatus } from "../../types/requests";
@@ -16,7 +16,9 @@ import { senderInitials } from "./requestFormat";
 /* ---------- helpers ---------- */
 function formatDate(iso?: string) {
   if (!iso) return "—";
-  return new Date(iso).toLocaleDateString("en-US", {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
     year: "numeric",
@@ -53,9 +55,24 @@ const fieldClass =
 function MetaCell({ label, value }: { label: string; value?: string }) {
   return (
     <div className="min-w-0 rounded-2xl bg-[#f2f6fa] px-3.5 py-2.5">
-      <p className="text-[10px] font-medium text-slate-400">{label}</p>
+      <p className="text-[10px] font-medium uppercase tracking-wide text-slate-400">
+        {label}
+      </p>
       <p className="mt-0.5 truncate text-[13px] font-semibold text-[#0b2341]">
         {value || "—"}
+      </p>
+    </div>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="text-center">
+      <p className="text-lg font-semibold leading-none tabular-nums text-[#0b2341]">
+        {value}
+      </p>
+      <p className="mt-1 text-[10px] font-medium uppercase tracking-wide text-slate-400">
+        {label}
       </p>
     </div>
   );
@@ -64,32 +81,29 @@ function MetaCell({ label, value }: { label: string; value?: string }) {
 /* ---------- main ---------- */
 export default function RequestDetail({
   request,
+  onClose,
   onApprove,
   onDecline,
   onSendMessage,
 }: {
   request: DispatchRequest;
+  onClose: () => void;
   onApprove: (note?: string) => void;
   onDecline: (note?: string) => void;
   onSendMessage: (body: string) => void;
 }) {
-  const [showItems, setShowItems] = useState(true);
   const [showThread, setShowThread] = useState(false);
   const [messageDraft, setMessageDraft] = useState("");
-  const [actionMode, setActionMode] = useState<"none" | "approve" | "decline">(
-    "none",
-  );
+  const [actionMode, setActionMode] = useState<"none" | "approve" | "decline">("none");
   const [actionNote, setActionNote] = useState("");
 
   const totalQty = request.items.reduce((s, i) => s + i.qty, 0);
   const totalCbm = request.items.reduce((s, i) => s + (i.totalCbm ?? 0), 0);
+  const canAct = request.status === "Pending";
 
   const handleActionConfirm = () => {
-    if (actionMode === "approve") {
-      onApprove(actionNote.trim() || undefined);
-    } else if (actionMode === "decline") {
-      onDecline(actionNote.trim() || undefined);
-    }
+    if (actionMode === "approve") onApprove(actionNote.trim() || undefined);
+    else if (actionMode === "decline") onDecline(actionNote.trim() || undefined);
     setActionMode("none");
     setActionNote("");
   };
@@ -101,21 +115,24 @@ export default function RequestDetail({
     setMessageDraft("");
   };
 
-  const canAct = request.status === "Pending";
-
   return (
-    <div className={`${surface.card} flex flex-col overflow-hidden`}>
+    <>
       {/* Header */}
-      <div className="flex items-start gap-3 border-b border-slate-100 p-5">
+      <header className="flex items-start gap-4 border-b border-slate-100 px-6 py-5">
         <span
           aria-hidden="true"
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#e6f0f9] text-[13px] font-bold text-[#1d5f94]"
+          className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#e6f0f9] text-sm font-bold text-[#1d5f94]"
         >
           {senderInitials(request.fromEmail)}
         </span>
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <h2 className={`${surface.heading} truncate`}>{request.reference}</h2>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-[#2678b9]">
+            Dispatch request
+          </p>
+          <div className="mt-0.5 flex flex-wrap items-center gap-2">
+            <h2 className="truncate text-lg font-semibold tracking-tight text-[#0b2341]">
+              {request.reference}
+            </h2>
             <span
               className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${statusPill[request.status]}`}
             >
@@ -128,208 +145,194 @@ export default function RequestDetail({
             &lt;{request.fromEmail}&gt;
           </p>
         </div>
-      </div>
-
-      {/* Meta grid */}
-      <div className="grid grid-cols-2 gap-2 px-5 pt-4 lg:grid-cols-3">
-        <MetaCell label="Warehouse" value={request.warehouse} />
-        <MetaCell label="Courier" value={request.courier} />
-        <MetaCell label="Truck" value={request.truckAssignment} />
-        <MetaCell
-          label="Dispatch date"
-          value={request.dispatchDate ? formatDate(request.dispatchDate) : "—"}
-        />
-        <MetaCell
-          label="Delivery date"
-          value={request.deliveryDate ? formatDate(request.deliveryDate) : "—"}
-        />
-        <MetaCell label="Total amount" value={request.amount} />
-      </div>
-
-      {/* Remarks */}
-      {request.remarks ? (
-        <div className="mx-5 mt-3 rounded-2xl bg-[#fff8dc] px-3.5 py-2.5">
-          <p className="text-[10px] font-semibold text-[#7a5b00]">Remarks</p>
-          <p className="mt-0.5 text-xs text-[#5c4400]">{request.remarks}</p>
-        </div>
-      ) : null}
-
-      {/* Items summary bar */}
-      <div className="mt-4 flex items-center justify-between border-y border-slate-100 px-5 py-2.5">
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-500">
-          <span className="inline-flex items-center gap-1.5">
-            <Truck aria-hidden="true" className="h-3.5 w-3.5 text-slate-400" />
-            <strong className="font-semibold text-[#0b2341]">
-              {request.items.length}
-            </strong>{" "}
-            line{request.items.length === 1 ? "" : "s"}
-          </span>
-          <span>
-            Qty <strong className="font-semibold text-[#0b2341]">{totalQty}</strong>
-          </span>
-          {totalCbm > 0 ? (
-            <span>
-              CBM{" "}
-              <strong className="font-semibold text-[#0b2341]">
-                {totalCbm.toFixed(2)}
-              </strong>
-            </span>
-          ) : null}
-        </div>
-
         <button
           type="button"
-          onClick={() => setShowItems((v) => !v)}
-          aria-expanded={showItems}
-          className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold text-slate-500 transition hover:bg-[#f2f6fa] hover:text-[#0b2341] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9]"
+          onClick={onClose}
+          aria-label="Close request"
+          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9]"
         >
-          {showItems ? (
-            <ChevronDown aria-hidden="true" className="h-3.5 w-3.5" />
-          ) : (
-            <ChevronRight aria-hidden="true" className="h-3.5 w-3.5" />
-          )}
-          {showItems ? "Hide items" : "Show items"}
+          <X aria-hidden="true" className="h-5 w-5" />
         </button>
-      </div>
+      </header>
 
-      {/* Items table */}
-      {showItems && (
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[820px] border-collapse text-left">
-            <thead className={tableUi.thead}>
-              <tr>
-                <th className={tableUi.th}>SO / DR</th>
-                <th className={tableUi.th}>Customer</th>
-                <th className={tableUi.th}>Ship to</th>
-                <th className={tableUi.th}>Category</th>
-                <th className={tableUi.th}>Model</th>
-                <th className={`${tableUi.th} text-right`}>Qty</th>
-                <th className={`${tableUi.th} text-right`}>Total CBM</th>
-              </tr>
-            </thead>
-            <tbody>
-              {request.items.map((item) => (
-                <tr key={item.id} className={`align-top ${tableUi.row}`}>
-                  <td className={tableUi.td}>
-                    <p className="font-semibold text-[#0b2341]">{item.soNo ?? "—"}</p>
-                    {item.dr ? (
-                      <p className="mt-0.5 text-[10px] text-slate-400">DR {item.dr}</p>
-                    ) : null}
-                  </td>
-                  <td className={tableUi.td}>{item.customerName}</td>
-                  <td className={tableUi.td}>
-                    <p>{item.shipTo}</p>
-                    {item.city ? (
-                      <p className="text-[10px] text-slate-400">
-                        {item.city}
-                        {item.province ? `, ${item.province}` : ""}
-                      </p>
-                    ) : null}
-                  </td>
-                  <td className={tableUi.td}>
-                    {item.productCategory ? (
-                      <span
-                        className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${categoryColor[item.productCategory] ?? "bg-slate-100 text-slate-600"}`}
-                      >
-                        {item.productCategory}
-                      </span>
-                    ) : (
-                      <span className="text-slate-400">—</span>
-                    )}
-                  </td>
-                  <td className={`${tableUi.td} font-mono !text-[11px]`}>
-                    {item.customerModel}
-                  </td>
-                  <td className={`${tableUi.tdStrong} text-right tabular-nums`}>
-                    {item.qty}
-                  </td>
-                  <td className={`${tableUi.td} text-right tabular-nums`}>
-                    {item.totalCbm != null ? item.totalCbm.toFixed(4) : "—"}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {/* Scrollable body */}
+      <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-6 py-5">
+        <div className="grid grid-cols-2 gap-2.5 md:grid-cols-3">
+          <MetaCell label="Warehouse" value={request.warehouse} />
+          <MetaCell label="Courier" value={request.courier} />
+          <MetaCell label="Truck" value={request.truckAssignment} />
+          <MetaCell
+            label="Dispatch date"
+            value={request.dispatchDate ? formatDate(request.dispatchDate) : "—"}
+          />
+          <MetaCell
+            label="Delivery date"
+            value={request.deliveryDate ? formatDate(request.deliveryDate) : "—"}
+          />
+          <MetaCell label="Total amount" value={request.amount} />
         </div>
-      )}
 
-      {/* Message thread toggle + panel */}
-      <div className="border-t border-slate-100">
-        <button
-          type="button"
-          onClick={() => setShowThread((v) => !v)}
-          aria-expanded={showThread}
-          className="flex w-full items-center justify-between px-5 py-3 text-left transition hover:bg-[#f2f6fa]/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2678b9]"
-        >
-          <span className="inline-flex items-center gap-2 text-xs font-semibold text-[#0b2341]">
-            <MessageSquare aria-hidden="true" className="h-3.5 w-3.5 text-slate-400" />
-            Messages
-            <span className="rounded-full bg-[#e6f0f9] px-2 py-0.5 text-[10px] font-semibold text-[#1d5f94]">
-              {request.messageThread.length}
-            </span>
-          </span>
-          {showThread ? (
-            <ChevronDown aria-hidden="true" className="h-3.5 w-3.5 text-slate-400" />
-          ) : (
-            <ChevronRight aria-hidden="true" className="h-3.5 w-3.5 text-slate-400" />
-          )}
-        </button>
+        {request.remarks ? (
+          <div className="rounded-2xl bg-[#fff8dc] px-4 py-3">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-[#7a5b00]">
+              Remarks
+            </p>
+            <p className="mt-1 text-xs leading-relaxed text-[#5c4400]">
+              {request.remarks}
+            </p>
+          </div>
+        ) : null}
 
-        {showThread && (
-          <div className="border-t border-slate-100 bg-[#f2f6fa]/50 px-5 py-4">
-            {request.messageThread.length === 0 ? (
-              <p className="text-[11px] text-slate-400">
-                No messages yet. Write the first one below.
-              </p>
-            ) : (
-              <ul className="space-y-3">
-                {request.messageThread.map((m) => (
-                  <li
-                    key={m.id}
-                    className={`flex ${m.self ? "justify-end" : "justify-start"}`}
-                  >
-                    <div
-                      className={`max-w-[80%] rounded-2xl px-3.5 py-2 text-xs ${
-                        m.self
-                          ? "bg-[#0b2341] text-white"
-                          : "bg-white text-slate-700 shadow-[0_1px_2px_rgba(11,35,65,0.06)]"
-                      }`}
-                    >
-                      <p className="text-[10px] font-medium opacity-70">
-                        {m.from} · {formatTime(m.at)}
-                      </p>
-                      <p className="mt-1 leading-relaxed">{m.body}</p>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-
-            <div className="mt-4 flex items-end gap-2">
-              <textarea
-                rows={2}
-                value={messageDraft}
-                onChange={(e) => setMessageDraft(e.target.value)}
-                aria-label="Message to the dispatcher"
-                placeholder="Write a message to the dispatcher…"
-                className={`${fieldClass} min-h-[44px] !bg-white`}
-              />
-              <button
-                type="button"
-                onClick={handleSend}
-                disabled={!messageDraft.trim()}
-                className={`${surface.chip} h-10 shrink-0 gap-1.5 px-4 disabled:cursor-not-allowed disabled:opacity-50`}
-              >
-                <Send aria-hidden="true" className="h-3.5 w-3.5" />
-                Send
-              </button>
+        {/* Items */}
+        <section className="overflow-hidden rounded-2xl ring-1 ring-slate-900/[0.06]">
+          <div className="flex flex-wrap items-center justify-between gap-3 bg-[#f7f9fc] px-4 py-3">
+            <h3 className="inline-flex items-center gap-2 text-xs font-semibold text-[#0b2341]">
+              <Package aria-hidden="true" className="h-4 w-4 text-[#2678b9]" />
+              Items
+            </h3>
+            <div className="flex items-center gap-6">
+              <Stat label="Lines" value={String(request.items.length)} />
+              <Stat label="Qty" value={String(totalQty)} />
+              {totalCbm > 0 ? <Stat label="CBM" value={totalCbm.toFixed(2)} /> : null}
             </div>
           </div>
-        )}
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[760px] border-collapse text-left">
+              <thead className={tableUi.thead}>
+                <tr>
+                  <th className={tableUi.th}>SO / DR</th>
+                  <th className={tableUi.th}>Customer</th>
+                  <th className={tableUi.th}>Ship to</th>
+                  <th className={tableUi.th}>Category</th>
+                  <th className={tableUi.th}>Model</th>
+                  <th className={`${tableUi.th} text-right`}>Qty</th>
+                  <th className={`${tableUi.th} text-right`}>Total CBM</th>
+                </tr>
+              </thead>
+              <tbody>
+                {request.items.map((item) => (
+                  <tr key={item.id} className={`align-top ${tableUi.row}`}>
+                    <td className={tableUi.td}>
+                      <p className="font-semibold text-[#0b2341]">{item.soNo ?? "—"}</p>
+                      {item.dr ? (
+                        <p className="mt-0.5 text-[10px] text-slate-400">DR {item.dr}</p>
+                      ) : null}
+                    </td>
+                    <td className={tableUi.td}>{item.customerName}</td>
+                    <td className={tableUi.td}>
+                      <p>{item.shipTo}</p>
+                      {item.city ? (
+                        <p className="text-[10px] text-slate-400">
+                          {item.city}
+                          {item.province ? `, ${item.province}` : ""}
+                        </p>
+                      ) : null}
+                    </td>
+                    <td className={tableUi.td}>
+                      {item.productCategory ? (
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${categoryColor[item.productCategory] ?? "bg-slate-100 text-slate-600"}`}
+                        >
+                          {item.productCategory}
+                        </span>
+                      ) : (
+                        <span className="text-slate-400">—</span>
+                      )}
+                    </td>
+                    <td className={`${tableUi.td} font-mono !text-[11px]`}>
+                      {item.customerModel}
+                    </td>
+                    <td className={`${tableUi.tdStrong} text-right tabular-nums`}>
+                      {item.qty}
+                    </td>
+                    <td className={`${tableUi.td} text-right tabular-nums`}>
+                      {item.totalCbm != null ? item.totalCbm.toFixed(4) : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        {/* Messages */}
+        <section className="overflow-hidden rounded-2xl ring-1 ring-slate-900/[0.06]">
+          <button
+            type="button"
+            onClick={() => setShowThread((v) => !v)}
+            aria-expanded={showThread}
+            className="flex w-full items-center justify-between bg-[#f7f9fc] px-4 py-3 text-left transition hover:bg-[#f2f6fa] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2678b9]"
+          >
+            <span className="inline-flex items-center gap-2 text-xs font-semibold text-[#0b2341]">
+              <MessageSquare aria-hidden="true" className="h-4 w-4 text-[#2678b9]" />
+              Messages
+              <span className="rounded-full bg-[#e6f0f9] px-2 py-0.5 text-[10px] font-semibold text-[#1d5f94]">
+                {request.messageThread.length}
+              </span>
+            </span>
+            {showThread ? (
+              <ChevronDown aria-hidden="true" className="h-4 w-4 text-slate-400" />
+            ) : (
+              <ChevronRight aria-hidden="true" className="h-4 w-4 text-slate-400" />
+            )}
+          </button>
+
+          {showThread && (
+            <div className="px-4 py-4">
+              {request.messageThread.length === 0 ? (
+                <p className="text-[11px] text-slate-400">
+                  No messages yet. Write the first one below.
+                </p>
+              ) : (
+                <ul className="space-y-3">
+                  {request.messageThread.map((m) => (
+                    <li
+                      key={m.id}
+                      className={`flex ${m.self ? "justify-end" : "justify-start"}`}
+                    >
+                      <div
+                        className={`max-w-[80%] rounded-2xl px-3.5 py-2 text-xs ${
+                          m.self
+                            ? "bg-[#0b2341] text-white"
+                            : "bg-[#f2f6fa] text-slate-700"
+                        }`}
+                      >
+                        <p className="text-[10px] font-medium opacity-70">
+                          {m.from} · {formatTime(m.at)}
+                        </p>
+                        <p className="mt-1 leading-relaxed">{m.body}</p>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              <div className="mt-4 flex items-end gap-2">
+                <textarea
+                  rows={2}
+                  value={messageDraft}
+                  onChange={(e) => setMessageDraft(e.target.value)}
+                  aria-label="Message to the dispatcher"
+                  placeholder="Write a message to the dispatcher…"
+                  className={`${fieldClass} min-h-[44px]`}
+                />
+                <button
+                  type="button"
+                  onClick={handleSend}
+                  disabled={!messageDraft.trim()}
+                  className={`${surface.chip} h-10 shrink-0 gap-1.5 px-4 disabled:cursor-not-allowed disabled:opacity-50`}
+                >
+                  <Send aria-hidden="true" className="h-3.5 w-3.5" />
+                  Send
+                </button>
+              </div>
+            </div>
+          )}
+        </section>
       </div>
 
-      {/* Action footer */}
-      <div className="border-t border-slate-100 bg-white px-5 py-4">
+      {/* Sticky action footer */}
+      <footer className="border-t border-slate-100 bg-white px-6 py-4">
         {actionMode === "none" ? (
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-[11px] text-slate-500">
@@ -338,6 +341,13 @@ export default function RequestDetail({
                 : `This request was already ${request.status.toLowerCase()}.`}
             </p>
             <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className={surface.chipGhost}
+              >
+                Close
+              </button>
               <button
                 type="button"
                 disabled={!canAct}
@@ -375,18 +385,15 @@ export default function RequestDetail({
                 )}
               </span>
               <p className="text-xs font-semibold text-[#0b2341]">
-                {actionMode === "approve"
-                  ? "Approve this request?"
-                  : "Decline this request?"}
+                {actionMode === "approve" ? "Approve this request?" : "Decline this request?"}
               </p>
             </div>
             <textarea
               rows={2}
+              autoFocus
               value={actionNote}
               onChange={(e) => setActionNote(e.target.value)}
-              aria-label={
-                actionMode === "approve" ? "Note for the dispatcher" : "Reason for declining"
-              }
+              aria-label={actionMode === "approve" ? "Note for the dispatcher" : "Reason for declining"}
               placeholder={
                 actionMode === "approve"
                   ? "Optional note for the dispatcher…"
@@ -419,7 +426,7 @@ export default function RequestDetail({
             </div>
           </div>
         )}
-      </div>
-    </div>
+      </footer>
+    </>
   );
 }

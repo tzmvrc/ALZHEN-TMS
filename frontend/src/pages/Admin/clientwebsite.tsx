@@ -528,7 +528,7 @@ export default function ClientWebsiteWorkspace({
               src={CLIENT_WEBSITE_URL}
               title="Alzhen client website preview"
               loading="lazy"
-              className="block h-[calc(100vh-17rem)] min-h-[560px] w-full border-0 bg-white"
+              className="block h-[calc(100vh-17rem)] min-h-[700px] w-full border-0 bg-white"
             />
           </section>
         </div>

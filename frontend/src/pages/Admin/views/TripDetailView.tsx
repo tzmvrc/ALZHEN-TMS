@@ -1,12 +1,16 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   ArrowLeft,
   ChevronLeft,
   ChevronRight,
   Clock,
   Eye,
+  History,
   ImagePlus,
+  Images,
+  ListChecks,
   Package,
+  Route,
   Trash2,
   Truck,
   UserRound,
@@ -52,28 +56,15 @@ type DetailState = {
   sectionErrors: string[];
 };
 
-function ProductPhotoThumb({ src }: { src: string | null }) {
-  const [failed, setFailed] = useState(false);
-  if (!src || failed) {
-    return <Package aria-hidden="true" className="h-5 w-5 text-slate-300" />;
-  }
-  return (
-    <img
-      src={src}
-      alt=""
-      loading="lazy"
-      className="h-14 w-14 rounded-xl bg-[#f2f6fa] object-cover"
-      onError={() => setFailed(true)}
-    />
-  );
-}
-
 type TruckLookupRow = {
   id: string;
   plate_number: string | null;
   capacity_cbm: number | null;
 };
 
+/* ------------------------------------------------------------------ */
+/* Helpers                                                             */
+/* ------------------------------------------------------------------ */
 function valueText(value: unknown, fallback = "Not recorded"): string {
   if (value === null || value === undefined || value === "") return fallback;
   if (typeof value === "object") return JSON.stringify(value);
@@ -110,17 +101,14 @@ function sumOf(rows: Record<string, unknown>[], key: string): number {
   }, 0);
 }
 
-const formatNumber = (n: number) =>
-  n.toLocaleString(undefined, { maximumFractionDigits: 2 });
+const formatNumber = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 2 });
 
 function statusTone(status: unknown) {
   const s = String(status ?? "").toUpperCase();
   if (/COMPLET|DELIVER|FINISH/.test(s))
     return { pill: "bg-emerald-50 text-emerald-700", dot: "bg-emerald-500" };
-  if (/DELAY/.test(s))
-    return { pill: "bg-amber-50 text-amber-700", dot: "bg-amber-500" };
-  if (/CANCEL|FAIL/.test(s))
-    return { pill: "bg-rose-50 text-rose-700", dot: "bg-rose-500" };
+  if (/DELAY/.test(s)) return { pill: "bg-amber-50 text-amber-700", dot: "bg-amber-500" };
+  if (/CANCEL|FAIL/.test(s)) return { pill: "bg-rose-50 text-rose-700", dot: "bg-rose-500" };
   if (/PROGRESS|TRANSIT|LOAD|ONGOING|DISPATCH/.test(s))
     return { pill: "bg-[#e6f0f9] text-[#1d5f94]", dot: "bg-[#2678b9]" };
   return { pill: "bg-slate-100 text-slate-600", dot: "bg-slate-400" };
@@ -129,7 +117,9 @@ function statusTone(status: unknown) {
 function StatusPill({ status, fallback = "Not recorded" }: { status: unknown; fallback?: string }) {
   const tone = statusTone(status);
   return (
-    <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold ${tone.pill}`}>
+    <span
+      className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold ${tone.pill}`}
+    >
       <span className={`h-1.5 w-1.5 rounded-full ${tone.dot}`} />
       {valueText(status, fallback).replaceAll("_", " ")}
     </span>
@@ -143,7 +133,69 @@ function stopIsDone(stop: TripChildRecord): boolean {
   );
 }
 
-/* Photo gallery: one large photo, thumbnails underneath. Photos never sit behind other cards. */
+/* ------------------------------------------------------------------ */
+/* Card building blocks                                                */
+/* ------------------------------------------------------------------ */
+function CardHeader({
+  icon,
+  title,
+  right,
+}: {
+  icon: ReactNode;
+  title: string;
+  right?: ReactNode;
+}) {
+  return (
+    <header className="flex items-center justify-between gap-3">
+      <div className="flex min-w-0 items-center gap-2.5">
+        <span
+          aria-hidden="true"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#e6f0f9] text-[#2678b9] [&>svg]:h-4 [&>svg]:w-4"
+        >
+          {icon}
+        </span>
+        <h3 className="truncate text-sm font-semibold text-[#0b2341]">{title}</h3>
+      </div>
+      {right}
+    </header>
+  );
+}
+
+function MiniStat({ label, value, hint }: { label: string; value: string; hint?: string }) {
+  return (
+    <div className={`${surface.card} flex flex-col justify-between gap-3 p-5`}>
+      <p className="text-[13px] font-semibold text-[#0b2341]">{label}</p>
+      <div className="flex items-end justify-between gap-2">
+        <p className="text-3xl font-bold leading-none tabular-nums text-[#0b2341]">{value}</p>
+        {hint && (
+          <span className="rounded-full bg-[#e6f0f9] px-2 py-0.5 text-[10px] font-semibold text-[#1d5f94]">
+            {hint}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ProductPhotoThumb({ src }: { src: string | null }) {
+  const [failed, setFailed] = useState(false);
+  if (!src || failed) {
+    return <Package aria-hidden="true" className="h-5 w-5 text-slate-300" />;
+  }
+  return (
+    <img
+      src={src}
+      alt=""
+      loading="lazy"
+      className="h-14 w-14 rounded-xl bg-[#f2f6fa] object-cover"
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Photo gallery                                                       */
+/* ------------------------------------------------------------------ */
 function TripGallery({
   plate,
   tripId,
@@ -158,8 +210,8 @@ function TripGallery({
   const [photoBusy, setPhotoBusy] = useState(false);
   const [photoError, setPhotoError] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
-  const photos = savedPhotos?.map((photo) => photo.signed_url) ?? [];
-  const activeSavedPhoto = savedPhotos?.length ? savedPhotos[active] : undefined;
+  const photos = savedPhotos ?? [];
+  const activeSavedPhoto = photos[active];
 
   useEffect(() => {
     if (!accessToken) return;
@@ -174,9 +226,7 @@ function TripGallery({
       (cause: unknown) => {
         if (!current) return;
         setSavedPhotos([]);
-        setPhotoError(
-          cause instanceof Error ? cause.message : "Unable to load saved trip photos.",
-        );
+        setPhotoError(cause instanceof Error ? cause.message : "Unable to load saved trip photos.");
       },
     );
     return () => {
@@ -194,26 +244,31 @@ function TripGallery({
   const uploadPhotos = async (files: FileList | null) => {
     if (!files?.length || !accessToken) return;
     const selectedFiles = Array.from(files);
+    const previousCount = photos.length;
     setPhotoBusy(true);
     setPhotoError(null);
     let uploaded = 0;
     try {
       for (const file of selectedFiles) {
-        if (!["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size > 5 * 1024 * 1024) {
+        if (
+          !["image/jpeg", "image/png", "image/webp"].includes(file.type) ||
+          file.size > 5 * 1024 * 1024
+        ) {
           throw new Error("Choose JPEG, PNG, or WebP photos up to 5 MB each.");
         }
         const saved = await uploadTripImage(accessToken, tripId, file);
-        setSavedPhotos((current) => {
-          const updated = [...(current ?? []), saved];
-          setActive(updated.length - 1);
-          return updated;
-        });
+        setSavedPhotos((current) => [...(current ?? []), saved]);
         uploaded += 1;
       }
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : "Unable to upload trip photo.";
-      setPhotoError(uploaded > 0 ? `${message} ${uploaded} photo${uploaded === 1 ? "" : "s"} were saved.` : message);
+      setPhotoError(
+        uploaded > 0
+          ? `${message} ${uploaded} photo${uploaded === 1 ? "" : "s"} were saved.`
+          : message,
+      );
     } finally {
+      if (uploaded > 0) setActive(previousCount + uploaded - 1);
       setPhotoBusy(false);
       if (fileInput.current) fileInput.current.value = "";
     }
@@ -226,7 +281,7 @@ function TripGallery({
     try {
       await deleteTripImage(accessToken, tripId, activeSavedPhoto.id);
       setSavedPhotos((current) => (current ?? []).filter((photo) => photo.id !== activeSavedPhoto.id));
-      setActive((current) => Math.max(0, Math.min(current, (savedPhotos?.length ?? 1) - 2)));
+      setActive((current) => Math.max(0, Math.min(current, photos.length - 2)));
     } catch (cause) {
       setPhotoError(cause instanceof Error ? cause.message : "Unable to delete trip photo.");
     } finally {
@@ -235,13 +290,36 @@ function TripGallery({
   };
 
   return (
-    <div className={`${surface.card} p-3`}>
-      <div className="relative aspect-[16/10] overflow-hidden rounded-2xl bg-slate-100">
+    <div className={`${surface.card} flex h-full flex-col p-5`}>
+      <CardHeader
+        icon={<Images />}
+        title="Trip photos"
+        right={
+          photos.length > 0 ? (
+            <label
+              className={`${surface.chip} ${photoBusy || !accessToken ? "pointer-events-none opacity-60" : "cursor-pointer"}`}
+            >
+              <ImagePlus aria-hidden="true" className="mr-1.5 h-3.5 w-3.5" />
+              {photoBusy ? "Saving…" : "Add"}
+              <input
+                ref={fileInput}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                multiple
+                disabled={photoBusy || !accessToken}
+                className="sr-only"
+                onChange={(event) => void uploadPhotos(event.target.files)}
+              />
+            </label>
+          ) : undefined
+        }
+      />
+      <div className="relative mt-4 aspect-[4/3] overflow-hidden rounded-2xl bg-slate-100">
         {photos.length > 0 ? (
           <>
             <img
-              key={photos[active]}
-              src={photos[active]}
+              key={photos[active]?.id}
+              src={photos[active]?.signed_url}
               alt={`Truck photo ${active + 1} of ${photos.length}`}
               className="h-full w-full object-cover"
             />
@@ -276,7 +354,9 @@ function TripGallery({
             </span>
           </>
         ) : (
-          <label className={`flex h-full cursor-pointer flex-col items-center justify-center gap-2 border-2 border-dashed border-slate-300 px-6 text-center transition hover:border-[#2678b9] hover:bg-[#e6f0f9]/40 ${photoBusy || !accessToken ? "pointer-events-none opacity-60" : ""}`}>
+          <label
+            className={`flex h-full cursor-pointer flex-col items-center justify-center gap-2 border-2 border-dashed border-slate-300 px-6 text-center transition hover:border-[#2678b9] hover:bg-[#e6f0f9]/40 ${photoBusy || !accessToken ? "pointer-events-none opacity-60" : ""}`}
+          >
             <ImagePlus aria-hidden="true" className="h-8 w-8 text-[#2678b9]" />
             <span className="text-sm font-semibold text-[#0b2341]">
               {photoBusy ? "Saving photo…" : savedPhotos === null ? "Loading trip photos…" : "Upload a trip photo"}
@@ -295,41 +375,25 @@ function TripGallery({
         )}
       </div>
       {photos.length > 1 && (
-      <div className="mt-3 flex snap-x gap-2 overflow-x-auto pb-1" role="group" aria-label="Truck photos">
-        {photos.map((photo, index) => (
-          <button
-            key={photo}
-            type="button"
-            aria-label={`Show photo ${index + 1}`}
-            aria-pressed={index === active}
-            onClick={() => setActive(index)}
-            style={{ flex: "0 0 calc((100% - 1.5rem) / 4)" }}
-            className={`aspect-[4/3] snap-start overflow-hidden rounded-xl bg-slate-100 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0b2341]/40 ${
-              index === active ? "ring-2 ring-[#ffd43b] ring-offset-2" : "opacity-60 hover:opacity-100"
-            }`}>
-            <img src={photo} alt="" loading="lazy" className="h-full w-full object-cover" />
-          </button>
-        ))}
-      </div>
+        <div className="mt-3 flex snap-x gap-2 overflow-x-auto pb-1" role="group" aria-label="Truck photos">
+          {photos.map((photo, index) => (
+            <button
+              key={photo.id}
+              type="button"
+              aria-label={`Show photo ${index + 1}`}
+              aria-pressed={index === active}
+              onClick={() => setActive(index)}
+              style={{ flex: "0 0 calc((100% - 1.5rem) / 4)" }}
+              className={`aspect-[4/3] snap-start overflow-hidden rounded-xl bg-slate-100 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0b2341]/40 ${
+                index === active ? "ring-2 ring-[#ffd43b] ring-offset-2" : "opacity-60 hover:opacity-100"
+              }`}
+            >
+              <img src={photo.signed_url} alt="" loading="lazy" className="h-full w-full object-cover" />
+            </button>
+          ))}
+        </div>
       )}
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-        {photos.length > 0 && (
-        <label className={`${surface.chip} ${photoBusy || !accessToken ? "pointer-events-none opacity-60" : "cursor-pointer"}`}>
-          <ImagePlus aria-hidden="true" className="mr-1.5 h-3.5 w-3.5" />
-          {photoBusy ? "Saving photo…" : "Add photos"}
-          <input
-            ref={fileInput}
-            type="file"
-            accept="image/jpeg,image/png,image/webp"
-            multiple
-            disabled={photoBusy || !accessToken}
-            className="sr-only"
-            onChange={(event) => void uploadPhotos(event.target.files)}
-          />
-        </label>
-        )}
-        <span className="text-[10px] text-slate-400">JPEG, PNG, or WebP · up to 5 MB each</span>
-      </div>
+      <p className="mt-3 text-[10px] text-slate-400">JPEG, PNG, or WebP · up to 5 MB each</p>
       {photoError && (
         <p role="alert" className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700">
           {photoError}
@@ -339,7 +403,9 @@ function TripGallery({
   );
 }
 
-// --- Speedometer Gauge Component ---
+/* ------------------------------------------------------------------ */
+/* Load gauge                                                          */
+/* ------------------------------------------------------------------ */
 function LoadGauge({ percentage }: { percentage: number }) {
   const radius = 60;
   const stroke = 12;
@@ -349,21 +415,8 @@ function LoadGauge({ percentage }: { percentage: number }) {
 
   return (
     <div className="relative flex flex-col items-center justify-center">
-      <svg width="160" height="90" viewBox="0 0 160 90" className="overflow-visible">
-        <defs>
-          <linearGradient id="gauge-grad" x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0%" stopColor="#3b82f6" />
-            <stop offset="50%" stopColor="#10b981" />
-            <stop offset="100%" stopColor="#ef4444" />
-          </linearGradient>
-        </defs>
-        <path
-          d="M 20 80 A 60 60 0 0 1 140 80"
-          fill="none"
-          stroke="#e2e8f0"
-          strokeWidth={stroke}
-          strokeLinecap="round"
-        />
+      <svg width="160" height="90" viewBox="0 0 160 90" className="overflow-visible" aria-hidden="true">
+        <path d="M 20 80 A 60 60 0 0 1 140 80" fill="none" stroke="#e2e8f0" strokeWidth={stroke} strokeLinecap="round" />
         <path
           d="M 20 80 A 60 60 0 0 1 140 80"
           fill="none"
@@ -383,99 +436,156 @@ function LoadGauge({ percentage }: { percentage: number }) {
   );
 }
 
-// --- Truck Visualization Component ---
-function TruckVisualization({
+/* ------------------------------------------------------------------ */
+/* Vehicle card                                                        */
+/* ------------------------------------------------------------------ */
+const TRUCK_SLOTS = 12;
+
+function VehicleCard({
+  plate,
+  status,
   cargoRows,
   selectedItem,
   onSelectItem,
   truckCapacityCbm,
   totalCbm,
+  driverName,
+  company,
 }: {
+  plate: string;
+  status: unknown;
   cargoRows: Record<string, unknown>[];
   selectedItem: Record<string, unknown> | null;
   onSelectItem: (item: Record<string, unknown>) => void;
   truckCapacityCbm: number | null;
   totalCbm: number;
+  driverName: string;
+  company: string;
 }) {
-  const totalSlots = 12;
-  const slots = Array.from({ length: totalSlots }, (_, i) => cargoRows[i] || null);
+  const slots = Array.from({ length: TRUCK_SLOTS }, (_, i) => cargoRows[i] ?? null);
   const remainingCbm = truckCapacityCbm !== null ? Math.max(0, truckCapacityCbm - totalCbm) : null;
-  const loadPercentage = truckCapacityCbm !== null && truckCapacityCbm > 0
-    ? Math.min(100, Math.round((totalCbm / truckCapacityCbm) * 100))
-    : 0;
+  const loadPercentage =
+    truckCapacityCbm !== null && truckCapacityCbm > 0
+      ? Math.min(100, Math.round((totalCbm / truckCapacityCbm) * 100))
+      : 0;
+  const hasDriver = driverName !== "Not recorded";
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="relative w-full overflow-hidden rounded-2xl bg-[#f8fafc] p-2">
-        <img
-          src={truckBg}
-          alt="Delivery truck side view"
-          className="w-full h-auto object-contain"
-        />
-        <div className="absolute left-[28%] right-[4%] top-[20%] bottom-[40%] grid grid-cols-6 grid-rows-2 gap-1 p-3">
+    <div className={`${surface.card} flex h-full flex-col p-5`}>
+      <CardHeader
+        icon={<Truck />}
+        title="Vehicle"
+        right={
+          <span className="text-xs text-slate-400">
+            {cargoRows.length} cargo line{cargoRows.length === 1 ? "" : "s"}
+          </span>
+        }
+      />
+
+      <div className="mt-4 grid grid-cols-3 gap-3">
+        {[
+          ["Max CBM", truckCapacityCbm !== null ? formatNumber(truckCapacityCbm) : "—"],
+          ["Load CBM", formatNumber(totalCbm)],
+          ["Remaining", remainingCbm !== null ? formatNumber(remainingCbm) : "—"],
+        ].map(([label, value]) => (
+          <div key={label} className="rounded-2xl border border-slate-200/80 px-2 py-3.5 text-center">
+            <p className="text-xl font-bold tabular-nums text-[#0b2341]">{value}</p>
+            <p className="mt-0.5 text-[11px] text-slate-500">{label}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="relative mt-4 w-full overflow-hidden rounded-2xl bg-[#f8fafc] p-2">
+        <img src={truckBg} alt="Delivery truck side view" className="h-auto w-full object-contain" />
+        <div className="absolute bottom-[40%] left-[28%] right-[4%] top-[20%] grid grid-cols-6 grid-rows-2 gap-1 p-3">
           {slots.map((item, index) => {
-            const isSelected = selectedItem && item && selectedItem.id === item.id;
-            const hasItem = !!item;
-            const itemName = item ? valueText(item.product_name ?? item.item_name ?? `Item ${index + 1}`) : "";
+            const isSelected = Boolean(selectedItem && item && selectedItem.id === item.id);
+            const itemName = item
+              ? valueText(item.product_name ?? item.item_name ?? `Item ${index + 1}`)
+              : "";
             const itemCbm = item ? Number(item.cbm) : 0;
+            const base =
+              "relative flex flex-col items-center justify-center rounded-md border text-[8px] font-medium transition-all";
+            if (!item) {
+              return (
+                <div key={index} className={`${base} border-dashed border-slate-300/70 bg-white/60`}>
+                  <span className="text-slate-300">+</span>
+                </div>
+              );
+            }
             return (
-              <div
+              <button
                 key={index}
-                onClick={() => item && onSelectItem(item)}
-                className={`relative flex flex-col items-center justify-center rounded-md border text-[8px] font-medium transition-all cursor-pointer ${
+                type="button"
+                onClick={() => onSelectItem(item)}
+                aria-pressed={isSelected}
+                aria-label={`Select ${itemName}`}
+                className={`${base} cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9] ${
                   isSelected
                     ? "border-blue-500 bg-blue-50 ring-1 ring-blue-400"
-                    : hasItem
-                      ? "border-slate-300 bg-white/95 hover:border-slate-400"
-                      : "border-dashed border-slate-300/70 bg-white/60"
+                    : "border-slate-300 bg-white/95 hover:border-slate-400"
                 }`}
               >
-                {hasItem ? (
-                  <>
-                    <span className="line-clamp-2 text-center leading-tight">{itemName}</span>
-                    {itemCbm > 0 && (
-                      <span className="text-[7px] text-slate-500">{formatNumber(itemCbm)} CBM</span>
-                    )}
-                  </>
-                ) : (
-                  <span className="text-slate-300">+</span>
+                <span className="line-clamp-2 text-center leading-tight">{itemName}</span>
+                {itemCbm > 0 && (
+                  <span className="text-[7px] text-slate-500">{formatNumber(itemCbm)} CBM</span>
                 )}
-              </div>
+              </button>
             );
           })}
         </div>
       </div>
+      <p className="mt-2 text-center text-[11px] text-slate-500">
+        <span className="font-medium text-slate-600">{plate}</span> ·{" "}
+        <span className="font-semibold text-emerald-600">
+          {valueText(status, "Status unknown").replaceAll("_", " ")}
+        </span>
+        {cargoRows.length > TRUCK_SLOTS && (
+          <span className="text-slate-400"> · showing {TRUCK_SLOTS} of {cargoRows.length} items</span>
+        )}
+      </p>
 
-      <div className="flex items-center justify-between gap-6 px-4">
-        <div className="shrink-0">
+      <div className="mt-4 flex items-center justify-between gap-4 rounded-2xl bg-[#f2f6fa] px-4 py-3">
+        <div className="shrink-0 scale-90">
           <LoadGauge percentage={loadPercentage} />
         </div>
+        <div className="min-w-0 flex-1 text-xs">
+          {selectedItem ? (
+            <>
+              <p className="text-[10px] font-medium uppercase tracking-wide text-slate-400">Selected item</p>
+              <p className="mt-0.5 truncate text-sm font-semibold text-[#0b2341]">
+                {valueText(selectedItem.product_name ?? selectedItem.item_name)}
+              </p>
+              <p className="mt-0.5 text-slate-500">
+                Qty {valueText(selectedItem.quantity, "—")} · {valueText(selectedItem.cbm, "—")} CBM
+              </p>
+            </>
+          ) : (
+            <p className="text-slate-500">Select a cargo slot on the truck to see its details.</p>
+          )}
+        </div>
+      </div>
 
-        <div className="grid flex-1 grid-cols-3 gap-3">
-          <div className="flex flex-col items-center rounded-2xl bg-[#f2f6fa] p-3 text-center">
-            <span className="text-[10px] font-medium text-slate-500">Max CBM</span>
-            <span className="text-lg font-bold tabular-nums text-[#0b2341]">
-              {truckCapacityCbm !== null ? formatNumber(truckCapacityCbm) : "—"}
-            </span>
-          </div>
-          <div className="flex flex-col items-center rounded-2xl bg-[#f2f6fa] p-3 text-center">
-            <span className="text-[10px] font-medium text-slate-500">Load CBM</span>
-            <span className="text-lg font-bold tabular-nums text-[#2678b9]">
-              {formatNumber(totalCbm)}
-            </span>
-          </div>
-          <div className="flex flex-col items-center rounded-2xl bg-[#f2f6fa] p-3 text-center">
-            <span className="text-[10px] font-medium text-slate-500">Remaining</span>
-            <span className="text-lg font-bold tabular-nums text-emerald-600">
-              {remainingCbm !== null ? formatNumber(remainingCbm) : "—"}
-            </span>
-          </div>
+      <div className="mt-4 flex items-center gap-3 border-t border-slate-100 pt-4">
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#ffd43b] text-[#0b2341]">
+          {hasDriver ? (
+            <span className="text-sm font-bold">{driverName.charAt(0).toUpperCase()}</span>
+          ) : (
+            <UserRound aria-hidden="true" className="h-5 w-5" />
+          )}
+        </span>
+        <div className="min-w-0">
+          <p className="truncate text-sm font-semibold text-[#0b2341]">{driverName}</p>
+          <p className="truncate text-[11px] text-slate-500">Driver · {company}</p>
         </div>
       </div>
     </div>
   );
 }
 
+/* ------------------------------------------------------------------ */
+/* Main view                                                           */
+/* ------------------------------------------------------------------ */
 export default function TripDetailView({
   tripId,
   onBack,
@@ -513,8 +623,10 @@ export default function TripDetailView({
         ]);
         const childResults = [stopsResult, itemsResult, eventsResult];
         const authFailure = childResults.find(
-          (result) => result.status === "rejected" &&
-            result.reason instanceof ApiError && result.reason.status === 401,
+          (result) =>
+            result.status === "rejected" &&
+            result.reason instanceof ApiError &&
+            result.reason.status === 401,
         );
         if (authFailure?.status === "rejected") throw authFailure.reason;
         const stops = stopsResult.status === "fulfilled" ? stopsResult.value : [];
@@ -571,8 +683,7 @@ export default function TripDetailView({
             }
           } catch (cause) {
             if (cause instanceof ApiError && cause.status === 401) throw cause;
-            truckCapacityError =
-              cause instanceof Error ? cause.message : "Truck capacity is unavailable.";
+            truckCapacityError = cause instanceof Error ? cause.message : "Truck capacity is unavailable.";
           }
         }
         if (!active) return;
@@ -631,15 +742,13 @@ export default function TripDetailView({
   const dispatchNumber = String(trip?.dispatch_number ?? "Trip details");
   const stops = detail?.stops ?? [];
   const reportRows = detail?.bookingRows ?? [];
-  const orderedEvents = (detail?.events ?? []).slice().sort(
-    (a, b) => Date.parse(a.event_time) - Date.parse(b.event_time),
-  );
-  const mapTrack: TripEventTrack[] = trip
-    ? [{ trip, events: detail?.events ?? [] }]
-    : [];
-  const destinationNames = [...new Set(
-    reportRows.map((row) => String(row.store_name ?? "")).filter(Boolean),
-  )];
+  const orderedEvents = (detail?.events ?? [])
+    .slice()
+    .sort((a, b) => Date.parse(a.event_time) - Date.parse(b.event_time));
+  const mapTrack: TripEventTrack[] = trip ? [{ trip, events: detail?.events ?? [] }] : [];
+  const destinationNames = [
+    ...new Set(reportRows.map((row) => String(row.store_name ?? "")).filter(Boolean)),
+  ];
   const originName = getBookingValue(
     reportRows,
     "warehouse_name",
@@ -649,8 +758,7 @@ export default function TripDetailView({
     ? destinationNames.join(", ")
     : "Store destinations not available";
 
-  const stopKey = (stop: TripChildRecord, index: number) =>
-    String(stop.stop_sequence ?? index + 1);
+  const stopKey = (stop: TripChildRecord, index: number) => String(stop.stop_sequence ?? index + 1);
   const rowsForStop = (key: string) =>
     reportRows.filter((row) => String(row.stop_sequence ?? "") === key);
   const visibleRows = selectedStop ? rowsForStop(selectedStop) : reportRows;
@@ -662,186 +770,199 @@ export default function TripDetailView({
   const totalCbm = sumOf(cargoRows, "cbm");
   const lineItemCount = detail?.lineItems.length ?? reportRows.length;
   const driverName = getBookingValue(reportRows, "driver_name");
+  const plate = getBookingValue(reportRows, "plate_number", "No plate recorded");
   const placeholder = isLoading ? "…" : undefined;
   const timelineEvents = orderedEvents.slice().reverse();
 
   return (
     <div className="space-y-4">
-      {/* Top Bar: Back button + Status Pill */}
+      {/* Top bar */}
       <header className="flex items-center justify-between gap-3">
         <button
           type="button"
           onClick={onBack}
           className="inline-flex h-10 items-center gap-2 rounded-full border border-slate-200 bg-white pl-3 pr-4 text-xs font-semibold text-[#0b2341] shadow-sm transition hover:bg-slate-50"
         >
-          <ArrowLeft className="h-4 w-4" />
+          <ArrowLeft aria-hidden="true" className="h-4 w-4" />
           Back to trips
         </button>
-        <StatusPill status={trip?.status} fallback="Loading" />
+        <p className="hidden text-xs text-slate-500 sm:block">
+          Loading {shortDate(trip?.loading_date)} · ETA {shortDate(trip?.estimated_delivery_date)}
+        </p>
       </header>
 
-      {/* Top Section: Gallery + Truck Visualization */}
-      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)] gap-4 items-start">
-        {/* Photo Gallery */}
-        <div className="min-w-0">
-          <TripGallery
-            key={tripId}
-            plate={getBookingValue(reportRows, "plate_number", "No plate recorded")}
-            tripId={tripId}
-            accessToken={accessToken}
+      {detail && detail.sectionErrors.length > 0 && (
+        <p role="status" className="rounded-2xl bg-amber-50 px-4 py-2.5 text-xs text-amber-800">
+          Some sections could not be loaded: {detail.sectionErrors.join(" · ")}
+        </p>
+      )}
+
+      {/* Row 1: overview | vehicle | stops */}
+      <div className="grid grid-cols-1 items-stretch gap-4 xl:grid-cols-12">
+        {/* Overview + mini stats */}
+        <div className="flex min-w-0 flex-col gap-4 xl:col-span-4">
+          <section className={`${surface.card} p-5`}>
+            <CardHeader
+              icon={<Route />}
+              title="Trip overview"
+              right={<StatusPill status={trip?.status} fallback="Loading" />}
+            />
+            <p className="mt-4 text-[11px] font-medium uppercase tracking-wide text-slate-400">
+              Dispatch number
+            </p>
+            <h2 className="truncate text-2xl font-bold tracking-tight text-[#0b2341]">
+              {isLoading ? "Loading trip…" : dispatchNumber}
+            </h2>
+
+            <div className="mt-4 rounded-2xl bg-gradient-to-b from-[#f2f6fa] to-[#e6f0f9] p-4">
+              <div className="flex items-end justify-between gap-4">
+                <div>
+                  <p className="text-3xl font-bold leading-none tabular-nums text-[#0b2341]">
+                    {placeholder ?? `${doneStops}/${stops.length}`}
+                  </p>
+                  <p className="mt-1 text-[11px] text-slate-500">Stops completed</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-3xl font-bold leading-none tabular-nums text-[#2678b9]">
+                    {placeholder ?? `${progress}%`}
+                  </p>
+                  <p className="mt-1 text-[11px] text-slate-500">Progress</p>
+                </div>
+              </div>
+              <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/80">
+                <div
+                  className="h-full rounded-full bg-[#ffd43b] transition-all duration-500"
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
+            </div>
+
+            <ul className="mt-5 space-y-3 text-sm">
+              <li className="flex items-start gap-3">
+                <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full border-2 border-[#0b2341] bg-white" />
+                <span className="min-w-0">
+                  <span className="block text-[11px] text-slate-400">From</span>
+                  <span className="break-words text-slate-700">{originName}</span>
+                </span>
+              </li>
+              <li className="flex items-start gap-3">
+                <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-[#2678b9]" />
+                <span className="min-w-0">
+                  <span className="block text-[11px] text-slate-400">To</span>
+                  <span className="break-words text-slate-700">{destinationText}</span>
+                </span>
+              </li>
+            </ul>
+
+            {Boolean(trip?.remarks) && (
+              <p className={`${surface.inner} mt-4 px-4 py-3 text-xs text-slate-600`}>
+                {String(trip?.remarks)}
+              </p>
+            )}
+          </section>
+
+          <div className="grid grid-cols-2 gap-4">
+            <MiniStat label="Items" value={placeholder ?? String(lineItemCount)} />
+            <MiniStat label="Quantity" value={placeholder ?? formatNumber(totalQty)} />
+            <MiniStat label="Total CBM" value={placeholder ?? formatNumber(totalCbm)} />
+            <MiniStat label="Events" value={placeholder ?? String(orderedEvents.length)} />
+          </div>
+        </div>
+
+        {/* Vehicle */}
+        <div className="min-w-0 xl:col-span-5">
+          <VehicleCard
+            plate={plate}
+            status={trip?.status}
+            cargoRows={cargoRows}
+            selectedItem={selectedCargoItem}
+            onSelectItem={setSelectedCargoItem}
+            truckCapacityCbm={detail?.truckCapacityCbm ?? null}
+            totalCbm={totalCbm}
+            driverName={driverName}
+            company={getBookingValue(reportRows, "trucking_company")}
           />
         </div>
 
-        {/* Truck Visualization */}
-        <div className="min-w-0">
-          <div className="rounded-3xl bg-white p-6 shadow-[0_4px_20px_-4px_rgba(11,35,65,0.08)]">
-            <TruckVisualization
-              cargoRows={cargoRows}
-              selectedItem={selectedCargoItem}
-              onSelectItem={setSelectedCargoItem}
-              truckCapacityCbm={detail?.truckCapacityCbm ?? null}
-              totalCbm={totalCbm}
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* Trip Summary & Stops */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Trip Summary */}
-        <div className={`${surface.card} p-6`}>
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <p className={surface.eyebrow}>Dispatch number</p>
-              <h2 className="mt-0.5 truncate text-2xl font-bold tracking-tight text-[#0b2341]">
-                {isLoading ? "Loading trip…" : dispatchNumber}
-              </h2>
-            </div>
-            <StatusPill status={trip?.status} fallback="Loading" />
-          </div>
-
-          <div className="mt-6">
-            <div className="flex items-center justify-between text-xs text-slate-500">
-              <span>{placeholder ?? `${doneStops} of ${stops.length} stops completed`}</span>
-              <span className="font-semibold text-[#0b2341]">{progress}%</span>
-            </div>
-            <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
-              <div className="h-full rounded-full bg-[#ffd43b] transition-all duration-500" style={{ width: `${progress}%` }} />
-            </div>
-            <div className="mt-2 flex items-center justify-between text-[11px] text-slate-500">
-              <span>Loading {shortDate(trip?.loading_date)}</span>
-              <span>ETA {shortDate(trip?.estimated_delivery_date)}</span>
-            </div>
-          </div>
-
-          <ul className="mt-6 space-y-3 border-t border-slate-100 pt-5 text-sm">
-            <li className="flex items-start gap-3">
-              <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full border-2 border-[#0b2341] bg-white" />
-              <span className="min-w-0">
-                <span className="block text-[11px] text-slate-400">From</span>
-                <span className="break-words text-slate-700">{originName}</span>
-              </span>
-            </li>
-            <li className="flex items-start gap-3">
-              <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-[#2678b9]" />
-              <span className="min-w-0">
-                <span className="block text-[11px] text-slate-400">To</span>
-                <span className="break-words text-slate-700">{destinationText}</span>
-              </span>
-            </li>
-          </ul>
-
-          <dl className="mt-6 grid grid-cols-3 gap-2 text-center">
-            {[
-              ["Items", placeholder ?? String(lineItemCount)],
-              ["Quantity", placeholder ?? formatNumber(totalQty)],
-              ["CBM", placeholder ?? formatNumber(totalCbm)],
-            ].map(([label, value]) => (
-              <div key={label} className={`${surface.inner} px-2 py-3`}>
-                <dd className="text-base font-bold tabular-nums text-[#0b2341]">{value}</dd>
-                <dt className="text-[11px] text-slate-500">{label}</dt>
-              </div>
-            ))}
-          </dl>
-
-          <div className="mt-6 flex items-center gap-3 border-t border-slate-100 pt-5">
-            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#ffd43b] text-[#0b2341]">
-              {driverName === "Not recorded" ? <UserRound aria-hidden="true" className="h-5 w-5" /> : <span className="text-sm font-bold">{driverName.charAt(0).toUpperCase()}</span>}
-            </span>
-            <div className="min-w-0">
-              <p className="truncate text-sm font-semibold text-[#0b2341]">{driverName}</p>
-              <p className="truncate text-[11px] text-slate-500">Driver · {getBookingValue(reportRows, "trucking_company")}</p>
-            </div>
-          </div>
-
-          {Boolean(trip?.remarks) && (
-            <p className={`${surface.inner} mt-5 px-4 py-3 text-xs text-slate-600`}>{String(trip?.remarks)}</p>
-          )}
-        </div>
-
         {/* Stops */}
-        <div className={`${surface.card} p-6`}>
-          <h3 className={surface.heading}>Stops</h3>
+        <section className={`${surface.card} flex min-w-0 flex-col p-5 xl:col-span-3`}>
+          <CardHeader
+            icon={<ListChecks />}
+            title="Stops"
+            right={
+              <span className="rounded-full bg-[#0b2341] px-2 py-0.5 text-[10px] font-semibold tabular-nums text-white">
+                {stops.length}
+              </span>
+            }
+          />
           {stops.length === 0 ? (
-            <p className="py-6 text-center text-sm text-slate-500">
+            <p className="py-10 text-center text-sm text-slate-500">
               {placeholder ?? "No stops recorded for this trip."}
             </p>
           ) : (
-            <ul className="mt-4 space-y-3">
+            <ul className="mt-4 max-h-[560px] space-y-2.5 overflow-y-auto pr-1">
               {stops.map((stop, index) => {
                 const key = stopKey(stop, index);
                 const match = rowsForStop(key)[0] ?? {};
                 return (
-                  <li key={String(stop.id ?? stop.trip_stop_id ?? `${tripId}-${index}`)} className="flex items-start gap-3 rounded-xl border border-slate-100 p-3">
-                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#e6f0f9] text-[11px] font-bold text-[#0b2341]">
-                      {key}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-semibold text-[#0b2341]">
-                        {valueText(match.store_name, valueText(stop.store_id, "Store not recorded"))}
-                      </p>
-                      <p className="truncate text-[11px] text-slate-500">
-                        {valueText(match.customer_name, valueText(stop.customer_id, "Customer not recorded"))}
-                      </p>
-                      <p className="mt-1 flex items-center gap-1.5 text-[11px] text-slate-500">
-                        <Clock aria-hidden="true" className="h-3 w-3" />
-                        {stop.arrival_time ? dateText(stop.arrival_time, true) : "No arrival yet"}
-                      </p>
+                  <li
+                    key={String(stop.id ?? stop.trip_stop_id ?? `${tripId}-${index}`)}
+                    className="rounded-2xl border border-slate-100 p-3"
+                  >
+                    <div className="flex items-start gap-3">
+                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#e6f0f9] text-[11px] font-bold text-[#0b2341]">
+                        {key}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold text-[#0b2341]">
+                          {valueText(match.store_name, valueText(stop.store_id, "Store not recorded"))}
+                        </p>
+                        <p className="truncate text-[11px] text-slate-500">
+                          {valueText(match.customer_name, valueText(stop.customer_id, "Customer not recorded"))}
+                        </p>
+                      </div>
                     </div>
-                    <StatusPill status={stop.delivery_status ?? match.delivery_status} fallback="Pending" />
+                    <div className="mt-2.5 flex items-center justify-between gap-2">
+                      <span className="flex min-w-0 items-center gap-1.5 text-[11px] text-slate-500">
+                        <Clock aria-hidden="true" className="h-3 w-3 shrink-0" />
+                        <span className="truncate">
+                          {stop.arrival_time ? dateText(stop.arrival_time, true) : "No arrival yet"}
+                        </span>
+                      </span>
+                      <StatusPill status={stop.delivery_status ?? match.delivery_status} fallback="Pending" />
+                    </div>
                   </li>
                 );
               })}
             </ul>
           )}
-        </div>
+        </section>
       </div>
 
-      {/* Fleet tracking: timeline beside the map */}
-      <div className="grid gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
-        <section className={`${surface.card} flex min-w-0 flex-col p-5`}>
-          <header className="mb-3">
-            <div className="flex items-center justify-between">
-              <h3 className={surface.heading}>Trip tracking</h3>
-              <span className="rounded-full bg-[#e6f0f9] px-3 py-1 text-[11px] font-semibold tabular-nums text-[#1d5f94]">
+      {/* Row 2: photos | map | tracking */}
+      <div className="grid grid-cols-1 items-stretch gap-4 xl:grid-cols-12">
+        <div className="min-w-0 xl:col-span-4">
+          <TripGallery key={tripId} plate={plate} tripId={tripId} accessToken={accessToken} />
+        </div>
+
+        <div className="min-w-0 xl:col-span-5">
+          <LiveTripMap tracks={mapTrack} focusTripId={tripId} eventLoadError={false} height={440} fillHeight />
+        </div>
+
+        <section className={`${surface.card} flex min-w-0 flex-col p-5 xl:col-span-3`}>
+          <CardHeader
+            icon={<History />}
+            title="Trip tracking"
+            right={
+              <span className="rounded-full bg-[#e6f0f9] px-2.5 py-1 text-[11px] font-semibold tabular-nums text-[#1d5f94]">
                 {orderedEvents.length} events
               </span>
-            </div>
-            <ul className="mt-3 space-y-1 text-[11px] text-slate-600">
-              <li className="flex items-start gap-2">
-                <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-[#ffd43b]" />
-                <span className="min-w-0 break-words">{originName}</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-[#2678b9]" />
-                <span className="min-w-0 break-words">{destinationText}</span>
-              </li>
-            </ul>
-          </header>
+            }
+          />
           {timelineEvents.length === 0 ? (
-            <p className="py-6 text-center text-sm text-slate-500">No events recorded.</p>
+            <p className="py-10 text-center text-sm text-slate-500">No events recorded.</p>
           ) : (
-            <ol className="relative ml-2 max-h-[400px] flex-1 overflow-y-auto border-l-2 border-[#ffd43b]/70 pl-5 pr-1">
+            <ol className="relative ml-2 mt-5 max-h-[440px] flex-1 overflow-y-auto border-l-2 border-[#ffd43b]/70 pl-5 pr-1">
               {timelineEvents.map((event, index) => (
                 <li key={event.id} className="relative mb-5 last:mb-0">
                   <span
@@ -849,38 +970,55 @@ export default function TripDetailView({
                       index === 0 ? "bg-[#ffd43b] text-[#ffd43b]" : "bg-[#2678b9] text-[#2678b9]"
                     }`}
                   />
-                  <p className="text-sm font-semibold capitalize text-[#0b2341]">{event.event_type.replaceAll("_", " ").toLowerCase()}</p>
-                  <p className="mt-0.5 text-[11px] font-medium text-slate-400">{dateText(event.event_time, true)}</p>
+                  <p className="text-sm font-semibold capitalize text-[#0b2341]">
+                    {event.event_type.replaceAll("_", " ").toLowerCase()}
+                  </p>
+                  <p className="mt-0.5 text-[11px] font-medium text-slate-400">
+                    {dateText(event.event_time, true)}
+                  </p>
                   {event.notes && <p className="mt-1 text-xs text-slate-600">{event.notes}</p>}
                 </li>
               ))}
             </ol>
           )}
         </section>
-
-        <div className="min-w-0">
-          <LiveTripMap tracks={mapTrack} focusTripId={tripId} eventLoadError={false} height={420} />
-        </div>
       </div>
 
-      {/* Products table, Orders-style */}
+      {/* Products */}
       <section className={`${surface.card} min-w-0 overflow-hidden`}>
         <header className="flex flex-col gap-3 px-5 pb-3 pt-5 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex items-center gap-2">
-            <h3 className={surface.heading}>Products</h3>
-            <span className="rounded-full bg-[#0b2341] px-2 py-0.5 text-[10px] font-semibold tabular-nums text-white">{reportRows.length}</span>
-          </div>
-          <div role="group" aria-label="Filter products by stop" className="flex max-w-full items-center gap-1 overflow-x-auto rounded-full bg-[#eef3f8] p-1">
-            {[{ key: null as string | null, label: "All" }, ...stops.map((stop, index) => ({ key: stopKey(stop, index), label: `Stop ${stopKey(stop, index)}` }))].map(({ key, label }) => {
+          <CardHeader
+            icon={<Package />}
+            title="Products"
+            right={
+              <span className="rounded-full bg-[#0b2341] px-2 py-0.5 text-[10px] font-semibold tabular-nums text-white">
+                {reportRows.length}
+              </span>
+            }
+          />
+          <div
+            role="group"
+            aria-label="Filter products by stop"
+            className="flex max-w-full items-center gap-1 overflow-x-auto rounded-full bg-[#eef3f8] p-1"
+          >
+            {[
+              { key: null as string | null, label: "All" },
+              ...stops.map((stop, index) => ({ key: stopKey(stop, index), label: `Stop ${stopKey(stop, index)}` })),
+            ].map(({ key, label }) => {
               const count = key === null ? reportRows.length : rowsForStop(key).length;
-              const active = selectedStop === key;
+              const isActive = selectedStop === key;
               return (
                 <button
                   key={label}
                   type="button"
-                  aria-pressed={active}
+                  aria-pressed={isActive}
                   onClick={() => setSelectedStop(key)}
-                  className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[11px] font-semibold transition-colors ${active ? "bg-white text-[#0b2341] shadow-[0_2px_8px_-2px_rgba(11,35,65,0.2)]" : "text-slate-500 hover:text-[#0b2341]"}`}>
+                  className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[11px] font-semibold transition-colors ${
+                    isActive
+                      ? "bg-white text-[#0b2341] shadow-[0_2px_8px_-2px_rgba(11,35,65,0.2)]"
+                      : "text-slate-500 hover:text-[#0b2341]"
+                  }`}
+                >
                   {label}
                   <span className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold leading-none text-white ring-2 ring-white">
                     {count}
@@ -920,55 +1058,47 @@ export default function TripDetailView({
                       ? row.product_photo_url
                       : null;
                   return (
-                  <tr key={String(row.trip_line_item_id ?? row.id ?? `${tripId}-item-${index}`)} className="bg-white shadow-[0_1px_2px_rgba(11,35,65,0.04)]">
-                    <td
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => setViewProduct(row)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter" || event.key === " ") {
-                          event.preventDefault();
-                          setViewProduct(row);
-                        }
-                      }}
-                      aria-label={`View appliance details for ${productName}`}
-                      className="group/product cursor-pointer rounded-l-2xl px-4 py-3.5 font-semibold text-[#0b2341] transition-colors hover:bg-[#eaf3fb] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2678b9]"
+                    <tr
+                      key={String(row.trip_line_item_id ?? row.id ?? `${tripId}-item-${index}`)}
+                      className="bg-white shadow-[0_1px_2px_rgba(11,35,65,0.04)]"
                     >
-                      <div className="flex min-w-0 items-center gap-3">
-                        <span className="group relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[#f2f6fa]">
-                          <ProductPhotoThumb key={`${productId}:${photoUrl ?? "empty"}`} src={photoUrl} />
-                          {productId && (
-                            <button
-                              type="button"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                setPhotoProduct({ id: productId, name: productName });
-                              }}
-                              onKeyDown={(event) => event.stopPropagation()}
-                              aria-label={`${photoUrl ? "Change" : "Upload"} photo for ${productName}`}
-                              title={photoUrl ? "Change product photo" : "Upload product photo"}
-                              className="invisible absolute inset-0 flex flex-col items-center justify-center gap-0.5 bg-[#0b2341]/65 text-[9px] font-semibold leading-none text-white opacity-0 transition hover:bg-[#0b2341]/75 focus-visible:visible focus-visible:opacity-100 group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100 [@media(hover:none)]:visible [@media(hover:none)]:opacity-100"
-                            >
-                              <ImagePlus aria-hidden="true" className="h-4 w-4" />
-                              {photoUrl ? "Change" : "Upload"}
-                            </button>
-                          )}
-                        </span>
-                        <span className="min-w-0 flex-1">
-                          {productName}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3.5 text-slate-600">{valueText(row.sku ?? row.model_code)}</td>
-                    <td className="px-4 py-3.5 text-slate-600">{valueText(row.store_name)}</td>
-                    <td className="px-4 py-3.5 text-slate-700">{valueText(row.dr_number)}</td>
-                    <td className="px-4 py-3.5 text-right tabular-nums text-slate-700">{valueText(row.quantity)}</td>
-                    <td className="px-4 py-3.5 text-right tabular-nums text-slate-700">{valueText(row.cbm)}</td>
-                    <td className="rounded-r-2xl px-4 py-3.5 text-right">
-                      <StatusPill status={row.delivery_status} fallback="Pending" />
-                    </td>
-                  </tr>
-                );
+                      <td className="rounded-l-2xl px-4 py-3.5 font-semibold text-[#0b2341]">
+                        <div className="flex min-w-0 items-center gap-3">
+                          <span className="group relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[#f2f6fa]">
+                            <ProductPhotoThumb key={`${productId}:${photoUrl ?? "empty"}`} src={photoUrl} />
+                            {productId && (
+                              <button
+                                type="button"
+                                onClick={() => setPhotoProduct({ id: productId, name: productName })}
+                                aria-label={`${photoUrl ? "Change" : "Upload"} photo for ${productName}`}
+                                title={photoUrl ? "Change product photo" : "Upload product photo"}
+                                className="invisible absolute inset-0 flex flex-col items-center justify-center gap-0.5 bg-[#0b2341]/65 text-[9px] font-semibold leading-none text-white opacity-0 transition hover:bg-[#0b2341]/75 focus-visible:visible focus-visible:opacity-100 group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100 [@media(hover:none)]:visible [@media(hover:none)]:opacity-100"
+                              >
+                                <ImagePlus aria-hidden="true" className="h-4 w-4" />
+                                {photoUrl ? "Change" : "Upload"}
+                              </button>
+                            )}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setViewProduct(row)}
+                            aria-label={`View appliance details for ${productName}`}
+                            className="min-w-0 flex-1 rounded-lg px-1 py-1 text-left font-semibold text-[#0b2341] transition-colors hover:text-[#2678b9] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9]"
+                          >
+                            {productName}
+                          </button>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3.5 text-slate-600">{valueText(row.sku ?? row.model_code)}</td>
+                      <td className="px-4 py-3.5 text-slate-600">{valueText(row.store_name)}</td>
+                      <td className="px-4 py-3.5 text-slate-700">{valueText(row.dr_number)}</td>
+                      <td className="px-4 py-3.5 text-right tabular-nums text-slate-700">{valueText(row.quantity)}</td>
+                      <td className="px-4 py-3.5 text-right tabular-nums text-slate-700">{valueText(row.cbm)}</td>
+                      <td className="rounded-r-2xl px-4 py-3.5 text-right">
+                        <StatusPill status={row.delivery_status} fallback="Pending" />
+                      </td>
+                    </tr>
+                  );
                 })
               )}
             </tbody>
@@ -976,9 +1106,11 @@ export default function TripDetailView({
         </div>
         <footer className="flex items-center gap-2 px-5 py-3 text-[11px] text-slate-500">
           <Package aria-hidden="true" className="h-3.5 w-3.5 text-[#2678b9]" />
-          {visibleRows.length} {visibleRows.length === 1 ? "line" : "lines"} · {formatNumber(sumOf(visibleRows, "quantity"))} units · {formatNumber(sumOf(visibleRows, "cbm"))} CBM
+          {visibleRows.length} {visibleRows.length === 1 ? "line" : "lines"} ·{" "}
+          {formatNumber(sumOf(visibleRows, "quantity"))} units · {formatNumber(sumOf(visibleRows, "cbm"))} CBM
         </footer>
       </section>
+
       {accessToken && photoProduct && (
         <ProductPhotoManager
           token={accessToken}
@@ -990,6 +1122,7 @@ export default function TripDetailView({
           }}
         />
       )}
+
       {viewProduct && (
         <div
           className="fixed inset-0 z-[1250] flex items-center justify-center bg-[#0b2341]/45 p-4"
@@ -1043,9 +1176,7 @@ export default function TripDetailView({
                   ].map(([label, value]) => (
                     <div key={String(label)} className="min-w-0">
                       <dt className="text-slate-400">{String(label)}</dt>
-                      <dd className="mt-0.5 truncate font-medium text-slate-700">
-                        {valueText(value, "—")}
-                      </dd>
+                      <dd className="mt-0.5 truncate font-medium text-slate-700">{valueText(value, "—")}</dd>
                     </div>
                   ))}
                 </dl>

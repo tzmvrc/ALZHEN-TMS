@@ -159,7 +159,7 @@ export function PageIntro({
 }) {
   return (
     <div className="mb-6">
-      <h1 className="text-xl font-semibold tracking-tight text-slate-900">
+      <h1 className="text-[26px] font-bold leading-tight tracking-tight text-[#0b2341]">
         {title}
       </h1>
       <p className="mt-1 text-[13px] text-slate-500">{subtitle}</p>
