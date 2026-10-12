@@ -1,5 +1,6 @@
 // src/pages/Admin/views/RequestsView.tsx
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   CalendarDays,
   Check,
@@ -319,9 +320,9 @@ export default function RequestsView() {
       )}
 
       {/* Centered modal */}
-      {modalOpen && selected && (
+      {modalOpen && selected && createPortal(
         <div
-          className="fixed inset-0 z-[1200] flex items-center justify-center bg-[#0b2341]/45 p-3 backdrop-blur-[2px] sm:p-6"
+          className="fixed inset-0 z-[2000] flex items-center justify-center bg-[#0b2341]/45 p-3 backdrop-blur-sm sm:p-6"
           role="presentation"
           onMouseDown={(event) => {
             if (event.target === event.currentTarget) setDetailOpen(false);
@@ -348,7 +349,8 @@ export default function RequestsView() {
               onSendMessage={(body) => sendMessage(selected.id, body)}
             />
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

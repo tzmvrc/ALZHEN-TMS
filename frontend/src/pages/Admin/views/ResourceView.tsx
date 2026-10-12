@@ -346,7 +346,7 @@ export default function ResourceView({
     "dispatch-monitoring",
     "store-calling",
   ].includes(id);
-  const showInlineTableHeading = isTripsScope || isReportsScope;
+  const showInlineTableHeading = isTripsScope || isReportsScope || id === "database";
   const barTitle = isTripsScope
     ? "Trips"
     : isReportsScope
@@ -592,7 +592,7 @@ function AddTripButton() {
       </button>
 
       {open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0b2341]/30 p-4 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-[#0b2341]/45 p-4 backdrop-blur-sm">
           <div
             role="dialog"
             aria-modal="true"

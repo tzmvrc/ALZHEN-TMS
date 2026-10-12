@@ -143,6 +143,135 @@ const pillSurface =
 const focusRing =
   "focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900/30";
 
+/* ───────── Liquid / water-drop hover ─────────
+   One glassy droplet per rail. It glides to whichever icon is hovered,
+   overshoots slightly (like a bead of water settling), and its shape
+   gently morphs while it rests. */
+const liquidCss = `
+.liquid-drop {
+  position: absolute;
+  width: 40px;
+  height: 40px;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0;
+  transform: scale(0.55);
+  border-radius: 50%;
+  background: linear-gradient(165deg, #ffffff 0%, rgba(255,255,255,0.92) 100%);
+  box-shadow:
+    inset 0 1px 1px rgba(255,255,255,1),
+    0 6px 16px -6px rgba(15,23,42,0.22);
+  transition:
+    top 0.6s cubic-bezier(0.34, 1.5, 0.5, 1),
+    left 0.6s cubic-bezier(0.34, 1.5, 0.5, 1),
+    opacity 0.3s ease,
+    transform 0.55s cubic-bezier(0.34, 1.56, 0.64, 1);
+  animation: liquid-morph 3.2s ease-in-out infinite alternate;
+}
+.liquid-drop[data-visible="true"] {
+  opacity: 1;
+  transform: scale(1);
+}
+.sidebar-tip {
+  position: fixed;
+  left: 44px;
+  z-index: 1200;
+  pointer-events: none;
+  transform: translateY(-50%);
+  /* Cut everything left of the rail's edge (x = 72px) so the shape only
+     shows where it leaves the sidebar. */
+  clip-path: inset(-40px -40px -40px 28px);
+  transition: top 0.5s cubic-bezier(0.34, 1.4, 0.5, 1);
+}
+.sidebar-tip-goo {
+  position: relative;
+  padding: 20px;
+  filter: url(#sidebar-goo);
+}
+/* Bead on the rail's edge. The gap to the pill is bridged by the goo filter
+   into a thin neck, like a drop of water pulling apart. */
+.sidebar-tip-anchor {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  width: 22px;
+  height: 30px;
+  margin-top: -15px;
+  border-radius: 9999px;
+  background: #fdfdfe;
+  transform-origin: left center;
+  transform: scale(0.3, 0.6);
+  opacity: 0;
+  transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.2s ease;
+}
+.sidebar-tip-pill {
+  display: block;
+  margin-left: 19px;
+  padding: 9px 18px;
+  border-radius: 9999px;
+  background: #fdfdfe;
+  color: transparent;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  transform: translateX(-30px) scaleX(0.35);
+  transform-origin: left center;
+  opacity: 0;
+  transition: transform 0.55s cubic-bezier(0.34, 1.5, 0.5, 1), opacity 0.2s ease;
+}
+.sidebar-tip-text {
+  position: absolute;
+  left: 39px;
+  top: 20px;
+  bottom: 20px;
+  padding: 0 18px;
+  display: flex;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  color: #0b2341;
+  opacity: 0;
+  transform: translateX(-10px);
+  transition: opacity 0.2s ease, transform 0.45s cubic-bezier(0.34, 1.4, 0.5, 1);
+}
+.sidebar-tip[data-visible="true"] .sidebar-tip-anchor { transform: none; opacity: 1; }
+.sidebar-tip[data-visible="true"] .sidebar-tip-pill { transform: none; opacity: 1; }
+.sidebar-tip[data-visible="true"] .sidebar-tip-text { opacity: 1; transform: none; transition-delay: 0.1s; }
+@keyframes liquid-morph {
+  0%   { border-radius: 50% 50% 50% 50% / 50% 50% 50% 50%; }
+  33%  { border-radius: 54% 46% 52% 48% / 46% 54% 46% 54%; }
+  66%  { border-radius: 47% 53% 46% 54% / 53% 47% 55% 45%; }
+  100% { border-radius: 52% 48% 55% 45% / 48% 52% 48% 52%; }
+}
+.liquid-icon {
+  transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1), color 0.25s ease;
+}
+.liquid-btn:hover .liquid-icon,
+.liquid-btn:focus-visible .liquid-icon {
+  transform: translateY(-1px) scale(1.12);
+}
+@media (prefers-reduced-motion: reduce) {
+  .liquid-drop { animation: none; transition: opacity 0.2s ease; }
+  .liquid-btn:hover .liquid-icon, .liquid-btn:focus-visible .liquid-icon { transform: none; }
+}
+`;
+
+type LiquidState = { top: number; left: number; tone: "water" | "rose"; visible: boolean };
+
+function LiquidDrop({ state }: { state: LiquidState | null }) {
+  if (!state) return null;
+  return (
+    <span
+      aria-hidden="true"
+      className="liquid-drop"
+      data-visible={state.visible}
+      data-tone={state.tone}
+      style={{ top: state.top, left: state.left }}
+    />
+  );
+}
+
 export default function SidebarNav({
   entries,
   activeId,
@@ -175,6 +304,41 @@ export default function SidebarNav({
   const [profileOpen, setProfileOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const [failedAvatarUrl, setFailedAvatarUrl] = useState<string | null>(null);
+  const [navTooltip, setNavTooltip] = useState<{
+    label: string;
+    left: number;
+    top: number;
+    visible: boolean;
+  } | null>(null);
+  const [navDrop, setNavDrop] = useState<LiquidState | null>(null);
+  const [utilDrop, setUtilDrop] = useState<LiquidState | null>(null);
+
+  function showNavTooltip(label: string, target: HTMLButtonElement) {
+    const rect = target.getBoundingClientRect();
+    setNavTooltip({ label, left: rect.right + 8, top: rect.top + rect.height / 2, visible: true });
+  }
+
+  function hideNavTooltip() {
+    setNavTooltip((current) => (current ? { ...current, visible: false } : null));
+  }
+
+  function glide(
+    setter: (updater: (prev: LiquidState | null) => LiquidState | null) => void,
+    target: HTMLButtonElement,
+    tone: "water" | "rose" = "water",
+    hidden = false,
+  ) {
+    setter(() => ({
+      top: target.offsetTop,
+      left: target.offsetLeft,
+      tone,
+      visible: !hidden,
+    }));
+  }
+
+  function hideDrop(setter: (updater: (prev: LiquidState | null) => LiquidState | null) => void) {
+    setter((prev) => (prev ? { ...prev, visible: false } : null));
+  }
 
   // The rail is always slim; report that once so the parent layout can reserve room.
   const collapseCallback = useRef(onCollapseChange);
@@ -227,6 +391,10 @@ export default function SidebarNav({
   /* ---- icon-only nav button (labels kept as title + aria-label) ---- */
   const renderItem = (entry: NavItemWithBadge) => {
     const active = entry.id === activeId;
+    const enter = (target: HTMLButtonElement) => {
+      showNavTooltip(entry.label, target);
+      glide(setNavDrop, target, "water", active);
+    };
     return (
       <button
         key={entry.id}
@@ -234,13 +402,19 @@ export default function SidebarNav({
         onClick={() => onNavigate(entry.id)}
         aria-current={active ? "page" : undefined}
         aria-label={entry.label}
-        title={entry.label}
-        className={`relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-colors duration-150 ${focusRing} ${
+        onPointerEnter={(event) => enter(event.currentTarget)}
+        onPointerLeave={hideNavTooltip}
+        onFocus={(event) => enter(event.currentTarget)}
+        onBlur={() => {
+          hideNavTooltip();
+          hideDrop(setNavDrop);
+        }}
+        className={`liquid-btn relative z-10 flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-colors duration-300 ${focusRing} ${
           active
             ? "bg-[#0b2341] text-white shadow-[0_6px_14px_-4px_rgba(11,35,65,0.55)]"
-            : "text-slate-400 hover:bg-slate-900/5 hover:text-slate-700"
+            : "text-slate-400 hover:text-sky-800"
         }`}>
-        <span className="pointer-events-none flex items-center [&>svg]:h-[18px] [&>svg]:w-[18px] [&>svg]:stroke-[1.6]">
+        <span className="liquid-icon pointer-events-none flex items-center [&>svg]:h-[18px] [&>svg]:w-[18px] [&>svg]:stroke-[1.6]">
           {entry.icon}
         </span>
         {entry.badge ? (
@@ -252,11 +426,12 @@ export default function SidebarNav({
     );
   };
 
-  const utilityButton =
-    `flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-400 transition-colors duration-150 hover:bg-slate-900/5 hover:text-slate-700 ${focusRing}`;
+  const utilityButton = `liquid-btn relative z-10 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-400 transition-colors duration-300 hover:text-sky-800 ${focusRing}`;
 
   return (
     <>
+      <style>{liquidCss}</style>
+
       {/* Reserves room at the top of the page for the floating top bar. */}
       <div aria-hidden="true" className="h-[4.5rem]" />
 
@@ -280,7 +455,9 @@ export default function SidebarNav({
         <div className="flex min-h-0 w-full flex-1 items-center">
           <nav
             aria-label="Primary"
-            className={`admin-island-nav flex max-h-full w-full flex-col items-center gap-1 overflow-y-auto overflow-x-hidden rounded-full px-2 py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${pillSurface}`}>
+            onPointerLeave={() => hideDrop(setNavDrop)}
+            className={`admin-island-nav relative flex max-h-full w-full flex-col items-center gap-1 overflow-y-auto overflow-x-hidden rounded-full px-2 py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${pillSurface}`}>
+            <LiquidDrop state={navDrop} />
             {items.map((entry, index) =>
               entry.children ? (
                 <div
@@ -301,25 +478,82 @@ export default function SidebarNav({
 
         {/* Bottom group: help and logout only */}
         <div
-          className={`flex w-full shrink-0 flex-col items-center gap-1 rounded-full px-2 py-2 ${pillSurface}`}>
+          onPointerLeave={() => hideDrop(setUtilDrop)}
+          className={`relative flex w-full shrink-0 flex-col items-center gap-1 rounded-full px-2 py-2 ${pillSurface}`}>
+          <LiquidDrop state={utilDrop} />
           <button
             type="button"
             onClick={onHelpClick}
             aria-label="Help"
-            title="Help"
+            onPointerEnter={(event) => {
+              showNavTooltip("Help", event.currentTarget);
+              glide(setUtilDrop, event.currentTarget, "water");
+            }}
+            onPointerLeave={hideNavTooltip}
+            onFocus={(event) => {
+              showNavTooltip("Help", event.currentTarget);
+              glide(setUtilDrop, event.currentTarget, "water");
+            }}
+            onBlur={() => {
+              hideNavTooltip();
+              hideDrop(setUtilDrop);
+            }}
             className={utilityButton}>
-            <HelpCircle className="h-[18px] w-[18px] stroke-[1.6]" />
+            <HelpCircle className="liquid-icon h-[18px] w-[18px] stroke-[1.6]" />
           </button>
           <button
             type="button"
             onClick={onLogout}
             aria-label="Logout"
-            title="Logout"
-            className={`${utilityButton} hover:!bg-rose-50 hover:!text-rose-600`}>
-            <LogOut className="h-[18px] w-[18px] stroke-[1.6]" />
+            onPointerEnter={(event) => {
+              showNavTooltip("Logout", event.currentTarget);
+              glide(setUtilDrop, event.currentTarget, "rose");
+            }}
+            onPointerLeave={hideNavTooltip}
+            onFocus={(event) => {
+              showNavTooltip("Logout", event.currentTarget);
+              glide(setUtilDrop, event.currentTarget, "rose");
+            }}
+            onBlur={() => {
+              hideNavTooltip();
+              hideDrop(setUtilDrop);
+            }}
+            className={`${utilityButton} hover:!text-rose-600`}>
+            <LogOut className="liquid-icon h-[18px] w-[18px] stroke-[1.6]" />
           </button>
         </div>
       </aside>
+
+      {/* Gooey filter: merges the white anchor + label pill into one liquid shape */}
+      <svg width="0" height="0" aria-hidden="true" className="pointer-events-none absolute">
+        <defs>
+          <filter id="sidebar-goo" x="-20%" y="-60%" width="140%" height="220%">
+            <feGaussianBlur in="SourceGraphic" stdDeviation="7" result="blur" />
+            <feColorMatrix
+              in="blur"
+              mode="matrix"
+              values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 22 -9"
+            />
+          </filter>
+        </defs>
+      </svg>
+
+      {navTooltip && (
+        <div
+          role="tooltip"
+          aria-hidden={!navTooltip.visible}
+          className="sidebar-tip"
+          data-visible={navTooltip.visible}
+          style={{ top: navTooltip.top }}>
+          <div style={{ filter: "drop-shadow(0 6px 10px rgba(15,23,42,0.10))" }}>
+            <div className="sidebar-tip-goo">
+              <span className="sidebar-tip-anchor" />
+              <span className="sidebar-tip-pill">{navTooltip.label}</span>
+            </div>
+          </div>
+          <span className="sidebar-tip-text">{navTooltip.label}</span>
+        </div>
+      )}
 
       {/* ───────── Top bar: starts beside the rail, one row ───────── */}
       <header

@@ -96,7 +96,7 @@ export default function ProductPhotoManager({
 
   return (
     <div
-      className="fixed inset-0 z-[1300] flex items-center justify-center bg-[#0b2341]/45 p-4"
+          className="fixed inset-0 z-[2000] flex items-center justify-center bg-[#0b2341]/45 p-4 backdrop-blur-sm"
       role="presentation"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget && !busy) onClose();

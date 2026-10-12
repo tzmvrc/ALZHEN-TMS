@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { MoreHorizontal, RefreshCw, Search, SlidersHorizontal, UserRound, Pencil, Plus, X } from "lucide-react";
+import { LoaderCircle, MoreHorizontal, RefreshCw, Search, SlidersHorizontal, UserRound, Pencil, Plus, X } from "lucide-react";
 import { useAuth } from "../../../context/AuthContext";
 import { tableUi } from "../../../components/admin/dashboardStyles";
 import SlidingSegmentedControl from "../../../components/admin/SlidingSegmentedControl";
@@ -37,7 +37,6 @@ export default function TruckersView() {
   const { accessToken, profile } = useAuth();
   const [selectedCategory, setSelectedCategory] = useState<"staff" | "truckers">(() => profile?.role === "ADMIN" ? "staff" : "truckers");
   const category = profile?.role === "ADMIN" ? selectedCategory : "truckers";
-  const [roleFilter, setRoleFilter] = useState<"all" | "ADMIN" | "STAFF">("all");
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("all");
   const [assignment, setAssignment] = useState<"all" | "assigned" | "unassigned">("all");
@@ -51,6 +50,7 @@ export default function TruckersView() {
   const [actionsOpen, setActionsOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<Awaited<ReturnType<typeof fetchTruckerDetail>> | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [managedUsers, setManagedUsers] = useState<ManagedUser[]>([]);
   const [userModalOpen, setUserModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<ManagedUser | null>(null);
@@ -131,12 +131,16 @@ export default function TruckersView() {
       return;
     }
     let active = true;
+    setDetail(null);
+    setDetailLoading(true);
     void (async () => {
       try {
         const nextDetail = await fetchTruckerDetail(accessToken, selectedId);
         if (active) setDetail(nextDetail);
       } catch {
         if (active) setDetail(null);
+      } finally {
+        if (active) setDetailLoading(false);
       }
     })();
     return () => { active = false; };
@@ -148,10 +152,9 @@ export default function TruckersView() {
   const matchingProfiles = useMemo(() => {
     const term = search.trim().toLocaleLowerCase();
     return profiles.filter((profile) => {
-      if (roleFilter !== "all" && profile.role !== roleFilter) return false;
       return !term || `${profile.full_name} ${profile.role}`.toLocaleLowerCase().includes(term);
     });
-  }, [profiles, roleFilter, search]);
+  }, [profiles, search]);
   const visibleProfiles = useMemo(() => {
     const start = (page - 1) * PAGE_SIZE;
     return matchingProfiles.slice(start, start + PAGE_SIZE);
@@ -172,7 +175,6 @@ export default function TruckersView() {
     setPage(1);
     setSearch("");
     setSelectedId(null);
-    setRoleFilter("all");
   }
 
   return (
@@ -189,13 +191,7 @@ export default function TruckersView() {
                 if (value === "truckers" || profile?.role === "ADMIN") changeCategory(value);
               }}
             />
-            {category === "staff" ? (
-              <select aria-label="Filter by role" value={roleFilter} onChange={(event) => { setPage(1); setRoleFilter(event.target.value as "all" | "ADMIN" | "STAFF"); }} className={`${tableUi.select} pr-4`}>
-                <option value="all">All roles</option>
-                <option value="ADMIN">Admin</option>
-                <option value="STAFF">Staff</option>
-              </select>
-            ) : (
+            {category !== "staff" && (
               <>
                 <div className="relative">
                   <SlidersHorizontal aria-hidden="true" className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -214,7 +210,6 @@ export default function TruckersView() {
             )}
           </div>
           <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
-            {profile?.role === "ADMIN" && <button type="button" onClick={() => { setEditingUser(null); setUserModalOpen(true); }} className="inline-flex h-10 items-center gap-2 rounded-full bg-[#ffd43b] px-4 text-sm font-semibold text-[#0b2341] hover:bg-[#f2c200]"><Plus className="h-4 w-4" />Add user</button>}
             <label className="relative min-w-[200px] flex-1 sm:flex-none xl:w-72">
               <Search aria-hidden="true" className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input value={search} onChange={(event) => { setPage(1); setSearch(event.target.value); }} placeholder={category === "staff" ? "Search admin or staff" : "Search truckers"} className={tableUi.search} />
@@ -228,6 +223,7 @@ export default function TruckersView() {
               <span className="whitespace-nowrap text-sm text-slate-600">Page {page} / {visibleTotalPages}</span>
               <button type="button" onClick={() => setPage((current) => Math.min(visibleTotalPages, current + 1))} disabled={page >= visibleTotalPages} className="h-10 rounded-full bg-white px-4 text-sm text-slate-600 shadow-[0_1px_2px_rgba(11,35,65,0.06)] transition hover:text-[#0b2341] disabled:cursor-not-allowed disabled:opacity-40">Next</button>
             </div>
+            {profile?.role === "ADMIN" && <button type="button" onClick={() => { setEditingUser(null); setUserModalOpen(true); }} className="inline-flex h-10 items-center gap-2 rounded-full bg-[#ffd43b] px-4 text-sm font-semibold text-[#0b2341] hover:bg-[#f2c200]"><Plus className="h-4 w-4" />Add user</button>}
           </div>
         </div>
       </div>
@@ -255,7 +251,7 @@ export default function TruckersView() {
               ) : rows.map((trucker) => {
                 const avatar = managedUsers.find((item) => item.id === trucker.profile_id)?.profile_picture_url ?? formatAvatarPath(trucker.profile_picture_path);
                 return (
-                  <tr key={trucker.id} onClick={() => setSelectedId(trucker.id)} className={`cursor-pointer ${tableUi.row}`}>
+                  <tr key={trucker.id} onClick={() => { setDetail(null); setDetailLoading(true); setSelectedId(trucker.id); }} className={`cursor-pointer ${tableUi.row}`}>
                     <td className="px-4 py-3.5"><div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-[#e6f0f9]">{avatar ? <img src={avatar} alt={trucker.full_name} className="h-full w-full object-cover" /> : <UserRound aria-hidden="true" className="h-5 w-5 text-[#2678b9]" />}</div><div><div className="text-[13px] font-medium text-[#0b2341]">{trucker.full_name}</div><div className="text-xs text-slate-500">{trucker.email || "No email"}</div></div></div></td>
                     <td className={tableUi.td}>{trucker.contact_number || "—"}</td><td className={tableUi.td}>{trucker.plate_number || "—"}</td><td className={tableUi.td}>{trucker.active_trip_number || "—"}</td><td className={tableUi.td}>{trucker.delivery_status || trucker.current_trip_status || "—"}</td><td className={tableUi.td}><button type="button" aria-label={`Edit ${trucker.full_name}`} onClick={(event) => { event.stopPropagation(); const managed = managedUsers.find((item) => item.id === trucker.profile_id); if (managed) { setEditingUser(managed); setUserModalOpen(true); } else setError("Unable to load this user account for editing."); }} className={tableUi.iconBtn}><Pencil className="h-4 w-4" /></button></td>
                   </tr>
@@ -266,7 +262,7 @@ export default function TruckersView() {
         </div>
       </div>
 
-      {selectedId && detail ? <TruckerDetailDrawer trucker={detail} onClose={() => setSelectedId(null)} /> : null}
+      {selectedId && (detail || detailLoading) ? <TruckerDetailDrawer trucker={detail} loading={detailLoading} onClose={() => setSelectedId(null)} /> : null}
       {userModalOpen && <UserManagementModal user={editingUser} onClose={() => setUserModalOpen(false)} onSaved={(message) => { setUserModalOpen(false); setNotice(message ?? "User saved successfully."); refreshList(); }} />}
     </div>
   );

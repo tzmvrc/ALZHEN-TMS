@@ -38,12 +38,12 @@ export default function ConfirmDialog({
 
   return (
     <div
-      className="fixed inset-0 z-[1100] flex items-center justify-center bg-slate-950/30 px-4 backdrop-blur-sm"
+      className="fixed inset-0 z-[2000] flex items-center justify-center bg-[#0b2341]/45 px-4 backdrop-blur-sm"
       role="presentation"
       onClick={onCancel}
     >
       <div
-        className="relative z-[1101] w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_20px_50px_rgba(15,23,42,0.25)]"
+        className="relative z-[2001] w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_20px_50px_rgba(15,23,42,0.25)]"
         role="dialog"
         aria-modal="true"
         aria-labelledby="logout-dialog-title"

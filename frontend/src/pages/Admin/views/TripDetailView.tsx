@@ -602,6 +602,48 @@ function VehicleCard({
 /* ------------------------------------------------------------------ */
 /* Main view                                                           */
 /* ------------------------------------------------------------------ */
+function TripDetailSkeleton({ onBack }: { onBack: () => void }) {
+  const block = "animate-pulse rounded-2xl bg-slate-200/80";
+  const card = `${surface.card} p-5`;
+
+  return (
+    <div aria-label="Loading trip details" aria-busy="true" className="w-full space-y-4">
+      <header className="flex items-center justify-between gap-3">
+        <button type="button" onClick={onBack} className="inline-flex h-10 items-center gap-2 rounded-full border border-slate-200 bg-white pl-3 pr-4 text-xs font-semibold text-[#0b2341] shadow-sm">
+          <ArrowLeft aria-hidden="true" className="h-4 w-4" />Back to trips
+        </button>
+        <div aria-hidden="true" className={`${block} hidden h-4 w-52 sm:block`} />
+      </header>
+
+      <section aria-hidden="true" className="grid grid-cols-1 items-stretch gap-4 xl:grid-cols-12">
+        <div className={`${card} space-y-5 xl:col-span-4`}>
+          <div className="flex items-center gap-3"><div className={`${block} h-10 w-10 rounded-full`} /><div className={`${block} h-5 w-36`} /></div>
+          <div className={`${block} h-3 w-28`} /><div className={`${block} h-8 w-48`} />
+          <div className="rounded-2xl bg-[#f2f6fa] p-4"><div className="flex justify-between"><div className={`${block} h-9 w-20`} /><div className={`${block} h-9 w-20`} /></div><div className={`${block} mt-4 h-2 w-full`} /></div>
+          <div className="space-y-4"><div className={`${block} h-4 w-full`} /><div className={`${block} h-4 w-4/5`} /></div>
+        </div>
+        <div aria-hidden="true" className={`${block} min-h-[300px] xl:col-span-5`} />
+        <div className={`${card} space-y-4 xl:col-span-3`}>
+          <div className={`${block} h-5 w-32`} />
+          {Array.from({ length: 5 }, (_, index) => <div key={index} className="flex gap-3"><div className={`${block} h-10 w-10 rounded-full`} /><div className="flex-1 space-y-2"><div className={`${block} h-3 w-3/4`} /><div className={`${block} h-3 w-1/2`} /></div></div>)}
+        </div>
+      </section>
+
+      <section aria-hidden="true" className="grid grid-cols-1 items-stretch gap-4 xl:grid-cols-12">
+        <div className={`${block} min-h-[220px] xl:col-span-4`} />
+        <div className={`${block} min-h-[220px] xl:col-span-5`} />
+        <div className={`${card} min-h-[220px] space-y-4 xl:col-span-3`}><div className={`${block} h-5 w-36`} />{Array.from({ length: 4 }, (_, index) => <div key={index} className={`${block} h-12 w-full`} />)}</div>
+      </section>
+
+      <section aria-hidden="true" className={`${card} space-y-4`}>
+        <div className="flex items-center justify-between"><div className={`${block} h-5 w-28`} /><div className={`${block} h-8 w-48`} /></div>
+        {Array.from({ length: 4 }, (_, index) => <div key={index} className={`${block} h-14 w-full`} />)}
+      </section>
+      <span className="sr-only">Loading trip details</span>
+    </div>
+  );
+}
+
 export default function TripDetailView({
   tripId,
   onBack,
@@ -781,6 +823,8 @@ export default function TripDetailView({
       </div>
     );
   }
+
+  if (isLoading && !detail) return <TripDetailSkeleton onBack={onBack} />;
 
   const trip = detail?.trip;
   const dispatchNumber = String(trip?.dispatch_number ?? "Trip details");
@@ -1169,7 +1213,7 @@ export default function TripDetailView({
 
       {viewProduct && (
         <div
-          className="fixed inset-0 z-[1250] flex items-center justify-center bg-[#0b2341]/45 p-4"
+          className="fixed inset-0 z-[2000] flex items-center justify-center bg-[#0b2341]/45 p-4 backdrop-blur-sm"
           role="presentation"
           onMouseDown={(event) => {
             if (event.target === event.currentTarget) setViewProduct(null);

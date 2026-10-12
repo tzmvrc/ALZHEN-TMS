@@ -688,7 +688,7 @@ function ReportVisualCards({
   const extraColumns = columns.filter((column) => !shownKeys.has(column.key));
 
   return (
-    <div className="grid gap-4 bg-[#f2f6fa] p-4 md:grid-cols-2 2xl:grid-cols-3">
+    <div className="grid gap-4 p-4 md:grid-cols-2 2xl:grid-cols-3">
       {groups.map((group, index) => {
         const row = group[0];
         const identity =
@@ -756,14 +756,15 @@ function ReportVisualCards({
         return (
           <article
             key={`${identity}-${index}`}
-            className="flex min-w-0 flex-col rounded-3xl bg-white shadow-[0_1px_2px_rgba(11,35,65,0.04),0_8px_24px_-16px_rgba(11,35,65,0.16)]">
+            className="group relative flex min-w-0 flex-col overflow-hidden rounded-3xl border border-slate-200/70 bg-white shadow-[0_2px_5px_rgba(11,35,65,0.035),0_12px_28px_-18px_rgba(11,35,65,0.2)] transition duration-200 hover:-translate-y-0.5 hover:border-[#b9d4ea] hover:shadow-[0_16px_34px_-20px_rgba(11,35,65,0.3)] motion-reduce:transition-none">
+            <span aria-hidden="true" className={`absolute inset-x-0 top-0 h-1 ${statusDot(primaryStatus)}`} />
             <header className="flex items-start justify-between gap-3 px-4 pt-4">
               <div className="min-w-0">
                 <p className="text-[11px] font-medium text-slate-400">
                   {isStoreCall ? "Store call" : "Dispatch"}
                 </p>
                 <h3
-                  className="mt-0.5 truncate text-[15px] font-bold tracking-tight text-[#0b2341]"
+                  className="mt-0.5 truncate text-base font-extrabold tracking-tight text-[#0b2341]"
                   title={identity}>
                   {identity}
                 </h3>
@@ -804,7 +805,7 @@ function ReportVisualCards({
             )}
 
             <div className="space-y-3 p-4">
-              <div className="rounded-2xl bg-[#f2f6fa] p-3.5">
+              <div className="rounded-2xl border border-[#dbe7f3] bg-gradient-to-r from-[#f4f8fc] to-[#edf4fa] p-3.5">
                 <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3">
                   <div className="min-w-0">
                     <p className="text-[10px] font-medium text-slate-400">
@@ -845,7 +846,7 @@ function ReportVisualCards({
                 )}
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-2.5">
                 <VisualFact
                   icon={CalendarDays}
                   label="Date"
@@ -869,16 +870,15 @@ function ReportVisualCards({
               </div>
 
               {products.length > 0 && (
-                <div className="flex items-start gap-2.5 rounded-2xl bg-[#fff8dc] p-3">
-                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-white text-[#0b2341]">
+                <div className="flex items-start gap-3 rounded-2xl border border-amber-200/80 bg-gradient-to-br from-[#fff8dc] to-[#fff3bf] p-3.5">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-[#0b2341] shadow-sm">
                     <Package aria-hidden="true" className="h-4 w-4" />
                   </span>
                   <div className="min-w-0">
-                    <p className="text-[10px] font-medium text-[#8a6d00]">
-                      Cargo
-                      {group.length > 1 ? ` · ${group.length} line items` : ""}
+                    <p className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wide text-[#8a6d00]">
+                      Cargo <span className="rounded-full bg-white/80 px-2 py-0.5 normal-case tracking-normal text-[#0b2341]">{group.length} line{group.length === 1 ? "" : "s"}</span>
                     </p>
-                    <p className="mt-0.5 break-words text-[13px] font-medium text-[#0b2341]">
+                    <p className="mt-1 break-words text-[13px] font-semibold leading-snug text-[#0b2341]">
                       {products.slice(0, 2).join(", ")}
                       {products.length > 2
                         ? ` +${products.length - 2} more`
@@ -927,14 +927,14 @@ function VisualFact({
   value: string;
 }) {
   return (
-    <div className="flex min-w-0 items-center gap-2.5">
+    <div className="flex min-w-0 items-center gap-2.5 rounded-xl border border-slate-100 bg-slate-50/80 px-2.5 py-2">
       <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[#e6f0f9] text-[#2678b9]">
         <Icon aria-hidden="true" className="h-4 w-4" />
       </span>
       <div className="min-w-0">
         <p className="text-[10px] font-medium text-slate-400">{label}</p>
         <p
-          className="truncate text-xs font-semibold text-[#0b2341]"
+          className="truncate text-[12px] font-bold text-[#0b2341]"
           title={value}>
           {value}
         </p>
@@ -2871,7 +2871,7 @@ export default function ReportDataView({
             title="Export reports"
             aria-label="Export reports"
             onClick={() => { setExportError(""); setExportModalOpen(true); }}
-            className={tableUi.iconBtn}>
+            className={`${tableUi.iconBtn} !bg-[#ffd43b] !text-[#0b2341] hover:!bg-[#f2c200]`}>
             <Download aria-hidden="true" className="h-4 w-4" />
           </button>
           {viewMode === "visual" && (
@@ -2977,7 +2977,7 @@ export default function ReportDataView({
       )}
 
       {exportModalOpen && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/40 p-4">
+        <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-[#0b2341]/45 p-4 backdrop-blur-sm">
           <section role="dialog" aria-modal="true" aria-labelledby="report-export-title" className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl">
             <h2 id="report-export-title" className="text-lg font-semibold text-[#0b2341]">Export reports</h2>
             <p className="mt-1 text-sm text-slate-500">Exports use report access already granted to your account and include all pages of report data.</p>
@@ -3003,7 +3003,7 @@ export default function ReportDataView({
       )}
 
       {editModalOpen && editModalRecord && (
-        <div className="fixed inset-0 z-[75] flex items-center justify-center bg-slate-950/40 p-4" onMouseDown={(event) => {
+        <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-[#0b2341]/45 p-4 backdrop-blur-sm" onMouseDown={(event) => {
           if (event.target === event.currentTarget && !editModalBusy) setEditModalOpen(false);
         }}>
           <section role="dialog" aria-modal="true" aria-labelledby="report-row-edit-title" className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
@@ -3086,7 +3086,9 @@ export default function ReportDataView({
         hideSectionTab
         accessToken={accessToken}
         role={profile?.role ?? ""}>
-      <section className={tableUi.shell}>
+      <section
+        className={viewMode === "visual" ? "" : tableUi.shell}
+      >
       {activeError ? (
         <div className="flex min-h-48 flex-col items-center justify-center gap-3 p-6 text-center">
           <p role="alert" className="text-sm text-rose-700">
@@ -3662,7 +3664,7 @@ export default function ReportDataView({
         );
       })(), document.body)}
       {editingColumnColor && typeof document !== "undefined" && createPortal(
-        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-950/25 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) setEditingColumnColor(null); }}>
+        <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-[#0b2341]/45 p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget) setEditingColumnColor(null); }}>
           <section role="dialog" aria-modal="true" aria-labelledby="report-column-color-title" className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl">
             <div className="flex items-start justify-between gap-3">
               <div><h2 id="report-column-color-title" className="text-sm font-semibold text-slate-900">Edit Column</h2><p className="mt-1 text-xs text-slate-500">Choose a display color for {columns.find((column) => column.key === editingColumnColor)?.title ?? "this column"}.</p></div>
@@ -3677,7 +3679,7 @@ export default function ReportDataView({
         </div>, document.body,
       )}
       {managingDropdownField && typeof document !== "undefined" && canManageDropdowns && createPortal(
-        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-950/25 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) closeDropdownManager(); }}>
+        <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-[#0b2341]/45 p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget) closeDropdownManager(); }}>
           <section role="dialog" aria-modal="true" aria-labelledby="report-dropdown-manager-title" className="max-h-[min(80vh,640px)] w-full max-w-lg overflow-y-auto rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl">
             <div className="flex items-start justify-between gap-3"><div><h2 id="report-dropdown-manager-title" className="text-sm font-semibold text-slate-900">Manage Options</h2><p className="mt-1 text-xs text-slate-500">Edit several labels or add options, then save once. Requests run in sequence; a failure can leave earlier changes saved.</p></div><button type="button" title="Close" aria-label="Close option manager" disabled={dropdownManagerBusy} onClick={closeDropdownManager} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 disabled:opacity-50"><X className="h-4 w-4" /></button></div>
             {dropdownManagerError && <p role="alert" className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700">{dropdownManagerError}</p>}
