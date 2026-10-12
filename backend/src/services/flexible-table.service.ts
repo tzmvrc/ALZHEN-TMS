@@ -6,6 +6,7 @@ import { assertCellParentTables, assertFlexAccess, calculateFlexAccess } from ".
 import { badRequest, permissionFlags, readSectionConnections, requireCellVersion, requireName, requireSectionKey, requireUuid, requireVersion, validateCellValue, validateColumnConfiguration, validateSettings } from "./flexible-table.validation.js";
 
 type TableRecord = Record<string, any>;
+const SYSTEM_TRACKER_KEY = "alzhen_transmittal_tracker_v1";
 const TABLE_FIELDS = "id, name, table_kind, report_key, settings, created_by, version, created_at, updated_at, archived_at";
 const COLUMN_FIELDS = "id, table_id, name, position, value_type, input_mode, binding_scope, settings, is_hidden, is_archived, created_by, version, created_at, updated_at";
 const ROW_FIELDS = "id, table_id, row_kind, source_entity_type, source_entity_id, position, created_by, version, created_at, updated_at, archived_at";
@@ -41,6 +42,7 @@ async function getTableAccess(tableIdInput: unknown, actor: FlexActor, level: "v
   const { data: table, error } = await supabaseAdmin.from("flex_tables").select(TABLE_FIELDS).eq("id", tableId).maybeSingle();
   if (error) failDb("load", error);
   if (!table || table.table_kind !== "CUSTOM" || table.archived_at) throw new ApiError("Flexible table not found.", 404, "FLEX_TABLE_NOT_FOUND");
+  if (table.settings?.system_key === SYSTEM_TRACKER_KEY) throw new ApiError("This system-managed table is only available through the Transmittal Tracker.", 404, "FLEX_TABLE_NOT_FOUND");
   const isAdmin = actor.role === "ADMIN";
   const isOwner = table.created_by === actor.id;
   let permissionRows: { subject_type: string; subject_role: string | null; subject_profile_id: string | null; can_view: boolean; can_edit: boolean; can_manage: boolean }[] = [];
@@ -102,14 +104,15 @@ async function updateVersioned(tableName: string, id: string, tableId: string, e
 export async function listTables(actor: FlexActor) {
   const { data: tables, error } = await supabaseAdmin.from("flex_tables").select(TABLE_FIELDS).eq("table_kind", "CUSTOM").is("archived_at", null).order("updated_at", { ascending: false });
   if (error) failDb("list", error);
-  if (actor.role === "ADMIN") return (tables ?? []).map((table) => ({ ...table, access: { can_view: true, can_edit: true, can_manage: true, is_owner: table.created_by === actor.id } }));
-  const ids = (tables ?? []).map((table) => table.id as string);
+  const visibleTables = (tables ?? []).filter((table) => table.settings?.system_key !== SYSTEM_TRACKER_KEY);
+  if (actor.role === "ADMIN") return visibleTables.map((table) => ({ ...table, access: { can_view: true, can_edit: true, can_manage: true, is_owner: table.created_by === actor.id } }));
+  const ids = visibleTables.map((table) => table.id as string);
   const [{ data: permissions, error: permissionError }] = ids.length ? await Promise.all([
     supabaseAdmin.from("flex_table_permissions").select("table_id, subject_type, subject_role, subject_profile_id, can_view, can_edit, can_manage").in("table_id", ids).or(`and(subject_type.eq.ROLE,subject_role.eq.${actor.role}),and(subject_type.eq.PROFILE,subject_profile_id.eq.${actor.id})`),
   ]) : [{ data: [], error: null } as any];
   if (permissionError) failDb("list permissions for", permissionError);
   const result = [];
-  for (const table of tables ?? []) {
+  for (const table of visibleTables) {
     const own = table.created_by === actor.id;
     const matching = (permissions ?? []).filter((permission: TableRecord) => permission.table_id === table.id);
     const access = {

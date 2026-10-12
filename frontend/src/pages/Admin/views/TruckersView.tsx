@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { LoaderCircle, MoreHorizontal, RefreshCw, Search, SlidersHorizontal, UserRound, Pencil, Plus, X } from "lucide-react";
+import { MoreHorizontal, RefreshCw, Search, SlidersHorizontal, UserRound, Pencil, Plus, X } from "lucide-react";
 import { useAuth } from "../../../context/AuthContext";
 import { tableUi } from "../../../components/admin/dashboardStyles";
 import SlidingSegmentedControl from "../../../components/admin/SlidingSegmentedControl";

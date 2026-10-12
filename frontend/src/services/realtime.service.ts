@@ -6,6 +6,7 @@ import {
   REPORTS,
   type ReportKey,
 } from "./report.service";
+import { TRANSMITTAL_TRACKER_ENDPOINT } from "./transmittal-tracker.service";
 
 export type RealtimePayload = {
   eventType: string;
@@ -92,15 +93,24 @@ export const REPORT_REALTIME_TABLES: Record<ReportKey, readonly string[]> = {
   ],
 };
 
+export const TRANSMITTAL_TRACKER_REALTIME_TABLES = [
+  "trips", "trip_stops", "trip_line_items", "trip_truck_assignments", "trucks",
+  "drivers", "customer_stores", "customers", "warehouses", "flex_cells", "flex_rows",
+] as const;
+
 /** Existing source tables used by authenticated admin pages. Publication
  * membership is a deployment setting and cannot be inferred from this list. */
 export const ADMIN_REALTIME_TABLES = [...new Set([
   ...Object.values(REPORT_REALTIME_TABLES).flat(),
+  ...TRANSMITTAL_TRACKER_REALTIME_TABLES,
   "trip_images",
   "documents",
   "truck_images",
   "store_contacts",
   "admin_notifications",
+  // Flexible tracker metadata and cells are also source dependencies.
+  "flex_rows",
+  "flex_cells",
 ])];
 
 export type AdminRealtimeEvent =
@@ -124,6 +134,9 @@ function emitAdminRealtime(event: AdminRealtimeEvent) {
 }
 
 function invalidateForTable(table: string, payload?: RealtimePayload) {
+  if ((TRANSMITTAL_TRACKER_REALTIME_TABLES as readonly string[]).includes(table)) {
+    invalidateApiCache(TRANSMITTAL_TRACKER_ENDPOINT);
+  }
   const affectedReports = Object.entries(REPORT_REALTIME_TABLES)
     .filter(([, tables]) => tables.includes(table))
     .map(([key]) => key as ReportKey);

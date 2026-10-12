@@ -1,6 +1,6 @@
 import { fetchDropdownOptions } from "./dropdown-option.service";
 import { searchRelationshipOptions } from "./lookup.service";
-import { fetchReportPage, getSortableFields } from "./report.service";
+import { fetchReportPage, getSortableFields, type ReportKey } from "./report.service";
 import { fetchTripEvents, fetchTrips } from "./trip.service";
 import { fetchTripImages } from "./trip-image.service";
 
@@ -8,10 +8,10 @@ import { fetchTripImages } from "./trip-image.service";
 export function preloadAdminPageData(token: string, role: string) {
   if (!token || !["ADMIN", "STAFF"].includes(role)) return;
 
-  const page = (reportKey: "combined" | "dispatch-monitoring", limit = 50) =>
+  const page = (reportKey: ReportKey) =>
     fetchReportPage(reportKey, token, {
       page: 1,
-      limit,
+      limit: 50,
       search: "",
       sortBy: getSortableFields(reportKey)[0],
       sortOrder: "desc",
@@ -33,18 +33,14 @@ export function preloadAdminPageData(token: string, role: string) {
     overviewTripDetails,
     fetchTrips(token, { limit: 1, status: "IN_PROGRESS" }),
     fetchTrips(token, { limit: 1, status: "COMPLETED" }),
-    // These are the first pages actually requested by the Reports and Trips
-    // grids. Other report pages/filters remain on-demand to avoid broad pulls.
+    // Warm only the first page of each report. ReportDataView uses the same
+    // token, page size, default sort, and filters so navigation consumes these
+    // exact cached requests; later pages and filtered searches stay on-demand.
     page("combined"),
     page("dispatch-monitoring"),
-    fetchReportPage("trip-booking", token, {
-      page: 1,
-      limit: 100,
-      search: "",
-      sortBy: "loading_date",
-      sortOrder: "desc",
-      filters: {},
-    }),
+    page("dispatch"),
+    page("trip-booking"),
+    page("store-calling"),
     ...(["trip-types", "warehouses", "trucking-companies"] as const).map((kind) =>
       searchRelationshipOptions(token, kind, ""),
     ),

@@ -12,6 +12,7 @@ import {
 } from "../../../components/admin/DashboardPrimitives";
 import { tableUi } from "../../../components/admin/dashboardStyles";
 import ReportDataView from "../../../components/admin/ReportDataView";
+import ReportsWorkspace from "../../../components/admin/ReportsWorkspace";
 import FlexibleTableSectionTabs from "../../../components/admin/FlexibleTableSectionTabs";
 import TruckCardGrid from "../../../components/admin/TruckCardGrid";
 import RequestsView from "./RequestsView";
@@ -436,7 +437,7 @@ export default function ResourceView({
         </>
       )}
       {id === "dispatch-monitoring" && (
-        <ReportDataView
+        <ReportsWorkspace
           initialReport="dispatch-monitoring"
           pageTitle={barTitle}
           pageSubtitle={barSubtitle}
@@ -446,7 +447,7 @@ export default function ResourceView({
         />
       )}
       {id === "store-calling" && (
-        <ReportDataView
+        <ReportsWorkspace
           initialReport="store-calling"
           pageTitle={barTitle}
           pageSubtitle={barSubtitle}
@@ -456,7 +457,8 @@ export default function ResourceView({
         />
       )}
       {id === "reports" && (
-        <ReportDataView
+        <ReportsWorkspace
+          initialReport="combined"
           pageTitle={barTitle}
           pageSubtitle={barSubtitle}
           notificationTarget={notificationTarget}
@@ -465,7 +467,7 @@ export default function ResourceView({
         />
       )}
       {id === "combined" && (
-        <ReportDataView
+        <ReportsWorkspace
           initialReport="combined"
           pageTitle={barTitle}
           pageSubtitle={barSubtitle}
@@ -475,7 +477,7 @@ export default function ResourceView({
         />
       )}
       {id === "dispatch" && (
-        <ReportDataView
+        <ReportsWorkspace
           initialReport="dispatch"
           pageTitle={barTitle}
           pageSubtitle={barSubtitle}
@@ -485,7 +487,7 @@ export default function ResourceView({
         />
       )}
       {id === "trip-booking" && (
-        <ReportDataView
+        <ReportsWorkspace
           initialReport="trip-booking"
           pageTitle={barTitle}
           pageSubtitle={barSubtitle}

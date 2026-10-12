@@ -12,8 +12,28 @@ import {
   getTripBookingReport,
   getTripExceptionsReport,
 } from "../controllers/report.controller.js";
+import * as transmittalTrackerController from "../controllers/transmittal-tracker.controller.js";
 
 const router = Router();
+
+router.get(
+  "/transmittal-tracker",
+  authMiddleware,
+  requireRole("ADMIN", "STAFF"),
+  transmittalTrackerController.getTracker,
+);
+router.post(
+  "/transmittal-tracker/initialize",
+  authMiddleware,
+  requireRole("ADMIN"),
+  transmittalTrackerController.initializeTracker,
+);
+router.patch(
+  "/transmittal-tracker/stops/:stopId/cells/:field",
+  authMiddleware,
+  requireRole("ADMIN", "STAFF"),
+  transmittalTrackerController.updateTrackerCell,
+);
 
 router.get(
   "/combined",

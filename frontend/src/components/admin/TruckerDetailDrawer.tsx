@@ -1,4 +1,4 @@
-import { CalendarDays, CarFront, LoaderCircle, MapPinned, Mail, Phone, Route, Truck, UserCircle2, X } from "lucide-react";
+import { CalendarDays, CarFront, LoaderCircle, Mail, Phone, Route, Truck, UserCircle2, X } from "lucide-react";
 
 function getInitials(name: string | null | undefined) {
   if (!name) return "T";

@@ -57,7 +57,7 @@ export default function SearchableRelationshipEditor({
         .then((result) => {
           if (!active) return;
           setOptions(result);
-          const selectedIndex = result.findIndex((option) => option.label === value);
+          const selectedIndex = result.findIndex((option) => option.label === value || option.secondary === value || Object.values(option.values ?? {}).includes(value));
           setActiveIndex(Math.max(selectedIndex, 0));
         })
         .catch((cause) => {

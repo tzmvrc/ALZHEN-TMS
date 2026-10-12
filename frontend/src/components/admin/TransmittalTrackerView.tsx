@@ -1,0 +1,927 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, ClipboardEvent as ReactClipboardEvent, MouseEvent } from "react";
+import { ArrowDown, ArrowUp, ArrowUpDown, Download, EllipsisVertical, EyeOff, FileSpreadsheet, GripVertical, LoaderCircle, Search, X } from "lucide-react";
+import { useAuth } from "../../context/AuthContext";
+import { ApiError } from "../../services/api.service";
+import { addDropdownOption, editDropdownOption, fetchDropdownOptions, type DropdownOption } from "../../services/dropdown-option.service";
+import { subscribeToAdminRealtime, TRANSMITTAL_TRACKER_REALTIME_TABLES } from "../../services/realtime.service";
+import { fetchTransmittalTracker, initializeTransmittalTracker, invalidateTransmittalTrackerCache, saveTransmittalTrackerCell, type TransmittalTrackerResponse, type TransmittalTrackerRow } from "../../services/transmittal-tracker.service";
+import { projectTrackerExportRows, projectTransmittalSheetRows, reconcileTrackerRows } from "../../services/transmittal-tracker-export.logic";
+import ReportDropdownEditor, { type ReportDropdownChoice } from "./ReportDropdownEditor";
+import SearchableRelationshipEditor from "./SearchableRelationshipEditor";
+import {
+  ReportTextCellEditor,
+  ReportColumnActionsMenu,
+  ReportColumnColorDialog,
+  ReportDropdownOptionsDialog,
+} from "./ReportSpreadsheetShared";
+import { REPORT_GRID_BODY_CELL_CLASS, REPORT_GRID_HEADER_CELL_CLASS, REPORT_GRID_ROW_CLASS, REPORT_GRID_VIEWPORT_CLASS, chooseAutomaticPinSide, expandSpreadsheetRange, parseSpreadsheetClipboard, reorderColumnKeys } from "./ReportSpreadsheetUtils";
+import { tableUi } from "./dashboardStyles";
+
+type EditableField = "warehouse_code_override" | "delivered_to_override" | "plate_number_override" | "delivery_receipt_no_override" | "sales_order_no_override" | "transmittal_ref" | "date_created_override" | "tracker_status" | "lbc_waybill_no" | "lbc_shipping_date" | "tracker_remarks" | "loading_date_override" | "delivery_date_override";
+type TrackerColumn = { key: keyof TransmittalTrackerRow; title: string; field: EditableField; editor: "text" | "date" | "dropdown" | "relationship"; relationshipKind?: "warehouses" | "stores" | "trucks"; relationshipValueField?: string; minWidth: number };
+type TrackerColumnLayout = { order: string[]; hidden: string[]; colors: Record<string, string>; widths: Record<string, number>; pins: Record<string, "left" | "right"> };
+type DraftValue = { value: string; expectedVersion: number };
+type DraftMap = Record<string, DraftValue>;
+type FillGesture = { sourceStopId: string; sourceField: EditableField; sourceValue: string; targetStopId: string; targetField: EditableField; baseline: Map<string, string> };
+type Preparation = { date: string; preparedBy: string; checkedBy: string };
+const TRACKER_COLUMNS: TrackerColumn[] = [
+  { key: "warehouse_code", title: "WH CODE", field: "warehouse_code_override", editor: "relationship", relationshipKind: "warehouses", relationshipValueField: "warehouse_code", minWidth: 150 },
+  { key: "delivered_to", title: "Delivered to", field: "delivered_to_override", editor: "relationship", relationshipKind: "stores", relationshipValueField: "store_name", minWidth: 190 },
+  { key: "plate_number", title: "Plate #", field: "plate_number_override", editor: "relationship", relationshipKind: "trucks", relationshipValueField: "plate_number", minWidth: 150 },
+  { key: "delivery_receipt_no", title: "Delivery Receipt No.", field: "delivery_receipt_no_override", editor: "text", minWidth: 176 },
+  { key: "sales_order_no", title: "S.O. No.", field: "sales_order_no_override", editor: "text", minWidth: 132 },
+  { key: "transmittal_ref", title: "Transmittal Ref#", field: "transmittal_ref", editor: "text", minWidth: 160 },
+  { key: "date_created", title: "Date created", field: "date_created_override", editor: "date", minWidth: 140 },
+  { key: "status", title: "Status", field: "tracker_status", editor: "dropdown", minWidth: 148 },
+  { key: "lbc_waybill_no", title: "LBC Waybill no.", field: "lbc_waybill_no", editor: "text", minWidth: 160 },
+  { key: "shipping_date_via_lbc", title: "Shipping date via LBC", field: "lbc_shipping_date", editor: "date", minWidth: 172 },
+  { key: "remarks", title: "Remarks", field: "tracker_remarks", editor: "text", minWidth: 240 },
+];
+const SHEET_CONFLICT_LABELS: Partial<Record<EditableField, string>> = {
+  warehouse_code_override: "WH CODE", delivered_to_override: "Delivered to", plate_number_override: "Plate #",
+  delivery_receipt_no_override: "Delivery Receipt No.", sales_order_no_override: "S.O. No.", transmittal_ref: "Transmittal Ref#",
+  date_created_override: "Date created", loading_date_override: "Loading Date", delivery_date_override: "Date Delivered",
+};
+const SHEET_FIELDS = new Set<EditableField>(Object.keys(SHEET_CONFLICT_LABELS) as EditableField[]);
+
+function sheetConflictMessage(rows: TransmittalTrackerRow[]) {
+  const conflictingFields = new Set(rows.flatMap((row) => row.legacy_conflicts.filter((field): field is EditableField => SHEET_FIELDS.has(field as EditableField))));
+  return conflictingFields.size
+    ? `Resolve ambiguous legacy values for ${[...conflictingFields].map((field) => SHEET_CONFLICT_LABELS[field] ?? field).join(", ")} in the selected reference before preparing the sheet.`
+    : "";
+}
+
+function readColumnLayout(key: string): TrackerColumnLayout {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(key) ?? "null") as Partial<TrackerColumnLayout> | null;
+    const validMap = <T,>(value: unknown, validate: (item: unknown) => item is T) => value && typeof value === "object" && !Array.isArray(value) ? Object.fromEntries(Object.entries(value).filter(([, item]) => validate(item))) as Record<string, T> : {};
+    return {
+      order: Array.isArray(parsed?.order) ? parsed.order.filter((item): item is string => typeof item === "string") : [],
+      hidden: Array.isArray(parsed?.hidden) ? parsed.hidden.filter((item): item is string => typeof item === "string") : [],
+      colors: validMap(parsed?.colors, (item): item is string => typeof item === "string" && /^#[0-9a-f]{6}$/i.test(item)),
+      widths: validMap(parsed?.widths, (item): item is number => typeof item === "number" && Number.isFinite(item) && item >= 80 && item <= 800),
+      pins: validMap(parsed?.pins, (item): item is "left" | "right" => item === "left" || item === "right"),
+    };
+  } catch { return { order: [], hidden: [], colors: {}, widths: {}, pins: {} }; }
+}
+
+function localDate() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+}
+
+function draftKey(stopId: string, field: string) {
+  return `${stopId}:${field}`;
+}
+
+function text(value: unknown) {
+  return typeof value === "string" ? value : "";
+}
+
+function filterTrackerRows(rows: TransmittalTrackerRow[], query: string, columnFilter: { key: keyof TransmittalTrackerRow; value: string } | null, sort: { key: keyof TransmittalTrackerRow; direction: "asc" | "desc" } | null) {
+  const needle = query.trim().toLocaleLowerCase();
+  let filtered = rows.filter((row) => !needle || [row.warehouse_code, row.delivered_to, row.plate_number, row.delivery_receipt_no, row.sales_order_no, row.transmittal_ref, row.date_created, row.status, row.lbc_waybill_no, row.shipping_date_via_lbc, row.remarks]
+    .some((value) => value.toLocaleLowerCase().includes(needle)));
+  if (columnFilter?.value.trim()) {
+    const filterColumn = TRACKER_COLUMNS.find((column) => column.key === columnFilter.key);
+    const filter = columnFilter.value.trim().toLocaleLowerCase();
+    if (filterColumn) filtered = filtered.filter((row) => String(row[filterColumn.key] ?? "").toLocaleLowerCase().includes(filter));
+  }
+  if (sort) filtered = [...filtered].sort((left, right) => String(left[sort.key] ?? "").localeCompare(String(right[sort.key] ?? ""), undefined, { numeric: true, sensitivity: "base" }) * (sort.direction === "asc" ? 1 : -1));
+  return filtered;
+}
+
+function displayDate(value: string) {
+  if (!value) return "";
+  const parsed = new Date(value.length === 10 ? `${value}T00:00:00` : value);
+  return Number.isNaN(parsed.getTime()) ? value : new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" }).format(parsed);
+}
+
+function colorForeground(color: string) {
+  const red = Number.parseInt(color.slice(1, 3), 16);
+  const green = Number.parseInt(color.slice(3, 5), 16);
+  const blue = Number.parseInt(color.slice(5, 7), 16);
+  return (0.2126 * red + 0.7152 * green + 0.0722 * blue) / 255 < 0.55 ? "#ffffff" : "#172b43";
+}
+
+function defaultTrackerColumnWidth(column: TrackerColumn) {
+  return Math.max(column.minWidth, Math.min(360, column.title.length * 7 + 72));
+}
+
+async function loadExcelJs() {
+  try {
+    const { default: ExcelJS } = await import("exceljs");
+    return ExcelJS;
+  } catch {
+    throw new Error("The spreadsheet export could not load. Reload the page and try again.");
+  }
+}
+
+export default function TransmittalTrackerView() {
+  const { accessToken, profile } = useAuth();
+  const isAdmin = profile?.role === "ADMIN";
+  const [data, setData] = useState<TransmittalTrackerResponse | null>(null);
+  const [query, setQuery] = useState("");
+  const columnLayoutKey = `alzhen:report-column-layout:${profile?.id ?? "user"}:transmittal-tracker`;
+  const [columnLayoutState, setColumnLayoutState] = useState(() => ({ key: columnLayoutKey, value: typeof window === "undefined" ? { order: [], hidden: [], colors: {}, widths: {}, pins: {} } : readColumnLayout(columnLayoutKey) }));
+  const columnLayout = columnLayoutState.key === columnLayoutKey ? columnLayoutState.value : readColumnLayout(columnLayoutKey);
+  const setColumnLayout = (update: TrackerColumnLayout | ((current: TrackerColumnLayout) => TrackerColumnLayout)) => setColumnLayoutState((currentState) => {
+    const current = currentState.key === columnLayoutKey ? currentState.value : readColumnLayout(columnLayoutKey);
+    return { key: columnLayoutKey, value: typeof update === "function" ? update(current) : update };
+  });
+  const [sort, setSort] = useState<{ key: keyof TransmittalTrackerRow; direction: "asc" | "desc" } | null>(null);
+  const [columnFilter, setColumnFilter] = useState<{ key: keyof TransmittalTrackerRow; value: string } | null>(null);
+  const [menuColumn, setMenuColumn] = useState<TrackerColumn | null>(null);
+  const [menuPosition, setMenuPosition] = useState({ left: 8, top: 8 });
+  const [editingColumnColor, setEditingColumnColor] = useState<string | null>(null);
+  const [manageOptionsOpen, setManageOptionsOpen] = useState(false);
+  const [editingCellKey, setEditingCellKey] = useState("");
+  const editingCellKeyRef = useRef("");
+  const [selectedCell, setSelectedCell] = useState<{ rowId: string; field: EditableField } | null>(null);
+  const [cellSelection, setCellSelection] = useState<{ anchorRowId: string; anchorField: EditableField; focusRowId: string; focusField: EditableField } | null>(null);
+  const [fillGesture, setFillGesture] = useState<FillGesture | null>(null);
+  const fillGestureRef = useRef<FillGesture | null>(null);
+  const [dropdownOptions, setDropdownOptions] = useState<DropdownOption[]>([]);
+  const [dropdownOptionsError, setDropdownOptionsError] = useState("");
+  const [dropdownOptionsLoading, setDropdownOptionsLoading] = useState(true);
+  const [reorderSource, setReorderSource] = useState<string | null>(null);
+  const [resizeState, setResizeState] = useState<{ key: string; startX: number; startWidth: number } | null>(null);
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const headerRefs = useRef(new Map<string, HTMLTableCellElement>());
+  const cellRefs = useRef(new Map<string, HTMLTableCellElement>());
+  const [drafts, setDrafts] = useState<DraftMap>({});
+  const draftsRef = useRef<DraftMap>({});
+  const [busyCells, setBusyCells] = useState<Set<string>>(new Set());
+  const busyRef = useRef(new Set<string>());
+  const pendingSavePromises = useRef(new Map<string, Promise<boolean>>());
+  const [conflictKeys, setConflictKeys] = useState<Set<string>>(new Set());
+  const initializedRef = useRef(false);
+  const loadGenerationRef = useRef(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [exportError, setExportError] = useState("");
+  const [selectedReference, setSelectedReference] = useState("");
+  const [preparingSheet, setPreparingSheet] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const prepKey = `alzhen:transmittal-preparation:${profile?.id ?? "user"}`;
+  const [preparation, setPreparation] = useState<Preparation>(() => {
+    if (typeof window === "undefined") return { date: localDate(), preparedBy: "", checkedBy: "" };
+    try {
+      const parsed = JSON.parse(window.localStorage.getItem(prepKey) ?? "null") as Partial<Preparation> | null;
+      return { date: parsed?.date || localDate(), preparedBy: parsed?.preparedBy ?? "", checkedBy: parsed?.checkedBy ?? "" };
+    } catch {
+      return { date: localDate(), preparedBy: "", checkedBy: "" };
+    }
+  });
+
+  useEffect(() => {
+    if (columnLayoutState.key !== columnLayoutKey) return;
+    try { window.localStorage.setItem(columnLayoutKey, JSON.stringify(columnLayoutState.value)); } catch { /* Keep the grid usable when browser storage is unavailable. */ }
+  }, [columnLayoutKey, columnLayoutState]);
+  useEffect(() => {
+    if (!resizeState) return;
+    const move = (event: PointerEvent) => setColumnLayoutState((state) => {
+      const current = state.key === columnLayoutKey ? state.value : readColumnLayout(columnLayoutKey);
+      return { key: columnLayoutKey, value: { ...current, widths: { ...current.widths, [resizeState.key]: Math.max(80, Math.min(800, resizeState.startWidth + event.clientX - resizeState.startX)) } } };
+    });
+    const finish = () => setResizeState(null);
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", finish, { once: true });
+    window.addEventListener("pointercancel", finish, { once: true });
+    return () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", finish); window.removeEventListener("pointercancel", finish); };
+  }, [columnLayoutKey, resizeState]);
+  useEffect(() => {
+    const pinsState = columnLayout.pins;
+    const widthsState = columnLayout.widths;
+    const adjustPins = () => {
+      const viewportWidth = viewportRef.current?.clientWidth ?? window.innerWidth;
+      const limit = Math.max(180, viewportWidth - 120);
+      let width = Object.keys(pinsState).reduce((total, key) => { const column = TRACKER_COLUMNS.find((item) => item.key === key); return total + (headerRefs.current.get(key)?.getBoundingClientRect().width ?? widthsState[key] ?? (column ? defaultTrackerColumnWidth(column) : 160)); }, 0);
+      if (width <= limit) return;
+      const pins = { ...pinsState };
+      const unpinCandidates = [
+        ...TRACKER_COLUMNS.filter((column) => pinsState[column.key] === "right"),
+        ...TRACKER_COLUMNS.filter((column) => pinsState[column.key] === "left").reverse(),
+      ];
+      for (const column of unpinCandidates) {
+        if (width <= limit) break;
+        if (!pins[column.key]) continue;
+        width -= headerRefs.current.get(column.key)?.getBoundingClientRect().width ?? widthsState[column.key] ?? defaultTrackerColumnWidth(column);
+        delete pins[column.key];
+      }
+      setColumnLayoutState((state) => {
+        const current = state.key === columnLayoutKey ? state.value : readColumnLayout(columnLayoutKey);
+        return { key: columnLayoutKey, value: { ...current, pins } };
+      });
+    };
+    const viewport = viewportRef.current;
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(adjustPins);
+    if (viewport) observer?.observe(viewport);
+    window.addEventListener("resize", adjustPins);
+    return () => { observer?.disconnect(); window.removeEventListener("resize", adjustPins); };
+  }, [columnLayoutKey, columnLayout.pins, columnLayout.widths]);
+
+  useEffect(() => {
+    try { window.localStorage.setItem(prepKey, JSON.stringify(preparation)); } catch { /* Browser storage may be disabled. */ }
+  }, [prepKey, preparation]);
+
+  const load = useCallback(async (background = false) => {
+    if (!accessToken) return;
+    const generation = ++loadGenerationRef.current;
+    if (!background) setLoading(true);
+    setError("");
+    try {
+      if (isAdmin && !initializedRef.current) {
+        await initializeTransmittalTracker(accessToken);
+        initializedRef.current = true;
+      }
+      if (background) invalidateTransmittalTrackerCache();
+      const result = await fetchTransmittalTracker(accessToken);
+      if (generation === loadGenerationRef.current) {
+        setData((current) => {
+          if (!current) return result;
+          return {
+            ...result,
+            rows: reconcileTrackerRows(result.rows, current.rows),
+          };
+        });
+      }
+    } catch (loadError) {
+      if (generation !== loadGenerationRef.current) return;
+      const message = loadError instanceof Error ? loadError.message : "Unable to load the Transmittal Tracker.";
+      setError(message);
+    } finally {
+      setLoading(false);
+    }
+  }, [accessToken, isAdmin]);
+
+  useEffect(() => {
+    const initialLoad = window.setTimeout(() => { void load(false); }, 0);
+    return () => window.clearTimeout(initialLoad);
+  }, [load]);
+  useEffect(() => {
+    if (!accessToken) return;
+    let active = true;
+    void fetchDropdownOptions(accessToken).then((options) => {
+      if (!active) return;
+      setDropdownOptions(options);
+      setDropdownOptionsError("");
+    }).catch((optionError) => {
+      if (active) setDropdownOptionsError(optionError instanceof Error ? optionError.message : "Unable to load dropdown options.");
+    }).finally(() => { if (active) setDropdownOptionsLoading(false); });
+    return () => { active = false; };
+  }, [accessToken]);
+  useEffect(() => {
+    const unsubscribe = subscribeToAdminRealtime((event) => {
+      if (event.kind === "resume" || event.kind === "recovered" || (event.kind === "change" && (TRANSMITTAL_TRACKER_REALTIME_TABLES as readonly string[]).includes(event.payload.table))) void load(true);
+    });
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") void load(true);
+    }, 60_000);
+    return () => { unsubscribe(); window.clearInterval(timer); };
+  }, [load]);
+
+  const orderedColumns = useMemo(() => {
+    const available = new Set<string>(TRACKER_COLUMNS.map((column) => column.key));
+    const order = [...columnLayout.order.filter((key) => available.has(key)), ...TRACKER_COLUMNS.map((column) => column.key).filter((key) => !columnLayout.order.includes(key))];
+    return order.flatMap((key) => TRACKER_COLUMNS.filter((column) => column.key === key));
+  }, [columnLayout.order]);
+  const visibleColumns = useMemo(() => orderedColumns.filter((column) => !columnLayout.hidden.includes(column.key)), [columnLayout.hidden, orderedColumns]);
+  const hiddenColumns = useMemo(() => orderedColumns.filter((column) => columnLayout.hidden.includes(column.key)), [columnLayout.hidden, orderedColumns]);
+  const pinnedLeft = useMemo(() => visibleColumns.filter((column) => columnLayout.pins[column.key] === "left"), [columnLayout.pins, visibleColumns]);
+  const pinnedRight = useMemo(() => visibleColumns.filter((column) => columnLayout.pins[column.key] === "right"), [columnLayout.pins, visibleColumns]);
+  const renderedColumns = useMemo(() => {
+    const pinned = new Set([...pinnedLeft, ...pinnedRight].map((column) => column.key));
+    return [...pinnedLeft, ...visibleColumns.filter((column) => !pinned.has(column.key)), ...pinnedRight];
+  }, [pinnedLeft, pinnedRight, visibleColumns]);
+  const pinOffsets = useMemo(() => {
+    const left: Record<string, number> = {};
+    const right: Record<string, number> = {};
+    let leftOffset = 0;
+    for (const column of pinnedLeft) { left[column.key] = leftOffset; leftOffset += columnLayout.widths[column.key] ?? defaultTrackerColumnWidth(column); }
+    let rightOffset = 0;
+    for (const column of [...pinnedRight].reverse()) { right[column.key] = rightOffset; rightOffset += columnLayout.widths[column.key] ?? defaultTrackerColumnWidth(column); }
+    return { left, right };
+  }, [columnLayout.widths, pinnedLeft, pinnedRight]);
+
+  const filteredRows = useMemo(() => filterTrackerRows(data?.rows ?? [], query, columnFilter, sort), [columnFilter, data?.rows, query, sort]);
+
+  const references = useMemo(() => [...new Set((data?.rows ?? []).map((row) => row.transmittal_ref).filter(Boolean))].sort((a, b) => a.localeCompare(b)), [data?.rows]);
+  const sheetRows = useMemo(() => (data?.rows ?? []).filter((row) => row.transmittal_ref === selectedReference), [data?.rows, selectedReference]);
+  const selectedRange = useMemo(() => {
+    if (!cellSelection) return null;
+    const rowA = filteredRows.findIndex((row) => row.trip_stop_id === cellSelection.anchorRowId);
+    const rowB = filteredRows.findIndex((row) => row.trip_stop_id === cellSelection.focusRowId);
+    const columnA = renderedColumns.findIndex((column) => column.field === cellSelection.anchorField);
+    const columnB = renderedColumns.findIndex((column) => column.field === cellSelection.focusField);
+    return rowA < 0 || rowB < 0 || columnA < 0 || columnB < 0 ? null : { minRow: Math.min(rowA, rowB), maxRow: Math.max(rowA, rowB), minColumn: Math.min(columnA, columnB), maxColumn: Math.max(columnA, columnB) };
+  }, [cellSelection, filteredRows, renderedColumns]);
+
+  const baseValue = (row: TransmittalTrackerRow, field: EditableField) => {
+    switch (field) {
+      case "warehouse_code_override": return row.warehouse_code;
+      case "delivered_to_override": return row.delivered_to;
+      case "plate_number_override": return row.plate_number;
+      case "delivery_receipt_no_override": return row.delivery_receipt_no;
+      case "sales_order_no_override": return row.sales_order_no;
+      case "transmittal_ref": return row.transmittal_ref;
+      case "date_created_override": return row.date_created;
+      case "tracker_status": return row.status;
+      case "lbc_waybill_no": return row.lbc_waybill_no;
+      case "lbc_shipping_date": return row.shipping_date_via_lbc;
+      case "tracker_remarks": return row.remarks;
+      case "loading_date_override": return row.loading_date;
+      case "delivery_date_override": return row.date_delivered;
+    }
+  };
+  const cellValue = (row: TransmittalTrackerRow, field: EditableField) => {
+    const key = draftKey(row.trip_stop_id, field);
+    if (drafts[key]) return drafts[key].value;
+    const cell = row.cells[field];
+    return !cell || cell.value === null || cell.value === undefined ? baseValue(row, field) : text(cell.value);
+  };
+
+  const deliveryOptions = dropdownOptions.filter((option) => option.field_key === "delivery_status" && option.active);
+  const dropdownChoices: ReportDropdownChoice[] = deliveryOptions.map((option) => ({ value: option.option_value, label: option.display_label }));
+  const canManageDropdowns = ["ADMIN", "STAFF"].includes(profile?.role?.toUpperCase() ?? "");
+
+  const saveColumnLayout = (next: TrackerColumnLayout) => setColumnLayout(next);
+  const hideColumn = (key: string) => saveColumnLayout({ ...columnLayout, hidden: [...new Set([...columnLayout.hidden, key])] });
+  const restoreColumn = (key: string) => saveColumnLayout({ ...columnLayout, hidden: columnLayout.hidden.filter((item) => item !== key) });
+  const reorderColumn = (sourceKey: string, targetKey: string) => {
+    const order = reorderColumnKeys(orderedColumns.map((column) => column.key), sourceKey, targetKey);
+    if (order.every((key, index) => key === orderedColumns[index]?.key)) return;
+    saveColumnLayout({ ...columnLayout, order });
+  };
+  const togglePin = (key: string) => {
+    const pins = { ...columnLayout.pins };
+    if (pins[key]) delete pins[key];
+    else {
+      const rect = headerRefs.current.get(key)?.getBoundingClientRect();
+      const viewport = viewportRef.current?.getBoundingClientRect();
+      if (!rect || !viewport) return;
+      const side = chooseAutomaticPinSide(rect, viewport);
+      const nextCount = Object.keys(pins).length + 1;
+      if (nextCount > 5 || Object.keys(pins).reduce((total, pinKey) => { const column = TRACKER_COLUMNS.find((item) => item.key === pinKey); return total + (columnLayout.widths[pinKey] ?? (column ? defaultTrackerColumnWidth(column) : 160)); }, 0) + defaultTrackerColumnWidth(TRACKER_COLUMNS.find((column) => column.key === key) ?? TRACKER_COLUMNS[0]) > (viewportRef.current?.clientWidth ?? window.innerWidth) - 120) {
+        setNotice("Unpin a column to keep enough room for the table.");
+        return;
+      }
+      pins[key] = side;
+    }
+    saveColumnLayout({ ...columnLayout, pins });
+  };
+  const sortColumn = (key: keyof TransmittalTrackerRow) => setSort((current) => current?.key === key ? { key, direction: current.direction === "asc" ? "desc" : "asc" } : { key, direction: "asc" });
+  const showColumnMenu = (event: MouseEvent<HTMLButtonElement>, column: TrackerColumn) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const width = 232; const height = 336;
+    setMenuPosition({ left: Math.max(8, Math.min(rect.right - width, window.innerWidth - width - 8)), top: rect.bottom + height > window.innerHeight - 8 ? Math.max(8, rect.top - height) : rect.bottom + 4 });
+    setMenuColumn(column);
+  };
+
+  const addStatusOption = async (rawLabel: string) => {
+    if (!accessToken) throw new Error("Your session has expired. Please log in again.");
+    const label = rawLabel.trim(); const value = label.toUpperCase();
+    if (!label || !/^[A-Z0-9][A-Z0-9 _-]{0,59}$/.test(value)) throw new Error("Use letters, numbers, spaces, hyphens, or underscores for the stored option value.");
+    if (dropdownOptions.some((option) => option.field_key === "delivery_status" && (option.option_value.toLowerCase() === value.toLowerCase() || option.display_label.toLowerCase() === label.toLowerCase()))) throw new Error("A delivery status with that label or value already exists.");
+    await addDropdownOption(accessToken, { field_key: "delivery_status", option_value: value, display_label: label, sort_order: dropdownOptions.filter((option) => option.field_key === "delivery_status").length * 10 });
+    setDropdownOptions(await fetchDropdownOptions(accessToken));
+    return true;
+  };
+  const editStatusOption = async (option: DropdownOption, rawLabel: string) => {
+    if (!accessToken) throw new Error("Your session has expired. Please log in again.");
+    const label = rawLabel.trim();
+    if (!label) throw new Error("Display labels cannot be empty.");
+    if (dropdownOptions.some((candidate) => candidate.field_key === "delivery_status" && candidate.id !== option.id && candidate.display_label.toLowerCase() === label.toLowerCase())) throw new Error("A delivery status with that display label already exists.");
+    const confirmed = option.usage_count > 0 && label !== option.display_label ? window.confirm(`This option is used by ${option.usage_count} record(s). Changing its label keeps the stored value unchanged. Continue?`) : false;
+    if (option.usage_count > 0 && label !== option.display_label && !confirmed) return false;
+    await editDropdownOption(accessToken, option.id, { display_label: label, ...(confirmed ? { confirm_in_use: true } : {}) });
+    setDropdownOptions(await fetchDropdownOptions(accessToken));
+    return true;
+  };
+
+  const trackerCellKey = (row: TransmittalTrackerRow, field: EditableField) => draftKey(row.trip_stop_id, field);
+  const startEditingCell = (key: string) => { editingCellKeyRef.current = key; setEditingCellKey(key); };
+  const closeEditedCell = (key: string) => {
+    if (editingCellKeyRef.current !== key) return;
+    editingCellKeyRef.current = "";
+    setEditingCellKey("");
+    requestAnimationFrame(() => { if (!editingCellKeyRef.current) cellRefs.current.get(key)?.focus(); });
+  };
+  const renderEditableCell = (row: TransmittalTrackerRow, field: EditableField, editor: TrackerColumn["editor"], column?: TrackerColumn) => {
+    const key = trackerCellKey(row, field);
+    const value = cellValue(row, field);
+    const editing = editingCellKey === key;
+    const legacyConflict = row.legacy_conflicts.includes(field);
+    const editable = data?.access.canEdit ?? false;
+    const shownValue = editor === "date" ? displayDate(value) : editor === "dropdown" ? dropdownChoices.find((choice) => choice.value === value)?.label ?? value : value;
+    if (editing && editor === "relationship" && column?.relationshipKind) {
+      const relationshipCommit = (nextValue: string) => {
+        editDraft(row, field, nextValue);
+        void saveCell(row, field, nextValue).then((saved) => { if (saved) closeEditedCell(key); });
+      };
+      return <SearchableRelationshipEditor
+        token={accessToken ?? ""}
+        kind={column.relationshipKind}
+        value={value}
+        onSelect={(option) => editDraft(row, field, option.values?.[column.relationshipValueField ?? ""] ?? option.secondary ?? option.label)}
+        onCommitSelection={(option) => relationshipCommit(option.values?.[column.relationshipValueField ?? ""] ?? option.secondary ?? option.label)}
+        onCommitBlur={() => relationshipCommit(draftsRef.current[key]?.value ?? value)}
+        onCancel={() => { const next = { ...draftsRef.current }; delete next[key]; draftsRef.current = next; setDrafts(next); closeEditedCell(key); }}
+        disabled={!editable || busyCells.has(key) || conflictKeys.has(key)} />;
+    }
+    if (editing && field === "tracker_status" && column) {
+      const choices = [...dropdownChoices];
+      if (value && !choices.some((choice) => choice.value === value)) choices.unshift({ value, label: value });
+      return <ReportDropdownEditor label={column.title} value={value} displayValue={choices.find((choice) => choice.value === value)?.label ?? value} options={choices} knownValues={dropdownOptions.filter((option) => option.field_key === "delivery_status").map((option) => option.option_value)} managedOptions={dropdownOptions.filter((option) => option.field_key === "delivery_status" && option.active)} loading={dropdownOptionsLoading} error={dropdownOptionsError} allowAdd canManageOptions={canManageDropdowns} onSelect={(next) => editDraft(row, field, next)} onCommitSelection={(next) => { editDraft(row, field, next); void saveCell(row, field, next).then((saved) => { if (saved) closeEditedCell(key); }); }} onCommitBlur={() => { const next = draftsRef.current[key]?.value ?? value; void saveCell(row, field, next).then((saved) => { if (saved) closeEditedCell(key); }); }} onAdd={addStatusOption} onEditOption={editStatusOption} onClose={() => { const next = draftsRef.current[key]?.value ?? value; void saveCell(row, field, next).then((saved) => { if (saved) closeEditedCell(key); }); }} />;
+    }
+    if (editing) return <ReportTextCellEditor
+      value={value}
+      type={editor === "date" ? "date" : "text"}
+      multiline={field === "tracker_remarks"}
+      label={`Edit ${column?.title ?? field} for ${row.delivered_to || "delivery stop"}`}
+      maxLength={10_000}
+      disabled={busyCells.has(key) || conflictKeys.has(key)}
+      className={`w-full min-w-0 rounded-md border border-[#9cc3e3] bg-white px-2 py-1.5 text-sm font-medium text-slate-800 shadow-sm outline-none ring-2 ring-[#cfe1f1] ${editor === "date" ? "min-w-32" : ""} ${field === "tracker_remarks" ? "min-h-24 resize-y" : ""}`}
+      onChange={(next) => editDraft(row, field, next)}
+      onCommit={() => { void saveCell(row, field, draftsRef.current[key]?.value ?? value).then((saved) => { if (saved) closeEditedCell(key); }); }}
+      onCancel={() => { const next = { ...draftsRef.current }; delete next[key]; draftsRef.current = next; setDrafts(next); closeEditedCell(key); }} />;
+    return <button type="button" tabIndex={0} disabled={!editable || busyCells.has(key) || conflictKeys.has(key)} title={legacyConflict ? "Legacy values conflict; edit and save to resolve." : editable ? `Click to edit ${column?.title ?? field}` : undefined} onClick={(event) => { if (!editable) return; setSelectedCell({ rowId: row.trip_stop_id, field }); if (event.shiftKey && cellSelection) { setCellSelection((current) => current ? { ...current, focusRowId: row.trip_stop_id, focusField: field } : { anchorRowId: row.trip_stop_id, anchorField: field, focusRowId: row.trip_stop_id, focusField: field }); return; } setCellSelection({ anchorRowId: row.trip_stop_id, anchorField: field, focusRowId: row.trip_stop_id, focusField: field }); startEditingCell(key); }} className={`block min-h-5 w-full min-w-0 rounded-md border border-transparent p-0 text-left text-[13px] text-slate-800 transition ${editable ? "cursor-text" : "cursor-default"} ${legacyConflict ? "bg-amber-50" : ""}`}>
+      <span className="block whitespace-pre-wrap break-words">{shownValue}</span>
+      {legacyConflict && <span className="block text-[10px] leading-tight text-amber-800">Legacy values differ; save a replacement.</span>}
+      {busyCells.has(key) && <span className="ml-1 inline-block text-[10px] text-blue-700">Saving…</span>}
+    </button>;
+  };
+
+  const handleGridKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (!selectedCell || (event.target as HTMLElement).closest("input,[role=combobox]")) return;
+    if (!["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Enter"].includes(event.key)) return;
+    const currentRow = filteredRows.findIndex((row) => row.trip_stop_id === selectedCell.rowId);
+    const currentColumn = renderedColumns.findIndex((column) => column.field === selectedCell.field);
+    if (currentRow < 0 || currentColumn < 0) return;
+    if (event.key === "Enter") {
+      event.preventDefault();
+      if (data?.access.canEdit) startEditingCell(draftKey(selectedCell.rowId, selectedCell.field));
+      return;
+    }
+    event.preventDefault();
+    const nextRow = Math.max(0, Math.min(filteredRows.length - 1, currentRow + (event.key === "ArrowDown" ? 1 : event.key === "ArrowUp" ? -1 : 0)));
+    const nextColumn = Math.max(0, Math.min(renderedColumns.length - 1, currentColumn + (event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0)));
+    const row = filteredRows[nextRow];
+    const column = renderedColumns[nextColumn];
+    setSelectedCell({ rowId: row.trip_stop_id, field: column.field });
+    if (event.shiftKey && cellSelection) setCellSelection((current) => current ? { ...current, focusRowId: row.trip_stop_id, focusField: column.field } : { anchorRowId: selectedCell.rowId, anchorField: selectedCell.field, focusRowId: row.trip_stop_id, focusField: column.field });
+    else setCellSelection({ anchorRowId: row.trip_stop_id, anchorField: column.field, focusRowId: row.trip_stop_id, focusField: column.field });
+    requestAnimationFrame(() => cellRefs.current.get(draftKey(row.trip_stop_id, column.field))?.focus());
+  };
+
+  const editDraft = (row: TransmittalTrackerRow, field: EditableField, value: string) => {
+    const key = draftKey(row.trip_stop_id, field);
+    const existing = draftsRef.current[key];
+    const next = { ...draftsRef.current, [key]: { value, expectedVersion: existing?.expectedVersion ?? row.cells[field]?.version ?? 0 } };
+    draftsRef.current = next;
+    setDrafts(next);
+  };
+
+  const persistCell = async (row: TransmittalTrackerRow, field: EditableField, value: string): Promise<boolean> => {
+    const key = draftKey(row.trip_stop_id, field);
+    if (!accessToken || busyRef.current.has(key)) return false;
+    const originalValue = baseValue(row, field);
+    const existing = row.cells[field];
+    const draft = draftsRef.current[key];
+    const resolveLegacyConflict = row.legacy_conflicts.includes(field);
+    if (!resolveLegacyConflict && value === (existing?.value !== null && existing?.value !== undefined ? text(existing.value) : originalValue)) {
+      const next = { ...draftsRef.current }; delete next[key]; draftsRef.current = next; setDrafts(next);
+      return true;
+    }
+    if (conflictKeys.has(key)) return false;
+    if (resolveLegacyConflict && !window.confirm(`Several different values were stored for this stop's ${field.replaceAll("_", " ")} field. Saving will replace the old POD-specific values with one stop-level value. Continue?`)) return false;
+    busyRef.current.add(key);
+    setBusyCells((current) => new Set(current).add(key));
+    setNotice("");
+    try {
+      const saved = await saveTransmittalTrackerCell(accessToken, row.trip_stop_id, field, value, draft?.expectedVersion ?? existing?.version ?? 0, resolveLegacyConflict);
+      ++loadGenerationRef.current; // Discard any GET that began before this committed write.
+      setData((current) => current ? ({ ...current, rows: current.rows.map((candidate) => {
+        if (candidate.trip_stop_id !== row.trip_stop_id) return candidate;
+        const currentCell = candidate.cells[field];
+        if (currentCell && currentCell.version > saved.cell.version) return candidate;
+        return {
+          ...candidate,
+          cells: { ...candidate.cells, [field]: { value: saved.cell.value, version: saved.cell.version, row_id: saved.row_id } },
+          legacy_conflicts: candidate.legacy_conflicts.filter((conflictedField) => conflictedField !== field),
+          ...(field === "warehouse_code_override" ? { warehouse_code: value } : {}),
+          ...(field === "delivered_to_override" ? { delivered_to: value } : {}),
+          ...(field === "plate_number_override" ? { plate_number: value } : {}),
+          ...(field === "delivery_receipt_no_override" ? { delivery_receipt_no: value } : {}),
+          ...(field === "sales_order_no_override" ? { sales_order_no: value } : {}),
+          ...(field === "transmittal_ref" ? { transmittal_ref: value } : {}),
+          ...(field === "date_created_override" ? { date_created: value } : {}),
+          ...(field === "tracker_status" ? { status: value } : {}),
+          ...(field === "lbc_waybill_no" ? { lbc_waybill_no: value } : {}),
+          ...(field === "lbc_shipping_date" ? { shipping_date_via_lbc: value } : {}),
+          ...(field === "tracker_remarks" ? { remarks: value } : {}),
+          ...(field === "loading_date_override" ? { loading_date: value } : {}),
+          ...(field === "delivery_date_override" ? { date_delivered: value } : {}),
+        };
+      }) }) : current);
+      const next = { ...draftsRef.current }; delete next[key]; draftsRef.current = next; setDrafts(next);
+      setConflictKeys((current) => { const nextConflicts = new Set(current); nextConflicts.delete(key); return nextConflicts; });
+      setError("");
+      setNotice(saved.audit_warning ?? "Saved.");
+      return true;
+    } catch (saveError) {
+      const message = saveError instanceof ApiError && saveError.status === 409
+        ? "This value changed in another session. Your original draft is preserved and was not applied. Discard it to use the latest value."
+        : saveError instanceof Error ? saveError.message : "Unable to save this value.";
+      setError(message);
+      if (saveError instanceof ApiError && saveError.status === 409) setConflictKeys((current) => new Set(current).add(key));
+      return false;
+    } finally {
+      busyRef.current.delete(key);
+      setBusyCells((current) => { const next = new Set(current); next.delete(key); return next; });
+    }
+  };
+
+  const saveCell = (row: TransmittalTrackerRow, field: EditableField, value: string): Promise<boolean> => {
+    const key = draftKey(row.trip_stop_id, field);
+    const existing = pendingSavePromises.current.get(key);
+    if (existing) return existing;
+    const request = persistCell(row, field, value);
+    pendingSavePromises.current.set(key, request);
+    void request.finally(() => {
+      if (pendingSavePromises.current.get(key) === request) pendingSavePromises.current.delete(key);
+    });
+    return request;
+  };
+
+  const beginFillGesture = (row: TransmittalTrackerRow, column: TrackerColumn) => {
+    if (!data?.access.canEdit || column.editor === "relationship" || busyRef.current.size || Object.keys(draftsRef.current).length) return;
+    const baseline = new Map<string, string>();
+    for (const candidate of filteredRows) for (const item of renderedColumns) baseline.set(draftKey(candidate.trip_stop_id, item.field), cellValue(candidate, item.field));
+    const gesture: FillGesture = { sourceStopId: row.trip_stop_id, sourceField: column.field, sourceValue: cellValue(row, column.field), targetStopId: row.trip_stop_id, targetField: column.field, baseline };
+    fillGestureRef.current = gesture;
+    setFillGesture(gesture);
+  };
+
+  const extendFillGesture = (row: TransmittalTrackerRow, column: TrackerColumn) => {
+    const gesture = fillGestureRef.current;
+    if (!gesture) return;
+    const next = { ...gesture, targetStopId: row.trip_stop_id, targetField: column.field };
+    fillGestureRef.current = next;
+    setFillGesture(next);
+  };
+
+  const finishFillGesture = async () => {
+    const gesture = fillGestureRef.current;
+    if (!gesture) return;
+    fillGestureRef.current = null;
+    setFillGesture(null);
+    const sourceRowIndex = filteredRows.findIndex((row) => row.trip_stop_id === gesture.sourceStopId);
+    const targetRowIndex = filteredRows.findIndex((row) => row.trip_stop_id === gesture.targetStopId);
+    const sourceColumnIndex = renderedColumns.findIndex((column) => column.field === gesture.sourceField);
+    const targetColumnIndex = renderedColumns.findIndex((column) => column.field === gesture.targetField);
+    if (sourceRowIndex < 0 || targetRowIndex < 0 || sourceColumnIndex < 0 || targetColumnIndex < 0) return;
+    if (cellValue(filteredRows[sourceRowIndex], gesture.sourceField) !== gesture.baseline.get(draftKey(gesture.sourceStopId, gesture.sourceField))) {
+      setError("Fill cancelled because the source cell changed.");
+      return;
+    }
+    for (const { row: rowIndex, column: columnIndex } of expandSpreadsheetRange(sourceRowIndex, sourceColumnIndex, targetRowIndex, targetColumnIndex)) {
+      const row = filteredRows[rowIndex];
+      const column = renderedColumns[columnIndex];
+      const sourceColumn = renderedColumns[sourceColumnIndex];
+      if (!row || !column || column.editor === "relationship" || column.editor !== sourceColumn.editor) continue;
+      if (cellValue(row, column.field) !== gesture.baseline.get(draftKey(row.trip_stop_id, column.field))) {
+        setError("A destination changed while the fill range was selected. Remaining cells were not overwritten.");
+        return;
+      }
+      editDraft(row, column.field, gesture.sourceValue);
+      if (!await saveCell(row, column.field, gesture.sourceValue)) return;
+    }
+  };
+
+  const finishFillRef = useRef(finishFillGesture);
+  useEffect(() => { finishFillRef.current = finishFillGesture; });
+  useEffect(() => {
+    if (!fillGesture) return;
+    const finish = () => { void finishFillRef.current(); };
+    window.addEventListener("pointerup", finish);
+    window.addEventListener("pointercancel", finish);
+    return () => { window.removeEventListener("pointerup", finish); window.removeEventListener("pointercancel", finish); };
+  }, [fillGesture]);
+
+  const handleTrackerPaste = async (event: ReactClipboardEvent<HTMLDivElement>) => {
+    if (!data?.access.canEdit || busyRef.current.size) return;
+    const values = parseSpreadsheetClipboard(event.clipboardData.getData("text/plain"));
+    if (!values.length || (values.length === 1 && values[0].length === 1)) return;
+    const target = (event.target as HTMLElement).closest<HTMLTableCellElement>("td[data-tracker-stop-id]");
+    const stopId = target?.dataset.trackerStopId;
+    const field = target?.dataset.trackerField as EditableField | undefined;
+    if (!stopId || !field) return;
+    event.preventDefault();
+    const startRow = filteredRows.findIndex((row) => row.trip_stop_id === stopId);
+    const startColumn = renderedColumns.findIndex((column) => column.field === field);
+    if (startRow < 0 || startColumn < 0) return;
+    for (let rowOffset = 0; rowOffset < values.length; rowOffset += 1) {
+      for (let columnOffset = 0; columnOffset < values[rowOffset].length; columnOffset += 1) {
+        const row = filteredRows[startRow + rowOffset];
+        const column = renderedColumns[startColumn + columnOffset];
+        if (!row || !column || column.editor === "relationship") continue;
+        const nextValue = values[rowOffset][columnOffset];
+        if (column.editor === "dropdown" && !deliveryOptions.some((option) => option.option_value === nextValue)) {
+          setError(`Skipped invalid ${column.title} value: ${nextValue}`);
+          return;
+        }
+        if (column.editor === "date" && nextValue && !/^\d{4}-\d{2}-\d{2}$/.test(nextValue)) {
+          setError(`Skipped invalid date for ${column.title}. Use YYYY-MM-DD.`);
+          return;
+        }
+        editDraft(row, column.field, nextValue);
+        if (!await saveCell(row, column.field, nextValue)) return;
+      }
+    }
+    setError("");
+  };
+
+  const handleTrackerCopy = (event: ReactClipboardEvent<HTMLDivElement>) => {
+    const target = (event.target as HTMLElement).closest<HTMLTableCellElement>("td[data-tracker-stop-id]");
+    const focusRowId = target?.dataset.trackerStopId ?? selectedCell?.rowId;
+    const focusField = (target?.dataset.trackerField as EditableField | undefined) ?? selectedCell?.field;
+    if (!focusRowId || !focusField) return;
+    const selection = cellSelection ?? { anchorRowId: focusRowId, anchorField: focusField, focusRowId, focusField };
+    const rowA = filteredRows.findIndex((row) => row.trip_stop_id === selection.anchorRowId);
+    const rowB = filteredRows.findIndex((row) => row.trip_stop_id === selection.focusRowId);
+    const columnA = renderedColumns.findIndex((column) => column.field === selection.anchorField);
+    const columnB = renderedColumns.findIndex((column) => column.field === selection.focusField);
+    if (rowA < 0 || rowB < 0 || columnA < 0 || columnB < 0) return;
+    const rowIndexes = Array.from({ length: Math.abs(rowB - rowA) + 1 }, (_, index) => Math.min(rowA, rowB) + index);
+    const columnIndexes = Array.from({ length: Math.abs(columnB - columnA) + 1 }, (_, index) => Math.min(columnA, columnB) + index);
+    event.preventDefault();
+    event.clipboardData.setData("text/plain", rowIndexes.map((rowIndex) => columnIndexes.map((columnIndex) => cellValue(filteredRows[rowIndex], renderedColumns[columnIndex].field)).join("\t")).join("\n"));
+  };
+
+  const discardConflicts = () => {
+    const next = { ...draftsRef.current };
+    for (const key of conflictKeys) delete next[key];
+    draftsRef.current = next;
+    setDrafts(next);
+    setConflictKeys(new Set());
+    void load(true);
+  };
+
+  const legacyConflictCount = (data?.rows ?? []).filter((row) => row.legacy_conflicts.length > 0).length;
+  const getCommittedExportRows = async (scopeStopIds?: Set<string>, rejectLegacyConflicts = true): Promise<TransmittalTrackerRow[] | null> => {
+    if (!accessToken) {
+      setExportError("Your session has expired. Log in again before exporting.");
+      return null;
+    }
+    const isInScope = (key: string) => !scopeStopIds || scopeStopIds.has(key.slice(0, key.indexOf(":")));
+    const scopedRows = (data?.rows ?? []).filter((row) => !scopeStopIds || scopeStopIds.has(row.trip_stop_id));
+    if (rejectLegacyConflicts && scopedRows.some((row) => row.legacy_conflicts.length > 0)) {
+      setExportError("Resolve conflicting legacy POD values in the rows being exported so the output cannot contain an ambiguous tracker value.");
+      return null;
+    }
+    setExportError("");
+    const inFlight = [...pendingSavePromises.current.entries()].filter(([key]) => isInScope(key)).map(([, promise]) => promise);
+    const draftSaves = Object.entries(draftsRef.current).flatMap(([key, draft]) => {
+      if (!isInScope(key)) return [];
+      if (pendingSavePromises.current.has(key)) return [];
+      const separator = key.indexOf(":");
+      if (separator < 0) return [];
+      const stopId = key.slice(0, separator);
+      const field = key.slice(separator + 1) as EditableField;
+      const row = data?.rows.find((candidate) => candidate.trip_stop_id === stopId);
+      return row && !conflictKeys.has(key) ? [saveCell(row, field, draft.value)] : [];
+    });
+    const results = await Promise.all([...inFlight, ...draftSaves]);
+    if (results.some((saved) => !saved) || Object.keys(draftsRef.current).some(isInScope) || [...busyRef.current].some(isInScope)) {
+      setExportError("Some edits could not be saved. Resolve the cell errors or conflicts before exporting.");
+      return null;
+    }
+    try {
+      // Read the committed projection after the last CAS completes so exports
+      // never use stale React state while save reconciliation is rendering.
+      const refreshed = await fetchTransmittalTracker(accessToken);
+      setData((current) => current ? { ...refreshed, rows: reconcileTrackerRows(refreshed.rows, current.rows) } : refreshed);
+      return refreshed.rows;
+    } catch (cause) {
+      setExportError(cause instanceof Error ? `Edits were saved, but current export data could not be refreshed: ${cause.message}` : "Edits were saved, but current export data could not be refreshed.");
+      return null;
+    }
+  };
+
+  const exportFiltered = async () => {
+    const committedRows = await getCommittedExportRows();
+    if (!committedRows) return;
+    try {
+      const ExcelJS = await loadExcelJs();
+      const workbook = new ExcelJS.Workbook();
+      const sheet = workbook.addWorksheet("Transmittal Tracker");
+      const columns = [
+        ["WH CODE", "warehouse_code"], ["Delivered to", "delivered_to"], ["Plate #", "plate_number"], ["Delivery Receipt No.", "delivery_receipt_no"], ["S.O. No.", "sales_order_no"], ["Transmittal Ref#", "transmittal_ref"], ["Date created", "date_created"], ["Status", "status"], ["LBC Waybill no.", "lbc_waybill_no"], ["Shipping date via LBC", "shipping_date_via_lbc"], ["Remarks", "remarks"],
+      ] as const;
+      sheet.columns = columns.map(([header, key]) => ({ header, key, width: Math.max(15, Math.min(34, header.length + 5)) }));
+      sheet.addRows(projectTrackerExportRows(filterTrackerRows(committedRows, query, columnFilter, sort), columns));
+      sheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
+      sheet.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF12365A" } };
+      sheet.views = [{ state: "frozen", ySplit: 1 }];
+      const buffer = await workbook.xlsx.writeBuffer();
+      const url = URL.createObjectURL(new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+      const link = document.createElement("a"); link.href = url; link.download = "transmittal-tracker.xlsx"; link.click(); window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (exportFailure) { setExportError(exportFailure instanceof Error ? exportFailure.message : "Export failed."); }
+  };
+
+  const exportSheet = async () => {
+    if (!selectedReference) return;
+    const matchingRows = (data?.rows ?? []).filter((row) => row.transmittal_ref === selectedReference);
+    const conflictMessage = sheetConflictMessage(matchingRows);
+    if (conflictMessage) {
+      setExportError(conflictMessage);
+      return;
+    }
+    const stopIds = new Set(matchingRows.map((row) => row.trip_stop_id));
+    const committedRows = await getCommittedExportRows(stopIds, false);
+    if (!committedRows) return;
+    try {
+      const ExcelJS = await loadExcelJs();
+      const workbook = new ExcelJS.Workbook();
+      const sheet = workbook.addWorksheet("Transmittal Sheet", { pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1 } });
+      const headers = ["Loading Date", "Date Delivered", "WH CODE", "Delivered to", "Plate #", "Delivery Receipt No.", "S.O. No.", "Transmittal Ref#", "Transmittal Date"];
+      sheet.columns = headers.map((header) => ({ width: Math.max(14, Math.min(28, header.length + 3)) }));
+      const lastCol = headers.length;
+      sheet.mergeCells(1, 1, 1, lastCol);
+      sheet.getCell(1, 1).value = "TRANSMITTAL SHEET";
+      sheet.getCell(1, 1).font = { bold: true, size: 16, color: { argb: "FF17365D" } };
+      sheet.getCell(1, 1).alignment = { horizontal: "center" };
+      sheet.getCell(2, 1).value = "Date"; sheet.getCell(2, 2).value = preparation.date;
+      sheet.getCell(3, 1).value = "Prepared by"; sheet.getCell(3, 2).value = preparation.preparedBy;
+      sheet.getCell(4, 1).value = "Checked by"; sheet.getCell(4, 2).value = preparation.checkedBy;
+      sheet.getCell(5, 1).value = "Transmittal Ref#"; sheet.getCell(5, 2).value = selectedReference;
+      sheet.getCell(6, 1).value = "Transmittal Date";
+      const committedSheetRows = projectTransmittalSheetRows(committedRows, selectedReference);
+      if (committedSheetRows.length === 0) {
+        setExportError("No delivery rows match the selected Transmittal Ref# after saving. Refresh the tracker and select a current reference.");
+        return;
+      }
+      const refreshedConflict = sheetConflictMessage(committedSheetRows);
+      if (refreshedConflict) {
+        setExportError(refreshedConflict);
+        return;
+      }
+      sheet.getCell(6, 2).value = [...new Set(committedSheetRows.map((row) => row.date_created).filter(Boolean))].join(", ");
+      sheet.addRow([]);
+      const headerRow = sheet.addRow(headers);
+      const outputRows = committedSheetRows.map((row) => [row.loading_date, row.date_delivered, row.warehouse_code, row.delivered_to, row.plate_number, row.delivery_receipt_no, row.sales_order_no, selectedReference, row.date_created]);
+      outputRows.forEach((values) => sheet.addRow(values));
+      headerRow.font = { bold: true, color: { argb: "FFFFFFFF" } };
+      headerRow.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF17365D" } };
+      headerRow.alignment = { vertical: "middle", wrapText: true };
+      headerRow.height = 30;
+      for (let rowNumber = 9; rowNumber <= sheet.rowCount; rowNumber += 1) {
+        const row = sheet.getRow(rowNumber);
+        row.eachCell((cell) => { cell.border = { bottom: { style: "thin", color: { argb: "FFD5DEE8" } } }; cell.alignment = { vertical: "middle", wrapText: true }; });
+      }
+      sheet.views = [{ state: "frozen", ySplit: 8 }];
+      const buffer = await workbook.xlsx.writeBuffer();
+      const url = URL.createObjectURL(new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+      const link = document.createElement("a"); link.href = url; link.download = `${selectedReference.replace(/[^a-z0-9-_]+/gi, "-")}-transmittal-sheet.xlsx`; link.click(); window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (exportFailure) { setExportError(exportFailure instanceof Error ? exportFailure.message : "Transmittal Sheet export failed."); }
+  };
+
+  const openSheetAfterSave = async () => {
+    setExportError("");
+    if (!selectedReference) {
+      setExportError("Select a Transmittal Ref# before preparing the sheet.");
+      return;
+    }
+    const matchingRows = (data?.rows ?? []).filter((row) => row.transmittal_ref === selectedReference);
+    if (matchingRows.length === 0) {
+      setExportError("No delivery rows match the selected Transmittal Ref#. Select a reference with at least one delivery row.");
+      return;
+    }
+    const stopIds = new Set(matchingRows.map((row) => row.trip_stop_id));
+    const conflictMessage = sheetConflictMessage(matchingRows);
+    if (conflictMessage) {
+      setExportError(conflictMessage);
+      return;
+    }
+    setPreparingSheet(true);
+    try {
+      const committedRows = await getCommittedExportRows(stopIds, false);
+      if (!committedRows) return;
+      const committedSheetRows = projectTransmittalSheetRows(committedRows, selectedReference);
+      if (committedSheetRows.length === 0) {
+        setExportError("No delivery rows match the selected Transmittal Ref# after saving. Refresh the tracker and select a current reference.");
+        return;
+      }
+      const refreshedConflict = sheetConflictMessage(committedSheetRows);
+      if (refreshedConflict) {
+        setExportError(refreshedConflict);
+        return;
+      }
+      setSheetOpen(true);
+    } finally {
+      setPreparingSheet(false);
+    }
+  };
+
+  if (loading && !data) return <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500"><LoaderCircle className="mx-auto mb-2 h-5 w-5 animate-spin" />Loading Transmittal Tracker…</div>;
+  if (error && !data) return <div className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900"><p>{error}</p><button onClick={() => void load(false)} className="mt-3 rounded-lg bg-[#12365a] px-3 py-2 text-white">Retry</button></div>;
+
+  const renderSheetEditor = (row: TransmittalTrackerRow, field: EditableField) => {
+    const key = draftKey(row.trip_stop_id, field);
+    const value = cellValue(row, field);
+    return <ReportTextCellEditor
+      label={`${field} for ${row.delivered_to || "delivery stop"}`}
+      type="date"
+      value={value}
+      disabled={!data?.access.canEdit || busyCells.has(key) || conflictKeys.has(key)}
+      className="w-full min-w-28 rounded-md border border-transparent bg-transparent px-2 py-1.5 text-sm font-medium text-slate-800 outline-none focus:border-blue-500 focus:bg-white disabled:opacity-60"
+      onChange={(next) => editDraft(row, field, next)}
+      onCommit={() => { if (draftsRef.current[key] !== undefined) void saveCell(row, field, draftsRef.current[key].value); }}
+      onCancel={() => { const next = { ...draftsRef.current }; delete next[key]; draftsRef.current = next; setDrafts(next); }} />;
+  };
+
+  return <section className="space-y-3">
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-3">
+      <div className="relative min-w-64 flex-1 sm:max-w-xl"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search reference, store, plate, receipt, S.O., status, waybill…" className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-3 text-sm text-slate-800 outline-none focus:border-blue-400 focus:bg-white" /></div>
+    <div className="flex flex-wrap items-center gap-2"><button disabled={legacyConflictCount > 0} onClick={() => void exportFiltered()} className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#12365a] px-3 text-sm font-medium text-white hover:bg-[#0d2945] disabled:cursor-not-allowed disabled:opacity-50"><Download className="h-4 w-4" />Export filtered</button><select value={selectedReference} onChange={(event) => { setSelectedReference(event.target.value); setExportError(""); }} className="h-9 max-w-56 rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-700"><option value="">Select transmittal ref</option>{references.map((reference) => <option key={reference} value={reference}>{reference}</option>)}</select><button disabled={preparingSheet} onClick={() => void openSheetAfterSave()} className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#12365a] px-3 text-sm font-medium text-[#12365a] enabled:hover:bg-blue-50 disabled:cursor-wait disabled:opacity-60"><FileSpreadsheet className="h-4 w-4" />{preparingSheet ? "Preparing…" : "Prepare Sheet"}</button></div>
+    </div>
+    {columnFilter && <div className="flex flex-wrap items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600"><span className="font-semibold">Filter {TRACKER_COLUMNS.find((column) => column.key === columnFilter.key)?.title}</span><input autoFocus value={columnFilter.value} onChange={(event) => setColumnFilter({ ...columnFilter, value: event.target.value })} aria-label={`Filter ${TRACKER_COLUMNS.find((column) => column.key === columnFilter.key)?.title}`} className="h-8 min-w-48 rounded border border-slate-300 bg-white px-2 text-xs outline-none focus:border-blue-400" /><button type="button" onClick={() => setColumnFilter(null)} className="rounded px-2 py-1 text-slate-500 hover:bg-white">Clear filter</button></div>}
+    {(error || notice || exportError || legacyConflictCount > 0) && <div role="status" className={`flex flex-wrap items-center gap-2 text-sm ${error || exportError ? "text-red-700" : notice.includes("audit event") || legacyConflictCount > 0 ? "text-amber-800" : "text-emerald-700"}`}><span>{error || exportError || (legacyConflictCount > 0 ? `${legacyConflictCount} stop${legacyConflictCount === 1 ? " has" : "s have"} conflicting legacy POD values. Replace and save each highlighted field before exporting.` : notice)}</span>{conflictKeys.size > 0 && <button type="button" onClick={discardConflicts} className="rounded border border-amber-500 px-2 py-1 text-amber-900 hover:bg-amber-50">Discard conflicted drafts and load latest</button>}</div>}
+    <div ref={viewportRef} tabIndex={0} onKeyDown={handleGridKeyDown} onPaste={(event) => void handleTrackerPaste(event)} onCopy={handleTrackerCopy} aria-label="Transmittal Tracker grid" className={`${REPORT_GRID_VIEWPORT_CLASS} shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-blue-400`}>
+      <table className="w-max min-w-full border-separate border-spacing-0 text-left">
+        <thead className={tableUi.thead}><tr>{renderedColumns.map((column) => {
+          const width = columnLayout.widths[column.key] ?? defaultTrackerColumnWidth(column);
+          const pin = columnLayout.pins[column.key];
+          const activeSort = sort?.key === column.key;
+          const SortIcon = !activeSort ? ArrowUpDown : sort.direction === "asc" ? ArrowUp : ArrowDown;
+          return <th key={column.key} ref={(element) => { if (element) headerRefs.current.set(column.key, element); else headerRefs.current.delete(column.key); }} scope="col" onDragOver={(event) => { if (reorderSource) event.preventDefault(); }} onDrop={(event) => { event.preventDefault(); if (reorderSource) reorderColumn(reorderSource, column.key); setReorderSource(null); }} style={{ width, minWidth: width, maxWidth: width, position: "sticky", top: 0, backgroundColor: columnLayout.colors[column.key] ?? "#ffffff", color: columnLayout.colors[column.key] ? colorForeground(columnLayout.colors[column.key]) : undefined, ...(pin ? { left: pin === "left" ? pinOffsets.left[column.key] ?? 0 : undefined, right: pin === "right" ? pinOffsets.right[column.key] ?? 0 : undefined, zIndex: 60 } : { zIndex: 40 }) } as CSSProperties} className={`${REPORT_GRID_HEADER_CELL_CLASS} relative ${pin ? "shadow-sm" : ""}`}>
+            <div className="flex min-w-0 items-center justify-between gap-1"><button type="button" draggable title={`Drag to reorder ${column.title}; click to sort`} onDragStart={(event) => { event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/plain", String(column.key)); setReorderSource(column.key); }} onDragEnd={() => setReorderSource(null)} onClick={() => sortColumn(column.key)} className="min-w-0 flex-1 cursor-grab whitespace-normal rounded px-1 py-1 text-left text-[11px] font-semibold uppercase leading-tight tracking-wide text-inherit active:cursor-grabbing">{column.title}{activeSort && <SortIcon aria-hidden="true" className="ml-1 inline h-3 w-3" />}</button><button type="button" title={`Actions for ${column.title}`} aria-label={`Actions for ${column.title}`} aria-haspopup="menu" onClick={(event) => showColumnMenu(event, column)} className="shrink-0 rounded p-1 text-slate-500 hover:bg-slate-200 hover:text-[#0b2341] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"><EllipsisVertical className="h-4 w-4" /></button></div>
+            <span role="separator" aria-label={`Resize ${column.title} column`} aria-orientation="vertical" onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); setResizeState({ key: column.key, startX: event.clientX, startWidth: headerRefs.current.get(column.key)?.getBoundingClientRect().width ?? width }); }} className="absolute right-0 top-0 z-[60] h-full w-1.5 cursor-col-resize touch-none hover:bg-blue-400/60" />
+          </th>;
+        })}</tr></thead>
+        <tbody>{filteredRows.map((row, rowIndex) => <tr key={row.trip_stop_id} className={`group report-data-row ${REPORT_GRID_ROW_CLASS}`}>{renderedColumns.map((column, columnIndex) => {
+          const width = columnLayout.widths[column.key] ?? defaultTrackerColumnWidth(column);
+          const pin = columnLayout.pins[column.key];
+          const formatColor = columnLayout.colors[column.key];
+          const fieldKey = trackerCellKey(row, column.field);
+          const selected = Boolean(selectedRange && rowIndex >= selectedRange.minRow && rowIndex <= selectedRange.maxRow && columnIndex >= selectedRange.minColumn && columnIndex <= selectedRange.maxColumn);
+          const fillSourceRow = fillGesture ? filteredRows.findIndex((candidate) => candidate.trip_stop_id === fillGesture.sourceStopId) : -1;
+          const fillTargetRow = fillGesture ? filteredRows.findIndex((candidate) => candidate.trip_stop_id === fillGesture.targetStopId) : -1;
+          const fillSourceColumn = fillGesture ? renderedColumns.findIndex((candidate) => candidate.field === fillGesture.sourceField) : -1;
+          const fillTargetColumn = fillGesture ? renderedColumns.findIndex((candidate) => candidate.field === fillGesture.targetField) : -1;
+          const fillRange = fillGesture && rowIndex >= Math.min(fillSourceRow, fillTargetRow) && rowIndex <= Math.max(fillSourceRow, fillTargetRow) && columnIndex >= Math.min(fillSourceColumn, fillTargetColumn) && columnIndex <= Math.max(fillSourceColumn, fillTargetColumn);
+          const editing = editingCellKey === fieldKey;
+          return <td key={column.key} data-tracker-stop-id={row.trip_stop_id} data-tracker-field={column.field} data-cell-hover-disabled={pin || editing || selected || fillRange ? "true" : undefined} ref={(element) => { if (element) cellRefs.current.set(fieldKey, element); else cellRefs.current.delete(fieldKey); }} tabIndex={-1} style={{ width, minWidth: width, maxWidth: width, ...(formatColor ? { backgroundColor: formatColor, color: colorForeground(formatColor) } : {}), ...(pin ? { position: "sticky", left: pin === "left" ? pinOffsets.left[column.key] ?? 0 : undefined, right: pin === "right" ? pinOffsets.right[column.key] ?? 0 : undefined, zIndex: 20 } : {}) } as CSSProperties} onPointerEnter={() => extendFillGesture(row, column)} onClick={(event) => { if ((event.target as HTMLElement).closest("button, input, select, textarea")) return; setSelectedCell({ rowId: row.trip_stop_id, field: column.field }); if (data?.access.canEdit) startEditingCell(fieldKey); }} className={`${REPORT_GRID_BODY_CELL_CLASS} relative border-r border-slate-100/70 ${pin ? "bg-white shadow-sm" : ""} ${fillRange ? "bg-blue-50 ring-2 ring-inset ring-blue-400" : ""} ${selected ? "outline outline-2 outline-inset outline-blue-500" : ""} ${column.key === "remarks" ? "whitespace-pre-wrap break-words" : ""}`}>
+            {renderEditableCell(row, column.field, column.editor, column)}
+            {data?.access.canEdit && column.editor !== "relationship" && !editing && <button type="button" title={`Drag to fill from ${column.title}`} aria-label={`Drag to fill from ${column.title}`} onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); beginFillGesture(row, column); }} onClick={(event) => event.stopPropagation()} className="absolute bottom-0.5 right-0.5 z-10 flex h-4 w-4 touch-none items-center justify-center rounded-sm border border-blue-300 bg-white text-blue-600 opacity-0 shadow-sm transition group-hover:opacity-100 focus:opacity-100"><GripVertical aria-hidden="true" className="h-3 w-3 rotate-90" /></button>}
+          </td>;
+        })}</tr>)}</tbody>
+      </table>
+      {!filteredRows.length && <div className="p-8 text-center text-sm text-slate-500">{query || columnFilter?.value ? "No matching transmittal rows." : "No transmittal rows are available."}</div>}
+      {hiddenColumns.length > 0 && <div aria-label="Hidden tracker columns" className="sticky left-0 z-30 flex flex-wrap items-center gap-2 border-t border-slate-100 bg-slate-50/95 px-3 py-2"><span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Hidden columns</span>{hiddenColumns.map((column) => <button key={column.key} type="button" title={`Restore ${column.title} column`} onClick={() => restoreColumn(column.key)} className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs text-slate-600 hover:border-blue-300 hover:text-[#0b2341]"><EyeOff className="h-3 w-3" />{column.title}<span className="text-slate-400">· Restore</span></button>)}</div>}
+    </div>
+    <p className="text-xs text-slate-500">{filteredRows.length} delivery stop{filteredRows.length === 1 ? "" : "s"} shown. Tracker values are stored separately from operational trip, stop, and line-item records. Date created defaults blank because no verified stop-level source date is available.</p>
+    {menuColumn && <ReportColumnActionsMenu
+      title={menuColumn.title}
+      position={menuPosition}
+      onClose={() => setMenuColumn(null)}
+      sortActions={[
+        { label: "Sort ascending", active: sort?.key === menuColumn.key && sort.direction === "asc", onClick: () => setSort({ key: menuColumn.key, direction: "asc" }) },
+        { label: "Sort descending", active: sort?.key === menuColumn.key && sort.direction === "desc", onClick: () => setSort({ key: menuColumn.key, direction: "desc" }) },
+      ]}
+      pinned={Boolean(columnLayout.pins[menuColumn.key])}
+      onTogglePin={() => togglePin(menuColumn.key)}
+      onEditColumn={() => setEditingColumnColor(menuColumn.key)}
+      onFilter={() => setColumnFilter({ key: menuColumn.key, value: "" })}
+      canManageOptions={menuColumn.field === "tracker_status" && canManageDropdowns}
+      onManageOptions={() => setManageOptionsOpen(true)}
+      onHide={() => hideColumn(menuColumn.key)} />}
+    {editingColumnColor && <ReportColumnColorDialog
+      columnName={TRACKER_COLUMNS.find((column) => column.key === editingColumnColor)?.title ?? "this column"}
+      color={columnLayout.colors[editingColumnColor] ?? ""}
+      onChange={(color) => setColumnLayout((current) => ({ ...current, colors: { ...current.colors, [editingColumnColor]: color } }))}
+      onReset={() => setColumnLayout((current) => { const colors = { ...current.colors }; delete colors[editingColumnColor]; return { ...current, colors }; })}
+      onClose={() => setEditingColumnColor(null)} />}
+    {manageOptionsOpen && accessToken && canManageDropdowns && <ReportDropdownOptionsDialog
+      key="delivery_status"
+      token={accessToken}
+      field="delivery_status"
+      options={dropdownOptions}
+      onClose={() => setManageOptionsOpen(false)}
+      onOptionsUpdated={(options) => { setDropdownOptions(options); setDropdownOptionsError(""); setNotice("Delivery status options updated."); }} />}
+    {sheetOpen && <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/45 p-3" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSheetOpen(false); }}>
+      <div role="dialog" aria-modal="true" aria-labelledby="transmittal-sheet-title" className="max-h-[92vh] w-full max-w-6xl overflow-hidden rounded-xl bg-white shadow-2xl">
+        <header className="flex items-center justify-between border-b border-slate-200 px-5 py-4"><div><h2 id="transmittal-sheet-title" className="text-lg font-bold text-[#17365d]">TRANSMITTAL SHEET</h2><p className="mt-0.5 text-sm text-slate-500">{selectedReference} · {sheetRows.length} delivery row{sheetRows.length === 1 ? "" : "s"}</p></div><button onClick={() => setSheetOpen(false)} title="Close sheet preview" className="rounded p-2 text-slate-500 hover:bg-slate-100"><X className="h-5 w-5" /></button></header>
+        <div className="space-y-4 overflow-auto p-5">
+          <div className="grid gap-3 sm:grid-cols-3"><label className="text-xs font-medium text-slate-600">Date<input type="date" value={preparation.date} onChange={(event) => setPreparation((value) => ({ ...value, date: event.target.value }))} className="mt-1 block h-9 w-full rounded border border-slate-300 px-2 text-sm text-slate-800" /></label><label className="text-xs font-medium text-slate-600">Prepared by<input value={preparation.preparedBy} onChange={(event) => setPreparation((value) => ({ ...value, preparedBy: event.target.value }))} className="mt-1 block h-9 w-full rounded border border-slate-300 px-2 text-sm text-slate-800" /></label><label className="text-xs font-medium text-slate-600">Checked by<input value={preparation.checkedBy} onChange={(event) => setPreparation((value) => ({ ...value, checkedBy: event.target.value }))} className="mt-1 block h-9 w-full rounded border border-slate-300 px-2 text-sm text-slate-800" /></label></div>
+        <div className="max-h-[55vh] overflow-auto rounded-lg border border-slate-200"><table className="min-w-[1200px] border-collapse text-left text-xs"><thead className="sticky top-0 z-20 bg-[#eef3f8] font-semibold text-slate-700"><tr>{["Loading Date", "Date Delivered", "WH CODE", "Delivered to", "Plate #", "Delivery Receipt No.", "S.O. No.", "Transmittal Ref#", "Transmittal Date"].map((header) => <th key={header} className="sticky top-0 z-20 whitespace-nowrap border-b bg-[#eef3f8] px-3 py-2.5">{header}</th>)}</tr></thead><tbody>{sheetRows.map((row) => <tr key={row.trip_stop_id} className="border-b border-slate-100"><td className="min-w-36 px-1 py-1">{renderSheetEditor(row, "loading_date_override")}</td><td className="min-w-36 px-1 py-1">{renderSheetEditor(row, "delivery_date_override")}</td><td className="whitespace-nowrap px-3 py-2">{row.warehouse_code}</td><td className="px-3 py-2">{row.delivered_to}</td><td className="whitespace-nowrap px-3 py-2">{row.plate_number}</td><td className="px-3 py-2">{row.delivery_receipt_no}</td><td className="px-3 py-2">{row.sales_order_no}</td><td className="px-3 py-2">{selectedReference}</td><td className="whitespace-nowrap px-3 py-2">{row.date_created}</td></tr>)}</tbody></table></div>
+          <div className="flex flex-wrap items-center justify-between gap-3"><span className="text-xs text-slate-500">Preparation details are saved in this browser for the signed-in profile. Date changes are saved to tracker metadata, not trip/stop dates.</span><button onClick={() => void exportSheet()} disabled={sheetRows.length === 0} className="inline-flex items-center gap-2 rounded-lg bg-[#12365a] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"><Download className="h-4 w-4" />Export Transmittal Sheet</button></div>
+          {exportError && <p role="alert" className="text-sm text-red-700">{exportError}</p>}
+        </div>
+      </div>
+    </div>}
+  </section>;
+}

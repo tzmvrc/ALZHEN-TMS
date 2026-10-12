@@ -1,5 +1,4 @@
-import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type FormEvent, type MouseEvent, type ReactNode } from "react";
-import { createPortal } from "react-dom";
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ClipboardEvent as ReactClipboardEvent, type CSSProperties, type FormEvent, type MouseEvent, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Building2,
@@ -20,11 +19,9 @@ import {
   UserRound,
   X,
   Download,
-  Pin,
   GripVertical,
   EyeOff,
   EllipsisVertical,
-  Trash2,
   Bold,
   Palette,
   Paintbrush,
@@ -76,6 +73,13 @@ import {
   updateTripStopRecord,
 } from "../../services/trip.service";
 import SearchableRelationshipEditor from "./SearchableRelationshipEditor";
+import {
+  ReportTextCellEditor,
+  ReportColumnActionsMenu,
+  ReportColumnColorDialog,
+  ReportDropdownOptionsDialog,
+} from "./ReportSpreadsheetShared";
+import { REPORT_GRID_BODY_CELL_CLASS, REPORT_GRID_HEADER_CELL_CLASS, REPORT_GRID_ROW_CLASS, REPORT_GRID_VIEWPORT_CLASS, chooseAutomaticPinSide, expandSpreadsheetRange, parseSpreadsheetClipboard, reorderColumnKeys } from "./ReportSpreadsheetUtils";
 import { tableUi } from "./dashboardStyles";
 import ReportDropdownEditor, { type ReportDropdownChoice } from "./ReportDropdownEditor";
 import type { AdminNotificationTarget } from "../../services/notification.service";
@@ -93,19 +97,6 @@ const FLEX_SECTION_BY_REPORT: Record<ReportKey, FlexSectionKey> = {
 const BOOLEAN_DROPDOWN_CHOICES: ReportDropdownChoice[] = [
   { value: "true", label: "Yes" },
   { value: "false", label: "No" },
-];
-const REPORT_COLUMN_COLORS = [
-  "#fef2f2", "#fecaca", "#f87171", "#b91c1c",
-  "#fff7ed", "#fed7aa", "#fb923c", "#c2410c",
-  "#fefce8", "#fef08a", "#facc15", "#a16207",
-  "#f0fdf4", "#bbf7d0", "#4ade80", "#15803d",
-  "#ecfdf5", "#a7f3d0", "#34d399", "#047857",
-  "#ecfeff", "#a5f3fc", "#22d3ee", "#0e7490",
-  "#eff6ff", "#bfdbfe", "#60a5fa", "#1d4ed8",
-  "#eef2ff", "#c7d2fe", "#818cf8", "#4338ca",
-  "#faf5ff", "#e9d5ff", "#c084fc", "#7e22ce",
-  "#fdf2f8", "#fbcfe8", "#f472b6", "#be185d",
-  "#f8fafc", "#cbd5e1", "#64748b", "#1e293b",
 ];
 
 async function loadExportLibraries() {
@@ -421,6 +412,11 @@ function rowText(row: ReportRow, ...keys: string[]): string {
   return value === undefined ? "" : String(value);
 }
 
+function defaultReportColumnWidth(column: ReportColumn): number {
+  if (/remarks|comment|notes/i.test(column.key)) return 280;
+  return Math.max(144, Math.min(360, column.title.length * 8 + 76));
+}
+
 type EditableCellTarget = ReportEditDefinition & {
   tripId?: string;
   stopId?: string;
@@ -466,7 +462,7 @@ type EditingCell = {
   assignmentEventKey?: string;
 };
 
-type ReportColumnLayout = { order: string[]; hidden: string[]; colors?: Record<string, string> };
+type ReportColumnLayout = { order: string[]; hidden: string[]; colors?: Record<string, string>; widths?: Record<string, number> };
 type FillGesture = {
   sourceRowKey: string;
   sourceField: string;
@@ -477,7 +473,6 @@ type FillGesture = {
 };
 type ReportCellFormat = { bold?: boolean; color?: string; backgroundColor?: string };
 type CellSelection = { anchorRowKey: string; anchorField: string; focusRowKey: string; focusField: string };
-type DropdownOptionDraft = DropdownOption & { draftKey: string; originalLabel: string; isNew: boolean; removePending: boolean };
 
 function readReportColumnLayout(storageKey: string): ReportColumnLayout {
   try {
@@ -487,6 +482,9 @@ function readReportColumnLayout(storageKey: string): ReportColumnLayout {
       hidden: Array.isArray(parsed?.hidden) ? parsed.hidden.filter((key): key is string => typeof key === "string") : [],
       colors: parsed?.colors && typeof parsed.colors === "object"
         ? Object.fromEntries(Object.entries(parsed.colors).filter((entry): entry is [string, string] => typeof entry[1] === "string" && /^#[0-9a-f]{6}$/i.test(entry[1])))
+        : {},
+      widths: parsed?.widths && typeof parsed.widths === "object"
+        ? Object.fromEntries(Object.entries(parsed.widths).filter((entry): entry is [string, number] => typeof entry[1] === "number" && Number.isFinite(entry[1]) && entry[1] >= 100 && entry[1] <= 800))
         : {},
     };
   } catch {
@@ -985,6 +983,7 @@ export default function ReportDataView({
   const [cellSelection, setCellSelection] = useState<CellSelection | null>(null);
   const [openColorPicker, setOpenColorPicker] = useState<"text" | "background" | null>(null);
   const [draggedColumnKey, setDraggedColumnKey] = useState<string | null>(null);
+  const [columnResize, setColumnResize] = useState<{ key: string; startX: number; startWidth: number } | null>(null);
   const [fillGesture, setFillGesture] = useState<FillGesture | null>(null);
   const fillGestureRef = useRef<FillGesture | null>(null);
   const [rows, setRows] = useState<ReportRow[]>([]);
@@ -995,23 +994,36 @@ export default function ReportDataView({
   const [openColumnMenu, setOpenColumnMenu] = useState<{ key: string; left: number; top: number } | null>(null);
   const [editingColumnColor, setEditingColumnColor] = useState<string | null>(null);
   const [managingDropdownField, setManagingDropdownField] = useState<DropdownField | null>(null);
-  const [newDropdownLabel, setNewDropdownLabel] = useState("");
-  const [dropdownOptionDrafts, setDropdownOptionDrafts] = useState<DropdownOptionDraft[]>([]);
-  const [dropdownManagerError, setDropdownManagerError] = useState("");
-  const [dropdownManagerNotice, setDropdownManagerNotice] = useState("");
-  const [dropdownManagerBusy, setDropdownManagerBusy] = useState(false);
   useEffect(() => {
-    if (!openColumnMenu && !editingColumnColor && !managingDropdownField) return;
+    if (!columnResize) return;
+    const move = (event: PointerEvent) => {
+      const width = Math.max(100, Math.min(800, columnResize.startWidth + event.clientX - columnResize.startX));
+      setColumnLayout((current) => {
+        const next = { ...current, widths: { ...(current.widths ?? {}), [columnResize.key]: width } };
+        try { window.localStorage.setItem(columnLayoutStorageKey, JSON.stringify(next)); } catch { /* Keep the report grid usable if storage is unavailable. */ }
+        return next;
+      });
+    };
+    const finish = () => setColumnResize(null);
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", finish);
+    window.addEventListener("pointercancel", finish);
+    return () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", finish);
+      window.removeEventListener("pointercancel", finish);
+    };
+  }, [columnLayoutStorageKey, columnResize]);
+  useEffect(() => {
+    if (!openColumnMenu && !editingColumnColor) return;
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       setOpenColumnMenu(null);
       setEditingColumnColor(null);
-      if (!dropdownManagerBusy && managingDropdownField && dropdownOptionDrafts.some((option) => option.isNew || option.display_label.trim() !== option.originalLabel) && !window.confirm("Discard the unsaved dropdown-option changes?")) return;
-      if (!dropdownManagerBusy) setManagingDropdownField(null);
     };
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
-  }, [dropdownManagerBusy, dropdownOptionDrafts, editingColumnColor, managingDropdownField, openColumnMenu]);
+  }, [editingColumnColor, openColumnMenu]);
   const [editModalFields, setEditModalFields] = useState<{
     column: ReportColumn;
     cell: EditingCell;
@@ -1752,8 +1764,7 @@ export default function ReportDataView({
     const columnRect = headerCellRefs.current.get(columnKey)?.getBoundingClientRect();
     const viewportRect = tableViewportRef.current?.getBoundingClientRect();
     if (!columnRect || !viewportRect) return;
-    const center = (columnRect.left + columnRect.right) / 2;
-    setColumnPinSide(columnKey, Math.abs(center - viewportRect.left) <= Math.abs(viewportRect.right - center) ? "left" : "right");
+    setColumnPinSide(columnKey, chooseAutomaticPinSide(columnRect, viewportRect));
   }
 
   function saveColumnLayout(next: ReportColumnLayout) {
@@ -1786,120 +1797,8 @@ export default function ReportDataView({
   }
 
   function openDropdownManager(field: DropdownField) {
-    setDropdownOptionDrafts(dropdownOptions.filter((option) => option.field_key === field).map((option) => ({
-      ...option,
-      draftKey: option.id,
-      originalLabel: option.display_label,
-      isNew: false,
-      removePending: false,
-    })));
     setManagingDropdownField(field);
-    setDropdownManagerError("");
-    setDropdownManagerNotice("");
-    setNewDropdownLabel("");
     setOpenColumnMenu(null);
-  }
-
-  function hasDropdownDraftChanges() {
-    return dropdownOptionDrafts.some((option) => option.isNew || option.display_label.trim() !== option.originalLabel);
-  }
-
-  function closeDropdownManager() {
-    if (dropdownManagerBusy) return;
-    if (hasDropdownDraftChanges() && !window.confirm("Discard the unsaved dropdown-option changes?")) return;
-    setManagingDropdownField(null);
-  }
-
-  function stageDropdownOption() {
-    if (!managingDropdownField) return;
-    setDropdownManagerError("");
-    const label = newDropdownLabel.trim();
-    const value = label.toUpperCase();
-    if (!label) return setDropdownManagerError("Enter an option label.");
-    if (label.length > 80) return setDropdownManagerError("Option labels can contain at most 80 characters.");
-    if (managingDropdownField === "letter_status") return setDropdownManagerError("Letter status values are fixed by the system.");
-    if (!/^[A-Z0-9][A-Z0-9 _-]{0,59}$/.test(value)) return setDropdownManagerError("Use letters, numbers, spaces, hyphens, or underscores.");
-    const duplicate = dropdownOptionDrafts.some((option) => !option.removePending && (
-      option.option_value.toLocaleLowerCase() === value.toLocaleLowerCase() ||
-      option.display_label.trim().toLocaleLowerCase() === label.toLocaleLowerCase()
-    ));
-    if (duplicate) return setDropdownManagerError("An option with this value or label already exists.");
-    setDropdownOptionDrafts((current) => [...current, {
-      id: `draft:${crypto.randomUUID()}`,
-      draftKey: crypto.randomUUID(),
-      field_key: managingDropdownField,
-      option_value: value,
-      display_label: label,
-      sort_order: current.length * 10,
-      active: true,
-      is_system: false,
-      usage_count: 0,
-      originalLabel: label,
-      isNew: true,
-      removePending: false,
-    }]);
-    setNewDropdownLabel("");
-  }
-
-  function removeDropdownDraft(draft: DropdownOptionDraft) {
-    if (!draft.isNew) return;
-    setDropdownOptionDrafts((current) => current.filter((option) => option.draftKey !== draft.draftKey));
-  }
-
-  async function saveDropdownOptionChanges() {
-    if (!accessToken || !managingDropdownField) {
-      setDropdownManagerError("Your session has expired. Please log in again.");
-      return;
-    }
-    setDropdownManagerError("");
-    setDropdownManagerNotice("");
-    const pending = dropdownOptionDrafts.filter((option) => option.isNew || option.display_label.trim() !== option.originalLabel);
-    if (pending.some((option) => !option.display_label.trim())) {
-      setDropdownManagerError("Option labels cannot be empty.");
-      return;
-    }
-    const duplicateLabels = new Set<string>();
-    const duplicateValues = new Set<string>();
-    for (const option of dropdownOptionDrafts.filter((item) => !item.removePending)) {
-      const label = option.display_label.trim().toLocaleLowerCase();
-      const value = option.option_value.trim().toLocaleLowerCase();
-      if (duplicateLabels.has(label) || duplicateValues.has(value)) {
-        setDropdownManagerError("Each option needs a unique label and stored value.");
-        return;
-      }
-      duplicateLabels.add(label);
-      duplicateValues.add(value);
-    }
-    setDropdownManagerBusy(true);
-    let completed = 0;
-    try {
-      for (const draft of pending) {
-        if (draft.isNew) {
-          const created = await createConfigurableOption(managingDropdownField, draft.display_label, false);
-          setDropdownOptionDrafts((current) => current.map((item) => item.draftKey === draft.draftKey ? {
-            ...created,
-            draftKey: created.id,
-            originalLabel: created.display_label,
-            isNew: false,
-            removePending: false,
-          } : item));
-        } else {
-          const original = dropdownOptions.find((option) => option.id === draft.id);
-          if (!original) throw new Error(`Option ${draft.option_value} no longer exists. Refresh and review changes.`);
-          const saved = await saveDropdownOption(original, draft.display_label, false);
-          if (!saved) throw new Error("Option changes were cancelled.");
-          setDropdownOptionDrafts((current) => current.map((item) => item.draftKey === draft.draftKey ? { ...item, originalLabel: draft.display_label.trim(), display_label: draft.display_label.trim() } : item));
-        }
-        completed += 1;
-      }
-      await reloadDropdownOptions();
-      setDropdownManagerNotice(completed ? `${completed} change(s) saved.` : "There are no pending changes.");
-    } catch (cause) {
-      await reloadDropdownOptions().catch(() => undefined);
-      setDropdownManagerError(`${cause instanceof Error ? cause.message : "Unable to save dropdown options."}${completed ? ` ${completed} earlier change(s) were saved; review the remaining drafts before retrying.` : ""}`);
-    } finally {
-      setDropdownManagerBusy(false);
-    }
   }
 
   function selectFormatCell(row: ReportRow, field: string, extend: boolean) {
@@ -1952,13 +1851,8 @@ export default function ReportDataView({
   }
 
   function reorderReportColumn(sourceKey: string, targetKey: string) {
-    if (sourceKey === targetKey) return;
-    const nextOrder = [...layoutColumnKeys];
-    const sourceIndex = nextOrder.indexOf(sourceKey);
-    const targetIndex = nextOrder.indexOf(targetKey);
-    if (sourceIndex < 0 || targetIndex < 0) return;
-    nextOrder.splice(sourceIndex, 1);
-    nextOrder.splice(sourceIndex < targetIndex ? targetIndex - 1 : targetIndex, 0, sourceKey);
+    const nextOrder = reorderColumnKeys(layoutColumnKeys, sourceKey, targetKey);
+    if (nextOrder === layoutColumnKeys) return;
     saveColumnLayout({ ...columnLayout, order: nextOrder });
   }
 
@@ -2025,19 +1919,13 @@ export default function ReportDataView({
       setCellSaveState({ rowKey: rowKey(currentRows[sourceRowIndex], sourceRowIndex), field: gesture.sourceField, status: "warning", message: "Fill cancelled because the source cell changed." });
       return;
     }
-    const rowStart = Math.min(sourceRowIndex, targetRowIndex);
-    const rowEnd = Math.max(sourceRowIndex, targetRowIndex);
-    const columnStart = Math.min(sourceColumnIndex, targetColumnIndex);
-    const columnEnd = Math.max(sourceColumnIndex, targetColumnIndex);
     const targets: Array<{ rowKey: string; field: string }> = [];
-    for (let rowIndex = rowStart; rowIndex <= rowEnd; rowIndex += 1) {
-      for (let columnIndex = columnStart; columnIndex <= columnEnd; columnIndex += 1) {
-        const row = currentRows[rowIndex];
-        const column = renderedGridColumns[columnIndex];
-        const targetRowKey = getReportRowKey(reportKey, row);
-        if (!targetRowKey || identityCounts.get(targetRowKey) !== 1) continue;
-        if (targetRowKey !== gesture.sourceRowKey || column.key !== gesture.sourceField) targets.push({ rowKey: targetRowKey, field: column.key });
-      }
+    for (const { row: rowIndex, column: columnIndex } of expandSpreadsheetRange(sourceRowIndex, sourceColumnIndex, targetRowIndex, targetColumnIndex)) {
+      const row = currentRows[rowIndex];
+      const column = renderedGridColumns[columnIndex];
+      const targetRowKey = getReportRowKey(reportKey, row);
+      if (!targetRowKey || identityCounts.get(targetRowKey) !== 1) continue;
+      targets.push({ rowKey: targetRowKey, field: column.key });
     }
     for (const target of targets) {
       const latestRows = displayedRowsRef.current;
@@ -2074,6 +1962,48 @@ export default function ReportDataView({
       window.removeEventListener("pointercancel", finishOnPointerUp);
     };
   }, [fillGesture]);
+
+  async function handleReportPaste(event: ReactClipboardEvent<HTMLDivElement>) {
+    if (!accessToken || cellSaveInFlight.current) return;
+    const values = parseSpreadsheetClipboard(event.clipboardData.getData("text/plain"));
+    if (!values.length || (values.length === 1 && values[0].length === 1)) return;
+    const target = (event.target as HTMLElement).closest<HTMLTableCellElement>("td[data-report-column-key]");
+    const rowElement = target?.closest<HTMLTableRowElement>("tr[data-report-selection-key]");
+    const rowKey = rowElement?.dataset.reportSelectionKey;
+    const columnKey = target?.dataset.reportColumnKey;
+    if (!rowKey || !columnKey) return;
+    event.preventDefault();
+    const startRow = displayedRows.findIndex((row) => getReportRowKey(reportKey, row) === rowKey);
+    const startColumn = renderedGridColumns.findIndex((column) => column.key === columnKey);
+    if (startRow < 0 || startColumn < 0) return;
+    for (let rowOffset = 0; rowOffset < values.length; rowOffset += 1) {
+      for (let columnOffset = 0; columnOffset < values[rowOffset].length; columnOffset += 1) {
+        const row = displayedRows[startRow + rowOffset];
+        const column = renderedGridColumns[startColumn + columnOffset];
+        if (!row || !column) continue;
+        const target = getEditableCellTarget(row, column.key, reportKey);
+        if (!target || target.editor === "relationship") continue;
+        const candidate = createEditingCell(row, rows.indexOf(row), column.key);
+        if (!candidate) continue;
+        candidate.value = values[rowOffset][columnOffset];
+        if (!await commitEditableCell(candidate)) return;
+      }
+    }
+  }
+
+  function handleReportCopy(event: ReactClipboardEvent<HTMLDivElement>) {
+    if (!cellSelection) return;
+    const rowA = displayedRows.findIndex((row) => getReportRowKey(reportKey, row) === cellSelection.anchorRowKey);
+    const rowB = displayedRows.findIndex((row) => getReportRowKey(reportKey, row) === cellSelection.focusRowKey);
+    const columnA = renderedGridColumns.findIndex((column) => column.key === cellSelection.anchorField);
+    const columnB = renderedGridColumns.findIndex((column) => column.key === cellSelection.focusField);
+    if (rowA < 0 || rowB < 0 || columnA < 0 || columnB < 0) return;
+    const rows = Array.from({ length: Math.abs(rowB - rowA) + 1 }, (_, index) => Math.min(rowA, rowB) + index);
+    const columns = Array.from({ length: Math.abs(columnB - columnA) + 1 }, (_, index) => Math.min(columnA, columnB) + index);
+    const text = rows.map((rowIndex) => columns.map((columnIndex) => String(displayedRows[rowIndex][renderedGridColumns[columnIndex].key] ?? "")).join("\t")).join("\n");
+    event.preventDefault();
+    event.clipboardData.setData("text/plain", text);
+  }
 
   function openSelectedRowEditor() {
     const keys = reportSelection.getKeys(reportKey);
@@ -3103,13 +3033,6 @@ export default function ReportDataView({
         </div>
       ) : (
         <>
-          <style>{`
-            .report-data-row:has([data-report-row-select]:checked) { background-color: #eaf4ff; }
-            .report-data-row:has([data-report-row-select]:checked) > td { background-color: #eaf4ff; }
-            .report-data-row:has([data-report-row-select]:checked):hover,
-            .report-data-row:has([data-report-row-select]:checked):hover > td { background-color: #deefff; }
-            .report-data-row > td:hover { outline: 1px solid rgba(38, 120, 185, 0.2); outline-offset: -1px; }
-          `}</style>
           {viewMode === "table" && <div role="toolbar" aria-label="Cell formatting" className="flex min-h-9 items-center gap-1 border-b border-slate-100 bg-slate-50/70 px-3 py-1.5">
             <button type="button" title="Bold selected cells" aria-label="Bold selected cells" aria-pressed={selectionIsBold} disabled={!selectedFormatCellKeys.size} onMouseDown={(event) => event.preventDefault()} onClick={() => applyCellFormat({ bold: !selectionIsBold })} className={`inline-flex h-7 w-7 items-center justify-center rounded border disabled:cursor-not-allowed disabled:opacity-40 ${selectionIsBold ? "border-blue-300 bg-blue-100 text-blue-800" : "border-transparent text-slate-600 hover:bg-white hover:text-slate-900"}`}><Bold aria-hidden="true" className="h-4 w-4" /></button>
             <div className="relative">
@@ -3122,7 +3045,7 @@ export default function ReportDataView({
             </div>
             {cellSelection && <span className="ml-2 text-[10px] text-slate-500">{selectedFormatCellKeys.size} cell{selectedFormatCellKeys.size === 1 ? "" : "s"} selected</span>}
           </div>}
-          <div ref={tableViewportRef} className="relative min-h-48 w-full min-w-0 max-w-full overflow-x-auto overscroll-x-contain">
+          <div ref={tableViewportRef} onPaste={(event) => void handleReportPaste(event)} onCopy={handleReportCopy} className={`${viewMode === "table" ? REPORT_GRID_VIEWPORT_CLASS : "relative min-h-48 w-full min-w-0 max-w-full overflow-x-auto overscroll-x-contain"} w-full`}>
             {pinningNotice && <p role="status" className="sticky left-2 z-40 w-fit rounded-md bg-amber-50 px-2.5 py-1.5 text-xs text-amber-900 shadow-sm">{pinningNotice}</p>}
             {viewMode === "visual" ? (
               isLoading ? (
@@ -3160,15 +3083,16 @@ export default function ReportDataView({
               </div>
             ) : (
               <table className="w-max min-w-full border-separate border-spacing-0 text-left">
-                <thead className={tableUi.thead}>
+                <thead className={`${tableUi.thead} bg-white`}>
                   <tr>
                     <th
                       ref={selectionColumnRef}
                       scope="col"
-                      className="sticky left-0 z-50 w-11 min-w-11 border-b border-r border-slate-100/70 bg-white px-4 py-3.5">
+                      className="sticky left-0 top-0 z-[70] w-11 min-w-11 border-b border-r border-slate-100/70 bg-white px-4 py-3.5">
                       <ReportSelectAllCheckbox rowKeys={visibleSelectionKeys} />
                     </th>
                     {renderedGridColumns.map((column) => {
+                      const columnWidth = columnLayout.widths?.[column.key] ?? defaultReportColumnWidth(column);
                       const sortable = sortableFields.includes(column.key);
                       const isActiveSort = activeSortBy === column.key;
                       const pinSide = pinnedColumnSides[column.key];
@@ -3193,8 +3117,8 @@ export default function ReportDataView({
                         draggable={false}
                         onDragOver={(event) => { if (draggedColumnKey) event.preventDefault(); }}
                         onDrop={(event) => { event.preventDefault(); if (draggedColumnKey) reorderReportColumn(draggedColumnKey, column.key); setDraggedColumnKey(null); }}
-                        style={{ ...(columnColor ? { "--report-column-color": columnColor, color: columnForeground(columnColor) } as CSSProperties : {}), ...(isPinned ? { position: "sticky" as const, ...(pinSide === "left" ? { left: leftPinOffsets[column.key] ?? 44 } : { right: rightPinOffsets[column.key] ?? 0 }), zIndex: 40 } : {}) }}
-                        className={`${tableUi.th} border-r border-slate-100/70 last:border-r-0 ${columnColor ? "bg-[var(--report-column-color)]" : ""} ${isPinned ? `${columnColor ? "" : "bg-white"} ${isOuterPinnedEdge ? pinSide === "left" ? "shadow-[4px_0_8px_-6px_rgba(11,35,65,0.35)]" : "shadow-[-4px_0_8px_-6px_rgba(11,35,65,0.35)]" : ""}` : ""} ${
+                        style={{ width: columnWidth, minWidth: columnWidth, maxWidth: columnWidth, position: "sticky", top: 0, ...(columnColor ? { "--report-column-color": columnColor, color: columnForeground(columnColor) } as CSSProperties : {}), ...(isPinned ? { ...(pinSide === "left" ? { left: leftPinOffsets[column.key] ?? 44 } : { right: rightPinOffsets[column.key] ?? 0 }), zIndex: 60 } : { zIndex: 40 }) }}
+                        className={`${REPORT_GRID_HEADER_CELL_CLASS} ${columnColor ? "bg-[var(--report-column-color)]" : "bg-white"} ${isPinned ? `${isOuterPinnedEdge ? pinSide === "left" ? "shadow-[4px_0_8px_-6px_rgba(11,35,65,0.35)]" : "shadow-[-4px_0_8px_-6px_rgba(11,35,65,0.35)]" : ""}` : ""} ${
                           column.type === "number" ||
                           ["quantity", "cbm", "subcon_rate_manual"].includes(
                             column.key,
@@ -3210,7 +3134,7 @@ export default function ReportDataView({
                             aria-label={`Drag to reorder ${column.title}`}
                             onDragStart={(event) => { event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/plain", column.key); setDraggedColumnKey(column.key); }}
                             onDragEnd={() => setDraggedColumnKey(null)}
-                            className="min-w-0 cursor-grab truncate rounded px-1 py-0.5 text-left uppercase text-inherit active:cursor-grabbing"
+                            className="min-w-0 cursor-grab whitespace-normal rounded px-1 py-0.5 text-left leading-tight uppercase text-inherit active:cursor-grabbing"
                             >
                             {column.title}
                             {sortable && isActiveSort && <SortIcon aria-hidden="true" className={`ml-1 inline h-3 w-3 ${columnColor ? "text-slate-700" : "text-[#2678b9]"}`} />}
@@ -3226,6 +3150,7 @@ export default function ReportDataView({
                             <EllipsisVertical aria-hidden="true" className="h-4 w-4" />
                           </button>
                         </div>
+                        <span role="separator" aria-label={`Resize ${column.title} column`} aria-orientation="vertical" onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); setColumnResize({ key: column.key, startX: event.clientX, startWidth: headerCellRefs.current.get(column.key)?.getBoundingClientRect().width ?? columnWidth }); }} className="absolute right-0 top-0 z-[60] h-full w-1.5 cursor-col-resize touch-none hover:bg-blue-400/60" />
                       </th>
                       );
                     })}
@@ -3251,13 +3176,14 @@ export default function ReportDataView({
                       <tr
                         key={currentRowKey}
                         data-report-selection-key={selectionKey ?? undefined}
-                        className={`group report-data-row ${tableUi.row}`}>
-                        <td className="sticky left-0 z-30 w-11 min-w-11 border-r border-slate-100/70 bg-white px-3 py-3.5 shadow-[3px_0_5px_-5px_rgba(11,35,65,0.65)] group-hover:bg-[#f2f6fa]">
+                        className={`group report-data-row ${REPORT_GRID_ROW_CLASS}`}>
+                        <td className="sticky left-0 z-30 w-11 min-w-11 border-r border-slate-100/70 bg-white px-3 py-3.5 shadow-[3px_0_5px_-5px_rgba(11,35,65,0.65)]">
                           <ReportRowSelectionCheckbox
                             rowKey={selectionKey}
                             label={rowText(row, "dispatch_number", "trip_number", "store_call_id")} />
                         </td>
                         {renderedGridColumns.map((column) => {
+                          const columnWidth = columnLayout.widths?.[column.key] ?? defaultReportColumnWidth(column);
                           const visibleColumnIndex = renderedGridColumns.findIndex((item) => item.key === column.key);
                           const editableTarget = getEditableCellTarget(
                             row,
@@ -3296,7 +3222,12 @@ export default function ReportDataView({
                           return (
                             <td
                               key={column.key}
+                              data-report-column-key={column.key}
+                              data-cell-hover-disabled={isPinned || isEditing || isFormatSelected || fillRange ? "true" : undefined}
                               style={{
+                                width: columnWidth,
+                                minWidth: columnWidth,
+                                maxWidth: columnWidth,
                                 ...(isPinned ? { position: "sticky" as const, ...(pinSide === "left" ? { left: leftPinOffsets[column.key] ?? 44 } : { right: rightPinOffsets[column.key] ?? 0 }), zIndex: 20 } : {}),
                                 ...(cellFormat?.bold ? { fontWeight: 700 } : {}),
                                 ...(cellFormat?.color ? { color: cellFormat.color } : {}),
@@ -3311,9 +3242,9 @@ export default function ReportDataView({
                                   beginEditCell(row, index, column.key);
                                 }
                               }}
-                              className={`group/cell relative ${isRemarksColumn ? "min-w-[14rem] max-w-[30rem] whitespace-pre-wrap break-words align-top" : "max-w-[22rem]"} ${tableUi.td} border-r border-slate-100/70 text-slate-800 last:border-r-0 ${columnColor && !cellFormat?.backgroundColor ? "bg-[var(--report-column-color)] hover:bg-[#e6f0f9]" : ""} ${isPinned ? `${columnColor && !cellFormat?.backgroundColor ? "" : "bg-white"} group-hover:bg-[#f2f6fa] ${isOuterPinnedEdge ? pinSide === "left" ? "shadow-[4px_0_7px_-5px_rgba(11,35,65,0.75)]" : "shadow-[-4px_0_7px_-5px_rgba(11,35,65,0.75)]" : ""}` : ""} ${fillRange ? "bg-blue-50 ring-2 ring-inset ring-blue-400" : ""} ${isFormatSelected ? "outline outline-2 outline-inset outline-blue-500" : ""} ${
+                              className={`group/cell relative ${isRemarksColumn ? "min-w-[14rem] max-w-[30rem] whitespace-pre-wrap break-words align-top" : "max-w-[22rem]"} ${REPORT_GRID_BODY_CELL_CLASS} border-r border-slate-100/70 text-slate-800 last:border-r-0 ${columnColor && !cellFormat?.backgroundColor ? "bg-[var(--report-column-color)]" : ""} ${isPinned ? `${columnColor && !cellFormat?.backgroundColor ? "" : "bg-white"} ${isOuterPinnedEdge ? pinSide === "left" ? "shadow-[4px_0_7px_-5px_rgba(11,35,65,0.75)]" : "shadow-[-4px_0_7px_-5px_rgba(11,35,65,0.75)]" : ""}` : ""} ${fillRange ? "bg-blue-50 ring-2 ring-inset ring-blue-400" : ""} ${isFormatSelected ? "outline outline-2 outline-inset outline-blue-500" : ""} ${
                                 isEditable
-                                  ? "cursor-text outline-none transition hover:bg-[#e6f0f9]/50"
+                                  ? "cursor-text outline-none transition"
                                   : ""
                               } ${
                                 column.type === "number" ||
@@ -3432,57 +3363,22 @@ export default function ReportDataView({
                                   />
                                 ) : (
                                   <div className="grid min-w-[150px] gap-1">
-                                  {editingCell.definition.sourceField === "remarks" ? (
-                                  <textarea
-                                    autoFocus
-                                    rows={4}
-                                    placeholder={!editingCell.value ? `Enter ${column.title.toLowerCase()}` : undefined}
-                                    aria-label={`Edit ${column.title}`}
-                                    disabled={
-                                      cellSaveState?.rowKey === currentRowKey &&
-                                      cellSaveState.status === "saving"
-                                    }
+                                  <ReportTextCellEditor
                                     value={editingCell.value}
-                                    onChange={(event) => {
-                                      const nextCell = {
-                                        ...editingCell,
-                                        value: event.target.value,
-                                      };
-                                      keepCellEditLocal(nextCell);
-                                    }}
-                                    onBlur={() => {
-                                      if (!mentionControlActive.current) void commitEditableCell();
-                                    }}
-                                    onKeyDown={(event) => {
-                                      if (event.key === "Enter") {
-                                        if (!event.shiftKey) {
-                                          event.preventDefault();
-                                          void commitEditableCell();
-                                        }
-                                      }
-                                      if (event.key === "Escape") {
-                                        cancelNextBlur.current = true;
-                                        setEditingCell(null);
-                                        setCellSaveState(null);
-                                      }
-                                    }}
-                                    className="w-[min(36rem,70vw)] min-w-[min(24rem,70vw)] max-w-[70vw] resize-y rounded-md border border-[#9cc3e3] bg-white px-2 py-1 text-sm font-medium text-slate-800 shadow-sm outline-none ring-2 ring-[#cfe1f1]"
-                                  />
-                                  ) : <input
-                                    autoFocus
-                                    placeholder={!editingCell.value ? `Enter ${column.title.toLowerCase()}` : undefined}
                                     type={editingCell.definition.editor === "number" ? "number" : editingCell.definition.editor === "date" ? "date" : editingCell.definition.editor === "datetime" ? "datetime-local" : "text"}
-                                    step={editingCell.definition.editor === "number" && editingCell.field === "page_no" ? "1" : "any"}
-                                    aria-label={`Edit ${column.title}`}
+                                    multiline={editingCell.definition.sourceField === "remarks"}
+                                    label={`Edit ${column.title}`}
+                                    placeholder={!editingCell.value ? `Enter ${column.title.toLowerCase()}` : undefined}
+                                    step={editingCell.definition.editor === "number" && editingCell.field === "page_no" ? 1 : "any"}
                                     disabled={cellSaveState?.rowKey === currentRowKey && cellSaveState.status === "saving"}
-                                    value={editingCell.value}
-                                    onChange={(event) => keepCellEditLocal({ ...editingCell, value: event.target.value })}
-                                    onBlur={() => { if (!mentionControlActive.current) void commitEditableCell(); }}
-                                    onKeyDown={(event) => {
-                                      if (event.key === "Enter") { event.preventDefault(); void commitEditableCell(); }
-                                      if (event.key === "Escape") { cancelNextBlur.current = true; setEditingCell(null); setCellSaveState(null); }
-                                    }}
-                                    className="min-w-[120px] rounded-md border border-[#9cc3e3] bg-white px-2 py-1 text-sm font-medium text-slate-800 shadow-sm outline-none ring-2 ring-[#cfe1f1]" />}
+                                    commitOnBlur={!mentionControlActive.current}
+                                    onChange={(value) => keepCellEditLocal({ ...editingCell, value })}
+                                    onCommit={() => { void commitEditableCell(); }}
+                                    onCancel={() => { setEditingCell(null); setCellSaveState(null); }}
+                                    className={editingCell.definition.sourceField === "remarks"
+                                      ? "w-[min(36rem,70vw)] min-w-[min(24rem,70vw)] max-w-[70vw] resize-y rounded-md border border-[#9cc3e3] bg-white px-2 py-1 text-sm font-medium text-slate-800 shadow-sm outline-none ring-2 ring-[#cfe1f1]"
+                                      : "min-w-[120px] rounded-md border border-[#9cc3e3] bg-white px-2 py-1 text-sm font-medium text-slate-800 shadow-sm outline-none ring-2 ring-[#cfe1f1]"}
+                                  />
                                   {(editingCell.tripId || editingCell.storeCallId) && editingCell.definition.sourceField === "remarks" && (
                                     <>
                                       <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => { mentionControlActive.current = true; void loadMentionOptions(); }} className="w-fit rounded-md px-1.5 py-1 text-left text-[11px] font-medium text-[#2678b9] hover:bg-blue-50">@ Mention admin or staff</button>
@@ -3637,60 +3533,38 @@ export default function ReportDataView({
         </>
       )}
       </section>
-      {openColumnMenu && typeof document !== "undefined" && createPortal((() => {
+      {openColumnMenu && (() => {
         const menuColumn = columns.find((column) => column.key === openColumnMenu.key);
         if (!menuColumn) return null;
-        const menuDropdownField = getReportEditDefinition(reportKey, menuColumn.key)?.dropdownField;
-        const menuPinSide = pinnedColumnSides[menuColumn.key];
-        const menuItemClass = "flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-slate-700 transition-colors hover:bg-[#0b2341] hover:text-white focus-visible:bg-[#0b2341] focus-visible:text-white focus-visible:outline-none";
-        const menuAction = (action: () => void) => {
-          action();
-          setOpenColumnMenu(null);
-        };
-        return (
-          <div className="fixed inset-0 z-[100]" onMouseDown={() => setOpenColumnMenu(null)}>
-            <div role="menu" aria-label={`${menuColumn.title} column actions`} onMouseDown={(event) => event.stopPropagation()} style={{ left: openColumnMenu.left, top: openColumnMenu.top }} className="fixed z-[101] w-56 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl">
-              <div className="truncate px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500">{menuColumn.title}</div>
-              {sortableFields.includes(menuColumn.key) && <>
-                <button role="menuitem" type="button" onClick={() => menuAction(() => { setSortBy(menuColumn.key); setSortOrder("asc"); setPage(1); })} className={menuItemClass}>Sort ascending {activeSortBy === menuColumn.key && sortOrder === "asc" ? <ArrowUp className="h-3.5 w-3.5" /> : null}</button>
-                <button role="menuitem" type="button" onClick={() => menuAction(() => { setSortBy(menuColumn.key); setSortOrder("desc"); setPage(1); })} className={menuItemClass}>Sort descending {activeSortBy === menuColumn.key && sortOrder === "desc" ? <ArrowDown className="h-3.5 w-3.5" /> : null}</button>
-              </>}
-              <button role="menuitem" type="button" onClick={() => menuAction(() => toggleColumnPinAutomatically(menuColumn.key))} className={`${menuItemClass} justify-start`}><Pin className="h-3.5 w-3.5" />{menuPinSide ? "Unpin" : "Pin"}</button>
-              <button role="menuitem" type="button" onClick={() => menuAction(() => { setEditingColumnColor(menuColumn.key); })} className={`${menuItemClass} justify-start`}><Palette className="h-3.5 w-3.5" />Edit Column</button>
-              {menuDropdownField && canManageDropdowns && <button role="menuitem" type="button" onClick={() => menuAction(() => openDropdownManager(menuDropdownField))} className={`${menuItemClass} justify-start`}><SlidersHorizontal className="h-3.5 w-3.5" />Manage Options</button>}
-              <button role="menuitem" type="button" onClick={() => menuAction(() => hideReportColumn(menuColumn.key))} className={`${menuItemClass} justify-start`}><EyeOff className="h-3.5 w-3.5" />Hide Column</button>
-            </div>
-          </div>
-        );
-      })(), document.body)}
-      {editingColumnColor && typeof document !== "undefined" && createPortal(
-        <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-[#0b2341]/45 p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget) setEditingColumnColor(null); }}>
-          <section role="dialog" aria-modal="true" aria-labelledby="report-column-color-title" className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl">
-            <div className="flex items-start justify-between gap-3">
-              <div><h2 id="report-column-color-title" className="text-sm font-semibold text-slate-900">Edit Column</h2><p className="mt-1 text-xs text-slate-500">Choose a display color for {columns.find((column) => column.key === editingColumnColor)?.title ?? "this column"}.</p></div>
-              <button type="button" title="Close" aria-label="Close column color dialog" onClick={() => setEditingColumnColor(null)} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100"><X className="h-4 w-4" /></button>
-            </div>
-            <div className="mt-4 flex items-center gap-3"><input aria-label="Column display color" type="color" value={columnLayout.colors?.[editingColumnColor] ?? "#eaf2fb"} onChange={(event) => setReportColumnColor(editingColumnColor, event.target.value)} className="h-9 w-12 cursor-pointer rounded border border-slate-200 bg-white p-1" /><span className="text-xs text-slate-600">Color is saved with this browser’s report column preferences.</span></div>
-            <div className="mt-4 grid grid-cols-8 gap-2" aria-label="Column color palette">
-              {REPORT_COLUMN_COLORS.map((color) => <button key={color} type="button" aria-label={`Set column color ${color}`} title={color} aria-pressed={columnLayout.colors?.[editingColumnColor]?.toLowerCase() === color} onClick={() => setReportColumnColor(editingColumnColor, color)} className="h-7 w-7 rounded-full border border-slate-300 ring-offset-2 hover:ring-2 hover:ring-[#0b2341] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0b2341]" style={{ backgroundColor: color }} />)}
-            </div>
-            <div className="mt-5 flex justify-between"><button type="button" onClick={() => setReportColumnColor(editingColumnColor, null)} className="rounded-lg px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100">Reset to default</button><button type="button" onClick={() => setEditingColumnColor(null)} className="rounded-lg bg-[#0b2341] px-3 py-2 text-xs font-semibold text-white hover:bg-[#17375f]">Done</button></div>
-          </section>
-        </div>, document.body,
-      )}
-      {managingDropdownField && typeof document !== "undefined" && canManageDropdowns && createPortal(
-        <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-[#0b2341]/45 p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget) closeDropdownManager(); }}>
-          <section role="dialog" aria-modal="true" aria-labelledby="report-dropdown-manager-title" className="max-h-[min(80vh,640px)] w-full max-w-lg overflow-y-auto rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl">
-            <div className="flex items-start justify-between gap-3"><div><h2 id="report-dropdown-manager-title" className="text-sm font-semibold text-slate-900">Manage Options</h2><p className="mt-1 text-xs text-slate-500">Edit several labels or add options, then save once. Requests run in sequence; a failure can leave earlier changes saved.</p></div><button type="button" title="Close" aria-label="Close option manager" disabled={dropdownManagerBusy} onClick={closeDropdownManager} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 disabled:opacity-50"><X className="h-4 w-4" /></button></div>
-            {dropdownManagerError && <p role="alert" className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700">{dropdownManagerError}</p>}
-            {dropdownManagerNotice && <p role="status" className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-700">{dropdownManagerNotice}</p>}
-            <div className="mt-4 space-y-2">{dropdownOptionDrafts.filter((option) => option.field_key === managingDropdownField).map((option) => <div key={option.draftKey} className={`grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 rounded-xl border p-2.5 ${option.isNew || option.display_label !== option.originalLabel ? "border-blue-200 bg-blue-50/40" : "border-slate-200"}`}><label className="min-w-0"><span className="sr-only">Display label for {option.option_value}</span><input aria-label={`Display label for ${option.option_value}`} disabled={dropdownManagerBusy} value={option.display_label} onChange={(event) => setDropdownOptionDrafts((current) => current.map((item) => item.draftKey === option.draftKey ? { ...item, display_label: event.target.value } : item))} className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs text-slate-800 outline-none focus:border-blue-400 disabled:bg-slate-100" /></label><span className="max-w-32 truncate rounded bg-white px-2 py-1 text-[10px] text-slate-500" title={`${option.option_value} · used by ${option.usage_count} record(s)`}>{option.option_value}{option.usage_count ? ` · ${option.usage_count} used` : ""}{!option.active ? " · inactive" : ""}</span><button type="button" title={option.isNew ? "Remove unsaved option" : "Permanent removal is unavailable for saved options"} aria-label={option.isNew ? `Remove new option ${option.display_label}` : `Cannot remove saved option ${option.display_label}`} disabled={dropdownManagerBusy || !option.isNew} onClick={() => removeDropdownDraft(option)} className="rounded-lg p-2 text-slate-500 hover:bg-rose-50 hover:text-rose-700 disabled:cursor-not-allowed disabled:opacity-35"><Trash2 className="h-4 w-4" /></button></div>)}</div>
-            {managingDropdownField === "letter_status" ? <p className="mt-4 text-xs text-slate-500">Letter status values are fixed by the existing system configuration.</p> : <form className="mt-4 flex gap-2" onSubmit={(event) => { event.preventDefault(); stageDropdownOption(); }}><input aria-label="New dropdown option label" value={newDropdownLabel} onChange={(event) => setNewDropdownLabel(event.target.value)} maxLength={80} placeholder="Add an option to this draft" className="min-w-0 flex-1 rounded-lg border border-slate-200 px-3 py-2 text-xs outline-none focus:border-blue-400" /><button type="submit" disabled={dropdownManagerBusy || !newDropdownLabel.trim()} className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-[#0b2341] hover:bg-slate-50 disabled:opacity-50">Add to list</button></form>}
-            <p className="mt-3 text-[11px] text-slate-500">Saved options cannot be safely removed with the current API: report values store text without a foreign key, and the backend has no atomic usage-check-and-delete operation. Removal is available for unsaved additions only.</p>
-            <div className="mt-5 flex justify-end gap-2"><button type="button" disabled={dropdownManagerBusy} onClick={closeDropdownManager} className="rounded-lg px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-50">Cancel</button><button type="button" disabled={dropdownManagerBusy || !dropdownOptionDrafts.some((option) => option.isNew || option.display_label.trim() !== option.originalLabel)} onClick={() => void saveDropdownOptionChanges()} className="rounded-lg bg-[#0b2341] px-3 py-2 text-xs font-semibold text-white hover:bg-[#17375f] disabled:opacity-50">{dropdownManagerBusy ? "Saving changes…" : "Save Changes"}</button></div>
-          </section>
-        </div>, document.body,
-      )}
+        const dropdownField = getReportEditDefinition(reportKey, menuColumn.key)?.dropdownField;
+        return <ReportColumnActionsMenu
+          title={menuColumn.title}
+          position={openColumnMenu}
+          onClose={() => setOpenColumnMenu(null)}
+          sortActions={sortableFields.includes(menuColumn.key) ? [
+            { label: "Sort ascending", active: activeSortBy === menuColumn.key && sortOrder === "asc", onClick: () => { setSortBy(menuColumn.key); setSortOrder("asc"); setPage(1); } },
+            { label: "Sort descending", active: activeSortBy === menuColumn.key && sortOrder === "desc", onClick: () => { setSortBy(menuColumn.key); setSortOrder("desc"); setPage(1); } },
+          ] : undefined}
+          pinned={Boolean(pinnedColumnSides[menuColumn.key])}
+          onTogglePin={() => toggleColumnPinAutomatically(menuColumn.key)}
+          onEditColumn={() => setEditingColumnColor(menuColumn.key)}
+          canManageOptions={Boolean(dropdownField && canManageDropdowns)}
+          onManageOptions={dropdownField ? () => openDropdownManager(dropdownField) : undefined}
+          onHide={() => hideReportColumn(menuColumn.key)} />;
+      })()}
+      {editingColumnColor && <ReportColumnColorDialog
+        columnName={columns.find((column) => column.key === editingColumnColor)?.title ?? "this column"}
+        color={columnLayout.colors?.[editingColumnColor] ?? ""}
+        onChange={(color) => setReportColumnColor(editingColumnColor, color)}
+        onReset={() => setReportColumnColor(editingColumnColor, null)}
+        onClose={() => setEditingColumnColor(null)} />}
+      {managingDropdownField && accessToken && canManageDropdowns && <ReportDropdownOptionsDialog
+        key={managingDropdownField}
+        token={accessToken}
+        field={managingDropdownField}
+        options={dropdownOptions}
+        onClose={() => setManagingDropdownField(null)}
+        onOptionsUpdated={(options) => { setDropdownOptions(options); setDropdownOptionsError(""); }} />}
       </FlexibleTableSectionTabs>
     </div>
   );

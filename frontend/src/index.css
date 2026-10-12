@@ -116,6 +116,13 @@ select {
   font: inherit;
 }
 
+.report-data-row:has([data-report-row-select]:checked) { background-color: #eaf4ff; }
+.report-data-row:has([data-report-row-select]:checked) > td { background-color: #eaf4ff; }
+.report-data-row:not(:has([data-report-row-select]:checked)) > td:not([data-cell-hover-disabled="true"]):hover {
+  outline: 1px solid rgba(38, 120, 185, 0.2);
+  outline-offset: -1px;
+}
+
 @keyframes fadeInUp {
   from {
     opacity: 0;
