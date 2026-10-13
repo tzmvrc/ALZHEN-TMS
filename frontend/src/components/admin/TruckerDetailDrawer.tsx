@@ -33,8 +33,8 @@ export default function TruckerDetailDrawer({
   onClose: () => void;
 }) {
   if (!trucker) return loading ? (
-    <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-[#0b2341]/45 p-4 backdrop-blur-sm" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <section role="dialog" aria-modal="true" aria-label="Loading trucker details" className="flex w-full max-w-sm flex-col items-center gap-3 rounded-2xl bg-white p-8 text-center shadow-2xl">
+    <div className="fixed inset-0 z-[2000] flex items-end justify-center bg-[#0b2341]/45 p-0 backdrop-blur-sm sm:items-center sm:p-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <section role="dialog" aria-modal="true" aria-label="Loading trucker details" className="flex w-full max-w-sm flex-col items-center gap-3 rounded-t-2xl border border-slate-200 bg-white p-8 text-center shadow-[0_24px_60px_rgba(11,35,65,0.28)] sm:rounded-2xl">
         <LoaderCircle aria-hidden="true" className="h-7 w-7 animate-spin text-[#2678b9]" />
         <p role="status" className="text-sm font-medium text-[#0b2341]">Loading trucker details…</p>
       </section>
@@ -46,8 +46,8 @@ export default function TruckerDetailDrawer({
   const statusLabel = trucker.status || "Inactive";
 
   return (
-    <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-[#0b2341]/45 p-3 backdrop-blur-sm sm:p-6" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <section role="dialog" aria-modal="true" aria-label={`Trucker details for ${trucker.full_name}`} className="w-full max-w-3xl overflow-hidden rounded-3xl border border-white/70 bg-white shadow-2xl">
+    <div className="fixed inset-0 z-[2000] flex items-end justify-center bg-[#0b2341]/45 p-0 backdrop-blur-sm sm:items-center sm:p-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <section role="dialog" aria-modal="true" aria-label={`Trucker details for ${trucker.full_name}`} className="max-h-[94vh] w-full max-w-3xl overflow-y-auto rounded-t-2xl border border-slate-200 bg-white shadow-[0_24px_60px_rgba(11,35,65,0.28)] sm:rounded-2xl">
         <header className="flex items-center justify-between border-b border-slate-100 px-5 py-3.5 sm:px-6">
           <div>
             <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#2678b9]">Trucker profile</p>

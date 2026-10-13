@@ -329,7 +329,7 @@ export default function RequestsView() {
       {/* Centered modal */}
       {modalOpen && selected && createPortal(
         <div
-          className="fixed inset-0 z-[2000] flex items-center justify-center bg-[#0b2341]/45 p-3 backdrop-blur-sm sm:p-6"
+          className="fixed inset-0 z-[2000] flex items-end justify-center bg-[#0b2341]/45 p-0 backdrop-blur-sm sm:items-center sm:p-4"
           role="presentation"
           onMouseDown={(event) => {
             if (event.target === event.currentTarget) setDetailOpen(false);
@@ -339,7 +339,7 @@ export default function RequestsView() {
             role="dialog"
             aria-modal="true"
             aria-label={`Request ${selected.reference}`}
-            className="flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl bg-white shadow-[0_30px_80px_-20px_rgba(11,35,65,0.45)]"
+            className="flex max-h-[94vh] w-full max-w-4xl flex-col overflow-hidden rounded-t-2xl border border-slate-200 bg-white shadow-[0_24px_60px_rgba(11,35,65,0.28)] sm:rounded-2xl"
           >
             <RequestDetail
               key={selected.id}
