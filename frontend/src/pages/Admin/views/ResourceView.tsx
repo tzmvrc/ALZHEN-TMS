@@ -331,7 +331,7 @@ export default function ResourceView({
       "invoices",
     ].includes(id);
   /* Table pages get a compact PageHeading instead of the larger PageIntro block. */
-  const showPageIntro = !TABLE_PAGE_IDS.has(id) && !isTripDetail;
+  const showPageIntro = !TABLE_PAGE_IDS.has(id) && !isTripDetail && id !== "requests";
 
   const showLocalTrip = !isTripDetail && localTripId !== null;
 
@@ -389,6 +389,7 @@ export default function ResourceView({
             pageSubtitle={barSubtitle}
             notificationTarget={notificationTarget}
             showReportPicker={false}
+            showExport={false}
             onOpenTrip={openTrip}
             toolbarActions={<AddTripButton />}
           />
@@ -420,6 +421,7 @@ export default function ResourceView({
             pageSubtitle={barSubtitle}
             notificationTarget={notificationTarget}
             showReportPicker={false}
+            showExport={false}
             onOpenTrip={openTrip}
           />
         </>
@@ -432,6 +434,7 @@ export default function ResourceView({
             pageSubtitle={barSubtitle}
             notificationTarget={notificationTarget}
             showReportPicker={false}
+            showExport={false}
             onOpenTrip={openTrip}
           />
         </>

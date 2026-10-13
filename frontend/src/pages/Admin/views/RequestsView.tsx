@@ -6,16 +6,17 @@ import {
   Check,
   ChevronRight,
   LayoutGrid,
-  List,
   MessageSquare,
   Package,
   Search,
+  Table2,
   X,
 } from "lucide-react";
 import type { DispatchRequest, RequestStatus } from "../../../types/requests";
 import RequestDetail from "../../../components/admin/RequestDetail";
 import { useRequests } from "../../../components/admin/requestsStore";
 import { senderInitials } from "../../../components/admin/requestFormat";
+import { tableUi } from "../../../components/admin/dashboardStyles";
 
 type ViewMode = "board" | "list";
 
@@ -149,41 +150,54 @@ function RequestCard({
 }
 
 /* ---------- List row ---------- */
-function RequestRow({ request, onOpen }: { request: DispatchRequest; onOpen: () => void }) {
+function RequestRow({
+  request,
+  onOpen,
+  onApprove,
+  onDecline,
+}: {
+  request: DispatchRequest;
+  onOpen: () => void;
+  onApprove: () => void;
+  onDecline: () => void;
+}) {
   const qty = request.items.reduce((sum, item) => sum + item.qty, 0);
   return (
-    <li>
-      <button
-        type="button"
-        onClick={onOpen}
-        aria-label={`Open request ${request.reference}`}
-        className="group flex w-full items-center gap-4 px-5 py-3.5 text-left transition hover:bg-[#f6f9fc] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2678b9]"
-      >
-        <span
-          aria-hidden="true"
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#e6f0f9] text-xs font-bold text-[#1d5f94]"
-        >
-          {senderInitials(request.fromEmail)}
-        </span>
+    <li className="group flex min-h-[82px] items-center gap-4 px-4 py-3 transition hover:bg-[#f6f9fc] sm:px-5">
+      <button type="button" onClick={onOpen} aria-label={`Open request ${request.reference}`} className="flex min-w-0 flex-1 items-center gap-4 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2678b9]">
+        <span aria-hidden="true" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#e6f0f9] text-xs font-bold text-[#1d5f94]">{senderInitials(request.fromEmail)}</span>
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-semibold text-[#0b2341]">{request.reference}</span>
-          <span className="block truncate text-xs text-slate-500">
-            {request.fromName || request.fromEmail} · {request.items.length} lines · {qty} units
+          <span className="flex min-w-0 items-center gap-2">
+            <span className="truncate text-xs font-semibold text-slate-700">{request.fromName || request.fromEmail}</span>
+            {request.fromName && <span className="hidden truncate text-[11px] text-slate-400 lg:inline">&lt;{request.fromEmail}&gt;</span>}
+          </span>
+          <span className="mt-0.5 flex min-w-0 items-baseline gap-2">
+            <span className="shrink-0 text-sm font-bold text-[#0b2341]">{request.reference}</span>
+            <span className="truncate text-xs text-slate-500">{summary(request)}</span>
+          </span>
+          <span className="mt-1 flex items-center gap-3 text-[10px] text-slate-400">
+            <span>{request.items.length} line{request.items.length === 1 ? "" : "s"} · {qty} units</span>
+            {request.messageThread.length > 0 && <span className="inline-flex items-center gap-1"><MessageSquare aria-hidden="true" className="h-3 w-3" />{request.messageThread.length}</span>}
+            {request.amount && <span className="font-semibold text-slate-500">{request.amount}</span>}
           </span>
         </span>
-        <span className="hidden text-xs text-slate-400 sm:block">{shortDate(request.dispatchDate)}</span>
-        <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${STATUS_PILL[request.status]}`}>
-          {request.status}
-        </span>
-        <ChevronRight aria-hidden="true" className="h-4 w-4 text-slate-300 group-hover:text-[#2678b9]" />
+        <span className="hidden w-28 shrink-0 text-right text-xs text-slate-400 sm:block">{shortDate(request.dispatchDate) || "—"}</span>
+        <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold ${STATUS_PILL[request.status]}`}>{request.status}</span>
+        <ChevronRight aria-hidden="true" className="h-4 w-4 shrink-0 text-slate-300 group-hover:text-[#2678b9]" />
       </button>
+      {request.status === "Pending" && (
+        <div className="hidden shrink-0 items-center gap-1.5 sm:flex">
+          <button type="button" onClick={onDecline} aria-label={`Decline ${request.reference}`} className="rounded-full px-2.5 py-1.5 text-[11px] font-semibold text-rose-700 opacity-70 transition hover:bg-rose-50 hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-300">Decline</button>
+          <button type="button" onClick={onApprove} aria-label={`Approve ${request.reference}`} className="inline-flex items-center gap-1 rounded-full bg-[#0b2341] px-3 py-1.5 text-[11px] font-semibold text-white transition hover:bg-[#12335c] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ffd43b]"><Check aria-hidden="true" className="h-3.5 w-3.5 text-[#ffd43b]" />Approve</button>
+        </div>
+      )}
     </li>
   );
 }
 
 export default function RequestsView() {
   const { requests, select, selectedId, setStatus, sendMessage } = useRequests();
-  const [view, setView] = useState<ViewMode>("board");
+  const [view, setView] = useState<ViewMode>("list");
   const [query, setQuery] = useState("");
   const [detailOpen, setDetailOpen] = useState(false);
 
@@ -219,60 +233,51 @@ export default function RequestsView() {
     setDetailOpen(true);
   }
 
-  const viewTabs: { id: ViewMode; label: string; icon: typeof LayoutGrid }[] = [
-    { id: "board", label: "Board view", icon: LayoutGrid },
-    { id: "list", label: "List view", icon: List },
-  ];
-
   return (
-    <div className="w-full rounded-3xl bg-white ring-1 ring-slate-900/[0.05] shadow-[0_1px_2px_rgba(11,35,65,0.03)]">
-      {/* Heading */}
-      <div className="px-6 pt-6">
-        <h2 className="text-xl font-bold tracking-tight text-[#0b2341]">Dispatch requests</h2>
-        <p className="mt-1 text-[13px] text-slate-500">
-          Review requests parsed from incoming emails, then approve or decline them.
-        </p>
-      </div>
-
-      {/* View tabs + search */}
-      <div className="mt-5 flex flex-col gap-3 border-b border-slate-100 px-6 sm:flex-row sm:items-end sm:justify-between">
-        <div role="tablist" aria-label="Request view" className="flex items-center gap-1">
-          {viewTabs.map(({ id, label, icon: Icon }) => {
-            const active = view === id;
-            return (
-              <button
-                key={id}
-                type="button"
-                role="tab"
-                aria-selected={active}
-                onClick={() => setView(id)}
-                className={`-mb-px inline-flex items-center gap-2 border-b-2 px-3 pb-3 pt-1 text-xs font-medium transition focus:outline-none focus-visible:text-[#0b2341] ${
-                  active
-                    ? "border-[#0b2341] text-[#0b2341]"
-                    : "border-transparent text-slate-500 hover:text-[#0b2341]"
-                }`}
-              >
-                <Icon aria-hidden="true" className="h-4 w-4" />
-                {label}
-              </button>
-            );
-          })}
+    <div className="w-full space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-[26px] font-bold leading-tight tracking-tight text-[#0b2341]">Requests</h1>
+          <p className="mt-1 text-[13px] text-slate-500">Dispatch requests parsed from incoming TCL emails</p>
         </div>
-        <label className="relative mb-3 block w-full sm:w-72">
-          <Search
-            aria-hidden="true"
-            className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
-          />
-          <input
-            aria-label="Search requests"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search reference, sender or courier"
-            className="h-10 w-full rounded-full border border-slate-200 bg-white pl-10 pr-4 text-sm text-slate-700 outline-none placeholder:text-slate-400 focus:border-[#2678b9]/50 focus:ring-2 focus:ring-[#2678b9]/15"
-          />
-        </label>
+        <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
+          <label className="relative block w-full sm:w-72">
+            <Search
+              aria-hidden="true"
+              className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+            />
+            <input
+              aria-label="Search requests"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search reference, sender or courier"
+              className="h-10 w-full rounded-full border border-slate-200 bg-white pl-10 pr-4 text-sm text-slate-700 outline-none placeholder:text-slate-400 focus:border-[#2678b9]/50 focus:ring-2 focus:ring-[#2678b9]/15"
+            />
+          </label>
+          <div role="group" aria-label="Request display mode" className={tableUi.segment}>
+            <button
+              type="button"
+              title="Board view"
+              aria-label="Board view"
+              aria-pressed={view === "board"}
+              onClick={() => setView("board")}
+              className={`inline-flex h-8 w-9 items-center justify-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9] ${view === "board" ? tableUi.segmentOn : tableUi.segmentOff}`}>
+              <LayoutGrid aria-hidden="true" className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              title="List view"
+              aria-label="List view"
+              aria-pressed={view === "list"}
+              onClick={() => setView("list")}
+              className={`inline-flex h-8 w-9 items-center justify-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9] ${view === "list" ? tableUi.segmentOn : tableUi.segmentOff}`}>
+              <Table2 aria-hidden="true" className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
       </div>
 
+      <div className="w-full rounded-3xl bg-white ring-1 ring-slate-900/[0.05] shadow-[0_1px_2px_rgba(11,35,65,0.03)]">
       {view === "board" ? (
         <div className="grid grid-cols-1 gap-5 p-5 md:grid-cols-3">
           {COLUMNS.map((column) => {
@@ -314,10 +319,12 @@ export default function RequestsView() {
       ) : (
         <ul className="divide-y divide-slate-100">
           {filtered.map((request) => (
-            <RequestRow key={request.id} request={request} onOpen={() => openRequest(request)} />
+            <RequestRow key={request.id} request={request} onOpen={() => openRequest(request)} onApprove={() => setStatus(request.id, "Approved")} onDecline={() => setStatus(request.id, "Declined")} />
           ))}
         </ul>
       )}
+
+      </div>
 
       {/* Centered modal */}
       {modalOpen && selected && createPortal(

@@ -957,19 +957,24 @@ export default function ReportDataView({
   initialReport = "combined",
   notificationTarget,
   showReportPicker = true,
+  showExport = true,
   pageTitle,
   pageSubtitle,
   onOpenTrip,
   onReportScopeChange,
+  toolbarLeading,
   toolbarActions,
 }: {
   initialReport?: ReportKey;
   notificationTarget?: AdminNotificationTarget | null;
   showReportPicker?: boolean;
+  showExport?: boolean;
   pageTitle?: string;
   pageSubtitle?: string;
   onOpenTrip?: (tripId: string) => void;
   onReportScopeChange?: (value: ReportKey) => void;
+  /** Controls placed before search in the report toolbar. */
+  toolbarLeading?: ReactNode;
   /** Extra action buttons rendered at the end of the controls row above the table. */
   toolbarActions?: ReactNode;
 }) {
@@ -2733,7 +2738,15 @@ export default function ReportDataView({
             {pageSubtitle && <p className="mt-1 text-xs leading-snug text-slate-600">{pageSubtitle}</p>}
           </div>
         )}
-        <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-3">
+        {toolbarLeading}
+        <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2 lg:flex-[1_1_36rem] lg:flex-nowrap">
+          <form onSubmit={submitSearch} className="flex min-w-0 w-full gap-2 sm:w-auto">
+            <label className="relative min-w-0 flex-1 sm:w-64 lg:flex-none" htmlFor="report-search">
+              <Search aria-hidden="true" className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input id="report-search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search report" className={tableUi.search} />
+            </label>
+            {search && <button type="button" aria-label="Clear search" onClick={() => { setSearch(""); setAppliedSearch(""); setPage(1); }} className={tableUi.iconBtn}><X aria-hidden="true" className="h-4 w-4" /></button>}
+          </form>
           {showReportPicker && (
             <label className="sr-only" htmlFor="report-select">
               Select report
@@ -2764,51 +2777,7 @@ export default function ReportDataView({
             columns={columns}
             onEdit={openSelectedRowEditor} />
         </div>
-        <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
-          <form onSubmit={submitSearch} className="flex min-w-0 w-full gap-2 sm:w-auto">
-            <label className="relative min-w-0 flex-1 sm:w-64" htmlFor="report-search">
-              <Search aria-hidden="true" className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <input id="report-search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search report" className={tableUi.search} />
-            </label>
-            {reportFilters.length > 0 && (
-              <button type="button" aria-label={filtersExpanded ? "Hide filters" : "Show filters"} aria-expanded={filtersExpanded} aria-controls="report-filter-controls" title={filtersExpanded ? "Hide filters" : "Show filters"} onClick={() => setFiltersExpanded((expanded) => !expanded)} className={`${tableUi.iconBtn} relative shrink-0 ${filtersExpanded ? "bg-[#e6f0f9] text-[#0b2341]" : ""}`}>
-                <SlidersHorizontal aria-hidden="true" className="h-4 w-4" />
-                {hasAppliedFilters && <span aria-label={`${Object.values(appliedFilters).filter((value) => value.trim()).length} active filters`} className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-[#2678b9]" />}
-              </button>
-            )}
-            {search && <button type="button" aria-label="Clear search" onClick={() => { setSearch(""); setAppliedSearch(""); setPage(1); }} className={tableUi.iconBtn}><X aria-hidden="true" className="h-4 w-4" /></button>}
-          </form>
-          <div
-            role="group"
-            aria-label="Report display mode"
-            className={tableUi.segment}>
-            <button
-              type="button"
-              title="Visual view"
-              aria-label="Visual view"
-              aria-pressed={viewMode === "visual"}
-              onClick={() => setViewMode("visual")}
-              className={`inline-flex h-8 w-9 items-center justify-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9] ${viewMode === "visual" ? tableUi.segmentOn : tableUi.segmentOff}`}>
-              <LayoutGrid aria-hidden="true" className="h-3.5 w-3.5" />
-            </button>
-            <button
-              type="button"
-              title="Table view"
-              aria-label="Table view"
-              aria-pressed={viewMode === "table"}
-              onClick={() => setViewMode("table")}
-              className={`inline-flex h-8 w-9 items-center justify-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9] ${viewMode === "table" ? tableUi.segmentOn : tableUi.segmentOff}`}>
-              <Table2 aria-hidden="true" className="h-3.5 w-3.5" />
-            </button>
-          </div>
-          <button
-            type="button"
-            title="Export reports"
-            aria-label="Export reports"
-            onClick={() => { setExportError(""); setExportModalOpen(true); }}
-            className={`${tableUi.iconBtn} !bg-[#ffd43b] !text-[#0b2341] hover:!bg-[#f2c200]`}>
-            <Download aria-hidden="true" className="h-4 w-4" />
-          </button>
+        <div className="flex min-w-0 flex-wrap items-center justify-end gap-2 lg:flex-none">
           {viewMode === "visual" && (
             <>
                     <div className="relative">
@@ -2848,6 +2817,32 @@ export default function ReportDataView({
           </div>
             </>
           )}
+          <div className="flex shrink-0 items-center gap-1.5">
+            {reportFilters.length > 0 && (
+              <button type="button" aria-label={filtersExpanded ? "Hide filters" : "Show filters"} aria-expanded={filtersExpanded} aria-controls="report-filter-controls" title={filtersExpanded ? "Hide filters" : "Show filters"} onClick={() => setFiltersExpanded((expanded) => !expanded)} className={`${tableUi.iconBtn} relative shrink-0 ${filtersExpanded ? "bg-[#e6f0f9] text-[#0b2341]" : ""}`}>
+                <SlidersHorizontal aria-hidden="true" className="h-4 w-4" />
+                {hasAppliedFilters && <span aria-label={`${Object.values(appliedFilters).filter((value) => value.trim()).length} active filters`} className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-[#2678b9]" />}
+              </button>
+            )}
+            <div role="group" aria-label="Report display mode" className={tableUi.segment}>
+              <button type="button" title="Visual view" aria-label="Visual view" aria-pressed={viewMode === "visual"} onClick={() => setViewMode("visual")} className={`inline-flex h-8 w-9 items-center justify-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9] ${viewMode === "visual" ? tableUi.segmentOn : tableUi.segmentOff}`}>
+                <LayoutGrid aria-hidden="true" className="h-3.5 w-3.5" />
+              </button>
+              <button type="button" title="Table view" aria-label="Table view" aria-pressed={viewMode === "table"} onClick={() => setViewMode("table")} className={`inline-flex h-8 w-9 items-center justify-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9] ${viewMode === "table" ? tableUi.segmentOn : tableUi.segmentOff}`}>
+                <Table2 aria-hidden="true" className="h-3.5 w-3.5" />
+              </button>
+            </div>
+            {showExport && (
+              <button
+                type="button"
+                title="Export reports"
+                aria-label="Export reports"
+                onClick={() => { setExportError(""); setExportModalOpen(true); }}
+                className={`${tableUi.iconBtn} !bg-[#ffd43b] !text-[#0b2341] hover:!bg-[#f2c200]`}>
+                <Download aria-hidden="true" className="h-4 w-4" />
+              </button>
+            )}
+          </div>
           {toolbarActions}
         </div>
       </div>
