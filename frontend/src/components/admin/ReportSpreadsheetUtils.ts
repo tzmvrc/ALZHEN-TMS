@@ -17,6 +17,35 @@ export const REPORT_GRID_HEADER_CELL_CLASS = "sticky top-0 z-30 whitespace-nowra
 export const REPORT_GRID_BODY_CELL_CLASS = "px-4 py-3.5 text-[13px] text-slate-800";
 export const REPORT_GRID_ROW_CLASS = "border-b border-slate-100/80 transition-colors last:border-0";
 
+export type ReportCellFormat = { bold?: boolean; color?: string; backgroundColor?: string };
+
+export function reportCellFormatKey(rowKey: string, field: string) {
+  return `${rowKey}\u0000${field}`;
+}
+
+export function readReportCellFormats(storageKey: string): Record<string, ReportCellFormat> {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(storageKey) ?? "{}") as Record<string, unknown>;
+    return Object.fromEntries(Object.entries(parsed).flatMap(([key, value]) => {
+      if (!value || typeof value !== "object") return [];
+      const item = value as Record<string, unknown>;
+      const color = typeof item.color === "string" && /^#[0-9a-f]{6}$/i.test(item.color) ? item.color : undefined;
+      const backgroundColor = typeof item.backgroundColor === "string" && /^#[0-9a-f]{6}$/i.test(item.backgroundColor) ? item.backgroundColor : undefined;
+      return [[key, { bold: item.bold === true, color, backgroundColor } satisfies ReportCellFormat]];
+    }));
+  } catch {
+    return {};
+  }
+}
+
+export function writeReportCellFormats(storageKey: string, formats: Record<string, ReportCellFormat>) {
+  try {
+    localStorage.setItem(storageKey, JSON.stringify(formats));
+  } catch {
+    // Formatting remains usable in this session if browser storage is unavailable.
+  }
+}
+
 export function reorderColumnKeys(keys: string[], sourceKey: string, targetKey: string) {
   if (sourceKey === targetKey) return keys;
   const sourceIndex = keys.indexOf(sourceKey);

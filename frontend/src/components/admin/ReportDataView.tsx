@@ -22,9 +22,6 @@ import {
   GripVertical,
   EyeOff,
   EllipsisVertical,
-  Bold,
-  Palette,
-  Paintbrush,
 } from "lucide-react";
 import type ExcelJS from "exceljs";
 import { useAuth } from "../../context/AuthContext";
@@ -75,11 +72,12 @@ import {
 import SearchableRelationshipEditor from "./SearchableRelationshipEditor";
 import {
   ReportTextCellEditor,
+  ReportCellFormattingToolbar,
   ReportColumnActionsMenu,
   ReportColumnColorDialog,
   ReportDropdownOptionsDialog,
 } from "./ReportSpreadsheetShared";
-import { REPORT_GRID_BODY_CELL_CLASS, REPORT_GRID_HEADER_CELL_CLASS, REPORT_GRID_ROW_CLASS, REPORT_GRID_VIEWPORT_CLASS, chooseAutomaticPinSide, expandSpreadsheetRange, parseSpreadsheetClipboard, reorderColumnKeys } from "./ReportSpreadsheetUtils";
+import { REPORT_GRID_BODY_CELL_CLASS, REPORT_GRID_HEADER_CELL_CLASS, REPORT_GRID_ROW_CLASS, REPORT_GRID_VIEWPORT_CLASS, chooseAutomaticPinSide, expandSpreadsheetRange, parseSpreadsheetClipboard, readReportCellFormats, reportCellFormatKey, reorderColumnKeys, writeReportCellFormats, type ReportCellFormat } from "./ReportSpreadsheetUtils";
 import { tableUi } from "./dashboardStyles";
 import ReportDropdownEditor, { type ReportDropdownChoice } from "./ReportDropdownEditor";
 import type { AdminNotificationTarget } from "../../services/notification.service";
@@ -471,7 +469,6 @@ type FillGesture = {
   targetField: string;
   baseline: Map<string, unknown>;
 };
-type ReportCellFormat = { bold?: boolean; color?: string; backgroundColor?: string };
 type CellSelection = { anchorRowKey: string; anchorField: string; focusRowKey: string; focusField: string };
 
 function readReportColumnLayout(storageKey: string): ReportColumnLayout {
@@ -489,21 +486,6 @@ function readReportColumnLayout(storageKey: string): ReportColumnLayout {
     };
   } catch {
     return { order: [], hidden: [] };
-  }
-}
-
-function readCellFormats(storageKey: string): Record<string, ReportCellFormat> {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(storageKey) ?? "{}") as Record<string, unknown>;
-    return Object.fromEntries(Object.entries(parsed).flatMap(([key, value]) => {
-      if (!value || typeof value !== "object") return [];
-      const item = value as Record<string, unknown>;
-      const color = typeof item.color === "string" && /^#[0-9a-f]{6}$/i.test(item.color) ? item.color : undefined;
-      const backgroundColor = typeof item.backgroundColor === "string" && /^#[0-9a-f]{6}$/i.test(item.backgroundColor) ? item.backgroundColor : undefined;
-      return [[key, { bold: item.bold === true, color, backgroundColor } satisfies ReportCellFormat]];
-    }));
-  } catch {
-    return {};
   }
 }
 
@@ -978,10 +960,9 @@ export default function ReportDataView({
   );
   const cellFormatStorageKey = `alzhen:report-cell-format:${profile?.id ?? "user"}:${reportKey}`;
   const [cellFormats, setCellFormats] = useState<Record<string, ReportCellFormat>>(() =>
-    typeof window === "undefined" ? {} : readCellFormats(`alzhen:report-cell-format:${profile?.id ?? "user"}:${initialReport}`),
+    typeof window === "undefined" ? {} : readReportCellFormats(`alzhen:report-cell-format:${profile?.id ?? "user"}:${initialReport}`),
   );
   const [cellSelection, setCellSelection] = useState<CellSelection | null>(null);
-  const [openColorPicker, setOpenColorPicker] = useState<"text" | "background" | null>(null);
   const [draggedColumnKey, setDraggedColumnKey] = useState<string | null>(null);
   const [columnResize, setColumnResize] = useState<{ key: string; startX: number; startWidth: number } | null>(null);
   const [fillGesture, setFillGesture] = useState<FillGesture | null>(null);
@@ -1184,7 +1165,7 @@ export default function ReportDataView({
       const rowKey = getReportRowKey(reportKey, displayedRows[rowIndex]);
       if (!rowKey) continue;
       for (let columnIndex = Math.min(columnStart, columnEnd); columnIndex <= Math.max(columnStart, columnEnd); columnIndex += 1) {
-        selected.add(`${rowKey}\u0000${renderedGridColumns[columnIndex].key}`);
+        selected.add(reportCellFormatKey(rowKey, renderedGridColumns[columnIndex].key));
       }
     }
     return selected;
@@ -1230,9 +1211,8 @@ export default function ReportDataView({
   }, [columnLayoutStorageKey]);
 
   useEffect(() => {
-    setCellFormats(readCellFormats(cellFormatStorageKey));
+    setCellFormats(readReportCellFormats(cellFormatStorageKey));
     setCellSelection(null);
-    setOpenColorPicker(null);
   }, [cellFormatStorageKey]);
 
   useLayoutEffect(() => {
@@ -1821,12 +1801,7 @@ export default function ReportDataView({
       else delete next[key];
     }
     setCellFormats(next);
-    setOpenColorPicker(null);
-    try {
-      localStorage.setItem(cellFormatStorageKey, JSON.stringify(next));
-    } catch {
-      // Keep current-session formatting usable if browser storage is unavailable.
-    }
+    writeReportCellFormats(cellFormatStorageKey, next);
   }
 
   const selectedFormats = [...selectedFormatCellKeys].map((key) => cellFormats[key] ?? {});
@@ -3033,18 +3008,7 @@ export default function ReportDataView({
         </div>
       ) : (
         <>
-          {viewMode === "table" && <div role="toolbar" aria-label="Cell formatting" className="flex min-h-9 items-center gap-1 border-b border-slate-100 bg-slate-50/70 px-3 py-1.5">
-            <button type="button" title="Bold selected cells" aria-label="Bold selected cells" aria-pressed={selectionIsBold} disabled={!selectedFormatCellKeys.size} onMouseDown={(event) => event.preventDefault()} onClick={() => applyCellFormat({ bold: !selectionIsBold })} className={`inline-flex h-7 w-7 items-center justify-center rounded border disabled:cursor-not-allowed disabled:opacity-40 ${selectionIsBold ? "border-blue-300 bg-blue-100 text-blue-800" : "border-transparent text-slate-600 hover:bg-white hover:text-slate-900"}`}><Bold aria-hidden="true" className="h-4 w-4" /></button>
-            <div className="relative">
-              <button type="button" title="Text color" aria-label="Text color" aria-expanded={openColorPicker === "text"} disabled={!selectedFormatCellKeys.size} onMouseDown={(event) => event.preventDefault()} onClick={() => setOpenColorPicker((current) => current === "text" ? null : "text")} className={`inline-flex h-7 w-7 items-center justify-center rounded border disabled:cursor-not-allowed disabled:opacity-40 ${openColorPicker === "text" ? "border-blue-300 bg-blue-100 text-blue-800" : "border-transparent text-slate-600 hover:bg-white hover:text-slate-900"}`}><Palette aria-hidden="true" className="h-4 w-4" /></button>
-              {openColorPicker === "text" && <div className="absolute left-0 top-full z-50 mt-1 flex gap-1 rounded-lg border border-slate-200 bg-white p-2 shadow-lg" aria-label="Text color palette">{["#111827", "#b91c1c", "#d97706", "#15803d", "#1d4ed8", "#7e22ce"].map((color) => <button key={color} type="button" title={`Text color ${color}`} aria-label={`Text color ${color}`} aria-pressed={selectedTextColor === color} onMouseDown={(event) => event.preventDefault()} onClick={() => applyCellFormat({ color })} className={`h-5 w-5 rounded-full border border-slate-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${selectedTextColor === color ? "ring-2 ring-slate-800 ring-offset-1" : ""}`} style={{ backgroundColor: color }} />)}<button type="button" title="Reset text color" aria-label="Reset text color" aria-pressed={selectedTextColor === ""} onMouseDown={(event) => event.preventDefault()} onClick={() => applyCellFormat({ color: "" })} className="rounded px-1.5 text-[10px] text-slate-600 hover:bg-slate-100">Reset</button></div>}
-            </div>
-            <div className="relative">
-              <button type="button" title="Cell color" aria-label="Cell color" aria-expanded={openColorPicker === "background"} disabled={!selectedFormatCellKeys.size} onMouseDown={(event) => event.preventDefault()} onClick={() => setOpenColorPicker((current) => current === "background" ? null : "background")} className={`inline-flex h-7 w-7 items-center justify-center rounded border disabled:cursor-not-allowed disabled:opacity-40 ${openColorPicker === "background" ? "border-blue-300 bg-blue-100 text-blue-800" : "border-transparent text-slate-600 hover:bg-white hover:text-slate-900"}`}><Paintbrush aria-hidden="true" className="h-4 w-4" /></button>
-              {openColorPicker === "background" && <div className="absolute left-0 top-full z-50 mt-1 flex gap-1 rounded-lg border border-slate-200 bg-white p-2 shadow-lg" aria-label="Cell color palette">{["#ffffff", "#fef3c7", "#dcfce7", "#dbeafe", "#fce7f3", "#e5e7eb"].map((color) => <button key={color} type="button" title={`Cell color ${color}`} aria-label={`Cell color ${color}`} aria-pressed={selectedBackgroundColor === (color === "#ffffff" ? "" : color)} onMouseDown={(event) => event.preventDefault()} onClick={() => applyCellFormat({ backgroundColor: color === "#ffffff" ? "" : color })} className={`h-5 w-5 rounded-full border border-slate-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${selectedBackgroundColor === (color === "#ffffff" ? "" : color) ? "ring-2 ring-slate-800 ring-offset-1" : ""}`} style={{ backgroundColor: color }} />)}<button type="button" title="Reset cell color" aria-label="Reset cell color" aria-pressed={selectedBackgroundColor === ""} onMouseDown={(event) => event.preventDefault()} onClick={() => applyCellFormat({ backgroundColor: "" })} className="rounded px-1.5 text-[10px] text-slate-600 hover:bg-slate-100">Reset</button></div>}
-            </div>
-            {cellSelection && <span className="ml-2 text-[10px] text-slate-500">{selectedFormatCellKeys.size} cell{selectedFormatCellKeys.size === 1 ? "" : "s"} selected</span>}
-          </div>}
+          {viewMode === "table" && <ReportCellFormattingToolbar selectedCellCount={selectedFormatCellKeys.size} selectionIsBold={selectionIsBold} selectedTextColor={selectedTextColor} selectedBackgroundColor={selectedBackgroundColor} onApply={applyCellFormat} />}
           <div ref={tableViewportRef} onPaste={(event) => void handleReportPaste(event)} onCopy={handleReportCopy} className={`${viewMode === "table" ? REPORT_GRID_VIEWPORT_CLASS : "relative min-h-48 w-full min-w-0 max-w-full overflow-x-auto overscroll-x-contain"} w-full`}>
             {pinningNotice && <p role="status" className="sticky left-2 z-40 w-fit rounded-md bg-amber-50 px-2.5 py-1.5 text-xs text-amber-900 shadow-sm">{pinningNotice}</p>}
             {viewMode === "visual" ? (
@@ -3208,7 +3172,7 @@ export default function ReportDataView({
                             editingCell?.rowKey === currentRowKey &&
                             editingCell.field === column.key;
                           const formatRowKey = getReportRowKey(reportKey, row);
-                          const formatKey = formatRowKey ? `${formatRowKey}\u0000${column.key}` : "";
+                          const formatKey = formatRowKey ? reportCellFormatKey(formatRowKey, column.key) : "";
                           const cellFormat = formatKey ? cellFormats[formatKey] : undefined;
                           const isFormatSelected = formatKey !== "" && selectedFormatCellKeys.has(formatKey);
                           const fillRange = fillGesture ? (() => {

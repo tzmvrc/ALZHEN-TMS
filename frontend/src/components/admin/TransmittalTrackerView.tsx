@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, ClipboardEvent as ReactClipboardEvent, MouseEvent } from "react";
-import { ArrowDown, ArrowUp, ArrowUpDown, Download, EllipsisVertical, EyeOff, FileSpreadsheet, GripVertical, LoaderCircle, Search, X } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, Download, EllipsisVertical, EyeOff, FileSpreadsheet, GripVertical, LoaderCircle, Printer, Search, X } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
+import companyLogo from "../../assets/logo.png";
 import { ApiError } from "../../services/api.service";
 import { addDropdownOption, editDropdownOption, fetchDropdownOptions, type DropdownOption } from "../../services/dropdown-option.service";
 import { subscribeToAdminRealtime, TRANSMITTAL_TRACKER_REALTIME_TABLES } from "../../services/realtime.service";
@@ -11,11 +12,12 @@ import ReportDropdownEditor, { type ReportDropdownChoice } from "./ReportDropdow
 import SearchableRelationshipEditor from "./SearchableRelationshipEditor";
 import {
   ReportTextCellEditor,
+  ReportCellFormattingToolbar,
   ReportColumnActionsMenu,
   ReportColumnColorDialog,
   ReportDropdownOptionsDialog,
 } from "./ReportSpreadsheetShared";
-import { REPORT_GRID_BODY_CELL_CLASS, REPORT_GRID_HEADER_CELL_CLASS, REPORT_GRID_ROW_CLASS, REPORT_GRID_VIEWPORT_CLASS, chooseAutomaticPinSide, expandSpreadsheetRange, parseSpreadsheetClipboard, reorderColumnKeys } from "./ReportSpreadsheetUtils";
+import { REPORT_GRID_BODY_CELL_CLASS, REPORT_GRID_HEADER_CELL_CLASS, REPORT_GRID_ROW_CLASS, REPORT_GRID_VIEWPORT_CLASS, chooseAutomaticPinSide, expandSpreadsheetRange, parseSpreadsheetClipboard, readReportCellFormats, reportCellFormatKey, reorderColumnKeys, writeReportCellFormats, type ReportCellFormat } from "./ReportSpreadsheetUtils";
 import { tableUi } from "./dashboardStyles";
 
 type EditableField = "warehouse_code_override" | "delivered_to_override" | "plate_number_override" | "delivery_receipt_no_override" | "sales_order_no_override" | "transmittal_ref" | "date_created_override" | "tracker_status" | "lbc_waybill_no" | "lbc_shipping_date" | "tracker_remarks" | "loading_date_override" | "delivery_date_override";
@@ -71,6 +73,28 @@ function localDate() {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 }
 
+function formatSheetDate(value: string) {
+  const match = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(value);
+  return match ? `${Number(match[2])}/${Number(match[3])}/${match[1]}` : value;
+}
+
+function safeFilenamePart(value: string, fallback: string) {
+  const safe = value.replace(/[<>:"/\\|?*\u0000-\u001f]/g, "-").replace(/\s+/g, " ").replace(/[. ]+$/g, "").trim().slice(0, 100);
+  return safe || fallback;
+}
+
+async function loadLogoDataUrl() {
+  const response = await fetch(companyLogo);
+  if (!response.ok) throw new Error("The company logo could not be loaded for the Transmittal Sheet export.");
+  const blob = await response.blob();
+  return await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => typeof reader.result === "string" ? resolve(reader.result) : reject(new Error("Unable to read the company logo."));
+    reader.onerror = () => reject(new Error("Unable to read the company logo."));
+    reader.readAsDataURL(blob);
+  });
+}
+
 function draftKey(stopId: string, field: string) {
   return `${stopId}:${field}`;
 }
@@ -119,7 +143,7 @@ async function loadExcelJs() {
 }
 
 export default function TransmittalTrackerView() {
-  const { accessToken, profile } = useAuth();
+  const { accessToken, profile, user } = useAuth();
   const isAdmin = profile?.role === "ADMIN";
   const [data, setData] = useState<TransmittalTrackerResponse | null>(null);
   const [query, setQuery] = useState("");
@@ -163,9 +187,12 @@ export default function TransmittalTrackerView() {
   const [notice, setNotice] = useState("");
   const [exportError, setExportError] = useState("");
   const [selectedReference, setSelectedReference] = useState("");
+  const [prepareDialogOpen, setPrepareDialogOpen] = useState(false);
   const [preparingSheet, setPreparingSheet] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const prepKey = `alzhen:transmittal-preparation:${profile?.id ?? "user"}`;
+  const cellFormatStorageKey = `alzhen:report-cell-format:${profile?.id ?? "user"}:transmittal_tracker`;
+  const [cellFormats, setCellFormats] = useState<Record<string, ReportCellFormat>>(() => typeof window === "undefined" ? {} : readReportCellFormats(cellFormatStorageKey));
   const [preparation, setPreparation] = useState<Preparation>(() => {
     if (typeof window === "undefined") return { date: localDate(), preparedBy: "", checkedBy: "" };
     try {
@@ -226,6 +253,10 @@ export default function TransmittalTrackerView() {
   useEffect(() => {
     try { window.localStorage.setItem(prepKey, JSON.stringify(preparation)); } catch { /* Browser storage may be disabled. */ }
   }, [prepKey, preparation]);
+  useEffect(() => {
+    setCellFormats(readReportCellFormats(cellFormatStorageKey));
+    setCellSelection(null);
+  }, [cellFormatStorageKey]);
 
   const load = useCallback(async (background = false) => {
     if (!accessToken) return;
@@ -318,6 +349,47 @@ export default function TransmittalTrackerView() {
     const columnB = renderedColumns.findIndex((column) => column.field === cellSelection.focusField);
     return rowA < 0 || rowB < 0 || columnA < 0 || columnB < 0 ? null : { minRow: Math.min(rowA, rowB), maxRow: Math.max(rowA, rowB), minColumn: Math.min(columnA, columnB), maxColumn: Math.max(columnA, columnB) };
   }, [cellSelection, filteredRows, renderedColumns]);
+  const selectedFormatCellKeys = useMemo(() => {
+    if (!selectedRange) return new Set<string>();
+    const selected = new Set<string>();
+    for (let rowIndex = selectedRange.minRow; rowIndex <= selectedRange.maxRow; rowIndex += 1) {
+      for (let columnIndex = selectedRange.minColumn; columnIndex <= selectedRange.maxColumn; columnIndex += 1) {
+        selected.add(reportCellFormatKey(filteredRows[rowIndex].trip_stop_id, renderedColumns[columnIndex].key));
+      }
+    }
+    return selected;
+  }, [filteredRows, renderedColumns, selectedRange]);
+  const selectedFormats = [...selectedFormatCellKeys].map((key) => cellFormats[key] ?? {});
+  const selectionIsBold = selectedFormats.length > 0 && selectedFormats.every((format) => format.bold === true);
+  const selectedTextColor = selectedFormats.length > 0 && selectedFormats.every((format) => format.color === selectedFormats[0].color) ? selectedFormats[0].color ?? "" : null;
+  const selectedBackgroundColor = selectedFormats.length > 0 && selectedFormats.every((format) => format.backgroundColor === selectedFormats[0].backgroundColor) ? selectedFormats[0].backgroundColor ?? "" : null;
+
+  const applyCellFormat = (change: Partial<ReportCellFormat>) => {
+    if (!selectedFormatCellKeys.size) return;
+    const next = { ...cellFormats };
+    for (const key of selectedFormatCellKeys) {
+      const format = { ...next[key], ...change };
+      if (format.bold === false) delete format.bold;
+      if (format.color === "") delete format.color;
+      if (format.backgroundColor === "") delete format.backgroundColor;
+      if (Object.keys(format).length) next[key] = format;
+      else delete next[key];
+    }
+    setCellFormats(next);
+    writeReportCellFormats(cellFormatStorageKey, next);
+  };
+
+  const userMetadata = user?.user_metadata ?? {};
+  const accountDisplayName = [profile?.first_name, profile?.last_name].filter((part): part is string => Boolean(part?.trim())).join(" ").trim()
+    || [userMetadata.full_name, userMetadata.name, userMetadata.display_name].find((value): value is string => typeof value === "string" && Boolean(value.trim()))?.trim()
+    || user?.email?.trim()
+    || "";
+
+  const openPrepareDialog = () => {
+    if (selectedReference && !references.includes(selectedReference)) setSelectedReference("");
+    setExportError("");
+    setPrepareDialogOpen(true);
+  };
 
   const baseValue = (row: TransmittalTrackerRow, field: EditableField) => {
     switch (field) {
@@ -722,13 +794,24 @@ export default function TransmittalTrackerView() {
         ["WH CODE", "warehouse_code"], ["Delivered to", "delivered_to"], ["Plate #", "plate_number"], ["Delivery Receipt No.", "delivery_receipt_no"], ["S.O. No.", "sales_order_no"], ["Transmittal Ref#", "transmittal_ref"], ["Date created", "date_created"], ["Status", "status"], ["LBC Waybill no.", "lbc_waybill_no"], ["Shipping date via LBC", "shipping_date_via_lbc"], ["Remarks", "remarks"],
       ] as const;
       sheet.columns = columns.map(([header, key]) => ({ header, key, width: Math.max(15, Math.min(34, header.length + 5)) }));
-      sheet.addRows(projectTrackerExportRows(filterTrackerRows(committedRows, query, columnFilter, sort), columns));
+      const exportRows = filterTrackerRows(committedRows, query, columnFilter, sort);
+      sheet.addRows(projectTrackerExportRows(exportRows, columns));
+      exportRows.forEach((row, rowIndex) => columns.forEach(([, key], columnIndex) => {
+        const format = cellFormats[reportCellFormatKey(row.trip_stop_id, key)];
+        if (!format) return;
+        const cell = sheet.getCell(rowIndex + 2, columnIndex + 1);
+        if (format.bold) cell.font = { ...cell.font, bold: true };
+        if (format.color) cell.font = { ...cell.font, color: { argb: `FF${format.color.slice(1).toUpperCase()}` } };
+        if (format.backgroundColor) cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: `FF${format.backgroundColor.slice(1).toUpperCase()}` } };
+      }));
       sheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
       sheet.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF12365A" } };
       sheet.views = [{ state: "frozen", ySplit: 1 }];
       const buffer = await workbook.xlsx.writeBuffer();
       const url = URL.createObjectURL(new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
-      const link = document.createElement("a"); link.href = url; link.download = "transmittal-tracker.xlsx"; link.click(); window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      const statusView = columnFilter?.key === "status" && columnFilter.value.trim() ? columnFilter.value.trim().toLocaleLowerCase() : "";
+      const exportViewName = statusView || (query.trim() || columnFilter?.value.trim() ? "filtered" : "Tracker");
+      const link = document.createElement("a"); link.href = url; link.download = `Transmittal ${safeFilenamePart(exportViewName, "Tracker")}.xlsx`; link.click(); window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (exportFailure) { setExportError(exportFailure instanceof Error ? exportFailure.message : "Export failed."); }
   };
 
@@ -746,19 +829,23 @@ export default function TransmittalTrackerView() {
     try {
       const ExcelJS = await loadExcelJs();
       const workbook = new ExcelJS.Workbook();
-      const sheet = workbook.addWorksheet("Transmittal Sheet", { pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1 } });
+      const sheet = workbook.addWorksheet("Transmittal Sheet", { pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 0, paperSize: 9 } });
       const headers = ["Loading Date", "Date Delivered", "WH CODE", "Delivered to", "Plate #", "Delivery Receipt No.", "S.O. No.", "Transmittal Ref#", "Transmittal Date"];
-      sheet.columns = headers.map((header) => ({ width: Math.max(14, Math.min(28, header.length + 3)) }));
+      sheet.columns = [16, 16, 13, 24, 16, 24, 16, 22, 17].map((width) => ({ width }));
       const lastCol = headers.length;
-      sheet.mergeCells(1, 1, 1, lastCol);
-      sheet.getCell(1, 1).value = "TRANSMITTAL SHEET";
-      sheet.getCell(1, 1).font = { bold: true, size: 16, color: { argb: "FF17365D" } };
-      sheet.getCell(1, 1).alignment = { horizontal: "center" };
-      sheet.getCell(2, 1).value = "Date"; sheet.getCell(2, 2).value = preparation.date;
-      sheet.getCell(3, 1).value = "Prepared by"; sheet.getCell(3, 2).value = preparation.preparedBy;
-      sheet.getCell(4, 1).value = "Checked by"; sheet.getCell(4, 2).value = preparation.checkedBy;
-      sheet.getCell(5, 1).value = "Transmittal Ref#"; sheet.getCell(5, 2).value = selectedReference;
-      sheet.getCell(6, 1).value = "Transmittal Date";
+      for (let row = 1; row <= 5; row += 1) sheet.getRow(row).height = 24;
+      sheet.mergeCells(6, 1, 6, lastCol);
+      sheet.getCell(6, 1).value = "TRANSMITTAL SHEET";
+      sheet.getCell(6, 1).font = { bold: true, size: 18, color: { argb: "FF17365D" } };
+      sheet.getCell(6, 1).alignment = { horizontal: "center", vertical: "middle" };
+      sheet.getRow(6).height = 32;
+      sheet.getCell(7, 1).value = "Date"; sheet.getCell(7, 2).value = formatSheetDate(preparation.date);
+      sheet.getCell(8, 1).value = "Prepared by"; sheet.getCell(8, 2).value = preparation.preparedBy;
+      sheet.getCell(9, 1).value = "Checked by"; sheet.getCell(9, 2).value = preparation.checkedBy;
+      sheet.getCell(10, 1).value = "Transmittal Ref#"; sheet.getCell(10, 2).value = selectedReference;
+      sheet.getCell(11, 1).value = "Transmittal Date";
+      const logoId = workbook.addImage({ base64: await loadLogoDataUrl(), extension: "png" });
+      sheet.addImage(logoId, { tl: { col: 4.25, row: 0.1 }, ext: { width: 110, height: 110 } });
       const committedSheetRows = projectTransmittalSheetRows(committedRows, selectedReference);
       if (committedSheetRows.length === 0) {
         setExportError("No delivery rows match the selected Transmittal Ref# after saving. Refresh the tracker and select a current reference.");
@@ -769,7 +856,7 @@ export default function TransmittalTrackerView() {
         setExportError(refreshedConflict);
         return;
       }
-      sheet.getCell(6, 2).value = [...new Set(committedSheetRows.map((row) => row.date_created).filter(Boolean))].join(", ");
+      sheet.getCell(11, 2).value = [...new Set(committedSheetRows.map((row) => row.date_created).filter(Boolean))].join(", ");
       sheet.addRow([]);
       const headerRow = sheet.addRow(headers);
       const outputRows = committedSheetRows.map((row) => [row.loading_date, row.date_delivered, row.warehouse_code, row.delivered_to, row.plate_number, row.delivery_receipt_no, row.sales_order_no, selectedReference, row.date_created]);
@@ -777,15 +864,28 @@ export default function TransmittalTrackerView() {
       headerRow.font = { bold: true, color: { argb: "FFFFFFFF" } };
       headerRow.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF17365D" } };
       headerRow.alignment = { vertical: "middle", wrapText: true };
-      headerRow.height = 30;
-      for (let rowNumber = 9; rowNumber <= sheet.rowCount; rowNumber += 1) {
+      headerRow.height = 44;
+      const headerRowNumber = headerRow.number;
+      const sheetColumnFormatKeys: (keyof TransmittalTrackerRow | null)[] = [null, null, "warehouse_code", "delivered_to", "plate_number", "delivery_receipt_no", "sales_order_no", "transmittal_ref", "date_created"];
+      committedSheetRows.forEach((trackerRow, rowIndex) => sheetColumnFormatKeys.forEach((key, columnIndex) => {
+        if (!key) return;
+        const format = cellFormats[reportCellFormatKey(trackerRow.trip_stop_id, key)];
+        if (!format) return;
+        const cell = sheet.getCell(headerRowNumber + rowIndex + 1, columnIndex + 1);
+        if (format.bold) cell.font = { ...cell.font, bold: true };
+        if (format.color) cell.font = { ...cell.font, color: { argb: `FF${format.color.slice(1).toUpperCase()}` } };
+        if (format.backgroundColor) cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: `FF${format.backgroundColor.slice(1).toUpperCase()}` } };
+      }));
+      for (let rowNumber = headerRowNumber + 1; rowNumber <= sheet.rowCount; rowNumber += 1) {
         const row = sheet.getRow(rowNumber);
+        row.height = 32;
         row.eachCell((cell) => { cell.border = { bottom: { style: "thin", color: { argb: "FFD5DEE8" } } }; cell.alignment = { vertical: "middle", wrapText: true }; });
       }
-      sheet.views = [{ state: "frozen", ySplit: 8 }];
+      sheet.views = [{ state: "frozen", ySplit: headerRowNumber }];
+      sheet.pageSetup.printArea = `A1:I${sheet.rowCount}`;
       const buffer = await workbook.xlsx.writeBuffer();
       const url = URL.createObjectURL(new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
-      const link = document.createElement("a"); link.href = url; link.download = `${selectedReference.replace(/[^a-z0-9-_]+/gi, "-")}-transmittal-sheet.xlsx`; link.click(); window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      const link = document.createElement("a"); link.href = url; link.download = `Transmittal - ${safeFilenamePart(selectedReference, "Sheet")}.xlsx`; link.click(); window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (exportFailure) { setExportError(exportFailure instanceof Error ? exportFailure.message : "Transmittal Sheet export failed."); }
   };
 
@@ -820,6 +920,8 @@ export default function TransmittalTrackerView() {
         setExportError(refreshedConflict);
         return;
       }
+      setPreparation((current) => ({ ...current, date: localDate(), preparedBy: accountDisplayName || current.preparedBy }));
+      setPrepareDialogOpen(false);
       setSheetOpen(true);
     } finally {
       setPreparingSheet(false);
@@ -846,10 +948,11 @@ export default function TransmittalTrackerView() {
   return <section className="space-y-3">
     <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-3">
       <div className="relative min-w-64 flex-1 sm:max-w-xl"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search reference, store, plate, receipt, S.O., status, waybill…" className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-3 text-sm text-slate-800 outline-none focus:border-blue-400 focus:bg-white" /></div>
-    <div className="flex flex-wrap items-center gap-2"><button disabled={legacyConflictCount > 0} onClick={() => void exportFiltered()} className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#12365a] px-3 text-sm font-medium text-white hover:bg-[#0d2945] disabled:cursor-not-allowed disabled:opacity-50"><Download className="h-4 w-4" />Export filtered</button><select value={selectedReference} onChange={(event) => { setSelectedReference(event.target.value); setExportError(""); }} className="h-9 max-w-56 rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-700"><option value="">Select transmittal ref</option>{references.map((reference) => <option key={reference} value={reference}>{reference}</option>)}</select><button disabled={preparingSheet} onClick={() => void openSheetAfterSave()} className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#12365a] px-3 text-sm font-medium text-[#12365a] enabled:hover:bg-blue-50 disabled:cursor-wait disabled:opacity-60"><FileSpreadsheet className="h-4 w-4" />{preparingSheet ? "Preparing…" : "Prepare Sheet"}</button></div>
+    <div className="flex flex-wrap items-center gap-2"><button disabled={legacyConflictCount > 0} onClick={() => void exportFiltered()} className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#12365a] px-3 text-sm font-medium text-white hover:bg-[#0d2945] disabled:cursor-not-allowed disabled:opacity-50"><Download className="h-4 w-4" />Export filtered</button><button type="button" onClick={openPrepareDialog} className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#12365a] px-3 text-sm font-medium text-[#12365a] hover:bg-blue-50"><FileSpreadsheet className="h-4 w-4" />Prepare Sheet</button></div>
     </div>
     {columnFilter && <div className="flex flex-wrap items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600"><span className="font-semibold">Filter {TRACKER_COLUMNS.find((column) => column.key === columnFilter.key)?.title}</span><input autoFocus value={columnFilter.value} onChange={(event) => setColumnFilter({ ...columnFilter, value: event.target.value })} aria-label={`Filter ${TRACKER_COLUMNS.find((column) => column.key === columnFilter.key)?.title}`} className="h-8 min-w-48 rounded border border-slate-300 bg-white px-2 text-xs outline-none focus:border-blue-400" /><button type="button" onClick={() => setColumnFilter(null)} className="rounded px-2 py-1 text-slate-500 hover:bg-white">Clear filter</button></div>}
     {(error || notice || exportError || legacyConflictCount > 0) && <div role="status" className={`flex flex-wrap items-center gap-2 text-sm ${error || exportError ? "text-red-700" : notice.includes("audit event") || legacyConflictCount > 0 ? "text-amber-800" : "text-emerald-700"}`}><span>{error || exportError || (legacyConflictCount > 0 ? `${legacyConflictCount} stop${legacyConflictCount === 1 ? " has" : "s have"} conflicting legacy POD values. Replace and save each highlighted field before exporting.` : notice)}</span>{conflictKeys.size > 0 && <button type="button" onClick={discardConflicts} className="rounded border border-amber-500 px-2 py-1 text-amber-900 hover:bg-amber-50">Discard conflicted drafts and load latest</button>}</div>}
+    <ReportCellFormattingToolbar selectedCellCount={selectedFormatCellKeys.size} selectionIsBold={selectionIsBold} selectedTextColor={selectedTextColor} selectedBackgroundColor={selectedBackgroundColor} onApply={applyCellFormat} />
     <div ref={viewportRef} tabIndex={0} onKeyDown={handleGridKeyDown} onPaste={(event) => void handleTrackerPaste(event)} onCopy={handleTrackerCopy} aria-label="Transmittal Tracker grid" className={`${REPORT_GRID_VIEWPORT_CLASS} shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-blue-400`}>
       <table className="w-max min-w-full border-separate border-spacing-0 text-left">
         <thead className={tableUi.thead}><tr>{renderedColumns.map((column) => {
@@ -866,6 +969,8 @@ export default function TransmittalTrackerView() {
           const width = columnLayout.widths[column.key] ?? defaultTrackerColumnWidth(column);
           const pin = columnLayout.pins[column.key];
           const formatColor = columnLayout.colors[column.key];
+          const formatKey = reportCellFormatKey(row.trip_stop_id, column.key);
+          const cellFormat = cellFormats[formatKey];
           const fieldKey = trackerCellKey(row, column.field);
           const selected = Boolean(selectedRange && rowIndex >= selectedRange.minRow && rowIndex <= selectedRange.maxRow && columnIndex >= selectedRange.minColumn && columnIndex <= selectedRange.maxColumn);
           const fillSourceRow = fillGesture ? filteredRows.findIndex((candidate) => candidate.trip_stop_id === fillGesture.sourceStopId) : -1;
@@ -874,9 +979,9 @@ export default function TransmittalTrackerView() {
           const fillTargetColumn = fillGesture ? renderedColumns.findIndex((candidate) => candidate.field === fillGesture.targetField) : -1;
           const fillRange = fillGesture && rowIndex >= Math.min(fillSourceRow, fillTargetRow) && rowIndex <= Math.max(fillSourceRow, fillTargetRow) && columnIndex >= Math.min(fillSourceColumn, fillTargetColumn) && columnIndex <= Math.max(fillSourceColumn, fillTargetColumn);
           const editing = editingCellKey === fieldKey;
-          return <td key={column.key} data-tracker-stop-id={row.trip_stop_id} data-tracker-field={column.field} data-cell-hover-disabled={pin || editing || selected || fillRange ? "true" : undefined} ref={(element) => { if (element) cellRefs.current.set(fieldKey, element); else cellRefs.current.delete(fieldKey); }} tabIndex={-1} style={{ width, minWidth: width, maxWidth: width, ...(formatColor ? { backgroundColor: formatColor, color: colorForeground(formatColor) } : {}), ...(pin ? { position: "sticky", left: pin === "left" ? pinOffsets.left[column.key] ?? 0 : undefined, right: pin === "right" ? pinOffsets.right[column.key] ?? 0 : undefined, zIndex: 20 } : {}) } as CSSProperties} onPointerEnter={() => extendFillGesture(row, column)} onClick={(event) => { if ((event.target as HTMLElement).closest("button, input, select, textarea")) return; setSelectedCell({ rowId: row.trip_stop_id, field: column.field }); if (data?.access.canEdit) startEditingCell(fieldKey); }} className={`${REPORT_GRID_BODY_CELL_CLASS} relative border-r border-slate-100/70 ${pin ? "bg-white shadow-sm" : ""} ${fillRange ? "bg-blue-50 ring-2 ring-inset ring-blue-400" : ""} ${selected ? "outline outline-2 outline-inset outline-blue-500" : ""} ${column.key === "remarks" ? "whitespace-pre-wrap break-words" : ""}`}>
+          return <td key={column.key} data-tracker-stop-id={row.trip_stop_id} data-tracker-field={column.field} data-cell-hover-disabled={pin || editing || selected || fillRange ? "true" : undefined} ref={(element) => { if (element) cellRefs.current.set(fieldKey, element); else cellRefs.current.delete(fieldKey); }} tabIndex={-1} style={{ width, minWidth: width, maxWidth: width, ...(formatColor ? { backgroundColor: formatColor, color: colorForeground(formatColor) } : {}), ...(cellFormat?.bold ? { fontWeight: 700 } : {}), ...(cellFormat?.color ? { color: cellFormat.color } : {}), ...(cellFormat?.backgroundColor ? { backgroundColor: cellFormat.backgroundColor } : {}), ...(pin ? { position: "sticky", left: pin === "left" ? pinOffsets.left[column.key] ?? 0 : undefined, right: pin === "right" ? pinOffsets.right[column.key] ?? 0 : undefined, zIndex: 20 } : {}) } as CSSProperties} onPointerEnter={() => extendFillGesture(row, column)} onClick={(event) => { if ((event.target as HTMLElement).closest("button, input, select, textarea")) return; setSelectedCell({ rowId: row.trip_stop_id, field: column.field }); if (data?.access.canEdit) startEditingCell(fieldKey); }} className={`${REPORT_GRID_BODY_CELL_CLASS} relative group/cell border-r border-slate-100/70 ${pin ? "bg-white shadow-sm" : ""} ${fillRange ? "bg-blue-50 ring-2 ring-inset ring-blue-400" : ""} ${selected ? "outline outline-2 outline-inset outline-blue-500" : ""} ${column.key === "remarks" ? "whitespace-pre-wrap break-words" : ""}`}>
             {renderEditableCell(row, column.field, column.editor, column)}
-            {data?.access.canEdit && column.editor !== "relationship" && !editing && <button type="button" title={`Drag to fill from ${column.title}`} aria-label={`Drag to fill from ${column.title}`} onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); beginFillGesture(row, column); }} onClick={(event) => event.stopPropagation()} className="absolute bottom-0.5 right-0.5 z-10 flex h-4 w-4 touch-none items-center justify-center rounded-sm border border-blue-300 bg-white text-blue-600 opacity-0 shadow-sm transition group-hover:opacity-100 focus:opacity-100"><GripVertical aria-hidden="true" className="h-3 w-3 rotate-90" /></button>}
+            {data?.access.canEdit && column.editor !== "relationship" && !editing && <button type="button" title={`Drag to fill from ${column.title}`} aria-label={`Drag to fill from ${column.title}`} onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); beginFillGesture(row, column); }} onClick={(event) => event.stopPropagation()} className="absolute bottom-0.5 right-0.5 z-10 flex h-4 w-4 touch-none items-center justify-center rounded-sm border border-blue-300 bg-white text-blue-600 opacity-0 shadow-sm transition group-hover/cell:opacity-100 focus:opacity-100"><GripVertical aria-hidden="true" className="h-3 w-3 rotate-90" /></button>}
           </td>;
         })}</tr>)}</tbody>
       </table>
@@ -912,15 +1017,53 @@ export default function TransmittalTrackerView() {
       options={dropdownOptions}
       onClose={() => setManageOptionsOpen(false)}
       onOptionsUpdated={(options) => { setDropdownOptions(options); setDropdownOptionsError(""); setNotice("Delivery status options updated."); }} />}
+    {prepareDialogOpen && <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/45 p-3" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !preparingSheet) setPrepareDialogOpen(false); }}>
+      <section role="dialog" aria-modal="true" aria-labelledby="prepare-transmittal-title" className="w-full max-w-md rounded-xl bg-white p-5 shadow-2xl">
+        <div className="flex items-start justify-between gap-3"><div><h2 id="prepare-transmittal-title" className="text-base font-semibold text-[#17365d]">Prepare Transmittal Sheet</h2><p className="mt-1 text-sm text-slate-500">Choose the reference whose delivery stops should appear on the sheet.</p></div><button type="button" title="Close preparation dialog" aria-label="Close preparation dialog" disabled={preparingSheet} onClick={() => setPrepareDialogOpen(false)} className="rounded p-1.5 text-slate-500 hover:bg-slate-100 disabled:opacity-50"><X className="h-4 w-4" /></button></div>
+        {references.length === 0 ? <p role="status" className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-4 text-center text-sm text-slate-600">No transmittal references available.</p> : <label className="mt-4 block text-xs font-semibold text-slate-700">Transmittal Ref#<select value={selectedReference} onChange={(event) => { setSelectedReference(event.target.value); setExportError(""); }} className="mt-1.5 h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm font-normal text-slate-800 outline-none focus:border-blue-400"><option value="">Select a reference</option>{references.map((reference) => <option key={reference} value={reference}>{reference}</option>)}</select></label>}
+        {exportError && <p role="alert" className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{exportError}</p>}
+        <div className="mt-5 flex justify-end gap-2"><button type="button" disabled={preparingSheet} onClick={() => setPrepareDialogOpen(false)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50">Cancel</button><button type="button" disabled={preparingSheet || references.length === 0 || !selectedReference || !references.includes(selectedReference)} onClick={() => void openSheetAfterSave()} className="inline-flex items-center gap-2 rounded-lg bg-[#12365a] px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">{preparingSheet && <LoaderCircle className="h-4 w-4 animate-spin" />}{preparingSheet ? "Preparing…" : "Prepare sheet"}</button></div>
+      </section>
+    </div>}
     {sheetOpen && <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/45 p-3" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSheetOpen(false); }}>
-      <div role="dialog" aria-modal="true" aria-labelledby="transmittal-sheet-title" className="max-h-[92vh] w-full max-w-6xl overflow-hidden rounded-xl bg-white shadow-2xl">
-        <header className="flex items-center justify-between border-b border-slate-200 px-5 py-4"><div><h2 id="transmittal-sheet-title" className="text-lg font-bold text-[#17365d]">TRANSMITTAL SHEET</h2><p className="mt-0.5 text-sm text-slate-500">{selectedReference} · {sheetRows.length} delivery row{sheetRows.length === 1 ? "" : "s"}</p></div><button onClick={() => setSheetOpen(false)} title="Close sheet preview" className="rounded p-2 text-slate-500 hover:bg-slate-100"><X className="h-5 w-5" /></button></header>
-        <div className="space-y-4 overflow-auto p-5">
-          <div className="grid gap-3 sm:grid-cols-3"><label className="text-xs font-medium text-slate-600">Date<input type="date" value={preparation.date} onChange={(event) => setPreparation((value) => ({ ...value, date: event.target.value }))} className="mt-1 block h-9 w-full rounded border border-slate-300 px-2 text-sm text-slate-800" /></label><label className="text-xs font-medium text-slate-600">Prepared by<input value={preparation.preparedBy} onChange={(event) => setPreparation((value) => ({ ...value, preparedBy: event.target.value }))} className="mt-1 block h-9 w-full rounded border border-slate-300 px-2 text-sm text-slate-800" /></label><label className="text-xs font-medium text-slate-600">Checked by<input value={preparation.checkedBy} onChange={(event) => setPreparation((value) => ({ ...value, checkedBy: event.target.value }))} className="mt-1 block h-9 w-full rounded border border-slate-300 px-2 text-sm text-slate-800" /></label></div>
-        <div className="max-h-[55vh] overflow-auto rounded-lg border border-slate-200"><table className="min-w-[1200px] border-collapse text-left text-xs"><thead className="sticky top-0 z-20 bg-[#eef3f8] font-semibold text-slate-700"><tr>{["Loading Date", "Date Delivered", "WH CODE", "Delivered to", "Plate #", "Delivery Receipt No.", "S.O. No.", "Transmittal Ref#", "Transmittal Date"].map((header) => <th key={header} className="sticky top-0 z-20 whitespace-nowrap border-b bg-[#eef3f8] px-3 py-2.5">{header}</th>)}</tr></thead><tbody>{sheetRows.map((row) => <tr key={row.trip_stop_id} className="border-b border-slate-100"><td className="min-w-36 px-1 py-1">{renderSheetEditor(row, "loading_date_override")}</td><td className="min-w-36 px-1 py-1">{renderSheetEditor(row, "delivery_date_override")}</td><td className="whitespace-nowrap px-3 py-2">{row.warehouse_code}</td><td className="px-3 py-2">{row.delivered_to}</td><td className="whitespace-nowrap px-3 py-2">{row.plate_number}</td><td className="px-3 py-2">{row.delivery_receipt_no}</td><td className="px-3 py-2">{row.sales_order_no}</td><td className="px-3 py-2">{selectedReference}</td><td className="whitespace-nowrap px-3 py-2">{row.date_created}</td></tr>)}</tbody></table></div>
-          <div className="flex flex-wrap items-center justify-between gap-3"><span className="text-xs text-slate-500">Preparation details are saved in this browser for the signed-in profile. Date changes are saved to tracker metadata, not trip/stop dates.</span><button onClick={() => void exportSheet()} disabled={sheetRows.length === 0} className="inline-flex items-center gap-2 rounded-lg bg-[#12365a] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"><Download className="h-4 w-4" />Export Transmittal Sheet</button></div>
-          {exportError && <p role="alert" className="text-sm text-red-700">{exportError}</p>}
+      <div role="dialog" aria-modal="true" aria-labelledby="transmittal-sheet-title" className="max-h-[96vh] w-full max-w-[96vw] overflow-auto rounded-xl bg-white shadow-2xl print:max-h-none print:max-w-none print:overflow-visible print:rounded-none print:bg-transparent print:shadow-none">
+        <div className="transmittal-sheet-controls print:hidden border-b border-slate-200 bg-slate-50 p-4">
+          <div className="flex items-center justify-between gap-3"><p className="text-sm text-slate-600">{selectedReference} · {sheetRows.length} delivery row{sheetRows.length === 1 ? "" : "s"}</p><div className="flex items-center gap-2"><button type="button" onClick={() => window.print()} title="Print Transmittal Sheet" className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-100"><Printer className="h-4 w-4" />Print</button><button type="button" onClick={() => setSheetOpen(false)} title="Close sheet preview" aria-label="Close sheet preview" className="rounded p-2 text-slate-500 hover:bg-slate-100"><X className="h-5 w-5" /></button></div></div>
+          <div className="mt-3 grid gap-3 sm:grid-cols-3"><label className="text-xs font-medium text-slate-600">Preparation date<input type="date" value={preparation.date} onChange={(event) => setPreparation((value) => ({ ...value, date: event.target.value }))} className="mt-1 block h-9 w-full rounded border border-slate-300 bg-white px-2 text-sm text-slate-800" /></label><label className="text-xs font-medium text-slate-600">Prepared by<input value={preparation.preparedBy} onChange={(event) => setPreparation((value) => ({ ...value, preparedBy: event.target.value }))} className="mt-1 block h-9 w-full rounded border border-slate-300 bg-white px-2 text-sm text-slate-800" /></label><label className="text-xs font-medium text-slate-600">Checked by (optional)<input value={preparation.checkedBy} onChange={(event) => setPreparation((value) => ({ ...value, checkedBy: event.target.value }))} className="mt-1 block h-9 w-full rounded border border-slate-300 bg-white px-2 text-sm text-slate-800" /></label></div>
         </div>
+        <article id="transmittal-sheet-document" style={{ page: "transmittal-sheet" }} className="mx-auto max-w-[11in] bg-white px-8 py-7 text-slate-900 print:max-w-none print:px-3 print:py-2">
+          <header className="border-b-2 border-[#17365d] pb-5">
+            <img src={companyLogo} alt="Alzhen Trucking Services" className="mx-auto h-28 w-28 object-contain" />
+            <h2 id="transmittal-sheet-title" className="mt-2 text-center text-2xl font-bold tracking-wide text-[#17365d]">TRANSMITTAL SHEET</h2>
+            <dl className="mt-5 grid max-w-xl grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
+              <dt className="font-semibold text-slate-700">Date:</dt><dd>{formatSheetDate(preparation.date)}</dd>
+              <dt className="font-semibold text-slate-700">Prepared by:</dt><dd>{preparation.preparedBy}</dd>
+              {preparation.checkedBy && <><dt className="font-semibold text-slate-700">Checked by:</dt><dd>{preparation.checkedBy}</dd></>}
+              <dt className="font-semibold text-slate-700">Transmittal Ref#:</dt><dd>{selectedReference}</dd>
+            </dl>
+          </header>
+          <div className="transmittal-print-table-wrap mt-5 overflow-x-auto">
+            <table className="w-full min-w-[980px] table-fixed border-collapse text-left text-xs">
+              <colgroup>{["10%", "10%", "8%", "12%", "9%", "13%", "9%", "13%", "10%"].map((width, index) => <col key={index} style={{ width }} />)}</colgroup>
+              <thead><tr>{["Loading Date", "Date Delivered", "WH CODE", "Delivered to", "Plate #", "Delivery Receipt No.", "S.O. No.", "Transmittal Ref#", "Transmittal Date"].map((header) => <th key={header} className="border border-[#17365d] bg-[#17365d] px-2.5 py-3 text-center align-middle text-[11px] font-bold leading-snug text-white whitespace-normal break-words">{header}</th>)}</tr></thead>
+              <tbody>{sheetRows.map((row) => {
+                const displayFields: (keyof TransmittalTrackerRow | null)[] = [null, null, "warehouse_code", "delivered_to", "plate_number", "delivery_receipt_no", "sales_order_no", "transmittal_ref", "date_created"];
+                const cells = [
+                  <td key="loading" className="border border-slate-300 px-1.5 py-2 align-middle">{renderSheetEditor(row, "loading_date_override")}</td>,
+                  <td key="delivered" className="border border-slate-300 px-1.5 py-2 align-middle">{renderSheetEditor(row, "delivery_date_override")}</td>,
+                  ...([row.warehouse_code, row.delivered_to, row.plate_number, row.delivery_receipt_no, row.sales_order_no, selectedReference, row.date_created] as const).map((value, index) => {
+                    const field = displayFields[index + 2];
+                    const format = field ? cellFormats[reportCellFormatKey(row.trip_stop_id, field)] : undefined;
+                    return <td key={field ?? index} style={{ ...(format?.bold ? { fontWeight: 700 } : {}), ...(format?.color ? { color: format.color } : {}), ...(format?.backgroundColor ? { backgroundColor: format.backgroundColor } : {}) }} className="border border-slate-300 px-2.5 py-2 align-middle whitespace-normal break-words">{value}</td>;
+                  }),
+                ];
+                return <tr key={row.trip_stop_id} className="break-inside-avoid">{cells}</tr>;
+              })}</tbody>
+            </table>
+          </div>
+          <div className="mt-4 flex justify-end print:hidden"><button onClick={() => void exportSheet()} disabled={sheetRows.length === 0} className="inline-flex items-center gap-2 rounded-lg bg-[#12365a] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"><Download className="h-4 w-4" />Export Transmittal Sheet</button></div>
+          {exportError && <p role="alert" className="mt-3 text-sm text-red-700 print:hidden">{exportError}</p>}
+        </article>
       </div>
     </div>}
   </section>;

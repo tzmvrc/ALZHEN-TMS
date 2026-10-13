@@ -123,6 +123,40 @@ select {
   outline-offset: -1px;
 }
 
+@page transmittal-sheet {
+  size: landscape;
+  margin: 0.35in;
+}
+
+@media print {
+  body * {
+    visibility: hidden !important;
+  }
+
+  #transmittal-sheet-document,
+  #transmittal-sheet-document * {
+    visibility: visible !important;
+  }
+
+  #transmittal-sheet-document {
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+  }
+
+  .transmittal-print-table-wrap {
+    overflow: visible !important;
+  }
+
+  .transmittal-print-table-wrap table {
+    min-width: 0 !important;
+  }
+}
+
 @keyframes fadeInUp {
   from {
     opacity: 0;
