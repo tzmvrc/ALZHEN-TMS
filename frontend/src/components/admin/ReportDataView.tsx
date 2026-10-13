@@ -3101,7 +3101,7 @@ export default function ReportDataView({
                             className="min-w-0 cursor-grab whitespace-normal rounded px-1 py-0.5 text-left leading-tight uppercase text-inherit active:cursor-grabbing"
                             >
                             {column.title}
-                            {sortable && isActiveSort && <SortIcon aria-hidden="true" className={`ml-1 inline h-3 w-3 ${columnColor ? "text-slate-700" : "text-[#2678b9]"}`} />}
+                            {sortable && isActiveSort && column.key !== "loading_date" && <SortIcon aria-hidden="true" className={`ml-1 inline h-3 w-3 ${columnColor ? "text-slate-700" : "text-[#2678b9]"}`} />}
                           </button>
                           <button
                             type="button"
