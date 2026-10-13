@@ -145,8 +145,38 @@ function appendReportWorksheet(workbook: ExcelJS.Workbook, reportKey: ReportKey,
     }
     return [column.key, value ?? null];
   }))));
-  worksheet.getRow(1).font = { bold: true };
-  worksheet.views = [{ state: "frozen", ySplit: 1 }];
+  const header = worksheet.getRow(1);
+  header.height = 30;
+  header.font = { name: "Aptos", size: 10, bold: true, color: { argb: "FFFFFFFF" } };
+  header.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF0B2341" } };
+  header.alignment = { vertical: "middle", wrapText: true };
+  header.eachCell((cell) => {
+    cell.border = { bottom: { style: "medium", color: { argb: "FFFFD43B" } } };
+  });
+  for (let rowNumber = 2; rowNumber <= worksheet.rowCount; rowNumber += 1) {
+    const row = worksheet.getRow(rowNumber);
+    row.height = 24;
+    row.eachCell({ includeEmpty: true }, (cell) => {
+      cell.font = { name: "Aptos", size: 10, color: { argb: "FF17365D" } };
+      cell.alignment = { vertical: "middle", wrapText: true };
+      cell.border = {
+        top: { style: "hair", color: { argb: "FFD9E2EC" } },
+        left: { style: "hair", color: { argb: "FFE5EAF0" } },
+        bottom: { style: "hair", color: { argb: "FFD9E2EC" } },
+        right: { style: "hair", color: { argb: "FFE5EAF0" } },
+      };
+      if (rowNumber % 2 === 0) {
+        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF4F8FC" } };
+      }
+    });
+  }
+  if (visibleColumns.length > 0) {
+    worksheet.autoFilter = {
+      from: { row: 1, column: 1 },
+      to: { row: Math.max(1, worksheet.rowCount), column: visibleColumns.length },
+    };
+  }
+  worksheet.views = [{ state: "frozen", ySplit: 1, showGridLines: false }];
 }
 
 function downloadBlob(blob: Blob, filename: string) {
@@ -2704,11 +2734,11 @@ export default function ReportDataView({
           </div>
         )}
         <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-3">
-          {showReportPicker ? (
+          {showReportPicker && (
             <label className="sr-only" htmlFor="report-select">
               Select report
             </label>
-          ) : null}
+          )}
           {showReportPicker && (
             <div className="relative">
               <select

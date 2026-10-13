@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, ClipboardEvent as ReactClipboardEvent, MouseEvent } from "react";
 import { ArrowDown, ArrowUp, ArrowUpDown, Download, EllipsisVertical, EyeOff, FileSpreadsheet, GripVertical, LoaderCircle, Printer, Search, X } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
@@ -83,16 +84,15 @@ function safeFilenamePart(value: string, fallback: string) {
   return safe || fallback;
 }
 
-async function loadLogoDataUrl() {
-  const response = await fetch(companyLogo);
-  if (!response.ok) throw new Error("The company logo could not be loaded for the Transmittal Sheet export.");
-  const blob = await response.blob();
-  return await new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => typeof reader.result === "string" ? resolve(reader.result) : reject(new Error("Unable to read the company logo."));
-    reader.onerror = () => reject(new Error("Unable to read the company logo."));
-    reader.readAsDataURL(blob);
-  });
+function setExcelIdentifier(cell: { value: unknown; numFmt?: string }, value: unknown) {
+  const identifier = value === null || value === undefined ? "" : String(value);
+  if (/^\d{1,15}$/.test(identifier)) {
+    cell.value = Number(identifier);
+    cell.numFmt = "0".repeat(identifier.length);
+    return;
+  }
+  cell.value = identifier;
+  cell.numFmt = "@";
 }
 
 function draftKey(stopId: string, field: string) {
@@ -795,7 +795,45 @@ export default function TransmittalTrackerView() {
       ] as const;
       sheet.columns = columns.map(([header, key]) => ({ header, key, width: Math.max(15, Math.min(34, header.length + 5)) }));
       const exportRows = filterTrackerRows(committedRows, query, columnFilter, sort);
-      sheet.addRows(projectTrackerExportRows(exportRows, columns));
+      const textIdentifiers = ["delivery_receipt_no", "sales_order_no", "transmittal_ref", "lbc_waybill_no"];
+      const exportValues = projectTrackerExportRows(exportRows, columns).map((row) =>
+        Object.fromEntries(Object.entries(row).map(([key, value]) => [
+          key,
+          textIdentifiers.includes(key) && value !== null && value !== undefined ? String(value) : value,
+        ])),
+      );
+      sheet.addRows(exportValues);
+      const identifierColumns = new Set(["delivery_receipt_no", "sales_order_no", "transmittal_ref", "lbc_waybill_no"]);
+      columns.forEach(([, key], columnIndex) => {
+        if (!identifierColumns.has(key)) return;
+        exportValues.forEach((row, rowIndex) => {
+          setExcelIdentifier(sheet.getCell(rowIndex + 2, columnIndex + 1), row[key]);
+        });
+      });
+      const trackerHeader = sheet.getRow(1);
+      trackerHeader.height = 30;
+      trackerHeader.font = { name: "Aptos", size: 10, bold: true, color: { argb: "FFFFFFFF" } };
+      trackerHeader.alignment = { vertical: "middle", horizontal: "left", wrapText: true };
+      trackerHeader.eachCell((cell) => {
+        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF0B2341" } };
+      });
+      for (let rowNumber = 2; rowNumber <= sheet.rowCount; rowNumber += 1) {
+        const row = sheet.getRow(rowNumber);
+        row.height = 25;
+        row.eachCell({ includeEmpty: true }, (cell) => {
+          cell.font = { name: "Aptos", size: 10, color: { argb: "FF17365D" } };
+          cell.alignment = { vertical: "middle", wrapText: true };
+          cell.border = {
+            top: { style: "hair", color: { argb: "FFD9E2EC" } },
+            left: { style: "hair", color: { argb: "FFE5EAF0" } },
+            bottom: { style: "hair", color: { argb: "FFD9E2EC" } },
+            right: { style: "hair", color: { argb: "FFE5EAF0" } },
+          };
+          if (rowNumber % 2 === 0) {
+            cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF4F8FC" } };
+          }
+        });
+      }
       exportRows.forEach((row, rowIndex) => columns.forEach(([, key], columnIndex) => {
         const format = cellFormats[reportCellFormatKey(row.trip_stop_id, key)];
         if (!format) return;
@@ -804,9 +842,8 @@ export default function TransmittalTrackerView() {
         if (format.color) cell.font = { ...cell.font, color: { argb: `FF${format.color.slice(1).toUpperCase()}` } };
         if (format.backgroundColor) cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: `FF${format.backgroundColor.slice(1).toUpperCase()}` } };
       }));
-      sheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
-      sheet.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF12365A" } };
-      sheet.views = [{ state: "frozen", ySplit: 1 }];
+      sheet.autoFilter = { from: { row: 1, column: 1 }, to: { row: Math.max(1, sheet.rowCount), column: columns.length } };
+      sheet.views = [{ showGridLines: false }];
       const buffer = await workbook.xlsx.writeBuffer();
       const url = URL.createObjectURL(new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
       const statusView = columnFilter?.key === "status" && columnFilter.value.trim() ? columnFilter.value.trim().toLocaleLowerCase() : "";
@@ -833,19 +870,19 @@ export default function TransmittalTrackerView() {
       const headers = ["Loading Date", "Date Delivered", "WH CODE", "Delivered to", "Plate #", "Delivery Receipt No.", "S.O. No.", "Transmittal Ref#", "Transmittal Date"];
       sheet.columns = [16, 16, 13, 24, 16, 24, 16, 22, 17].map((width) => ({ width }));
       const lastCol = headers.length;
-      for (let row = 1; row <= 5; row += 1) sheet.getRow(row).height = 24;
-      sheet.mergeCells(6, 1, 6, lastCol);
-      sheet.getCell(6, 1).value = "TRANSMITTAL SHEET";
-      sheet.getCell(6, 1).font = { bold: true, size: 18, color: { argb: "FF17365D" } };
-      sheet.getCell(6, 1).alignment = { horizontal: "center", vertical: "middle" };
-      sheet.getRow(6).height = 32;
+      for (let row = 1; row <= 5; row += 1) sheet.getRow(row).height = 15;
+      sheet.mergeCells(1, 1, 5, lastCol);
+      const masthead = sheet.getCell(1, 1);
+      masthead.value = "TRANSMITTAL SHEET";
+      masthead.font = { name: "Aptos Display", bold: true, size: 14, color: { argb: "FFFFFFFF" } };
+      masthead.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF17365D" } };
+      masthead.alignment = { horizontal: "center", vertical: "middle" };
+      masthead.border = { bottom: { style: "thin", color: { argb: "FF17365D" } } };
       sheet.getCell(7, 1).value = "Date"; sheet.getCell(7, 2).value = formatSheetDate(preparation.date);
       sheet.getCell(8, 1).value = "Prepared by"; sheet.getCell(8, 2).value = preparation.preparedBy;
       sheet.getCell(9, 1).value = "Checked by"; sheet.getCell(9, 2).value = preparation.checkedBy;
-      sheet.getCell(10, 1).value = "Transmittal Ref#"; sheet.getCell(10, 2).value = selectedReference;
+      sheet.getCell(10, 1).value = "Transmittal Ref#"; setExcelIdentifier(sheet.getCell(10, 2), selectedReference);
       sheet.getCell(11, 1).value = "Transmittal Date";
-      const logoId = workbook.addImage({ base64: await loadLogoDataUrl(), extension: "png" });
-      sheet.addImage(logoId, { tl: { col: 4.25, row: 0.1 }, ext: { width: 110, height: 110 } });
       const committedSheetRows = projectTransmittalSheetRows(committedRows, selectedReference);
       if (committedSheetRows.length === 0) {
         setExportError("No delivery rows match the selected Transmittal Ref# after saving. Refresh the tracker and select a current reference.");
@@ -859,12 +896,25 @@ export default function TransmittalTrackerView() {
       sheet.getCell(11, 2).value = [...new Set(committedSheetRows.map((row) => row.date_created).filter(Boolean))].join(", ");
       sheet.addRow([]);
       const headerRow = sheet.addRow(headers);
-      const outputRows = committedSheetRows.map((row) => [row.loading_date, row.date_delivered, row.warehouse_code, row.delivered_to, row.plate_number, row.delivery_receipt_no, row.sales_order_no, selectedReference, row.date_created]);
+      const outputRows = committedSheetRows.map((row) => [row.loading_date, row.date_delivered, row.warehouse_code, row.delivered_to, row.plate_number, row.delivery_receipt_no == null ? "" : String(row.delivery_receipt_no), row.sales_order_no == null ? "" : String(row.sales_order_no), String(selectedReference), row.date_created]);
       outputRows.forEach((values) => sheet.addRow(values));
+      committedSheetRows.forEach((row, rowIndex) => {
+        setExcelIdentifier(sheet.getCell(headerRow.number + rowIndex + 1, 6), row.delivery_receipt_no);
+        setExcelIdentifier(sheet.getCell(headerRow.number + rowIndex + 1, 7), row.sales_order_no);
+        setExcelIdentifier(sheet.getCell(headerRow.number + rowIndex + 1, 8), selectedReference);
+      });
       headerRow.font = { bold: true, color: { argb: "FFFFFFFF" } };
-      headerRow.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF17365D" } };
       headerRow.alignment = { vertical: "middle", wrapText: true };
       headerRow.height = 44;
+      headerRow.eachCell((cell) => {
+        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF17365D" } };
+        cell.border = {
+          top: { style: "thin", color: { argb: "FF17365D" } },
+          left: { style: "thin", color: { argb: "FFFFFFFF" } },
+          bottom: { style: "thin", color: { argb: "FF17365D" } },
+          right: { style: "thin", color: { argb: "FFFFFFFF" } },
+        };
+      });
       const headerRowNumber = headerRow.number;
       const sheetColumnFormatKeys: (keyof TransmittalTrackerRow | null)[] = [null, null, "warehouse_code", "delivered_to", "plate_number", "delivery_receipt_no", "sales_order_no", "transmittal_ref", "date_created"];
       committedSheetRows.forEach((trackerRow, rowIndex) => sheetColumnFormatKeys.forEach((key, columnIndex) => {
@@ -878,10 +928,22 @@ export default function TransmittalTrackerView() {
       }));
       for (let rowNumber = headerRowNumber + 1; rowNumber <= sheet.rowCount; rowNumber += 1) {
         const row = sheet.getRow(rowNumber);
-        row.height = 32;
-        row.eachCell((cell) => { cell.border = { bottom: { style: "thin", color: { argb: "FFD5DEE8" } } }; cell.alignment = { vertical: "middle", wrapText: true }; });
+        row.height = 30;
+        row.eachCell({ includeEmpty: true }, (cell) => {
+          cell.font = { name: "Aptos", size: 10, color: { argb: "FF17365D" } };
+          cell.alignment = { vertical: "middle", wrapText: true };
+          cell.border = {
+            top: { style: "hair", color: { argb: "FFD5DEE8" } },
+            left: { style: "hair", color: { argb: "FFE5EAF0" } },
+            bottom: { style: "thin", color: { argb: "FFD5DEE8" } },
+            right: { style: "hair", color: { argb: "FFE5EAF0" } },
+          };
+          if (rowNumber % 2 === 0) {
+            cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF4F8FC" } };
+          }
+        });
       }
-      sheet.views = [{ state: "frozen", ySplit: headerRowNumber }];
+      sheet.views = [{ showGridLines: false }];
       sheet.pageSetup.printArea = `A1:I${sheet.rowCount}`;
       const buffer = await workbook.xlsx.writeBuffer();
       const url = URL.createObjectURL(new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
@@ -1017,16 +1079,16 @@ export default function TransmittalTrackerView() {
       options={dropdownOptions}
       onClose={() => setManageOptionsOpen(false)}
       onOptionsUpdated={(options) => { setDropdownOptions(options); setDropdownOptionsError(""); setNotice("Delivery status options updated."); }} />}
-    {prepareDialogOpen && <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/45 p-3" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !preparingSheet) setPrepareDialogOpen(false); }}>
-      <section role="dialog" aria-modal="true" aria-labelledby="prepare-transmittal-title" className="w-full max-w-md rounded-xl bg-white p-5 shadow-2xl">
+    {prepareDialogOpen && createPortal(<div className="fixed inset-0 z-[2000] flex items-center justify-center bg-slate-950/40 p-3 backdrop-blur-md sm:p-5" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !preparingSheet) setPrepareDialogOpen(false); }}>
+      <section role="dialog" aria-modal="true" aria-labelledby="prepare-transmittal-title" className="w-full max-w-md rounded-2xl border border-white/70 bg-white p-5 shadow-[0_30px_90px_-24px_rgba(11,35,65,0.5)]">
         <div className="flex items-start justify-between gap-3"><div><h2 id="prepare-transmittal-title" className="text-base font-semibold text-[#17365d]">Prepare Transmittal Sheet</h2><p className="mt-1 text-sm text-slate-500">Choose the reference whose delivery stops should appear on the sheet.</p></div><button type="button" title="Close preparation dialog" aria-label="Close preparation dialog" disabled={preparingSheet} onClick={() => setPrepareDialogOpen(false)} className="rounded p-1.5 text-slate-500 hover:bg-slate-100 disabled:opacity-50"><X className="h-4 w-4" /></button></div>
         {references.length === 0 ? <p role="status" className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-4 text-center text-sm text-slate-600">No transmittal references available.</p> : <label className="mt-4 block text-xs font-semibold text-slate-700">Transmittal Ref#<select value={selectedReference} onChange={(event) => { setSelectedReference(event.target.value); setExportError(""); }} className="mt-1.5 h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm font-normal text-slate-800 outline-none focus:border-blue-400"><option value="">Select a reference</option>{references.map((reference) => <option key={reference} value={reference}>{reference}</option>)}</select></label>}
         {exportError && <p role="alert" className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{exportError}</p>}
         <div className="mt-5 flex justify-end gap-2"><button type="button" disabled={preparingSheet} onClick={() => setPrepareDialogOpen(false)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50">Cancel</button><button type="button" disabled={preparingSheet || references.length === 0 || !selectedReference || !references.includes(selectedReference)} onClick={() => void openSheetAfterSave()} className="inline-flex items-center gap-2 rounded-lg bg-[#12365a] px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">{preparingSheet && <LoaderCircle className="h-4 w-4 animate-spin" />}{preparingSheet ? "Preparing…" : "Prepare sheet"}</button></div>
       </section>
-    </div>}
-    {sheetOpen && <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/45 p-3" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSheetOpen(false); }}>
-      <div role="dialog" aria-modal="true" aria-labelledby="transmittal-sheet-title" className="max-h-[96vh] w-full max-w-[96vw] overflow-auto rounded-xl bg-white shadow-2xl print:max-h-none print:max-w-none print:overflow-visible print:rounded-none print:bg-transparent print:shadow-none">
+    </div>, document.body)}
+    {sheetOpen && createPortal(<div className="fixed inset-0 z-[2000] flex items-center justify-center bg-slate-950/40 p-3 backdrop-blur-md sm:p-5 print:static print:block print:bg-white print:p-0 print:backdrop-blur-none" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSheetOpen(false); }}>
+      <div role="dialog" aria-modal="true" aria-labelledby="transmittal-sheet-title" className="max-h-[94vh] w-full max-w-[min(96vw,1400px)] overflow-auto rounded-2xl bg-white shadow-[0_30px_90px_-24px_rgba(11,35,65,0.5)] ring-1 ring-white/70 print:max-h-none print:max-w-none print:overflow-visible print:rounded-none print:bg-transparent print:shadow-none print:ring-0">
         <div className="transmittal-sheet-controls print:hidden border-b border-slate-200 bg-slate-50 p-4">
           <div className="flex items-center justify-between gap-3"><p className="text-sm text-slate-600">{selectedReference} · {sheetRows.length} delivery row{sheetRows.length === 1 ? "" : "s"}</p><div className="flex items-center gap-2"><button type="button" onClick={() => window.print()} title="Print Transmittal Sheet" className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-100"><Printer className="h-4 w-4" />Print</button><button type="button" onClick={() => setSheetOpen(false)} title="Close sheet preview" aria-label="Close sheet preview" className="rounded p-2 text-slate-500 hover:bg-slate-100"><X className="h-5 w-5" /></button></div></div>
           <div className="mt-3 grid gap-3 sm:grid-cols-3"><label className="text-xs font-medium text-slate-600">Preparation date<input type="date" value={preparation.date} onChange={(event) => setPreparation((value) => ({ ...value, date: event.target.value }))} className="mt-1 block h-9 w-full rounded border border-slate-300 bg-white px-2 text-sm text-slate-800" /></label><label className="text-xs font-medium text-slate-600">Prepared by<input value={preparation.preparedBy} onChange={(event) => setPreparation((value) => ({ ...value, preparedBy: event.target.value }))} className="mt-1 block h-9 w-full rounded border border-slate-300 bg-white px-2 text-sm text-slate-800" /></label><label className="text-xs font-medium text-slate-600">Checked by (optional)<input value={preparation.checkedBy} onChange={(event) => setPreparation((value) => ({ ...value, checkedBy: event.target.value }))} className="mt-1 block h-9 w-full rounded border border-slate-300 bg-white px-2 text-sm text-slate-800" /></label></div>
@@ -1065,6 +1127,6 @@ export default function TransmittalTrackerView() {
           {exportError && <p role="alert" className="mt-3 text-sm text-red-700 print:hidden">{exportError}</p>}
         </article>
       </div>
-    </div>}
+    </div>, document.body)}
   </section>;
 }
