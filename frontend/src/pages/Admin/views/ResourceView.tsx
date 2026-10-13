@@ -20,6 +20,8 @@ import MasterDataView from "./MasterDataView";
 import CalendarView from "./CalendarView";
 import TripDetailView from "./TripDetailView";
 import TruckersView from "./TruckersView";
+import { createTrip } from "../../../services/trip.service";
+import AddTripForm, { type NewTripPayload } from "../../../components/admin/AddTripForm";
 import type { AdminNotificationTarget } from "../../../services/notification.service";
 
 const titleMap: Record<string, [string, string]> = {
@@ -584,6 +586,12 @@ export default function ResourceView({
 function AddTripButton() {
   const [open, setOpen] = useState(false);
 
+  const { accessToken } = useAuth();
+  const createTripHandler = async (payload: NewTripPayload): Promise<void> => {
+    if (!accessToken) throw new Error("You are signed out. Please sign in again.");
+    await createTrip(accessToken, payload);
+  };
+
   return (
     <>
       <button
@@ -596,30 +604,7 @@ function AddTripButton() {
         Add trip
       </button>
 
-      {open && (
-        <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-[#0b2341]/45 p-4 backdrop-blur-sm">
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="add-trip-title"
-            className="w-full max-w-md rounded-3xl bg-white p-6 shadow-[0_24px_60px_rgba(11,35,65,0.28)]">
-            <h3
-              id="add-trip-title"
-              className="text-lg font-semibold text-[#0b2341]">
-              Add trip
-            </h3>
-            <p className="mt-3 text-sm text-slate-600">Form coming soon.</p>
-            <div className="mt-6 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setOpen(false)}
-                className="rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-[#f2f6fa]">
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {open && <AddTripForm onClose={() => setOpen(false)} onSubmit={createTripHandler} />}
     </>
   );
 }

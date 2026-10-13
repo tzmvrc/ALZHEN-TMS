@@ -1,4 +1,4 @@
-import { apiGetCached, apiPatch, invalidateApiCache, type ApiResponse } from "./api.service";
+import { apiGetCached, apiPatch, apiPost, invalidateApiCache, type ApiResponse } from "./api.service";
 import { invalidateReportPageCache } from "./report.service";
 
 export function invalidateTripListCache() {
@@ -272,5 +272,24 @@ export async function updateStoreCallRecord(
   invalidateApiCache("/store-calls");
   invalidateApiCache("/reports/store-calling");
   invalidateReportPageCache("store-calling");
+  return response.data;
+}
+
+/* Creates a trip together with its stops and line items.
+   Assumes POST /trips accepts { trip, stops: [{ stop_sequence, store_id, line_items }] }. */
+export async function createTrip(
+  token: string,
+  payload: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const response = await apiPost<ApiResponse<Record<string, unknown>>>(
+    "/trips",
+    payload,
+    token,
+  );
+  if (!response.success || !response.data) {
+    throw new Error(response.message ?? "Unable to create trip.");
+  }
+  invalidateTripRelatedCache();
+  invalidateTripListCache();
   return response.data;
 }
