@@ -8,12 +8,12 @@ const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}
 const configs = {
   warehouses: {
     table: "warehouses",
-    select: "id, code, name, address, province, city, warehouse_type, status, notes, region, created_at, updated_at",
+    select: "id, code, name, address, province, city, latitude, longitude, warehouse_type, status, notes, region, created_at, updated_at",
     orderBy: "name",
     search: ["code", "name", "city", "province", "region"],
-    fields: ["code", "name", "address", "province", "city", "warehouse_type", "status", "notes", "region"],
+    fields: ["code", "name", "address", "province", "city", "latitude", "longitude", "warehouse_type", "status", "notes", "region"],
     required: ["code", "name"],
-    types: { code: "text", name: "text", address: "nullable", province: "nullable", city: "nullable", warehouse_type: "nullable", status: "nullable", notes: "nullable", region: "nullable" },
+    types: { code: "text", name: "text", address: "nullable", province: "nullable", city: "nullable", latitude: "coordinate", longitude: "coordinate", warehouse_type: "nullable", status: "nullable", notes: "nullable", region: "region" },
   },
   trucks: {
     table: "trucks",
@@ -114,6 +114,12 @@ function buildPayload(resource: string, input: Record<string, unknown>, creating
       payload[field] = value;
     } else if (type === "boolean") {
       if (typeof raw !== "boolean") throw new Error(`${field} must be true or false.`);
+      payload[field] = raw;
+    } else if (type === "region") {
+      if (raw === null || raw === "") { payload[field] = null; continue; }
+      if (typeof raw !== "string" || !["LUZON", "VISAYAS", "MINDANAO"].includes(raw)) {
+        throw new Error(`${field} must be LUZON, VISAYAS, or MINDANAO.`);
+      }
       payload[field] = raw;
     }
   }

@@ -96,6 +96,7 @@ function toRelationshipOption(
           ship_to: stringValue(row, "name"),
           city: stringValue(row, "city"),
           province: stringValue(row, "province"),
+          address: stringValue(row, "address"),
         },
       };
     case "drivers":

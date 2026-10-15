@@ -1,4 +1,4 @@
-import { apiGetCached, type ApiResponse } from "./api.service";
+import { apiGet, apiGetCached, apiPost, apiUpload, type ApiResponse } from "./api.service";
 
 export type TruckerListItem = {
   id: string;
@@ -64,6 +64,90 @@ export type TruckerDetail = {
   }>;
 };
 
+export type DriverAssignedTrip = {
+  id: string;
+  trip_number: string | null;
+  dispatch_number: string | null;
+  status: string | null;
+  departure_from_warehouse_at: string | null;
+  loading_date: string | null;
+  estimated_delivery_date: string | null;
+  origin: string | null;
+  origin_latitude: number | null;
+  origin_longitude: number | null;
+  destination: string | null;
+  customer: string | null;
+  store: string | null;
+  delivery_status: string | null;
+  plate_number: string | null;
+  assigned_at: string | null;
+  driver_status: string | null;
+  driver_updated_at: string | null;
+  dr_number: string | null;
+  pod_image_path: string | null;
+  loading_timestamps: {
+    warehouse_arrival_at: string | null;
+    loading_start_at: string | null;
+    loading_finished_at: string | null;
+  };
+  stops: DriverAssignedStop[];
+};
+
+export type DriverAssignedStop = {
+  id: string;
+  dispatch_number: string | null;
+  dr_number: string | null;
+  notes: string | null;
+  stop_sequence: number;
+  store_name: string | null;
+  customer_name: string | null;
+  address: string | null;
+  city: string | null;
+  province: string | null;
+  delivery_status: string | null;
+  arrival_time: string | null;
+  start_unloading_time: string | null;
+  finish_unloading_time: string | null;
+  items: Array<{
+    id: string;
+    product_name: string | null;
+    sku: string | null;
+    model_code: string | null;
+    quantity: number | null;
+    cbm: number | null;
+    dr_number: string | null;
+  }>;
+};
+
+export type SavedDriverReceipt = {
+  trip_id: string;
+  trip_stop_id: string;
+  driver_id: string;
+  status: string;
+  delivery_status: string;
+  trip_status: string;
+  updated_at: string;
+  storage_path: string;
+  file_name: string;
+  signed_url: string;
+};
+
+export async function fetchMyAssignedTrips(
+  token: string,
+): Promise<DriverAssignedTrip[]> {
+  const response = await apiGet<ApiResponse<DriverAssignedTrip[]>>(
+    "/truckers/me/trips",
+    token,
+    20_000,
+  );
+
+  if (!response.success || !response.data) {
+    throw new Error(response.message ?? "Unable to load your assigned trips.");
+  }
+
+  return response.data;
+}
+
 export async function fetchTruckers(token: string, params: {
   search?: string;
   status?: string;
@@ -100,5 +184,69 @@ export async function fetchTruckerDetail(token: string, truckerId: string): Prom
     throw new Error(response.message ?? "Unable to load trucker details.");
   }
 
+  return response.data;
+}
+
+export async function saveDriverTripUpdate(
+  token: string,
+  payload: {
+    trip_id: string;
+    trip_stop_id: string;
+    step?: number | null;
+    latitude?: number;
+    longitude?: number;
+    dr_number?: string | null;
+    pod_image_path?: string | null;
+    notes?: string | null;
+  },
+): Promise<{
+  trip_id: string;
+  trip_stop_id: string;
+  driver_id: string;
+  status: string;
+  delivery_status: string;
+  trip_status: string;
+  updated_at: string;
+}> {
+  const response = await apiPost<
+    ApiResponse<{
+      trip_id: string;
+      trip_stop_id: string;
+      driver_id: string;
+      status: string;
+      delivery_status: string;
+      trip_status: string;
+      updated_at: string;
+    }>
+  >("/truckers/me/trip-status", payload, token);
+
+  if (!response.success || !response.data) {
+    throw new Error(response.message ?? "Unable to update trip status.");
+  }
+
+  return response.data;
+}
+
+export async function uploadDriverPod(
+  token: string,
+  tripId: string,
+  stopId: string,
+  file: File,
+  drNumber: string,
+): Promise<SavedDriverReceipt> {
+  const response = await apiUpload<
+    ApiResponse<SavedDriverReceipt>
+  >(
+    `/truckers/me/trips/${encodeURIComponent(tripId)}/pod`,
+    file,
+    file.type,
+    file.name,
+    token,
+    { "X-DR-Number": drNumber.trim(), "X-Trip-Stop-Id": stopId },
+  );
+
+  if (!response.success || !response.data) {
+    throw new Error(response.message ?? "Unable to upload delivery receipt.");
+  }
   return response.data;
 }

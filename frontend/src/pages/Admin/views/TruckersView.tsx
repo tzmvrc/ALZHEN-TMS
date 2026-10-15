@@ -59,7 +59,7 @@ export default function TruckersView() {
   useEffect(() => subscribeToAdminRealtime((event) => {
     if (event.kind === "resume") return;
     const table = event.kind === "recovered" ? event.table : event.payload.table;
-    if (["profiles", "drivers", "trips", "trip_truck_assignments"].includes(table)) {
+    if (["profiles", "drivers", "trips", "trip_stops", "trip_truck_assignments"].includes(table)) {
       setRefreshVersion((version) => version + 1);
     }
   }), []);

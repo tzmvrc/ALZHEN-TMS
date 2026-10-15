@@ -342,6 +342,29 @@ export async function getTripList(
     .from("trips")
     .select("*", { count: "exact" });
 
+  // Match the Trips screen: a trip remains visible while at least one of its
+  // transactions is unarchived (including trips with no stops yet).
+  if (query.archive_scope === "active") {
+    const activeIds = new Set<string>();
+    for (let offset = 0; ; offset += 1000) {
+      const { data: transactions, error: archiveError } = await supabaseAdmin
+        .from("v_dispatch_monitoring")
+        .select("trip_id")
+        .is("transaction_archived_at", null)
+        .order("trip_id")
+        .range(offset, offset + 999);
+      if (archiveError) throw new Error("Unable to fetch active trip transactions");
+      for (const row of transactions ?? []) {
+        if (typeof row.trip_id === "string") activeIds.add(row.trip_id);
+      }
+      if (!transactions || transactions.length < 1000) break;
+    }
+    if (activeIds.size === 0) {
+      return { rows: [], pagination: buildPaginationMeta(page, limit, 0) };
+    }
+    queryBuilder = queryBuilder.in("id", [...activeIds]);
+  }
+
   if (status) queryBuilder = queryBuilder.eq("status", status);
   if (dateFrom) queryBuilder = queryBuilder.gte("loading_date", dateFrom);
   if (dateTo) queryBuilder = queryBuilder.lte("loading_date", dateTo);

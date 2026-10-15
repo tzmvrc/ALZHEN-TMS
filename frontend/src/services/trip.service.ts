@@ -13,6 +13,7 @@ export function invalidateTripEventsCache(tripId: string) {
 
 function invalidateTripRelatedCache() {
   invalidateApiCache("/trips");
+  invalidateApiCache("/truckers");
   invalidateApiCache("/reports");
   invalidateReportPageCache();
 }
@@ -76,6 +77,8 @@ export async function fetchTrips(
   token: string,
   options: {
     limit: number;
+    page?: number;
+    archiveScope?: "active";
     status?: string;
     search?: string;
     sortBy?: "loading_date" | "dispatch_number";
@@ -83,12 +86,13 @@ export async function fetchTrips(
   },
 ): Promise<TripPage> {
   const params = new URLSearchParams({
-    page: "1",
+    page: String(options.page ?? 1),
     limit: String(options.limit),
     sort_by: options.sortBy ?? "loading_date",
     sort_order: options.sortOrder ?? "desc",
   });
   if (options.status) params.set("status", options.status);
+  if (options.archiveScope) params.set("archive_scope", options.archiveScope);
   if (options.search?.trim()) params.set("search", options.search.trim());
 
   const response = await apiGetCached<ApiResponse<TripPage>>(

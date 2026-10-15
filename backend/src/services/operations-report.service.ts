@@ -52,7 +52,7 @@ const RECEIPT_IMAGE_TYPES = {
 // storage contract. Uploads are compensated if their metadata insert fails.
 
 type Trip = { id: string; trip_number: string | number | null; dispatch_number: string | null; status: string | null; loading_date?: string | null; estimated_delivery_date?: string | null; warehouse_id?: string | null; remarks?: string | null; archived_at?: string | null };
-type Stop = { id: string; trip_id: string; stop_sequence: number | null; dispatch_number?: string | null; store_id?: string | null; customer_id?: string | null; delivery_status?: string | null; departure_time?: string | null; arrival_time: string | null; start_unloading_time: string | null; finish_unloading_time: string | null; remarks?: string | null };
+type Stop = { id: string; trip_id: string; stop_sequence: number | null; dispatch_number?: string | null; store_id?: string | null; customer_id?: string | null; delivery_status?: string | null; departure_time?: string | null; arrival_time: string | null; start_unloading_time: string | null; finish_unloading_time: string | null; remarks?: string | null; archived_at?: string | null };
 type Assignment = { trip_id: string; unassigned_at: string | null };
 
 function throwDb(error: { message?: string; code?: string } | null, operation: string): never {
@@ -135,7 +135,7 @@ async function getDriverTripIds(profileId: string) {
   return ids.filter((id) => active.has(id));
 }
 
-async function readReportCollections(tripIds?: string[]) {
+async function readReportCollections(tripIds?: string[], activeOnly = false) {
   if (tripIds && tripIds.length === 0) {
     return { trips: [], stops: [], loading: [], unloading: [], backloads: [], offloads: [], conversions: [] };
   }
@@ -151,10 +151,16 @@ async function readReportCollections(tripIds?: string[]) {
     readPaged<Record<string, unknown>>("operations_report_conversions", "id, source_type, source_id, target_type, target_id, trip_id, trip_stop_id", tripIds ? (q) => q.in("trip_id", tripIds) : undefined),
   ]);
   const tripSet = tripIds ? new Set(tripIds) : null;
-  const tripRows = tripSet ? trips.filter((row) => tripSet.has(row.id)) : trips;
+  const tripRows = trips.filter((row) => (!tripSet || tripSet.has(row.id)) &&
+    (!activeOnly || (!row.archived_at &&
+      (!stops.some((stop) => stop.trip_id === row.id) || stops.some((stop) => stop.trip_id === row.id && !stop.archived_at)))));
   const relatedIds = new Set(tripRows.map((trip) => trip.id));
+  const visibleStops = stops.filter((stop) => relatedIds.has(stop.trip_id) && (!activeOnly || !stop.archived_at));
+  const visibleStopIds = new Set(visibleStops.map((stop) => stop.id));
+  const visibleReport = (row: Record<string, unknown>) => relatedIds.has(String(row.trip_id)) &&
+    (!activeOnly || !row.trip_stop_id || visibleStopIds.has(String(row.trip_stop_id)));
   const active = filterConvertedReportSources<Record<string, unknown> & { id: string; trip_id: string }>(loading as any, unloading as any, backloads as any, offloads as any, conversions as any);
-  const activeOffloads = (active.offloads as Record<string, unknown>[]).filter((row) => relatedIds.has(String(row.trip_id)));
+  const activeOffloads = (active.offloads as Record<string, unknown>[]).filter(visibleReport);
   const offloadItems = await readByForeignIds<Record<string, unknown>>(
     "offload_items",
     "id, offload_id, trip_line_item_id, quantity, total_cbm, dr_number, customer_model",
@@ -168,10 +174,10 @@ async function readReportCollections(tripIds?: string[]) {
   }
   return {
     trips: tripRows,
-    stops: stops.filter((row) => relatedIds.has(row.trip_id)).sort((a, b) => a.trip_id.localeCompare(b.trip_id) || (a.stop_sequence ?? 0) - (b.stop_sequence ?? 0) || a.id.localeCompare(b.id)),
-    loading: (active.loading as Record<string, unknown>[]).filter((row) => relatedIds.has(String(row.trip_id))),
-    unloading: (active.unloading as Record<string, unknown>[]).filter((row) => relatedIds.has(String(row.trip_id))),
-    backloads: (active.backloads as Record<string, unknown>[]).filter((row) => relatedIds.has(String(row.trip_id))),
+    stops: visibleStops.sort((a, b) => a.trip_id.localeCompare(b.trip_id) || (a.stop_sequence ?? 0) - (b.stop_sequence ?? 0) || a.id.localeCompare(b.id)),
+    loading: (active.loading as Record<string, unknown>[]).filter(visibleReport),
+    unloading: (active.unloading as Record<string, unknown>[]).filter(visibleReport),
+    backloads: (active.backloads as Record<string, unknown>[]).filter(visibleReport),
     offloads: activeOffloads.map((row): Record<string, unknown> & { items: Record<string, unknown>[] } => ({ ...row, items: itemsByOffloadId.get(String(row.id)) ?? [] })),
     conversions,
   };
@@ -340,7 +346,7 @@ export async function getOperationsOverview(actor: ReportActor) {
 
 export async function getAssignedOperations(actor: ReportActor) {
   if (actor.role.toUpperCase() !== "TRUCKER") throw new ApiError("This endpoint is for trucker accounts.", 403, "TRUCKER_ROLE_REQUIRED");
-  const collections = await readReportCollections(await getDriverTripIds(actor.profileId));
+  const collections = await readReportCollections(await getDriverTripIds(actor.profileId), true);
   return { ...collections, ...await buildEventRows(collections) };
 }
 

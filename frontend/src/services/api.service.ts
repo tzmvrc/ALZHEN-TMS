@@ -131,6 +131,7 @@ async function request<T>(
   endpoint: string,
   options: RequestInit = {},
   token?: string,
+  timeoutMs?: number,
 ): Promise<T> {
   const headers = new Headers(options.headers ?? {});
 
@@ -150,14 +151,25 @@ async function request<T>(
     headers.set("Content-Type", "application/json");
   }
 
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-    ...options,
-    headers,
-  });
+  const timeoutSignal = timeoutMs ? AbortSignal.timeout(timeoutMs) : undefined;
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}${endpoint}`, {
+      ...options,
+      headers,
+      signal: timeoutSignal ?? options.signal,
+    });
+  } catch (error) {
+    if (timeoutSignal?.aborted) {
+      throw new ApiError("The request took too long. Check your connection and try again.", 408);
+    }
+    throw error;
+  }
 
   const payload = (await response.json().catch(() => null)) as {
     success?: boolean;
     code?: string;
+    error?: { code?: string };
     message?: string;
     data?: T;
   } | null;
@@ -189,6 +201,15 @@ async function request<T>(
     }
 
     if (response.status >= 500) {
+      if (
+        endpoint === "/truckers/me/trips" &&
+          (payload?.code === "TRUCKER_ASSIGNED_TRIPS_FAILED" ||
+            payload?.error?.code === "TRUCKER_ASSIGNED_TRIPS_FAILED") &&
+          payload.message
+      ) {
+        throw new ApiError(payload.message, response.status);
+      }
+
       throw new ApiError(
         "Something went wrong. Please try again later.",
         response.status,
@@ -224,8 +245,12 @@ export function clearApiCache() {
   invalidateApiCache();
 }
 
-export async function apiGet<T>(endpoint: string, token?: string): Promise<T> {
-  return request<T>(endpoint, { method: "GET" }, token);
+export async function apiGet<T>(
+  endpoint: string,
+  token?: string,
+  timeoutMs?: number,
+): Promise<T> {
+  return request<T>(endpoint, { method: "GET" }, token, timeoutMs);
 }
 
 export async function apiGetCached<T>(
@@ -279,6 +304,28 @@ export async function apiPost<T>(
     {
       method: "POST",
       body: JSON.stringify(body),
+    },
+    token,
+  );
+}
+
+export async function apiUpload<T>(
+  endpoint: string,
+  body: BodyInit,
+  contentType: string,
+  fileName: string,
+  token?: string,
+  extraHeaders: Record<string, string> = {},
+): Promise<T> {
+  const headers = new Headers(extraHeaders);
+  headers.set("Content-Type", contentType);
+  headers.set("X-File-Name", encodeURIComponent(fileName));
+  return request<T>(
+    endpoint,
+    {
+      method: "POST",
+      headers,
+      body,
     },
     token,
   );

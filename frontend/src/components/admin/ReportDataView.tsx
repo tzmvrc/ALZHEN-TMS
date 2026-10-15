@@ -414,7 +414,7 @@ const ReportSelectionToolbar = memo(function ReportSelectionToolbar({
   const row = rows.find((candidate) => getReportRowKey(reportKey, candidate) === keys[0]);
   const hasEditableFields = Boolean(row && columns.some((column) => getEditableCellTarget(row, column.key, reportKey)));
   const canEdit = keys.length === 1 && Boolean(row) && hasEditableFields;
-  return <><ReportRowActionButton action="edit" disabled={!canEdit} onClick={onEdit} />{onArchive && <ReportRowActionButton action="delete" disabled={keys.length !== 1 || !row} label={archiveHistory ? "Restore selected transaction" : "Archive selected transaction"} onClick={() => { if (row) onArchive(row); }} />}</>;
+  return <><ReportRowActionButton action="edit" disabled={!canEdit} onClick={onEdit} />{onArchive && <ReportRowActionButton action={archiveHistory ? "restore" : "delete"} disabled={keys.length !== 1 || !row} label={archiveHistory ? "Restore selected transaction" : "Archive selected transaction"} onClick={() => { if (row) onArchive(row); }} />}</>;
 });
 
 function rowText(row: ReportRow, ...keys: string[]): string {

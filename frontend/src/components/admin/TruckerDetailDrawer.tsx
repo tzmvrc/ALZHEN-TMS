@@ -97,7 +97,7 @@ export default function TruckerDetailDrawer({
             </div>
             {trucker.active_trip ? (
               <div className="grid gap-x-5 gap-y-2 text-[12px] text-slate-700 sm:grid-cols-2">
-                <div className="flex min-w-0 items-center gap-2"><Truck className="h-4 w-4 shrink-0 text-[#2678b9]" /><span className="truncate font-semibold text-[#0b2341]">{trucker.active_trip.trip_number || trucker.active_trip.dispatch_number || "Trip not identified"}</span></div>
+                <div className="flex min-w-0 items-center gap-2"><Truck className="h-4 w-4 shrink-0 text-[#2678b9]" /><span className="truncate font-semibold text-[#0b2341]">{trucker.active_trip.dispatch_number || trucker.active_trip.trip_number || "Trip not identified"}</span></div>
                 <div className="flex min-w-0 items-center gap-2"><CalendarDays className="h-4 w-4 shrink-0 text-[#2678b9]" /><span className="truncate">{trucker.active_trip.loading_date ? new Date(trucker.active_trip.loading_date).toLocaleDateString() : "Date unavailable"}</span></div>
                 <div className="flex min-w-0 items-center gap-2 sm:col-span-2"><Route className="h-4 w-4 shrink-0 text-[#2678b9]" /><span className="truncate">{trucker.active_trip.route || "Route not available"}</span></div>
               </div>
@@ -114,7 +114,7 @@ export default function TruckerDetailDrawer({
                 {recentTrips.map((trip) => (
                   <article key={trip.id} className="min-w-0 rounded-xl bg-slate-50 px-3 py-2.5">
                     <div className="flex items-center justify-between gap-2">
-                      <p className="truncate text-xs font-bold text-[#0b2341]">{trip.trip_number || trip.dispatch_number || "Trip"}</p>
+                      <p className="truncate text-xs font-bold text-[#0b2341]">{trip.dispatch_number || trip.trip_number || "Trip"}</p>
                       <span className="shrink-0 rounded-full bg-emerald-50 px-2 py-0.5 text-[9px] font-bold text-emerald-700">{trip.delivery_status || trip.status || "Unknown"}</span>
                     </div>
                     <p className="mt-1 truncate text-[10px] text-slate-500">{trip.origin || "Origin"} → {trip.destination || "Destination"}</p>

@@ -17,6 +17,7 @@ import { fetchTripImages } from "../../../services/trip-image.service";
 import { subscribeToAdminRealtime } from "../../../services/realtime.service";
 import LiveTripMap, {
   type TripEventTrack,
+  type TripLocationRoute,
 } from "../../../components/admin/LiveTripMap";
 import {
   fetchReportPage,
@@ -162,6 +163,12 @@ function fleetStatus(value: unknown): DispatchRecord["status"] {
   return "Other";
 }
 
+function isActiveTrip(trip: TripPage["rows"][number]): boolean {
+  return !trip.archived_at && !/COMPLETE|DELIVER|CANCEL|VOID|ARCHIV/.test(
+    textValue(trip.status).toUpperCase(),
+  );
+}
+
 function tripProgress(events: TripEvent[], status: unknown): number {
   if (fleetStatus(status) === "Completed") return 100;
   return events.reduce((progress, event) => {
@@ -182,7 +189,8 @@ function toFleetRow(
   const rawStatus = textValue(trip.status, "Unknown");
   const dispatchNumber = textValue(trip.dispatch_number ?? trip.id, "Trip");
   const bookingDetails = bookingRows.filter(
-    (row) => String(row.dispatch_number ?? "") === dispatchNumber,
+    (row) => textValue(row.trip_id ?? row._trip_id) === textValue(trip.id) ||
+      String(row.dispatch_number ?? "") === dispatchNumber,
   );
   const warehouse = textValue(
     bookingDetails.find((row) => row.warehouse_name)?.warehouse_name ??
@@ -376,27 +384,35 @@ export default function OverviewView({
     let active = true;
     void (async () => {
       try {
-        const [allTrips, inProgress, completed] = await Promise.all([
-          fetchTrips(accessToken, { limit: 10 }),
-          fetchTrips(accessToken, { limit: 1, status: "IN_PROGRESS" }),
-          fetchTrips(accessToken, { limit: 1, status: "COMPLETED" }),
-        ]);
+        const firstPage = await fetchTrips(accessToken, { limit: 100, archiveScope: "active" });
+        const allTrips = { ...firstPage, rows: [...firstPage.rows] };
+        for (let page = 2; page <= allTrips.pagination.totalPages; page += 1) {
+          const next = await fetchTrips(accessToken, { limit: 100, page, archiveScope: "active" });
+          allTrips.rows.push(...next.rows);
+        }
         let bookingRows: ReportRow[] = [];
         let bookingUnavailable = false;
         try {
+          const bookingOptions = {
+            page: 1,
+            limit: 500,
+            search: "",
+            sortBy: "loading_date",
+            sortOrder: "desc" as const,
+            filters: { active_transactions: "true", archive_scope: "active" },
+          };
           const bookingPage = await fetchReportPage(
-            "trip-booking",
+            "dispatch-monitoring",
             accessToken,
-            {
-              page: 1,
-              limit: 100,
-              search: "",
-              sortBy: "loading_date",
-              sortOrder: "desc",
-              filters: {},
-            },
+            bookingOptions,
           );
-          bookingRows = bookingPage.rows;
+          bookingRows = [...bookingPage.rows];
+          for (let page = 2; page <= bookingPage.pagination.totalPages; page += 1) {
+            const next = await fetchReportPage("dispatch-monitoring", accessToken, { ...bookingOptions, page });
+            bookingRows.push(...next.rows);
+          }
+          const visibleTripIds = new Set(allTrips.rows.map((trip) => textValue(trip.id)));
+          bookingRows = bookingRows.filter((row) => visibleTripIds.has(textValue(row.trip_id ?? row._trip_id)));
         } catch (cause) {
           if (cause instanceof ApiError && cause.status === 401) throw cause;
           bookingUnavailable = true;
@@ -405,11 +421,14 @@ export default function OverviewView({
           (trip): trip is typeof trip & { id: string } =>
             typeof trip.id === "string" && trip.id.length > 0,
         );
+        const activeStopIds = new Set(bookingRows.map((row) => textValue(row.trip_stop_id ?? row._trip_stop_id)).filter(Boolean));
         const [eventResults, photoResults] = await Promise.all([
           Promise.allSettled(
             tripsWithIds.map(async (trip) => ({
               trip,
-              events: await fetchTripEvents(accessToken, trip.id),
+              events: (await fetchTripEvents(accessToken, trip.id)).filter(
+                (event) => !event.trip_stop_id || (!bookingUnavailable && activeStopIds.has(event.trip_stop_id)),
+              ),
             })),
           ),
           Promise.allSettled(
@@ -463,8 +482,8 @@ export default function OverviewView({
           ),
           bookingUnavailable,
           total: allTrips.pagination.total,
-          inProgress: inProgress.pagination.total,
-          completed: completed.pagination.total,
+          inProgress: allTrips.rows.filter((trip) => trip.status === "IN_PROGRESS").length,
+          completed: allTrips.rows.filter((trip) => fleetStatus(trip.status) === "Completed").length,
           fetchedAt: Date.now(),
         });
       } catch (cause) {
@@ -507,7 +526,7 @@ export default function OverviewView({
       }, 250);
     };
     const relevant = (table: string, payload?: { new?: Record<string, unknown> | null; old?: Record<string, unknown> | null }) => {
-      if (table === "trips") return true;
+      if (["trips", "trip_stops", "warehouses", "customer_stores", "trip_truck_assignments"].includes(table)) return true;
       if (table !== "trip_events" && table !== "trip_images") return false;
       return [payload?.new?.trip_id, payload?.old?.trip_id].some(
         (id) => typeof id === "string" && tripIdSet.has(id),
@@ -603,10 +622,52 @@ export default function OverviewView({
       snapshot?.bookingRows ?? [],
     ),
   );
-  const fleetPhotoRows = fleetRows.map((trip) => ({
+  const activeTripIds = new Set((snapshot?.recent ?? []).filter(isActiveTrip).map((trip) => textValue(trip.id)));
+  const activeTrips = (snapshot?.recent ?? []).filter(isActiveTrip);
+  const activeTracks = (snapshot?.tracks ?? []).filter((track) => activeTripIds.has(textValue(track.trip.id)));
+  const fleetPhotoRows = fleetRows.filter((trip) => activeTripIds.has(trip.id)).map((trip) => ({
     ...trip,
     imageUrl: snapshot?.photoUrls[trip.id],
   }));
+  const activeMapLocationIds = [...new Set((snapshot?.recent ?? []).filter(isActiveTrip).flatMap((trip) => {
+    const tripId = textValue(trip.id);
+    const dispatchNumber = textValue(trip.dispatch_number);
+    const bookingRows = (snapshot?.bookingRows ?? []).filter((row) =>
+      (tripId && textValue(row.trip_id ?? row._trip_id) === tripId) ||
+      (dispatchNumber && textValue(row.dispatch_number) === dispatchNumber),
+    );
+    return [
+      textValue(trip.warehouse_id),
+      ...bookingRows.flatMap((row) => [
+        textValue(row._warehouse_id ?? row.warehouse_id),
+        textValue(row._store_id ?? row.store_id),
+      ]),
+    ].filter(Boolean);
+  }))];
+  const activeMapRoutes: TripLocationRoute[] = activeTrips.flatMap((trip) => {
+    const tripId = textValue(trip.id);
+    const dispatchNumber = textValue(trip.dispatch_number);
+    const bookingRows = (snapshot?.bookingRows ?? []).filter((row) =>
+      (tripId && textValue(row.trip_id ?? row._trip_id) === tripId) ||
+      (dispatchNumber && textValue(row.dispatch_number) === dispatchNumber),
+    );
+    const reportWarehouse = bookingRows.find((row) =>
+      Boolean(textValue(row._warehouse_id ?? row.warehouse_id)),
+    );
+    const originWarehouseId = textValue(trip.warehouse_id) ||
+      textValue(reportWarehouse?._warehouse_id ?? reportWarehouse?.warehouse_id);
+    const destinationStoreIds = [...new Set(bookingRows
+      .map((row) => textValue(row._store_id ?? row.store_id))
+      .filter(Boolean))];
+    return originWarehouseId && destinationStoreIds.length
+      ? [{
+          tripId,
+          tripLabel: dispatchNumber || tripId,
+          originWarehouseId,
+          destinationStoreIds,
+        }]
+      : [];
+  });
   const movementData = fleetMovementSeries(snapshot?.tracks ?? []);
   const delayedTrips = fleetRows.filter((trip) => trip.status === "Delayed").length;
   const statusByDispatch = new Map(fleetRows.map((row) => [row.displayId ?? row.id, row.status]));
@@ -713,7 +774,7 @@ export default function OverviewView({
           <KpiCard
             title="Total trips"
             value={snapshot ? totalTrips.toLocaleString() : "…"}
-            note="All recorded trips"
+            note="Non-archived trips"
             icon={<Truck />}
             chart={<MiniBars values={tripsPerDay} />}
           />
@@ -765,8 +826,10 @@ export default function OverviewView({
 
           <div className="min-w-0 xl:col-span-4 xl:row-span-2">
             <LiveTripMap
-              tracks={snapshot?.tracks ?? []}
-              focusTripId={focusedTripId}
+              tracks={activeTracks}
+              locationIds={activeMapLocationIds}
+              tripLocationRoutes={activeMapRoutes}
+              focusTripId={focusedTripId && activeTripIds.has(focusedTripId) ? focusedTripId : null}
               eventLoadError={snapshot?.eventsUnavailable ?? false}
               height={460}
               fillHeight

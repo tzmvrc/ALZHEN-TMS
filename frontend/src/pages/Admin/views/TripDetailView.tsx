@@ -28,7 +28,7 @@ import {
   type TripEvent,
   type TripRecord,
 } from "../../../services/trip.service";
-import LiveTripMap, { type TripEventTrack } from "../../../components/admin/LiveTripMap";
+import LiveTripMap, { type TripEventTrack, type TripLocationRoute } from "../../../components/admin/LiveTripMap";
 import { surface } from "../../../components/admin/dashboardStyles";
 import ProductPhotoManager from "../../../components/admin/ProductPhotoManager";
 import truckBg from "../../../assets/trip-truck.png";
@@ -525,7 +525,13 @@ function VehicleCard({
             const itemName = item
               ? valueText(item.product_name ?? item.item_name ?? `Item ${index + 1}`)
               : "";
-            const itemCbm = item ? Number(item.cbm) : 0;
+            const itemCbm = item?.cbm;
+            const itemCbmLabel =
+              itemCbm === null || itemCbm === undefined || itemCbm === ""
+                ? "CBM not set"
+                : Number.isFinite(Number(itemCbm))
+                  ? `${formatNumber(Number(itemCbm))} CBM`
+                  : `${String(itemCbm)} CBM`;
             const base =
               "relative flex flex-col items-center justify-center rounded-md border text-[8px] font-medium transition-all";
             if (!item) {
@@ -549,9 +555,7 @@ function VehicleCard({
                 }`}
               >
                 <span className="line-clamp-2 text-center leading-tight">{itemName}</span>
-                {itemCbm > 0 && (
-                  <span className="text-[7px] text-slate-500">{formatNumber(itemCbm)} CBM</span>
-                )}
+                <span className="text-[7px] text-slate-500">{itemCbmLabel}</span>
               </button>
             );
           })}
@@ -737,11 +741,10 @@ export default function TripDetailView({
           const message = result.reason instanceof Error ? result.reason.message : "Unavailable";
           return [`${sections[index]}: ${message}`];
         });
-        const dispatchNumber = String(tripResponse.trip.dispatch_number ?? "");
         const params = new URLSearchParams({
           page: "1",
-          limit: "100",
-          dispatch_number: dispatchNumber,
+          limit: "500",
+          trip_id: tripId,
           sort_by: "loading_date",
           sort_order: "desc",
         });
@@ -757,9 +760,15 @@ export default function TripDetailView({
           if (!bookingResponse.success || !bookingResponse.data) {
             throw new Error(bookingResponse.message ?? "Trip report enrichment unavailable.");
           }
-          bookingRows = bookingResponse.data.rows.filter(
-            (row) => String(row.dispatch_number ?? "") === dispatchNumber,
-          );
+          bookingRows = [...bookingResponse.data.rows];
+          for (let page = 2; page <= bookingResponse.data.pagination.totalPages; page += 1) {
+            params.set("page", String(page));
+            const next = await apiGet<ApiResponse<BookingPage>>(
+              `/reports/trip-booking?${params.toString()}`, accessToken,
+            );
+            if (!next.success || !next.data) throw new Error(next.message ?? "Trip report enrichment unavailable.");
+            bookingRows.push(...next.data.rows);
+          }
         } catch (cause) {
           if (cause instanceof ApiError && cause.status === 401) throw cause;
           bookingError = cause instanceof Error ? cause.message : "Trip report enrichment unavailable.";
@@ -787,7 +796,12 @@ export default function TripDetailView({
         }
         if (!active) return;
         setDetail({
-          trip: tripResponse.trip,
+          trip: {
+            ...tripResponse.trip,
+            warehouse_name: tripResponse.warehouse?.name,
+            warehouse_code: tripResponse.warehouse?.code,
+            trip_type: tripResponse.trip_type?.name,
+          },
           stops,
           lineItems,
           events,
@@ -849,18 +863,43 @@ export default function TripDetailView({
     : initialStopIndex >= 0
       ? String(stops[initialStopIndex].id ?? "")
       : selectedStop;
-  const reportRows = detail?.bookingRows ?? [];
+  const bookingRows = detail?.bookingRows ?? [];
+  // Keep saved cargo visible even when report enrichment is unavailable. Join by
+  // line item identity so multiple items at the same stop stay separate.
+  const productRows: Record<string, unknown>[] = detail?.lineItems.length
+    ? detail.lineItems.map((item) => ({
+        ...bookingRows.find((row) => String(row.trip_line_item_id ?? row._trip_line_item_id ?? "") === String(item.id)),
+        ...item,
+        trip_line_item_id: item.id,
+      }))
+    : bookingRows.filter((row) => row.trip_line_item_id || row._trip_line_item_id || row.product_id || row._product_id);
+  const reportRows = bookingRows;
   const orderedEvents = (detail?.events ?? [])
     .slice()
     .sort((a, b) => Date.parse(a.event_time) - Date.parse(b.event_time));
   const mapTrack: TripEventTrack[] = trip ? [{ trip, events: detail?.events ?? [] }] : [];
+  const mapLocationIds = [
+    ...(typeof trip?.warehouse_id === "string" ? [trip.warehouse_id] : []),
+    ...stops.flatMap((stop) => typeof stop.store_id === "string" ? [stop.store_id] : []),
+  ];
+  const mapOriginWarehouseId = typeof trip?.warehouse_id === "string" ? trip.warehouse_id : "";
+  const mapDestinationStoreIds = [...new Set(stops
+    .flatMap((stop) => typeof stop.store_id === "string" ? [stop.store_id] : []))];
+  const mapLocationRoutes: TripLocationRoute[] = mapOriginWarehouseId && mapDestinationStoreIds.length
+    ? [{
+        tripId,
+        tripLabel: dispatchNumber,
+        originWarehouseId: mapOriginWarehouseId,
+        destinationStoreIds: mapDestinationStoreIds,
+      }]
+    : [];
   const destinationNames = [
     ...new Set(reportRows.map((row) => String(row.store_name ?? "")).filter(Boolean)),
   ];
   const originName = getBookingValue(
     reportRows,
     "warehouse_name",
-    getBookingValue(reportRows, "warehouse_code", "Origin not recorded"),
+    getBookingValue(reportRows, "warehouse_code", valueText(trip?.warehouse_name ?? trip?.warehouse_code, "Origin not recorded")),
   );
   const destinationText = destinationNames.length
     ? destinationNames.join(", ")
@@ -869,16 +908,18 @@ export default function TripDetailView({
   const stopKey = (stop: TripChildRecord, index: number) => String(stop.stop_sequence ?? index + 1);
   const rowsForStop = (stopId: string) =>
     reportRows.filter((row) => String(row.trip_stop_id ?? row._trip_stop_id ?? "") === stopId);
-  const visibleRows = activeStopId ? rowsForStop(activeStopId) : reportRows;
+  const visibleRows = activeStopId
+    ? productRows.filter((row) => String(row.trip_stop_id ?? row._trip_stop_id ?? "") === activeStopId)
+    : productRows;
 
   const doneStops = stops.filter(stopIsDone).length;
   const progress = stops.length ? Math.round((doneStops / stops.length) * 100) : 0;
-  const cargoRows = reportRows.length > 0 ? reportRows : detail?.lineItems ?? [];
+  const cargoRows = productRows;
   // Aggregate from the trip_line_items endpoint directly. Flattened report
   // views can repeat a line when other one-to-many relations are joined.
   const totalQty = detail?.lineItems.length ? sumOf(detail.lineItems, "quantity") : sumOf(cargoRows, "quantity");
   const totalCbm = detail?.lineItems.length ? sumOf(detail.lineItems, "cbm") : sumOf(cargoRows, "cbm");
-  const lineItemCount = detail?.lineItems.length ?? reportRows.length;
+  const lineItemCount = productRows.length;
   const driverName = getBookingValue(reportRows, "driver_name");
   const plate = getBookingValue(reportRows, "plate_number", "No plate recorded");
   const placeholder = isLoading ? "…" : undefined;
@@ -904,6 +945,12 @@ export default function TripDetailView({
       {detail && detail.sectionErrors.length > 0 && (
         <p role="status" className="rounded-2xl bg-amber-50 px-4 py-2.5 text-xs text-amber-800">
           Some sections could not be loaded: {detail.sectionErrors.join(" · ")}
+        </p>
+      )}
+      {detail?.bookingError && (
+        <p role="status" className="rounded-2xl bg-amber-50 px-4 py-2.5 text-xs text-amber-800">
+          Some product, store, and vehicle details could not be loaded: {detail.bookingError}
+          <button type="button" className="ml-2 underline" onClick={() => setRetry((current) => current + 1)}>Retry</button>
         </p>
       )}
 
@@ -1059,7 +1106,7 @@ export default function TripDetailView({
         </div>
 
         <div className="min-w-0 xl:col-span-5">
-          <LiveTripMap tracks={mapTrack} focusTripId={tripId} eventLoadError={false} height={440} fillHeight />
+          <LiveTripMap tracks={mapTrack} locationIds={mapLocationIds} tripLocationRoutes={mapLocationRoutes} focusTripId={tripId} eventLoadError={false} height={440} fillHeight />
         </div>
 
         <section className={`${surface.card} flex min-w-0 flex-col p-5 xl:col-span-3`}>
@@ -1152,7 +1199,7 @@ export default function TripDetailView({
             title="Products"
             right={
               <span className="rounded-full bg-[#0b2341] px-2 py-0.5 text-[10px] font-semibold tabular-nums text-white">
-                {reportRows.length}
+                {productRows.length}
               </span>
             }
           />
@@ -1165,7 +1212,9 @@ export default function TripDetailView({
               { key: null as string | null, label: "All" },
               ...stops.map((stop, index) => ({ key: String(stop.id ?? `stop-${index}`), label: `Stop ${stopKey(stop, index)}` })),
             ].map(({ key, label }) => {
-              const count = key === null ? reportRows.length : rowsForStop(key).length;
+              const count = key === null ? productRows.length : productRows.filter(
+                (row) => String(row.trip_stop_id ?? row._trip_stop_id ?? "") === key,
+              ).length;
               const isActive = activeStopId === key;
               return (
                 <button

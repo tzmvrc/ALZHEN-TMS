@@ -1,10 +1,10 @@
 // src/components/admin/OverviewCards.tsx
-import { useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { AlertTriangle, ArrowUpRight, CheckCircle2, ChevronLeft, ChevronRight, MapPin, RefreshCw, Users } from "lucide-react";
 import type { DispatchRecord } from "../../types/dashboard";
 import type { ReportRow } from "../../services/report.service";
 import type { DispatchRequest } from "../../types/requests";
-import { getFleetTruckCutout, getFleetTruckPhoto, surface } from "./dashboardStyles";
+import { assignFleetTruckCutouts, getFleetTruckPhoto, surface } from "./dashboardStyles";
 import ImageWithFallback from "./ImageWithFallback";
 import { regionTagClass, senderInitials, timeAgo } from "./requestFormat";
 
@@ -438,6 +438,17 @@ export function FleetListCard({
   className?: string;
 }) {
   const [tab, setTab] = useState<FleetTab>("all");
+  const [savedPhotos, setSavedPhotos] = useState<ReadonlyMap<string, string>>(() => new Map());
+  const truckPhotos = useMemo(
+    () => assignFleetTruckCutouts(rows.map((trip) => trip.id), savedPhotos),
+    [rows, savedPhotos],
+  );
+  useEffect(() => {
+    if (truckPhotos.size !== savedPhotos.size ||
+      [...truckPhotos].some(([id, photo]) => savedPhotos.get(id) !== photo)) {
+      setSavedPhotos(truckPhotos);
+    }
+  }, [truckPhotos, savedPhotos]);
   const tabs: { id: FleetTab; label: string; count: number }[] = [
     { id: "all", label: "All", count: rows.length },
     { id: "delayed", label: "Delayed", count: rows.filter((r) => r.status === "Delayed").length },
@@ -532,7 +543,7 @@ export function FleetListCard({
                   </span>
                   <span className="mt-2 flex h-24 items-center justify-center">
                     <img
-                      src={getFleetTruckCutout(trip.id)}
+                      src={truckPhotos.get(trip.id)}
                       alt=""
                       loading="lazy"
                       draggable={false}

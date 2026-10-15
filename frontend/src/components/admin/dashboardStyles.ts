@@ -48,6 +48,32 @@ export function getFleetTruckCutout(seed: string): string {
   return fleetTruckCutouts[(hash >>> 0) % fleetTruckCutouts.length];
 }
 
+export function assignFleetTruckCutouts(
+  tripIds: string[],
+  previous: ReadonlyMap<string, string>,
+): Map<string, string> {
+  const assignments = new Map<string, string>();
+  const usage = new Map<string, number>(fleetTruckCutouts.map((photo) => [photo, 0]));
+  for (const id of tripIds) {
+    const photo = previous.get(id);
+    if (photo && usage.has(photo)) {
+      assignments.set(id, photo);
+      usage.set(photo, usage.get(photo)! + 1);
+    }
+  }
+  for (const id of tripIds) {
+    if (assignments.has(id)) continue;
+    const preferred = getFleetTruckCutout(id);
+    const lowestUsage = Math.min(...usage.values());
+    const photo = usage.get(preferred) === lowestUsage
+      ? preferred
+      : fleetTruckCutouts.find((candidate) => usage.get(candidate) === lowestUsage)!;
+    assignments.set(id, photo);
+    usage.set(photo, usage.get(photo)! + 1);
+  }
+  return assignments;
+}
+
 /* Alzhen brand palette (same navy + yellow as the top navigation) */
 export const accent = {
   navy: "#0b2341",

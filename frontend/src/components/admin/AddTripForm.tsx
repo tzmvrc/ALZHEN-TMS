@@ -38,12 +38,12 @@ export type NewTripPayload = {
 };
 
 type Option = RelationshipOption;
-type Lookups = Record<"trip-types" | "warehouses" | "trucks" | "drivers" | "stores" | "products", Option[]>;
+type Lookups = Record<"trip-types" | "warehouses" | "trucks" | "drivers" | "stores" | "products" | "customers", Option[]>;
 type ItemDraft = { key: number; productId: string; dr: string; dn: string; sp: string; so: string; sapSo: string; customerPo: string; po: string; category: string; unitCbm: string; itemStatus: string; warehouse: string; qty: string; cbm: string };
 type StopDraft = { key: number; storeId: string; customer: string; city: string; province: string; address: string; items: ItemDraft[] };
 
 const STATUSES = ["PLANNED", "LOADING", "IN_TRANSIT", "DELIVERED", "CANCELLED"];
-const EMPTY_LOOKUPS: Lookups = { "trip-types": [], warehouses: [], trucks: [], drivers: [], stores: [], products: [] };
+const EMPTY_LOOKUPS: Lookups = { "trip-types": [], warehouses: [], trucks: [], drivers: [], stores: [], products: [], customers: [] };
 
 /* Shared input styling — same height, same radius, same border */
 const inputBase =
@@ -484,7 +484,17 @@ export default function AddTripForm({
                         </span>
                         <div className="min-w-0 flex-1 grid gap-3 sm:grid-cols-2">
                           <Field label="Ship To / Store" required>
-                            <Dropdown value={stop.storeId} onChange={(v) => { const location = lookups.stores.find((option) => option.id === v)?.values; updateStop(stop.key, { storeId: v, city: location?.city ?? "", province: location?.province ?? "" }); }}
+                            <Dropdown value={stop.storeId} onChange={(v) => {
+                              const location = lookups.stores.find((option) => option.id === v)?.values;
+                              const customer = lookups.customers.find((option) => option.id === location?.customer_id);
+                              updateStop(stop.key, {
+                                storeId: v,
+                                customer: customer?.values?.customer_name ?? "",
+                                city: location?.city ?? "",
+                                province: location?.province ?? "",
+                                address: location?.address ?? "",
+                              });
+                            }}
                               options={lookups.stores} placeholder="Choose store" loading={loadingLookups} />
                           </Field>
                           <Field label="Customer">

@@ -239,7 +239,9 @@ async function attachOperationalRecordIds(rows: Record<string, unknown>[]) {
     for (const row of rows) {
       const trip = tripById.get(String(row.trip_id));
       if (!trip) continue;
-      row.dispatch_number ??= trip.dispatch_number;
+      if (typeof trip.dispatch_number === "string") {
+        row.dispatch_number = trip.dispatch_number;
+      }
       row.transaction_number ??= trip.transaction_number;
     }
   }
@@ -570,6 +572,11 @@ export async function getReportData(
   const key = reportKey.trim();
   if (!REPORT_KEYS.includes(key)) throw new ApiError("Report not found", 404, "REPORT_NOT_FOUND");
   const definition = getReportDefinition(key);
+  validateArrayQuery(query.trip_id, "trip_id");
+  const tripId = normalizeText(getQueryString(query.trip_id));
+  if (tripId && !isValidUuid(tripId)) {
+    throw new ApiError("Invalid trip id", 400, "INVALID_TRIP_ID");
+  }
   const viewNames = resolveViewNames(definition);
   if (!viewNames.length) throw new ApiError("Report view configuration is missing", 500, "REPORT_CONFIG_ERROR");
 
@@ -598,6 +605,7 @@ export async function getReportData(
   let lastError: Error | null = null;
   for (const viewName of viewNames) {
     let builder = supabaseAdmin.from(viewName).select("*", { count: "exact" });
+    if (tripId) builder = builder.eq(key === "trip-booking" ? "_trip_id" : "trip_id", tripId);
     if (key === "dispatch-monitoring" && getQueryString(query.active_transactions) === "true") {
       builder = getQueryString(query.archive_scope) === "archived"
         ? builder.not("transaction_archived_at", "is", null)

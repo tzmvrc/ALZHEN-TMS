@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { createPortal } from "react-dom";
-import { ArrowDown, ArrowUp, Bold, EyeOff, LoaderCircle, Paintbrush, Palette, Pencil, Pin, Search, SlidersHorizontal, Trash2, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Bold, EyeOff, LoaderCircle, Paintbrush, Palette, Pencil, Pin, RotateCcw, Search, SlidersHorizontal, Trash2, X } from "lucide-react";
 import { addDropdownOption, editDropdownOption, fetchDropdownOptions, type DropdownField, type DropdownOption } from "../../services/dropdown-option.service";
 import { REPORT_COLUMN_COLORS, type ReportCellFormat } from "./ReportSpreadsheetUtils";
 
-export function ReportRowActionButton({ action, disabled, onClick, label: customLabel }: { action: "edit" | "delete"; disabled?: boolean; onClick: () => void; label?: string }) {
-  const label = customLabel ?? (action === "edit" ? "Edit selected row" : "Delete selected reports");
-  const Icon = action === "edit" ? Pencil : Trash2;
+export function ReportRowActionButton({ action, disabled, onClick, label: customLabel }: { action: "edit" | "delete" | "restore"; disabled?: boolean; onClick: () => void; label?: string }) {
+  const label = customLabel ?? (action === "edit" ? "Edit selected row" : action === "restore" ? "Restore selected row" : "Delete selected reports");
+  const Icon = action === "edit" ? Pencil : action === "restore" ? RotateCcw : Trash2;
   return <button type="button" aria-label={label} title={label} disabled={disabled} onClick={onClick}
     className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border bg-white transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9] disabled:cursor-not-allowed disabled:opacity-50 ${action === "delete" ? "border-rose-200 text-rose-700 hover:bg-rose-50" : "border-[#b7d5ed] text-[#155b8d] hover:bg-[#edf6fd]"}`}>
     <Icon aria-hidden="true" className="h-4 w-4" />

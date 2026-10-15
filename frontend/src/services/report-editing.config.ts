@@ -495,7 +495,7 @@ const REPORT_EDITING: Record<
     letter_status: letterStatus,
   },
   "trip-booking": {
-    dispatch_number: stopScalars.dispatch_number,
+    dispatch_number: tripScalars.dispatch_number,
     trip_number: tripScalars.trip_number,
     loading_date: tripScalars.loading_date,
     warehouse_name: warehouse,
@@ -580,9 +580,11 @@ export function getReportEditDefinition(
     if (fields[columnKey]) return columnKey === "transmittal_ref" && row?.transmittal_ref_conflict ? null : fields[columnKey];
   }
   if (row && ["dispatch_number", "transaction_number"].includes(columnKey)) {
-    // Stop rows always target the stop. Only a genuine trip-only row can edit
-    // the parent identifier; missing child IDs never become parent writes.
-    if (row.trip_stop_id || row._trip_stop_id) return stopScalars[columnKey];
+    // A trip's dispatch number belongs to the parent trip, not an individual stop.
+    if (row.trip_stop_id || row._trip_stop_id) {
+      if (columnKey === "dispatch_number") return tripScalars.dispatch_number;
+      return stopScalars[columnKey];
+    }
     return tripScalars[columnKey] ?? null;
   }
   return REPORT_EDITING[reportKey][columnKey] ?? null;

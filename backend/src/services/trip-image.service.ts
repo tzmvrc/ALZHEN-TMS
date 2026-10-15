@@ -13,6 +13,17 @@ const extensions: Record<string, string> = {
 };
 const allowedMimeTypes = Object.keys(extensions);
 
+export type TripImageRecord = {
+  id: string;
+  trip_id: string;
+  storage_path: string;
+  file_name: string;
+  display_order: number;
+  created_at: string;
+  updated_at: string;
+  signed_url: string;
+};
+
 export class TripImageError extends Error {
   constructor(message: string, readonly statusCode = 400) {
     super(message);
@@ -60,14 +71,25 @@ async function assertTripExists(tripId: string) {
   if (!data) throw new TripImageError("Trip not found.", 404);
 }
 
-async function withSignedUrl(row: Record<string, unknown>) {
+async function withSignedUrl(
+  row: Record<string, unknown>,
+): Promise<TripImageRecord> {
   const { data, error } = await supabaseAdmin.storage
     .from(bucket)
     .createSignedUrl(String(row.storage_path), 60 * 60);
   if (error || !data?.signedUrl) {
     throw new TripImageError("Unable to create a secure photo link.", 502);
   }
-  return { ...row, signed_url: data.signedUrl };
+  return {
+    id: String(row.id),
+    trip_id: String(row.trip_id),
+    storage_path: String(row.storage_path),
+    file_name: String(row.file_name),
+    display_order: Number(row.display_order ?? 0),
+    created_at: String(row.created_at ?? ""),
+    updated_at: String(row.updated_at ?? ""),
+    signed_url: data.signedUrl,
+  };
 }
 
 async function ensureTripImageBucket() {

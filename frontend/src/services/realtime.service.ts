@@ -156,6 +156,8 @@ function invalidateForTable(table: string, payload?: RealtimePayload) {
   }
 
   if (table === "trips") invalidateApiCache("/trips");
+  // Active trip lists depend on whether their delivery stops are archived.
+  if (table === "trip_stops") invalidateApiCache("/trips?");
   if (["trips", "trip_events", "trip_stops", "store_calls", "customer_stores", "warehouses"].includes(table)) {
     invalidateApiCache("/calendar/events");
   }

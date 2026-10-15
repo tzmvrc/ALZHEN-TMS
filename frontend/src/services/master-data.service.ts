@@ -3,6 +3,18 @@ import { apiGet, apiPatch, apiPost, getAppSessionHeaders, handleSessionExpiredRe
 export type MasterDataKey = "warehouses" | "trucks" | "stores" | "store-contacts" | "products";
 export type MasterDataRow = Record<string, unknown> & { id: string };
 export type MasterDataPage = { rows: MasterDataRow[]; pagination: { page: number; limit: number; total: number; totalPages: number } };
+export type LocationSearchResult = { display_name: string; latitude: number; longitude: number };
+export type SavedMapLocation = {
+  id: string;
+  kind: "warehouse" | "store";
+  name: string;
+  code: string;
+  address: string;
+  city: string;
+  province: string;
+  latitude: number;
+  longitude: number;
+};
 
 export async function fetchMasterData(token: string, resource: MasterDataKey, search: string, page = 1): Promise<MasterDataPage> {
   const query = new URLSearchParams({ page: String(page), limit: "100" });
@@ -12,11 +24,55 @@ export async function fetchMasterData(token: string, resource: MasterDataKey, se
   return response.data;
 }
 
+export async function fetchSavedMapLocations(token: string): Promise<SavedMapLocation[]> {
+  const resources = ["warehouses", "stores"] as const;
+  const pages = await Promise.all(resources.map(async (resource) => {
+    const firstPage = await fetchMasterData(token, resource, "");
+    const remainingPages = await Promise.all(
+      Array.from({ length: Math.max(0, firstPage.pagination.totalPages - 1) }, (_, index) =>
+        fetchMasterData(token, resource, "", index + 2),
+      ),
+    );
+    return { resource, rows: [...firstPage.rows, ...remainingPages.flatMap((page) => page.rows)] };
+  }));
+
+  return pages.flatMap(({ resource, rows }) => rows.flatMap((row): SavedMapLocation[] => {
+    const latitude = Number(row.latitude);
+    const longitude = Number(row.longitude);
+    if (
+      row.latitude === null || row.latitude === undefined || row.latitude === "" ||
+      row.longitude === null || row.longitude === undefined || row.longitude === "" ||
+      !Number.isFinite(latitude) || latitude < -90 || latitude > 90 ||
+      !Number.isFinite(longitude) || longitude < -180 || longitude > 180
+    ) return [];
+    const name = typeof row.name === "string" ? row.name : "";
+    const code = typeof row.code === "string" ? row.code : "";
+    return [{
+      id: row.id,
+      kind: resource === "warehouses" ? "warehouse" : "store",
+      name: name || code || (resource === "warehouses" ? "Warehouse" : "Store"),
+      code,
+      address: typeof row.address === "string" ? row.address : "",
+      city: typeof row.city === "string" ? row.city : "",
+      province: typeof row.province === "string" ? row.province : "",
+      latitude,
+      longitude,
+    }];
+  }));
+}
+
 export async function saveMasterData(token: string, resource: MasterDataKey, values: Record<string, unknown>, id?: string) {
   const response = id
     ? await apiPatch<ApiResponse<MasterDataRow>>(`/master-data/${resource}/${encodeURIComponent(id)}`, values, token)
     : await apiPost<ApiResponse<MasterDataRow>>(`/master-data/${resource}`, values, token);
   if (!response.success || !response.data) throw new Error(response.message ?? "Unable to save this record.");
+  return response.data;
+}
+
+export async function searchWarehouseLocations(token: string, query: string): Promise<LocationSearchResult[]> {
+  const params = new URLSearchParams({ q: query });
+  const response = await apiGet<ApiResponse<LocationSearchResult[]>>(`/master-data/locations/search?${params}`, token);
+  if (!response.success || !response.data) throw new Error(response.message ?? "Unable to search map locations.");
   return response.data;
 }
 

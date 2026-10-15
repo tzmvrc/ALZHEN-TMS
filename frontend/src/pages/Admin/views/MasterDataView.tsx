@@ -3,21 +3,57 @@ import { Plus, Search, RefreshCw, Image, Images, LoaderCircle } from "lucide-rea
 import { useAuth } from "../../../context/AuthContext";
 import { tableUi } from "../../../components/admin/dashboardStyles";
 import { apiGet, type ApiResponse } from "../../../services/api.service";
-import { fetchMasterData, saveMasterData, type MasterDataKey, type MasterDataRow } from "../../../services/master-data.service";
+import { fetchMasterData, saveMasterData, searchWarehouseLocations, type LocationSearchResult, type MasterDataKey, type MasterDataRow } from "../../../services/master-data.service";
 import DatabaseExplorerView from "./DatabaseExplorerView";
 import TruckImageManager from "../../../components/admin/TruckImageManager";
 import ProductPhotoManager from "../../../components/admin/ProductPhotoManager";
 
-type Field = { key: string; label: string; kind?: "textarea" | "number" | "boolean" | "relation"; required?: boolean; source?: string };
+type Field = { key: string; label: string; kind?: "textarea" | "number" | "boolean" | "relation" | "select"; required?: boolean; source?: string; options?: string[] };
 type ActiveCell = { rowId: string; field: string; value: string };
 const resources: Array<{ key: MasterDataKey; label: string; fields: Field[] }> = [
-  { key: "warehouses", label: "Warehouses", fields: [{ key: "code", label: "Code", required: true }, { key: "name", label: "Name", required: true }, { key: "address", label: "Address" }, { key: "province", label: "Province" }, { key: "city", label: "City" }, { key: "warehouse_type", label: "Type" }, { key: "status", label: "Status" }, { key: "region", label: "Region" }, { key: "notes", label: "Notes", kind: "textarea" }] },
+  { key: "warehouses", label: "Warehouses", fields: [{ key: "code", label: "Code", required: true }, { key: "name", label: "Name", required: true }, { key: "address", label: "Address" }, { key: "province", label: "Province" }, { key: "city", label: "City" }, { key: "latitude", label: "Latitude", kind: "number" }, { key: "longitude", label: "Longitude", kind: "number" }, { key: "warehouse_type", label: "Type" }, { key: "status", label: "Status" }, { key: "region", label: "Region", kind: "select", options: ["LUZON", "VISAYAS", "MINDANAO"] }, { key: "notes", label: "Notes", kind: "textarea" }] },
   { key: "trucks", label: "Trucks", fields: [{ key: "plate_number", label: "Plate number", required: true }, { key: "trucking_company_id", label: "Trucking company", kind: "relation", source: "trucking-companies" }, { key: "truck_type", label: "Truck type" }, { key: "capacity_cbm", label: "Capacity (CBM)", kind: "number" }, { key: "status", label: "Status" }, { key: "notes", label: "Notes", kind: "textarea" }] },
   { key: "stores", label: "Stores", fields: [{ key: "customer_id", label: "Customer", kind: "relation", source: "customers", required: true }, { key: "name", label: "Name", required: true }, { key: "code", label: "Code" }, { key: "address", label: "Address" }, { key: "province", label: "Province" }, { key: "city", label: "City" }, { key: "postal_code", label: "Postal code" }, { key: "latitude", label: "Latitude", kind: "number" }, { key: "longitude", label: "Longitude", kind: "number" }, { key: "status", label: "Status" }, { key: "region", label: "Region" }, { key: "notes", label: "Notes", kind: "textarea" }] },
   { key: "store-contacts", label: "Store contacts", fields: [{ key: "store_id", label: "Store", kind: "relation", source: "stores", required: true }, { key: "name", label: "Name", required: true }, { key: "phone", label: "Phone" }, { key: "email", label: "Email" }, { key: "position", label: "Position" }, { key: "is_primary", label: "Primary contact", kind: "boolean" }, { key: "notes", label: "Notes", kind: "textarea" }] },
   { key: "products", label: "Products", fields: [{ key: "sku", label: "SKU" }, { key: "model_code", label: "Model code" }, { key: "name", label: "Name", required: true }, { key: "category", label: "Category" }, { key: "description", label: "Description", kind: "textarea" }, { key: "unit_cbm", label: "Unit CBM", kind: "number" }, { key: "status", label: "Status", required: true }, { key: "notes", label: "Notes", kind: "textarea" }] },
 ];
 const cell = (value: unknown) => value == null || value === "" ? "—" : typeof value === "object" ? "Related record" : String(value);
+
+function LocationSearch({ accessToken, onSelect }: { accessToken: string | null; onSelect: (location: LocationSearchResult) => void }) {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<LocationSearchResult[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [searched, setSearched] = useState(false);
+  const [error, setError] = useState("");
+
+  const search = async () => {
+    if (!accessToken || query.trim().length < 3) return;
+    setSearching(true);
+    setSearched(false);
+    setError("");
+    try {
+      setResults(await searchWarehouseLocations(accessToken, query));
+      setSearched(true);
+    } catch (cause) {
+      setResults([]);
+      setError(cause instanceof Error ? cause.message : "Unable to search map locations.");
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  return <div className="mt-4 space-y-2">
+    <label htmlFor="record-location-search" className="block text-xs font-medium text-slate-600">Search location on map</label>
+    <div className="flex gap-2">
+      <input id="record-location-search" type="search" value={query} onChange={(event) => { setQuery(event.target.value); setResults([]); setSearched(false); setError(""); }} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void search(); } }} placeholder="Search an address or place" className="h-10 min-w-0 flex-1 rounded-lg border border-slate-200 px-3 text-sm" />
+      <button type="button" onClick={() => void search()} disabled={searching || query.trim().length < 3} className="inline-flex h-10 shrink-0 items-center gap-2 rounded-lg bg-[#0b2341] px-4 text-sm font-medium text-white disabled:opacity-50"><Search className="h-4 w-4" />{searching ? "Searching…" : "Search"}</button>
+    </div>
+    <p className="text-[11px] text-slate-500">Choose a result to fill the address and exact coordinates. Map data © OpenStreetMap contributors.</p>
+    {error && <p role="alert" className="text-xs text-rose-700">{error}</p>}
+    {results.length > 0 && <ul aria-label="Map search results" className="max-h-48 overflow-y-auto rounded-lg border border-slate-200">{results.map((location, index) => <li key={`${location.latitude}:${location.longitude}:${index}`}><button type="button" onClick={() => onSelect(location)} className="w-full border-b border-slate-100 px-3 py-2 text-left text-xs text-slate-700 last:border-0 hover:bg-slate-50">{location.display_name}<span className="mt-1 block text-[10px] text-slate-400">{location.latitude}, {location.longitude}</span></button></li>)}</ul>}
+    {searched && results.length === 0 && <p className="text-xs text-slate-500">No map locations found. Try a nearby address or place name.</p>}
+  </div>;
+}
 
 export default function MasterDataView() {
   const { accessToken, profile } = useAuth();
@@ -70,6 +106,9 @@ export default function MasterDataView() {
       const value = row?.[field.key] ?? (!row && field.key === "status" ? "ACTIVE" : undefined);
       return [field.key, field.kind === "boolean" ? Boolean(value) : value == null ? "" : String(value)];
     })));
+  };
+  const selectRecordLocation = (location: LocationSearchResult) => {
+    setForm((current) => ({ ...current, address: location.display_name, latitude: String(location.latitude), longitude: String(location.longitude) }));
   };
   const submit = async (event: React.FormEvent) => {
     event.preventDefault(); if (!accessToken || !config) return;
@@ -161,7 +200,7 @@ export default function MasterDataView() {
       {config && !error && <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 px-4 py-3 text-xs text-slate-500"><span>{totalRows.toLocaleString()} records · Page {page} of {totalPages}</span><div className="flex gap-2"><button type="button" disabled={loading || page <= 1} onClick={() => { setLoading(true); setPage((value) => value - 1); }} className={tableUi.pageBtn}>Previous</button><button type="button" disabled={loading || page >= totalPages} onClick={() => { setLoading(true); setPage((value) => value + 1); }} className={tableUi.pageBtn}>Next</button></div></footer>}
     </div>}
     </section>
-    {config && editing !== undefined && (editing || Object.keys(form).length > 0) && <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-slate-900/20 p-4 backdrop-blur-[2px]" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) { setForm({}); setEditing(null); } }}><form onSubmit={(event) => void submit(event)} role="dialog" aria-modal="true" aria-labelledby="master-data-title" className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-5 shadow-xl"><h3 id="master-data-title" className="text-lg font-semibold text-[#0b2341]">{editing ? "Edit" : "Add"} {config.label.slice(0, -1)}</h3><div className="mt-4 grid gap-3 sm:grid-cols-2">{config.fields.map((field) => <label key={field.key} className={`space-y-1 text-xs font-medium text-slate-600 ${field.kind === "textarea" ? "sm:col-span-2" : ""}`}>{field.label}{field.kind === "boolean" ? <input type="checkbox" checked={Boolean(form[field.key])} onChange={(event) => setForm((current) => ({ ...current, [field.key]: event.target.checked }))} className="ml-2" /> : field.kind === "relation" ? <select required={field.required} value={String(form[field.key] ?? "")} onChange={(event) => setForm((current) => ({ ...current, [field.key]: event.target.value }))} className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm"><option value="">Choose {field.label.toLowerCase()}</option>{(relations[field.source ?? ""] ?? []).map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select> : field.kind === "textarea" ? <textarea required={field.required} value={String(form[field.key] ?? "")} onChange={(event) => setForm((current) => ({ ...current, [field.key]: event.target.value }))} className="min-h-24 w-full rounded-lg border border-slate-200 p-2 text-sm" /> : <input required={field.required} type={field.kind === "number" ? "number" : "text"} step={field.key === "latitude" || field.key === "longitude" ? "any" : undefined} value={String(form[field.key] ?? "")} onChange={(event) => setForm((current) => ({ ...current, [field.key]: event.target.value }))} className="h-10 w-full rounded-lg border border-slate-200 px-3 text-sm" />}</label>)}</div>{formError && <p role="alert" className="mt-3 text-sm text-rose-700">{formError}</p>}<div className="mt-5 flex justify-end gap-2"><button type="button" disabled={saving} onClick={() => { setForm({}); setEditing(null); }} className="rounded-full border border-slate-200 px-4 py-2 text-sm">Cancel</button><button disabled={saving} className="rounded-full bg-[#ffd43b] px-4 py-2 text-sm font-semibold text-[#0b2341] disabled:opacity-50">{saving ? "Saving…" : "Save"}</button></div></form></div>}
+    {config && editing !== undefined && (editing || Object.keys(form).length > 0) && <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-slate-900/20 p-4 backdrop-blur-[2px]" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) { setForm({}); setEditing(null); } }}><form onSubmit={(event) => void submit(event)} role="dialog" aria-modal="true" aria-labelledby="master-data-title" className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-5 shadow-xl"><h3 id="master-data-title" className="text-lg font-semibold text-[#0b2341]">{editing ? "Edit" : "Add"} {config.label.slice(0, -1)}</h3>{(config.key === "warehouses" || config.key === "stores") && <LocationSearch accessToken={accessToken} onSelect={selectRecordLocation} />}<div className="mt-4 grid gap-3 sm:grid-cols-2">{config.fields.map((field) => <label key={field.key} className={`space-y-1 text-xs font-medium text-slate-600 ${field.kind === "textarea" ? "sm:col-span-2" : ""}`}>{field.label}{field.kind === "boolean" ? <input type="checkbox" checked={Boolean(form[field.key])} onChange={(event) => setForm((current) => ({ ...current, [field.key]: event.target.checked }))} className="ml-2" /> : field.kind === "relation" ? <select required={field.required} value={String(form[field.key] ?? "")} onChange={(event) => setForm((current) => ({ ...current, [field.key]: event.target.value }))} className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm"><option value="">Choose {field.label.toLowerCase()}</option>{(relations[field.source ?? ""] ?? []).map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select> : field.kind === "select" ? <select required={field.required} value={String(form[field.key] ?? "")} onChange={(event) => setForm((current) => ({ ...current, [field.key]: event.target.value }))} className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm"><option value="">Choose {field.label.toLowerCase()}</option>{(field.options ?? []).map((option) => <option key={option} value={option}>{option}</option>)}</select> : field.kind === "textarea" ? <textarea required={field.required} value={String(form[field.key] ?? "")} onChange={(event) => setForm((current) => ({ ...current, [field.key]: event.target.value }))} className="min-h-24 w-full rounded-lg border border-slate-200 p-2 text-sm" /> : <input required={field.required} type={field.kind === "number" ? "number" : "text"} step={field.key === "latitude" || field.key === "longitude" ? "any" : undefined} value={String(form[field.key] ?? "")} onChange={(event) => setForm((current) => ({ ...current, [field.key]: event.target.value }))} className="h-10 w-full rounded-lg border border-slate-200 px-3 text-sm" />}</label>)}</div>{formError && <p role="alert" className="mt-3 text-sm text-rose-700">{formError}</p>}<div className="mt-5 flex justify-end gap-2"><button type="button" disabled={saving} onClick={() => { setForm({}); setEditing(null); }} className="rounded-full border border-slate-200 px-4 py-2 text-sm">Cancel</button><button disabled={saving} className="rounded-full bg-[#ffd43b] px-4 py-2 text-sm font-semibold text-[#0b2341] disabled:opacity-50">{saving ? "Saving…" : "Save"}</button></div></form></div>}
     {accessToken && imagesTruck && <TruckImageManager token={accessToken} truckId={imagesTruck.id} truckLabel={String(imagesTruck.plate_number ?? "Truck")} onClose={() => setImagesTruck(null)} />}
     {accessToken && photoProduct && <ProductPhotoManager token={accessToken} productId={photoProduct.id} productLabel={String(photoProduct.name ?? "Product")} onClose={() => setPhotoProduct(null)} />}
   </div>;

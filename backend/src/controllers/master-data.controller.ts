@@ -1,10 +1,26 @@
 import type { Request, Response } from "express";
 import { listMasterData, saveMasterData } from "../services/master-data.service.js";
+import { LocationSearchError, searchLocations } from "../services/location-search.service.js";
 import { deleteTruckImage, listTruckImages, TruckImageError, uploadTruckImage } from "../services/truck-image.service.js";
+
+export async function searchWarehouseLocations(req: Request, res: Response) {
+  try {
+    const query = typeof req.query.q === "string" ? req.query.q : "";
+    return res.json({ success: true, data: await searchLocations(query) });
+  } catch (error) {
+    if (error instanceof LocationSearchError) {
+      return res.status(error.statusCode).json({ success: false, message: error.message });
+    }
+    console.error("Warehouse location search failed:", error);
+    return res.status(502).json({ success: false, message: "Unable to search map locations right now." });
+  }
+}
 
 function failure(res: Response, error: unknown) {
   const message = error instanceof Error ? error.message : "Master data request failed.";
-  return res.status(/required|valid|cannot|unsupported|number|true or false|references|at least one|outside/i.test(message) ? 400 : 502)
+  const duplicate = /already exists/i.test(message);
+  const invalidInput = /required|valid|cannot|unsupported|number|true or false|references|at least one|outside|not allowed|must be/i.test(message);
+  return res.status(duplicate ? 409 : invalidInput ? 400 : 502)
     .json({ success: false, message });
 }
 
