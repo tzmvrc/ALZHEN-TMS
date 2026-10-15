@@ -1,0 +1,64 @@
+{
+  "counts": {
+    "items": 0,
+    "offloads": 1,
+    "receipts": 1
+  },
+  "grants": [
+    {
+      "acl": [
+        "postgres=arwdDxtm/postgres",
+        "anon=Dxtm/postgres",
+        "authenticated=Dxtm/postgres",
+        "service_role=arwdDxtm/postgres"
+      ],
+      "rls": true,
+      "relation": "offloads"
+    },
+    {
+      "acl": [
+        "postgres=arwdDxtm/postgres",
+        "anon=Dxtm/postgres",
+        "authenticated=Dxtm/postgres",
+        "service_role=arwDxtm/postgres"
+      ],
+      "rls": true,
+      "relation": "offload_items"
+    },
+    {
+      "acl": [
+        "postgres=arwdDxtm/postgres",
+        "service_role=ardDxtm/postgres"
+      ],
+      "rls": true,
+      "relation": "report_receipts"
+    }
+  ],
+  "hashes": {
+    "items": "d751713988987e9331980363e24189ce",
+    "offloads": "3e13745ca0785a24028bc4276a3cbb81",
+    "receipts": "b56bef3bc65b60e8cac705cc17735dcf"
+  },
+  "columns": [
+    {
+      "type": "timestamp with time zone",
+      "column": "reported_at",
+      "default": "now()",
+      "nullable": "YES"
+    },
+    {
+      "type": "uuid",
+      "column": "reported_by",
+      "default": null,
+      "nullable": "YES"
+    }
+  ],
+  "rpc_permissions": {
+    "anon": false,
+    "service_role": true,
+    "authenticated": false,
+    "security_definer": false
+  },
+  "capacity_trigger": "CREATE TRIGGER offload_receipt_capacity_trg BEFORE INSERT OR UPDATE OF offload_id ON public.report_receipts FOR EACH ROW EXECUTE FUNCTION check_offload_receipt_capacity_v1()",
+  "historical_fields_populated": 0
+}

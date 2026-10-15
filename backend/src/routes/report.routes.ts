@@ -1,4 +1,5 @@
 import { Router } from "express";
+import express from "express";
 import { authMiddleware } from "../middleware/auth.middleware.js";
 import { requireRole } from "../middleware/role.middleware.js";
 import {
@@ -13,8 +14,33 @@ import {
   getTripExceptionsReport,
 } from "../controllers/report.controller.js";
 import * as transmittalTrackerController from "../controllers/transmittal-tracker.controller.js";
+import * as operationsReportController from "../controllers/operations-report.controller.js";
 
 const router = Router();
+
+// Operational report writes authorize ADMIN/STAFF versus assigned TRUCKER
+// accounts inside the service using the authenticated profile/session.
+router.get("/operations/overview", authMiddleware, operationsReportController.getOverview);
+router.get("/operations/reporters", authMiddleware, requireRole("ADMIN", "STAFF"), operationsReportController.getReporters);
+router.get("/operations/assigned", authMiddleware, operationsReportController.getAssigned);
+router.get("/operations/trips/:tripId", authMiddleware, operationsReportController.getTripDetails);
+router.put("/operations/loading/:tripId", authMiddleware, operationsReportController.saveLoading);
+router.put("/operations/unloading/:tripId/stops/:stopId", authMiddleware, operationsReportController.saveUnloading);
+router.post("/operations/backloads", authMiddleware, operationsReportController.createBackload);
+router.patch("/operations/backloads/:recordId", authMiddleware, operationsReportController.updateBackload);
+router.post("/operations/offloads", authMiddleware, operationsReportController.createOffload);
+router.patch("/operations/offloads/:recordId", authMiddleware, operationsReportController.updateOffload);
+router.patch("/operations/types/:sourceType/:recordId", authMiddleware, operationsReportController.updateEventType);
+router.delete("/operations/reports/:sourceType/:recordId", authMiddleware, operationsReportController.deleteReport);
+router.post("/operations/conversions", authMiddleware, operationsReportController.convertReport);
+router.post("/operations/events", authMiddleware, operationsReportController.submitEvent);
+router.post(
+  "/operations/:eventType/:recordId/receipts",
+  authMiddleware,
+  express.raw({ type: ["image/jpeg", "image/png", "image/webp"], limit: "5mb" }),
+  operationsReportController.uploadReceipt,
+);
+router.get("/operations/:eventType/:recordId/receipts", authMiddleware, operationsReportController.listReceipts);
 
 router.get(
   "/transmittal-tracker",

@@ -2,23 +2,18 @@ import { useState, type ComponentProps } from "react";
 import ReportDataView from "./ReportDataView";
 import TransmittalTrackerView from "./TransmittalTrackerView";
 import SlidingSegmentedControl from "./SlidingSegmentedControl";
+import OperationsReportsView from "./OperationsReportsView";
+import { REPORTS } from "../../services/report.service";
 
 type Props = ComponentProps<typeof ReportDataView>;
 
-const REPORT_LABELS: Record<NonNullable<Props["initialReport"]>, string> = {
-  combined: "Combined Report",
-  "dispatch-monitoring": "Dispatch Monitoring",
-  dispatch: "Dispatch Report",
-  "trip-booking": "Trip Booking",
-  "store-calling": "Store Calling",
-};
-
 export default function ReportsWorkspace(props: Props) {
-  const [activeTab, setActiveTab] = useState<"reports" | "transmittal">("reports");
-  const reportLabel = REPORT_LABELS[props.initialReport ?? "combined"];
+  const [activeTab, setActiveTab] = useState<"reports" | "transmittal" | "operations">("reports");
+  const reportLabel = REPORTS[props.initialReport ?? "combined"].title;
   const tabOptions = [
     { value: "reports", label: reportLabel },
     { value: "transmittal", label: "Transmittal Tracker" },
+    { value: "operations", label: "Loading / Unloading · Backload · Offload" },
   ] as const;
   const tabs = (
     <SlidingSegmentedControl
@@ -45,6 +40,7 @@ export default function ReportsWorkspace(props: Props) {
         <ReportDataView {...props} pageTitle={undefined} pageSubtitle={undefined} toolbarLeading={tabs} />
       </div>
       {activeTab === "transmittal" && <div role="tabpanel" className="space-y-3">{tabs}<TransmittalTrackerView /></div>}
+      {activeTab === "operations" && <div role="tabpanel" className="space-y-3">{tabs}<OperationsReportsView mode="management" onOpenTrip={props.onOpenTrip} /></div>}
     </section>
   );
 }

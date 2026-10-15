@@ -6,6 +6,11 @@ export type TransmittalStopRecord = {
   store_id: string | null;
   delivery_status: string | null;
   finish_unloading_time: string | null;
+  dr_number?: string | null;
+  quantity?: number | null;
+  total_cbm?: number | null;
+  updated_at?: string | null;
+  dr_version?: number;
 };
 
 export type TransmittalTripRecord = {
@@ -18,7 +23,7 @@ export type TransmittalTripRecord = {
 
 export type TransmittalWarehouse = { id: string; code: string | null };
 export type TransmittalNamedRecord = { id: string; name: string | null };
-export type TransmittalAssignment = { trip_id: string; truck_id: string | null; driver_id: string | null; assignment_type: string };
+export type TransmittalAssignment = { trip_id: string; truck_id: string | null; driver_id: string | null; assignment_type: string; unassigned_at: string | null };
 export type TransmittalTruck = { id: string; plate_number: string | null };
 export type TransmittalDriver = { id: string; first_name: string | null; last_name: string | null };
 export type TransmittalLineItem = { trip_stop_id: string; dr_number: string | null; sap_so_number: string | null };
@@ -120,6 +125,10 @@ export function filterTransmittalTrackerRowsByReference(rows: TransmittalTracker
   return rows.filter((row) => row.transmittal_ref === reference);
 }
 
+export function isTransmittalEligible(stop: Pick<TransmittalStopRecord, "delivery_status">, hasStoredHistory: boolean) {
+  return hasStoredHistory || /^(COMPLETED|COMPLETE|DELIVERED)$/i.test(String(stop.delivery_status ?? "").trim());
+}
+
 /** One row is driven exclusively by each trip_stops.id. Every enrichment is
  * grouped independently by its owning trip/stop so one-to-many sources cannot
  * multiply tracker rows. */
@@ -135,7 +144,7 @@ export function buildTransmittalTrackerRows(
   const drivers = new Map(source.drivers.map((driver) => [driver.id, [driver.first_name, driver.last_name].filter(Boolean).join(" ")]));
   const assignmentsByTrip = new Map<string, TransmittalAssignment[]>();
   for (const assignment of source.assignments) {
-    if (assignment.assignment_type !== "PRIMARY") continue;
+    if (assignment.assignment_type !== "PRIMARY" || assignment.unassigned_at !== null) continue;
     const list = assignmentsByTrip.get(assignment.trip_id) ?? [];
     list.push(assignment);
     assignmentsByTrip.set(assignment.trip_id, list);
@@ -172,8 +181,17 @@ export function buildTransmittalTrackerRows(
       if (cell.value === null || cell.value === undefined) return fallback;
       return typeof cell.value === "string" ? cell.value : "";
     };
-    const assignments = assignmentRows.filter((assignment) => assignment.truck_id || assignment.driver_id);
+    // Match report views: ambiguous active PRIMARY assignments provide no
+    // arbitrary vehicle/driver context, while the transaction row is retained.
+    const assignments = assignmentRows.length === 1 ? assignmentRows : [];
     const itemDate = stop.finish_unloading_time?.slice(0, 10) ?? "";
+    const legacyDrs = distinct(items.map((item) => item.dr_number));
+    const legacyDr = getCell("delivery_receipt_no_override", legacyDrs.length === 1 ? legacyDrs[0] : "");
+    if (stop.dr_number == null && !cells.delivery_receipt_no_override && legacyDrs.length > 1) legacyConflicts.push("delivery_receipt_no_override");
+    const deliveryReceipt = stop.dr_number ?? legacyDr;
+    // DR now writes the authoritative stop field. Keep legacy overrides stored
+    // for history; the stop's DR version protects this source field.
+    cells.delivery_receipt_no_override = { value: deliveryReceipt, version: Number(stop.dr_version ?? 0), row_id: stop.id };
 
     return {
       trip_stop_id: stop.id,
@@ -183,7 +201,7 @@ export function buildTransmittalTrackerRows(
       delivered_to: getCell("delivered_to_override", stores.get(stop.store_id ?? "") || customers.get(stop.customer_id ?? "") || ""),
       plate_number: getCell("plate_number_override", joinDistinct(assignments.map((assignment) => trucks.get(assignment.truck_id ?? "")))),
       driver_name: joinDistinct(assignments.map((assignment) => drivers.get(assignment.driver_id ?? ""))),
-      delivery_receipt_no: getCell("delivery_receipt_no_override", joinDistinct(items.map((item) => item.dr_number))),
+      delivery_receipt_no: deliveryReceipt,
       sales_order_no: getCell("sales_order_no_override", joinDistinct(items.map((item) => item.sap_so_number))),
       date_created: getCell("date_created_override", ""),
       status: getCell("tracker_status", stop.delivery_status?.trim() ?? ""),

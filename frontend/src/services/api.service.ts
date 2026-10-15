@@ -28,7 +28,7 @@ const AUTH_SESSION_EXPIRED_PATTERNS = [
 ];
 
 const API_BASE_URL =
-  import.meta.env.VITE_API_URL ?? "http://localhost:5000/api";
+  import.meta.env?.VITE_API_URL ?? "http://localhost:5000/api";
 
 type SessionExpiredHandler = (reason?: string) => Promise<void> | void;
 
@@ -144,7 +144,8 @@ async function request<T>(
   if (
     !headers.has("Content-Type") &&
     options.body &&
-    !(options.body instanceof FormData)
+    !(options.body instanceof FormData) &&
+    !(options.body instanceof Blob)
   ) {
     headers.set("Content-Type", "application/json");
   }
@@ -203,6 +204,7 @@ async function request<T>(
 const responseCache = new Map<string, { expiresAt: number; value: unknown }>();
 const cachedRequests = new Map<string, Promise<unknown>>();
 const cacheRevisions = new Map<string, number>();
+let cacheSessionGeneration = 0;
 
 export function invalidateApiCache(prefix?: string) {
   const keys = new Set([...responseCache.keys(), ...cachedRequests.keys()]);
@@ -218,6 +220,7 @@ export function invalidateApiCache(prefix?: string) {
 }
 
 export function clearApiCache() {
+  cacheSessionGeneration += 1;
   invalidateApiCache();
 }
 
@@ -242,8 +245,13 @@ export async function apiGetCached<T>(
   if (pending) return pending as Promise<T>;
 
   const requestRevision = cacheRevisions.get(cacheKey) ?? 0;
+  const requestSession = cacheSessionGeneration;
   const requestPromise = request<T>(endpoint, { method: "GET" }, token)
     .then((value) => {
+      if (requestSession !== cacheSessionGeneration) throw new Error("The session changed while loading data.");
+      // Invalidation removes a pending request from the shared map. A response
+      // from before an edit must not be returned to a mounted page either.
+      if (requestRevision !== (cacheRevisions.get(cacheKey) ?? 0)) return apiGetCached<T>(endpoint, token, ttlMs);
       if (requestRevision === (cacheRevisions.get(cacheKey) ?? 0)) {
         responseCache.set(cacheKey, { expiresAt: Date.now() + ttlMs, value });
       }
@@ -319,4 +327,12 @@ export async function apiDelete<T>(
     },
     token,
   );
+}
+
+export async function apiPostFile<T>(endpoint: string, file: File, token?: string): Promise<T> {
+  return request<T>(endpoint, {
+    method: "POST",
+    body: file,
+    headers: { "Content-Type": file.type, "X-File-Name": encodeURIComponent(file.name) },
+  }, token);
 }

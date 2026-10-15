@@ -4,6 +4,7 @@ import { ApiError } from "../utils/api-response.js";
 import type { FlexActor } from "../types/flexible-table.types.js";
 import { assertFlexAccess, calculateFlexAccess } from "./flexible-table.authorization.js";
 import { requireCellVersion, requireUuid, validateCellValue } from "./flexible-table.validation.js";
+import { isTransmittalEligible } from "./transmittal-tracker.logic.js";
 import { buildTransmittalTrackerRows, filterTransmittalTrackerRows, isTrackerCellVersionCurrent, isTrackerEmptyOverride, persistTrackerCellAndAudit, resolveLegacyPodCellValue, shouldSeedDefaultStaffPermission, TRACKER_EMPTY_OVERRIDE, type TransmittalAssignment, type TransmittalDriver, type TransmittalLineItem, type TransmittalNamedRecord, type TransmittalStopRecord, type TransmittalTripRecord, type TransmittalTruck, type TransmittalWarehouse } from "./transmittal-tracker.logic.js";
 
 const SYSTEM_KEY = "alzhen_transmittal_tracker_v1";
@@ -193,7 +194,7 @@ async function readByIds<T>(tableName: string, select: string, column: string, i
 async function readSourceData() {
   // Stops define tracker cardinality. Every enrichment collection is fetched
   // separately and grouped in logic, avoiding line-item/assignment cross joins.
-  const stops = await readPaged<TransmittalStopRecord>("trip_stops", "id, trip_id, stop_sequence, customer_id, store_id, delivery_status, finish_unloading_time", (query) => query.order("trip_id", { ascending: true }).order("stop_sequence", { ascending: true }).order("id", { ascending: true }));
+  const stops = await readPaged<TransmittalStopRecord>("trip_stops", "id, trip_id, stop_sequence, customer_id, store_id, delivery_status, finish_unloading_time, dr_number, dr_version, quantity, total_cbm, updated_at", (query) => query.order("trip_id", { ascending: true }).order("stop_sequence", { ascending: true }).order("id", { ascending: true }));
   const tripIds = [...new Set(stops.map((stop) => stop.trip_id).filter(Boolean))];
   const storeIds = [...new Set(stops.map((stop) => stop.store_id).filter((id): id is string => Boolean(id)))];
   const customerIds = [...new Set(stops.map((stop) => stop.customer_id).filter((id): id is string => Boolean(id)))];
@@ -203,7 +204,7 @@ async function readSourceData() {
     readByIds<TransmittalTripRecord>("trips", "id, warehouse_id, loading_date, lbc_tracking_number, pod_ac_shipping_date", "id", tripIds),
     readByIds<TransmittalNamedRecord>("customer_stores", "id, name", "id", storeIds),
     readByIds<TransmittalNamedRecord>("customers", "id, name", "id", customerIds),
-    readByIds<TransmittalAssignment>("trip_truck_assignments", "trip_id, truck_id, driver_id, assignment_type", "trip_id", tripIds),
+    readByIds<TransmittalAssignment>("trip_truck_assignments", "trip_id, truck_id, driver_id, assignment_type, unassigned_at", "trip_id", tripIds),
     readByIds<TransmittalLineItem>("trip_line_items", "trip_stop_id, dr_number, sap_so_number", "trip_stop_id", stopIds),
   ]);
   const warehouseIds = [...new Set(trips.map((trip) => trip.warehouse_id).filter((id): id is string => Boolean(id)))];
@@ -268,7 +269,8 @@ export async function getTracker(actor: FlexActor, searchInput: unknown, request
     record[field] = { value: cell.value, version: cell.version, row_id: parent.id };
     cellsByStop.set(parent.source_entity_id, record);
   }
-  const rows = filterTransmittalTrackerRows(buildTransmittalTrackerRows(source, cellsByStop), searchInput === undefined ? "" : String(searchInput));
+  const eligible = { ...source, stops: source.stops.filter((stop) => isTransmittalEligible(stop, rowByStop.has(stop.id))) };
+  const rows = filterTransmittalTrackerRows(buildTransmittalTrackerRows(eligible, cellsByStop), searchInput === undefined ? "" : String(searchInput));
   const requestIdValue = requestId && requestId.length <= 100 ? requestId : undefined;
   return { table_id: table.id, access, columns, rows, request_id: requestIdValue };
 }
@@ -325,6 +327,22 @@ export async function updateTrackerCell(actor: FlexActor, stopIdInput: unknown, 
   const { data: sourceStop, error: sourceError } = await supabaseAdmin.from("trip_stops").select("id").eq("id", stopId).maybeSingle();
   if (sourceError) failDb("stop validation", sourceError);
   if (!sourceStop) throw new ApiError("Delivery stop not found in the Transmittal Tracker.", 404, "TRANSMITTAL_TRACKER_STOP_NOT_FOUND");
+  if (field === "delivery_receipt_no_override") {
+    const { data: stop, error: readError } = await supabaseAdmin.from("trip_stops").select("id,trip_id,dr_number,dr_version").eq("id", stopId).single();
+    if (readError) failDb("transaction DR read", readError);
+    const version = Number(stop.dr_version);
+    if (requireCellVersion(input.expected_version) !== version) throw new ApiError("This transaction changed. Refresh and retry.", 409, "FLEX_VERSION_CONFLICT");
+    if (input.value !== null && typeof input.value !== "string") throw new ApiError("DR Number must be text or blank.", 400, "INVALID_DR_NUMBER");
+    const value = typeof input.value === "string" ? input.value.trim() : "";
+    if (value && value.length > 100) throw new ApiError("DR Number must be at most 100 characters.", 400, "INVALID_DR_NUMBER");
+    const { data: saved, error } = await supabaseAdmin.from("trip_stops").update({ dr_number: value }).eq("id", stopId).eq("trip_id", stop.trip_id).eq("dr_version", version).select("id,dr_number,dr_version").maybeSingle();
+    if (error) failDb("transaction DR update", error);
+    if (!saved) throw new ApiError("This transaction changed. Refresh and retry.", 409, "FLEX_VERSION_CONFLICT");
+    let auditWarning: string | undefined;
+    try { await audit(table.id, actor.id, "update", "ROW", stopId, { dr_number: stop.dr_number }, { dr_number: saved.dr_number, trip_stop_id: stopId }, requestId); }
+    catch { auditWarning = "Value saved, but its audit event could not be recorded. Contact an administrator."; }
+    return { field, trip_stop_id: stopId, cell: { value: saved.dr_number ?? "", version: Number(saved.dr_version), row_id: stopId }, row_id: stopId, ...(auditWarning ? { audit_warning: auditWarning } : {}) };
+  }
   const { data: column, error: columnError } = await supabaseAdmin.from("flex_columns").select(COLUMN_FIELDS).eq("table_id", table.id).eq("settings->>system_key", field).eq("binding_scope", "STOP").eq("is_archived", false).maybeSingle();
   if (columnError) failDb("editable column lookup", columnError);
   if (!column) throw new ApiError("The tracker field is not configured.", 409, "TRANSMITTAL_TRACKER_COLUMN_MISSING");

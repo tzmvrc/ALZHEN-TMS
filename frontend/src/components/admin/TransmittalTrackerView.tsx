@@ -13,6 +13,7 @@ import ReportDropdownEditor, { type ReportDropdownChoice } from "./ReportDropdow
 import SearchableRelationshipEditor from "./SearchableRelationshipEditor";
 import {
   ReportTextCellEditor,
+  ReportRowActionButton,
   ReportCellFormattingToolbar,
   ReportColumnActionsMenu,
   ReportColumnColorDialog,
@@ -161,6 +162,10 @@ export default function TransmittalTrackerView() {
   const [editingColumnColor, setEditingColumnColor] = useState<string | null>(null);
   const [manageOptionsOpen, setManageOptionsOpen] = useState(false);
   const [editingCellKey, setEditingCellKey] = useState("");
+  const [selectedRowState, setSelectedRowState] = useState<{ datasetKey: string; ids: Set<string> }>(() => ({ datasetKey: "", ids: new Set() }));
+  const [rowEdit, setRowEdit] = useState<{ stopId: string; profileId: string | null; values: Partial<Record<EditableField, string>> } | null>(null);
+  const [rowEditError, setRowEditError] = useState("");
+  const [rowEditBusy, setRowEditBusy] = useState(false);
   const editingCellKeyRef = useRef("");
   const [selectedCell, setSelectedCell] = useState<{ rowId: string; field: EditableField } | null>(null);
   const [cellSelection, setCellSelection] = useState<{ anchorRowId: string; anchorField: EditableField; focusRowId: string; focusField: EditableField } | null>(null);
@@ -330,7 +335,7 @@ export default function TransmittalTrackerView() {
   const pinOffsets = useMemo(() => {
     const left: Record<string, number> = {};
     const right: Record<string, number> = {};
-    let leftOffset = 0;
+    let leftOffset = 44;
     for (const column of pinnedLeft) { left[column.key] = leftOffset; leftOffset += columnLayout.widths[column.key] ?? defaultTrackerColumnWidth(column); }
     let rightOffset = 0;
     for (const column of [...pinnedRight].reverse()) { right[column.key] = rightOffset; rightOffset += columnLayout.widths[column.key] ?? defaultTrackerColumnWidth(column); }
@@ -338,6 +343,13 @@ export default function TransmittalTrackerView() {
   }, [columnLayout.widths, pinnedLeft, pinnedRight]);
 
   const filteredRows = useMemo(() => filterTrackerRows(data?.rows ?? [], query, columnFilter, sort), [columnFilter, data?.rows, query, sort]);
+  const selectionDatasetKey = `${profile?.id ?? "anonymous"}:${JSON.stringify((data?.rows ?? []).map((row) => row.trip_stop_id).sort())}`;
+  const selectedRows = selectedRowState.datasetKey === selectionDatasetKey ? selectedRowState.ids : new Set<string>();
+  const setSelectedRows = (update: Set<string> | ((current: Set<string>) => Set<string>)) => setSelectedRowState((currentState) => {
+    const current = currentState.datasetKey === selectionDatasetKey ? currentState.ids : new Set<string>();
+    const next = typeof update === "function" ? update(current) : update;
+    return { datasetKey: selectionDatasetKey, ids: next };
+  });
 
   const references = useMemo(() => [...new Set((data?.rows ?? []).map((row) => row.transmittal_ref).filter(Boolean))].sort((a, b) => a.localeCompare(b)), [data?.rows]);
   const sheetRows = useMemo(() => (data?.rows ?? []).filter((row) => row.transmittal_ref === selectedReference), [data?.rows, selectedReference]);
@@ -601,6 +613,7 @@ export default function TransmittalTrackerView() {
       const next = { ...draftsRef.current }; delete next[key]; draftsRef.current = next; setDrafts(next);
       setConflictKeys((current) => { const nextConflicts = new Set(current); nextConflicts.delete(key); return nextConflicts; });
       setError("");
+      setSelectedRows(new Set());
       setNotice(saved.audit_warning ?? "Saved.");
       return true;
     } catch (saveError) {
@@ -626,6 +639,34 @@ export default function TransmittalTrackerView() {
       if (pendingSavePromises.current.get(key) === request) pendingSavePromises.current.delete(key);
     });
     return request;
+  };
+
+  const openSelectedRowEditor = () => {
+    if (selectedRows.size !== 1 || !data?.access.canEdit) return;
+    const stopId = [...selectedRows][0];
+    const row = data.rows.find((candidate) => candidate.trip_stop_id === stopId);
+    if (!row) return;
+    setRowEdit({ stopId, profileId: profile?.id ?? null, values: Object.fromEntries(TRACKER_COLUMNS.map((column) => [column.field, cellValue(row, column.field)])) });
+    setRowEditError("");
+  };
+
+  const saveSelectedTrackerRow = async () => {
+    if (!rowEdit || rowEdit.profileId !== (profile?.id ?? null) || !data?.access.canEdit) return;
+    const row = data.rows.find((candidate) => candidate.trip_stop_id === rowEdit.stopId);
+    if (!row) { setRowEditError("This delivery stop is no longer available. Refresh the tracker."); return; }
+    setRowEditBusy(true);
+    setRowEditError("");
+    const dirty = TRACKER_COLUMNS.filter((column) => rowEdit.values[column.field] !== cellValue(row, column.field));
+    try {
+      for (const column of dirty) {
+        const saved = await saveCell(row, column.field, rowEdit.values[column.field] ?? "");
+        if (!saved) throw new Error(`Unable to save ${column.title}. Any earlier fields in this row may already have saved.`);
+      }
+      setRowEdit(null);
+      setNotice(dirty.length ? "Row changes saved." : "No row changes to save.");
+    } catch (cause) {
+      setRowEditError(cause instanceof Error ? cause.message : "Unable to save this row.");
+    } finally { setRowEditBusy(false); }
   };
 
   const beginFillGesture = (row: TransmittalTrackerRow, column: TrackerColumn) => {
@@ -1014,20 +1055,21 @@ export default function TransmittalTrackerView() {
     </div>
     {columnFilter && <div className="flex flex-wrap items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600"><span className="font-semibold">Filter {TRACKER_COLUMNS.find((column) => column.key === columnFilter.key)?.title}</span><input autoFocus value={columnFilter.value} onChange={(event) => setColumnFilter({ ...columnFilter, value: event.target.value })} aria-label={`Filter ${TRACKER_COLUMNS.find((column) => column.key === columnFilter.key)?.title}`} className="h-8 min-w-48 rounded border border-slate-300 bg-white px-2 text-xs outline-none focus:border-blue-400" /><button type="button" onClick={() => setColumnFilter(null)} className="rounded px-2 py-1 text-slate-500 hover:bg-white">Clear filter</button></div>}
     {(error || notice || exportError || legacyConflictCount > 0) && <div role="status" className={`flex flex-wrap items-center gap-2 text-sm ${error || exportError ? "text-red-700" : notice.includes("audit event") || legacyConflictCount > 0 ? "text-amber-800" : "text-emerald-700"}`}><span>{error || exportError || (legacyConflictCount > 0 ? `${legacyConflictCount} stop${legacyConflictCount === 1 ? " has" : "s have"} conflicting legacy POD values. Replace and save each highlighted field before exporting.` : notice)}</span>{conflictKeys.size > 0 && <button type="button" onClick={discardConflicts} className="rounded border border-amber-500 px-2 py-1 text-amber-900 hover:bg-amber-50">Discard conflicted drafts and load latest</button>}</div>}
-    <ReportCellFormattingToolbar selectedCellCount={selectedFormatCellKeys.size} selectionIsBold={selectionIsBold} selectedTextColor={selectedTextColor} selectedBackgroundColor={selectedBackgroundColor} onApply={applyCellFormat} />
+    {selectedRows.size > 0 && <div className="flex items-center gap-3 rounded-xl border border-[#b7d5ed] bg-[#edf6fd] px-3 py-2 text-sm text-[#155b8d]"><span>{selectedRows.size} row{selectedRows.size === 1 ? "" : "s"} selected</span><ReportRowActionButton action="edit" disabled={selectedRows.size !== 1 || !data?.access.canEdit} onClick={openSelectedRowEditor} /><button type="button" onClick={() => setSelectedRows(new Set())} className="px-2 py-1 font-medium underline">Clear selection</button></div>}
     <div ref={viewportRef} tabIndex={0} onKeyDown={handleGridKeyDown} onPaste={(event) => void handleTrackerPaste(event)} onCopy={handleTrackerCopy} aria-label="Transmittal Tracker grid" className={`${REPORT_GRID_VIEWPORT_CLASS} shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-blue-400`}>
+      <div className="sticky top-0 z-[80] w-max min-w-full border-b border-slate-200 bg-white shadow-sm"><ReportCellFormattingToolbar selectedCellCount={selectedFormatCellKeys.size} selectionIsBold={selectionIsBold} selectedTextColor={selectedTextColor} selectedBackgroundColor={selectedBackgroundColor} onApply={applyCellFormat} /></div>
       <table className="w-max min-w-full border-separate border-spacing-0 text-left">
-        <thead className={tableUi.thead}><tr>{renderedColumns.map((column) => {
+        <thead className={tableUi.thead}><tr><th scope="col" style={{ top: 36 }} className={`${REPORT_GRID_HEADER_CELL_CLASS} sticky left-0 z-[70] w-11 min-w-11 text-center`}><input type="checkbox" aria-label="Select all visible Transmittal Tracker rows" checked={filteredRows.length > 0 && filteredRows.every((row) => selectedRows.has(row.trip_stop_id))} onChange={(event) => setSelectedRows((current) => { const next = new Set(current); filteredRows.forEach((row) => event.target.checked ? next.add(row.trip_stop_id) : next.delete(row.trip_stop_id)); return next; })} className="h-4 w-4 rounded border-slate-300 accent-[#2678b9]" /></th>{renderedColumns.map((column) => {
           const width = columnLayout.widths[column.key] ?? defaultTrackerColumnWidth(column);
           const pin = columnLayout.pins[column.key];
           const activeSort = sort?.key === column.key;
           const SortIcon = !activeSort ? ArrowUpDown : sort.direction === "asc" ? ArrowUp : ArrowDown;
-          return <th key={column.key} ref={(element) => { if (element) headerRefs.current.set(column.key, element); else headerRefs.current.delete(column.key); }} scope="col" onDragOver={(event) => { if (reorderSource) event.preventDefault(); }} onDrop={(event) => { event.preventDefault(); if (reorderSource) reorderColumn(reorderSource, column.key); setReorderSource(null); }} style={{ width, minWidth: width, maxWidth: width, position: "sticky", top: 0, backgroundColor: columnLayout.colors[column.key] ?? "#ffffff", color: columnLayout.colors[column.key] ? colorForeground(columnLayout.colors[column.key]) : undefined, ...(pin ? { left: pin === "left" ? pinOffsets.left[column.key] ?? 0 : undefined, right: pin === "right" ? pinOffsets.right[column.key] ?? 0 : undefined, zIndex: 60 } : { zIndex: 40 }) } as CSSProperties} className={`${REPORT_GRID_HEADER_CELL_CLASS} relative ${pin ? "shadow-sm" : ""}`}>
+          return <th key={column.key} ref={(element) => { if (element) headerRefs.current.set(column.key, element); else headerRefs.current.delete(column.key); }} scope="col" onDragOver={(event) => { if (reorderSource) event.preventDefault(); }} onDrop={(event) => { event.preventDefault(); if (reorderSource) reorderColumn(reorderSource, column.key); setReorderSource(null); }} style={{ width, minWidth: width, maxWidth: width, position: "sticky", top: 36, backgroundColor: columnLayout.colors[column.key] ?? "#ffffff", color: columnLayout.colors[column.key] ? colorForeground(columnLayout.colors[column.key]) : undefined, ...(pin ? { left: pin === "left" ? pinOffsets.left[column.key] ?? 0 : undefined, right: pin === "right" ? pinOffsets.right[column.key] ?? 0 : undefined, zIndex: 60 } : { zIndex: 40 }) } as CSSProperties} className={`${REPORT_GRID_HEADER_CELL_CLASS} relative ${pin ? "shadow-sm" : ""}`}>
             <div className="flex min-w-0 items-center justify-between gap-1"><button type="button" draggable title={`Drag to reorder ${column.title}; click to sort`} onDragStart={(event) => { event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/plain", String(column.key)); setReorderSource(column.key); }} onDragEnd={() => setReorderSource(null)} onClick={() => sortColumn(column.key)} className="min-w-0 flex-1 cursor-grab whitespace-normal rounded px-1 py-1 text-left text-[11px] font-semibold uppercase leading-tight tracking-wide text-inherit active:cursor-grabbing">{column.title}{activeSort && <SortIcon aria-hidden="true" className="ml-1 inline h-3 w-3" />}</button><button type="button" title={`Actions for ${column.title}`} aria-label={`Actions for ${column.title}`} aria-haspopup="menu" onClick={(event) => showColumnMenu(event, column)} className="shrink-0 rounded p-1 text-slate-500 hover:bg-slate-200 hover:text-[#0b2341] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"><EllipsisVertical className="h-4 w-4" /></button></div>
             <span role="separator" aria-label={`Resize ${column.title} column`} aria-orientation="vertical" onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); setResizeState({ key: column.key, startX: event.clientX, startWidth: headerRefs.current.get(column.key)?.getBoundingClientRect().width ?? width }); }} className="absolute right-0 top-0 z-[60] h-full w-1.5 cursor-col-resize touch-none hover:bg-blue-400/60" />
           </th>;
         })}</tr></thead>
-        <tbody>{filteredRows.map((row, rowIndex) => <tr key={row.trip_stop_id} className={`group report-data-row ${REPORT_GRID_ROW_CLASS}`}>{renderedColumns.map((column, columnIndex) => {
+        <tbody>{filteredRows.map((row, rowIndex) => <tr key={row.trip_stop_id} className={`group report-data-row ${REPORT_GRID_ROW_CLASS} ${selectedRows.has(row.trip_stop_id) ? "bg-blue-50 [&>td]:!bg-blue-50" : ""}`}><td data-cell-hover-disabled="true" className={`sticky left-0 z-30 w-11 min-w-11 border-r border-slate-100 text-center ${REPORT_GRID_BODY_CELL_CLASS} ${selectedRows.has(row.trip_stop_id) ? "!bg-blue-50" : "bg-white"}`}><input type="checkbox" aria-label={`Select row ${row.delivered_to || row.trip_stop_id}`} checked={selectedRows.has(row.trip_stop_id)} onClick={(event) => event.stopPropagation()} onChange={() => setSelectedRows((current) => { const next = new Set(current); if (next.has(row.trip_stop_id)) next.delete(row.trip_stop_id); else next.add(row.trip_stop_id); return next; })} className="h-4 w-4 rounded border-slate-300 accent-[#2678b9]" /></td>{renderedColumns.map((column, columnIndex) => {
           const width = columnLayout.widths[column.key] ?? defaultTrackerColumnWidth(column);
           const pin = columnLayout.pins[column.key];
           const formatColor = columnLayout.colors[column.key];
@@ -1051,6 +1093,10 @@ export default function TransmittalTrackerView() {
       {hiddenColumns.length > 0 && <div aria-label="Hidden tracker columns" className="sticky left-0 z-30 flex flex-wrap items-center gap-2 border-t border-slate-100 bg-slate-50/95 px-3 py-2"><span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Hidden columns</span>{hiddenColumns.map((column) => <button key={column.key} type="button" title={`Restore ${column.title} column`} onClick={() => restoreColumn(column.key)} className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs text-slate-600 hover:border-blue-300 hover:text-[#0b2341]"><EyeOff className="h-3 w-3" />{column.title}<span className="text-slate-400">· Restore</span></button>)}</div>}
     </div>
     <p className="text-xs text-slate-500">{filteredRows.length} delivery stop{filteredRows.length === 1 ? "" : "s"} shown. Tracker values are stored separately from operational trip, stop, and line-item records. Date created defaults blank because no verified stop-level source date is available.</p>
+    {rowEdit && rowEdit.profileId === (profile?.id ?? null) && <div className="fixed inset-0 z-[2100] flex items-center justify-center bg-[#0b2341]/45 p-4 backdrop-blur-sm" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !rowEditBusy) setRowEdit(null); }}><section role="dialog" aria-modal="true" aria-labelledby="tracker-row-edit-title" className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl"><div className="flex items-start justify-between gap-3"><div><h2 id="tracker-row-edit-title" className="text-lg font-semibold text-[#0b2341]">Edit Transmittal Tracker row</h2><p className="mt-1 text-xs text-slate-500">Delivery stop {rowEdit.stopId}. Changes save to this stop only.</p></div><button type="button" disabled={rowEditBusy} onClick={() => setRowEdit(null)} className="rounded px-2 py-1 text-slate-500 hover:bg-slate-100">Close</button></div><div className="mt-4 grid gap-3 sm:grid-cols-2">{TRACKER_COLUMNS.map((column) => {
+      const value = rowEdit.values[column.field] ?? "";
+      return <label key={column.field} className="text-xs font-semibold text-slate-600">{column.title}{column.editor === "dropdown" ? <select value={value} disabled={rowEditBusy} onChange={(event) => setRowEdit((current) => current ? { ...current, values: { ...current.values, [column.field]: event.target.value } } : current)} className="mt-1 h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm font-normal text-slate-800"><option value="">—</option>{[...dropdownChoices, ...(value && !dropdownChoices.some((option) => option.value === value) ? [{ value, label: value }] : [])].map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select> : column.editor === "text" && column.field === "tracker_remarks" ? <textarea rows={3} value={value} disabled={rowEditBusy} onChange={(event) => setRowEdit((current) => current ? { ...current, values: { ...current.values, [column.field]: event.target.value } } : current)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-normal text-slate-800" /> : <input type={column.editor === "date" ? "date" : "text"} value={column.editor === "date" ? value.slice(0, 10) : value} disabled={rowEditBusy} onChange={(event) => setRowEdit((current) => current ? { ...current, values: { ...current.values, [column.field]: event.target.value } } : current)} className="mt-1 h-10 w-full rounded-lg border border-slate-300 px-3 text-sm font-normal text-slate-800" />}</label>;
+    })}</div>{rowEditError && <p role="alert" className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{rowEditError}</p>}<div className="mt-5 flex justify-end gap-2"><button type="button" disabled={rowEditBusy} onClick={() => setRowEdit(null)} className="rounded-full border border-slate-200 px-4 py-2 text-sm text-slate-700 disabled:opacity-50">Cancel</button><button type="button" disabled={rowEditBusy} onClick={() => void saveSelectedTrackerRow()} className="rounded-full bg-[#ffd43b] px-4 py-2 text-sm font-semibold text-[#0b2341] disabled:opacity-50">{rowEditBusy ? "Saving…" : "Save changes"}</button></div><p className="mt-3 text-[11px] text-slate-500">Each changed field uses the tracker’s existing version check. If a later field fails, earlier fields may already be saved.</p></section></div>}
     {menuColumn && <ReportColumnActionsMenu
       title={menuColumn.title}
       position={menuPosition}

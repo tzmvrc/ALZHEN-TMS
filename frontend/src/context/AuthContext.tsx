@@ -19,7 +19,7 @@ import {
   setAppSessionId,
   unregisterSessionExpiredHandler,
 } from "../services/api.service";
-import { preloadAdminPageData } from "../services/admin-preload.service";
+import { cancelAdminPreload, preloadAdminPageData } from "../services/admin-preload.service";
 import { clearReportPageCache } from "../services/report.service";
 import { useToast } from "../components/ui/Toast";
 
@@ -95,6 +95,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const { addToast } = useToast();
 
   const clearSessionState = useCallback(() => {
+    cancelAdminPreload();
     sessionExpiredRef.current = false;
     window.clearTimeout(retryRefreshTimerRef.current);
     retryRefreshTimerRef.current = undefined;
@@ -223,7 +224,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
         cacheOwnerRef.current = response.data.profile.id;
         cacheTokenRef.current = session.access_token;
-        preloadAdminPageData(session.access_token, response.data.profile.role);
+        await preloadAdminPageData(session.access_token, response.data.profile.role);
 
         sessionExpiredRef.current = false;
         setUser(response.data.authUser);
@@ -333,7 +334,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         clearReportPageCache();
         cacheOwnerRef.current = response.data.profile.id;
         cacheTokenRef.current = response.data.session.access_token;
-        preloadAdminPageData(response.data.session.access_token, profileRole);
+        await preloadAdminPageData(response.data.session.access_token, profileRole);
         sessionExpiredRef.current = false;
         setUser(response.data.authUser);
         setProfile(response.data.profile);

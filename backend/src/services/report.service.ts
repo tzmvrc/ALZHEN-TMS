@@ -12,6 +12,9 @@ import {
 } from "../utils/pagination.js";
 import { isValidUuid, normalizeSortOrder, normalizeText } from "../utils/validation.js";
 import { buildIlikeOrFilter } from "../utils/postgrest-search.js";
+import { getTripRoutes } from "./trip-route.service.js";
+import { getOngoingTripIds } from "./trip-ongoing.service.js";
+import { resolveLegacyPodCellValue } from "./transmittal-tracker.logic.js";
 
 const REPORT_ROUTE_MAP = {
   combined: "v_tms_combined",
@@ -215,6 +218,9 @@ async function attachOperationalRecordIds(rows: Record<string, unknown>[]) {
       truck_allocated_by: "_truck_allocated_by",
       tms_done_by: "_tms_done_by",
       billing_id: "_billing_id",
+      incident_id: "_incident_id",
+      backload_id: "_backload_id",
+      offload_id: "_offload_id",
       store_call_id: "_store_call_id",
     };
     for (const [publicName, internalName] of Object.entries(aliases)) {
@@ -511,6 +517,46 @@ async function attachOperationalRecordIds(rows: Record<string, unknown>[]) {
   return rows;
 }
 
+/** Loading milestones live on loading_reports, outside the flattened views.
+ * Enrich only report pages whose operational rows make trip loading progress
+ * useful; fetch distinct page trip IDs in bounded batches to avoid N+1 reads. */
+async function attachLoadingMilestones(rows: Record<string, unknown>[]) {
+  for (const row of rows) {
+    row.warehouse_arrival_at ??= null;
+    row.loading_start_at ??= null;
+    row.loading_finished_at ??= null;
+  }
+  const tripIds = [...new Set(rows
+    .map((row) => row.trip_id ?? row._trip_id)
+    .filter((id): id is string => typeof id === "string" && id.length > 0))];
+  if (!tripIds.length) return rows;
+
+  const reports: Array<Record<string, unknown>> = [];
+  for (let offset = 0; offset < tripIds.length; offset += 100) {
+    const batch = tripIds.slice(offset, offset + 100);
+    const { data, error } = await supabaseAdmin
+      .from("loading_reports")
+      .select("trip_id, warehouse_arrival_at, loading_start_at, loading_finished_at")
+      .in("trip_id", batch);
+    if (error) {
+      console.error("Report loading-milestone enrichment failed:", { code: error.code, message: error.message });
+      return rows;
+    }
+    reports.push(...(data ?? []));
+  }
+  const byTrip = new Map(reports.map((report) => [String(report.trip_id), report]));
+  for (const row of rows) {
+    const tripId = row.trip_id ?? row._trip_id;
+    if (typeof tripId !== "string") continue;
+    const report = byTrip.get(tripId);
+    if (!report) continue;
+    row.warehouse_arrival_at = report.warehouse_arrival_at ?? null;
+    row.loading_start_at = report.loading_start_at ?? null;
+    row.loading_finished_at = report.loading_finished_at ?? null;
+  }
+  return rows;
+}
+
 function getReportDefinition(reportKey: string): ReportDefinition {
   const definition = REPORT_DEFINITIONS[reportKey];
   if (!definition) throw new ApiError("Report not found", 404, "REPORT_NOT_FOUND");
@@ -536,6 +582,11 @@ export async function getReportData(
   const requestedSort = normalizeText(getQueryString(query.sort_by));
   const sortBy = requestedSort && definition.sortableColumns.includes(requestedSort) ? requestedSort : definition.defaultSort;
   const sortOrder = normalizeSortOrder(getQueryString(query.sort_order), definition.defaultSortOrder);
+  const ongoingOnly = key === "dispatch-monitoring" && getQueryString(query.ongoing_only) === "true";
+  const ongoingTripIds = ongoingOnly ? await getOngoingTripIds() : null;
+  if (ongoingTripIds?.length === 0) {
+    return { rows: [], pagination: buildPaginationMeta(page, limit, 0) };
+  }
 
   let matchingTripIds: string[] = [];
   if (search && ["combined", "dispatch-monitoring", "dispatch", "trip-booking"].includes(key)) {
@@ -547,6 +598,12 @@ export async function getReportData(
   let lastError: Error | null = null;
   for (const viewName of viewNames) {
     let builder = supabaseAdmin.from(viewName).select("*", { count: "exact" });
+    if (key === "dispatch-monitoring" && getQueryString(query.active_transactions) === "true") {
+      builder = getQueryString(query.archive_scope) === "archived"
+        ? builder.not("transaction_archived_at", "is", null)
+        : builder.is("transaction_archived_at", null);
+    }
+    if (ongoingTripIds) builder = builder.in("trip_id", ongoingTripIds);
     builder = applyFilters(builder, definition, query);
     const reportTableKeys = [
       "combined",
@@ -559,7 +616,10 @@ export async function getReportData(
       ? definition.columns.filter(
           // Store Calling's assigned_to projection is a profile UUID; its
           // display name is enriched after the query and is searched client-side.
-          (column) => !(key === "store-calling" && column.key === "assigned_to"),
+          // Route is also derived after fetching the report page, not a view column.
+          (column) =>
+            column.key !== "route" &&
+            !(key === "store-calling" && column.key === "assigned_to"),
         )
       : definition.searchableColumns.map((column) => ({
           key: column,
@@ -572,9 +632,37 @@ export async function getReportData(
     const { data, error, count } = await builder;
     if (!error) {
       const rows = (data ?? []) as Record<string, unknown>[];
+      for (const row of rows) {
+        if (Object.hasOwn(row, "transmittal_ref")) {
+          const reference = resolveLegacyPodCellValue(row.transmittal_ref);
+          row.transmittal_ref = reference.value;
+          row.transmittal_ref_conflict = reference.conflict;
+        }
+      }
       const enriched = ["combined", "dispatch", "dispatch-monitoring", "trip-booking", "store-calling"].includes(key)
         ? await attachOperationalRecordIds(rows)
         : rows;
+      if (["combined", "dispatch", "dispatch-monitoring"].includes(key)) {
+        await attachLoadingMilestones(enriched);
+      }
+      if (["combined", "dispatch", "dispatch-monitoring", "trip-booking", "store-calling"].includes(key)) {
+        const tripIds = [...new Set(enriched
+          .map((row) => row.trip_id)
+          .filter((id): id is string => typeof id === "string" && id.length > 0))];
+        try {
+          const routes = await getTripRoutes(tripIds);
+          for (const row of enriched) {
+            const tripId = typeof row.trip_id === "string" ? row.trip_id : null;
+            row.route = tripId ? routes.get(tripId) ?? null : null;
+          }
+        } catch (error) {
+          console.error("Report route enrichment failed:", {
+            reportKey: key,
+            error: error instanceof Error ? error.message : "Unknown error",
+          });
+          for (const row of enriched) row.route = null;
+        }
+      }
       return {
         rows: enriched,
         pagination: buildPaginationMeta(page, limit, count ?? rows.length),

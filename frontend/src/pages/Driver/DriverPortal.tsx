@@ -17,6 +17,7 @@ import logo from "../../assets/logo.png";
 import ConfirmDialog from "../../components/ui/ConfirmDialog";
 import { useToast } from "../../components/ui/Toast";
 import { useAuth } from "../../context/AuthContext";
+import OperationsReportsView from "../../components/admin/OperationsReportsView";
 
 const deliverySteps = [
   {
@@ -179,6 +180,7 @@ export default function DriverPortal() {
       </header>
 
       <main className="bento-stagger mx-auto max-w-3xl space-y-5 px-4 py-5 sm:px-6 sm:py-7">
+        <OperationsReportsView mode="trucker" />
         <div className="flex flex-wrap items-end justify-between gap-2">
           <div>
             <p className="text-base font-medium text-slate-600">
@@ -203,8 +205,9 @@ export default function DriverPortal() {
             className="mt-0.5 h-6 w-6 shrink-0 text-amber-700"
           />
           <p>
-            <strong>Preview only.</strong> Trip updates and receipt photos are
-            not connected to dispatch yet.
+            <strong>Preview only.</strong> The trip-status controls and receipt
+            photo in this legacy preview are not connected. Submit timestamps
+            and Backload/Offload reports using the form above.
           </p>
         </div>
 

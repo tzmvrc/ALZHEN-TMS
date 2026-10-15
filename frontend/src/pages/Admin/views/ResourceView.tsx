@@ -299,11 +299,14 @@ export default function ResourceView({
      keeps its page, search and filters while the trip is open. */
   const [localTripId, setLocalTripId] = useState<string | null>(null);
   const [createdTripReference, setCreatedTripReference] = useState<string | null>(null);
+  const [localTripStopId, setLocalTripStopId] = useState<string | null>(null);
   useEffect(() => {
     setLocalTripId(null);
+    setLocalTripStopId(null);
   }, [id]);
-  const openTrip = (tripId: string) => {
+  const openTrip = (tripId: string, stopId?: string | null) => {
     setLocalTripId(tripId);
+    setLocalTripStopId(stopId ?? null);
     window.scrollTo({ top: 0 });
   };
   const isTripDetail =
@@ -394,6 +397,7 @@ export default function ResourceView({
             notificationTarget={notificationTarget}
             showReportPicker={false}
             showExport={false}
+            transactionView
             onOpenTrip={openTrip}
             createdTripReference={createdTripReference}
             toolbarActions={<AddTripButton onCreated={setCreatedTripReference} />}
@@ -578,6 +582,7 @@ export default function ResourceView({
       {showLocalTrip && localTripId && (
         <TripDetailView
           tripId={localTripId}
+          initialStopId={localTripStopId}
           onBack={() => setLocalTripId(null)}
         />
       )}

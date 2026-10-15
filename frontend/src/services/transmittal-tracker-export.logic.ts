@@ -1,5 +1,5 @@
 type ReconciledTrackerRow = {
-  cells?: Record<string, { value: unknown; version: number } | undefined>;
+  cells?: Record<string, { value: unknown; version: number; row_id?: string } | undefined>;
 };
 
 const editableCellKeys: Record<string, string> = {
@@ -35,6 +35,7 @@ export function reconcileTrackerRows<T extends object>(incomingRows: T[], curren
     const nextCells = { ...((next.cells as ReconciledTrackerRow["cells"]) ?? {}) };
     for (const [cellKey, cell] of Object.entries(existing.cells ?? {})) {
       if (!cell) continue;
+      if (cellKey === "delivery_receipt_no_override" && nextCells[cellKey]?.row_id && cell.row_id && nextCells[cellKey]?.row_id !== cell.row_id) continue;
       if ((nextCells[cellKey]?.version ?? -1) > cell.version) continue;
       nextCells[cellKey] = cell;
       const projectedField = projectedFieldsByCell[cellKey];

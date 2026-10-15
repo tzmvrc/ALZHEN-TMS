@@ -18,6 +18,7 @@ export type RealtimePayload = {
 // Tables are based on the checked-in view definitions and report enrichment queries.
 export const REPORT_REALTIME_TABLES: Record<ReportKey, readonly string[]> = {
   combined: [
+    "flex_cells", "flex_rows", "flex_columns", "flex_tables",
     "trips",
     "trip_truck_assignments",
     "trucks",
@@ -34,6 +35,7 @@ export const REPORT_REALTIME_TABLES: Record<ReportKey, readonly string[]> = {
     "warehouses",
   ],
   "dispatch-monitoring": [
+    "flex_cells", "flex_rows", "flex_columns", "flex_tables",
     "trips",
     "trip_truck_assignments",
     "trucks",
@@ -108,6 +110,11 @@ export const ADMIN_REALTIME_TABLES = [...new Set([
   "truck_images",
   "store_contacts",
   "admin_notifications",
+  "loading_reports",
+  "unloading_reports",
+  "offload_items",
+  "report_receipts",
+  "operations_report_conversions",
   // Flexible tracker metadata and cells are also source dependencies.
   "flex_rows",
   "flex_cells",
@@ -134,6 +141,9 @@ function emitAdminRealtime(event: AdminRealtimeEvent) {
 }
 
 function invalidateForTable(table: string, payload?: RealtimePayload) {
+  if (["loading_reports", "unloading_reports", "backloads", "offloads", "offload_items", "report_receipts", "operations_report_conversions", "trip_stops", "trips", "trip_truck_assignments", "drivers", "trucks", "profiles", "warehouses", "customers", "customer_stores"].includes(table)) {
+    invalidateApiCache("/reports/operations/");
+  }
   if ((TRANSMITTAL_TRACKER_REALTIME_TABLES as readonly string[]).includes(table)) {
     invalidateApiCache(TRANSMITTAL_TRACKER_ENDPOINT);
   }

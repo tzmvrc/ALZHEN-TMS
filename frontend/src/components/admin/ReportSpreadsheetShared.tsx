@@ -1,8 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { createPortal } from "react-dom";
-import { ArrowDown, ArrowUp, Bold, EyeOff, LoaderCircle, Paintbrush, Palette, Pin, Search, SlidersHorizontal, Trash2, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Bold, EyeOff, LoaderCircle, Paintbrush, Palette, Pencil, Pin, Search, SlidersHorizontal, Trash2, X } from "lucide-react";
 import { addDropdownOption, editDropdownOption, fetchDropdownOptions, type DropdownField, type DropdownOption } from "../../services/dropdown-option.service";
 import { REPORT_COLUMN_COLORS, type ReportCellFormat } from "./ReportSpreadsheetUtils";
+
+export function ReportRowActionButton({ action, disabled, onClick, label: customLabel }: { action: "edit" | "delete"; disabled?: boolean; onClick: () => void; label?: string }) {
+  const label = customLabel ?? (action === "edit" ? "Edit selected row" : "Delete selected reports");
+  const Icon = action === "edit" ? Pencil : Trash2;
+  return <button type="button" aria-label={label} title={label} disabled={disabled} onClick={onClick}
+    className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border bg-white transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9] disabled:cursor-not-allowed disabled:opacity-50 ${action === "delete" ? "border-rose-200 text-rose-700 hover:bg-rose-50" : "border-[#b7d5ed] text-[#155b8d] hover:bg-[#edf6fd]"}`}>
+    <Icon aria-hidden="true" className="h-4 w-4" />
+  </button>;
+}
 
 export function ReportCellFormattingToolbar({ selectedCellCount, selectionIsBold, selectedTextColor, selectedBackgroundColor, onApply }: {
   selectedCellCount: number;
@@ -31,7 +40,7 @@ export function ReportCellFormattingToolbar({ selectedCellCount, selectionIsBold
 type SortAction = { label: "Sort ascending" | "Sort descending"; active: boolean; onClick: () => void };
 export function ReportColumnActionsMenu({
   title, position, onClose, sortActions, pinned, onTogglePin, onEditColumn,
-  onFilter, canManageOptions, onManageOptions, onHide,
+  onFilter, canManageOptions, onManageOptions, onHide, canHide = true,
 }: {
   title: string;
   position: { left: number; top: number };
@@ -44,6 +53,7 @@ export function ReportColumnActionsMenu({
   canManageOptions?: boolean;
   onManageOptions?: () => void;
   onHide: () => void;
+  canHide?: boolean;
 }) {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
@@ -61,7 +71,7 @@ export function ReportColumnActionsMenu({
       <button role="menuitem" type="button" onClick={() => run(onTogglePin)} className={itemClass}><Pin className="h-3.5 w-3.5" />{pinned ? "Unpin" : "Pin"}</button>
       <button role="menuitem" type="button" onClick={() => run(onEditColumn)} className={itemClass}><Palette className="h-3.5 w-3.5" />Edit Column</button>
       {canManageOptions && onManageOptions && <button role="menuitem" type="button" onClick={() => run(onManageOptions)} className={itemClass}><SlidersHorizontal className="h-3.5 w-3.5" />Manage Options</button>}
-      <button role="menuitem" type="button" onClick={() => run(onHide)} className={itemClass}><EyeOff className="h-3.5 w-3.5" />Hide Column</button>
+      {canHide && <button role="menuitem" type="button" onClick={() => run(onHide)} className={itemClass}><EyeOff className="h-3.5 w-3.5" />Hide Column</button>}
     </div>
   </div>, document.body);
 }

@@ -13,8 +13,8 @@ export const REPORT_COLUMN_COLORS = [
 ];
 
 export const REPORT_GRID_VIEWPORT_CLASS = "relative min-h-48 max-h-[min(68vh,calc(100vh-18rem))] min-w-0 overflow-auto overscroll-contain rounded-xl border border-slate-200 bg-white";
-export const REPORT_GRID_HEADER_CELL_CLASS = "sticky top-0 z-30 whitespace-nowrap border-b border-r border-slate-100/70 bg-white px-4 py-3.5 text-[11px] font-semibold uppercase tracking-wider text-slate-600 last:border-r-0";
-export const REPORT_GRID_BODY_CELL_CLASS = "px-4 py-3.5 text-[13px] text-slate-800";
+export const REPORT_GRID_HEADER_CELL_CLASS = "sticky top-0 z-30 whitespace-nowrap border-b border-r border-slate-200 bg-slate-50 px-4 py-3.5 text-[11px] font-semibold uppercase tracking-wider text-slate-600 last:border-r-0";
+export const REPORT_GRID_BODY_CELL_CLASS = "border-b border-r border-slate-100 px-4 py-3.5 align-top text-[13px] text-slate-800 last:border-r-0";
 export const REPORT_GRID_ROW_CLASS = "border-b border-slate-100/80 transition-colors last:border-0";
 
 export type ReportCellFormat = { bold?: boolean; color?: string; backgroundColor?: string };

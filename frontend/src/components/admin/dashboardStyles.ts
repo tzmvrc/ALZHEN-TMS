@@ -1,3 +1,5 @@
+import { REPORT_GRID_BODY_CELL_CLASS, REPORT_GRID_HEADER_CELL_CLASS } from "./ReportSpreadsheetUtils";
+
 export const fleetTruckPhotos = [
   "/images/trucks/alzhen-truck-01.jpg",
   "/images/trucks/alzhen-truck-02.jpg",
@@ -117,9 +119,9 @@ export const tableUi = {
   segmentOff: "text-slate-500 hover:text-[#0b2341]",
   iconBtn: "inline-flex h-10 w-10 items-center justify-center rounded-full bg-white text-slate-500 shadow-[0_1px_2px_rgba(11,35,65,0.06)] transition hover:text-[#0b2341] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9]",
   thead: "bg-white",
-  th: "whitespace-nowrap border-b border-slate-100 px-4 py-3.5 text-[11px] font-semibold uppercase tracking-wider text-slate-600",
-  td: "px-4 py-3.5 text-[13px] text-slate-700",
-  tdStrong: "px-4 py-3.5 text-[13px] font-medium text-[#0b2341]",
+  th: REPORT_GRID_HEADER_CELL_CLASS,
+  td: REPORT_GRID_BODY_CELL_CLASS,
+  tdStrong: `${REPORT_GRID_BODY_CELL_CLASS} font-medium text-[#0b2341]`,
   row: "border-b border-slate-100/80 transition-colors last:border-0 hover:bg-[#f2f6fa]/70",
   footer: "flex items-center justify-between border-t border-slate-100 px-5 py-3 text-xs text-slate-400",
   pageBtn: "inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-500 transition hover:bg-[#f2f6fa] hover:text-[#0b2341] disabled:cursor-not-allowed disabled:opacity-30",

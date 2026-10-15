@@ -59,7 +59,26 @@ export const REPORT_PAGE_CACHE_TTL_MS = 90_000;
 export const REPORT_PAGE_STALE_TTL_MS = 5 * 60_000;
 const reportPageCache = new Map<string, { reportKey: ReportKey; token: string; expiresAt: number; staleUntil: number; value: ReportPageBundle }>();
 const reportPageRequests = new Map<string, Promise<ReportPageBundle>>();
+const reportPageErrors = new Map<string, string>();
+const reportPageVersions = new Map<ReportKey, number>();
 let reportPageCacheGeneration = 0;
+let reportPageSessionGeneration = 0;
+
+export function getInitialReportPageOptions(reportKey: ReportKey): ReportPageOptions {
+  return { page: 1, limit: 50, search: "", sortBy: getSortableFields(reportKey)[0], sortOrder: "desc", filters: {} };
+}
+
+/** Query-specific diagnostics use the same identity as navigation and preloading. */
+export function getReportPageState(reportKey: ReportKey, token: string, options: ReportPageOptions) {
+  const key = reportPageCacheKey(reportKey, token, options);
+  const cached = reportPageCache.get(key);
+  return {
+    fetching: reportPageRequests.has(key),
+    error: reportPageErrors.get(key) ?? null,
+    lastSuccessfulFetchAt: cached ? cached.expiresAt - REPORT_PAGE_CACHE_TTL_MS : null,
+    fresh: Boolean(cached && cached.expiresAt > Date.now()),
+  };
+}
 
 function reportPageCacheKey(reportKey: ReportKey, token: string, options: ReportPageOptions) {
   return JSON.stringify([
@@ -101,18 +120,25 @@ export function getStaleReportPage(
 }
 
 export function clearReportPageCache() {
+  reportPageSessionGeneration += 1;
   reportPageCacheGeneration += 1;
   reportPageCache.clear();
   reportPageRequests.clear();
+  reportPageErrors.clear();
+  reportPageVersions.clear();
 }
 
 export function invalidateReportPageCache(reportKey?: ReportKey) {
-  reportPageCacheGeneration += 1;
+  if (reportKey) reportPageVersions.set(reportKey, (reportPageVersions.get(reportKey) ?? 0) + 1);
+  else reportPageCacheGeneration += 1;
   for (const [key, entry] of reportPageCache) {
     if (!reportKey || entry.reportKey === reportKey) reportPageCache.delete(key);
   }
   for (const key of reportPageRequests.keys()) {
     if (!reportKey || key.includes(`"${reportKey}"`)) reportPageRequests.delete(key);
+  }
+  for (const key of reportPageErrors.keys()) {
+    if (!reportKey || key.includes(`"${reportKey}"`)) reportPageErrors.delete(key);
   }
 }
 
@@ -285,6 +311,13 @@ export async function fetchReportRows(
     const value = options.filters[filter.key]?.trim();
     if (value) params.set(filter.key, value);
   }
+  if (reportKey === "dispatch-monitoring" && options.filters.ongoing_only === "true") {
+    params.set("ongoing_only", "true");
+  }
+  if (reportKey === "dispatch-monitoring" && options.filters.active_transactions === "true") {
+    params.set("active_transactions", "true");
+    params.set("archive_scope", options.filters.archive_scope === "archived" ? "archived" : "active");
+  }
 
   const endpoint = `${REPORTS[reportKey].endpoint}?${params.toString()}`;
   const response = options.fresh
@@ -307,10 +340,17 @@ export async function fetchReportPage(
   if (pending) return pending;
 
   const requestGeneration = reportPageCacheGeneration;
+  const reportVersion = reportPageVersions.get(reportKey) ?? 0;
+  const sessionGeneration = reportPageSessionGeneration;
+  reportPageErrors.delete(key);
   const request = Promise.all([
     fetchReportColumns(reportKey, token, refresh),
     fetchReportRows(reportKey, token, { ...options, fresh: refresh }),
   ]).then(([columns, result]) => {
+    if (sessionGeneration !== reportPageSessionGeneration) throw new Error("The session changed while loading reports.");
+    if (requestGeneration !== reportPageCacheGeneration || reportVersion !== (reportPageVersions.get(reportKey) ?? 0)) {
+      return getCachedReportPage(reportKey, token, options) ?? fetchReportPage(reportKey, token, options, true);
+    }
     const bundle = { columns, rows: result.rows, pagination: result.pagination };
     if (requestGeneration === reportPageCacheGeneration) {
       const now = Date.now();
@@ -323,6 +363,11 @@ export async function fetchReportPage(
       });
     }
     return bundle;
+  }).catch((cause: unknown) => {
+    if (sessionGeneration === reportPageSessionGeneration && reportPageRequests.get(key) === request) {
+      reportPageErrors.set(key, cause instanceof Error ? cause.message : "Unable to load report.");
+    }
+    throw cause;
   }).finally(() => {
     if (reportPageRequests.get(key) === request) reportPageRequests.delete(key);
   });

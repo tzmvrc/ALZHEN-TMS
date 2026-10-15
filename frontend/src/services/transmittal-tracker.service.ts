@@ -1,4 +1,5 @@
 import { apiGetCached, apiPatch, apiPost, invalidateApiCache, type ApiResponse } from "./api.service";
+import { invalidateReportPageCache } from "./report.service";
 
 export type TransmittalTrackerCell = { value: unknown; version: number; row_id: string };
 export type TransmittalTrackerRow = {
@@ -30,7 +31,14 @@ export type TransmittalTrackerResponse = {
 
 export const TRANSMITTAL_TRACKER_ENDPOINT = "/reports/transmittal-tracker";
 export const TRANSMITTAL_TRACKER_CACHE_TTL_MS = 30_000;
-export const invalidateTransmittalTrackerCache = () => invalidateApiCache(TRANSMITTAL_TRACKER_ENDPOINT);
+export const invalidateTransmittalTrackerCache = () => {
+  invalidateApiCache(TRANSMITTAL_TRACKER_ENDPOINT);
+  invalidateApiCache("/reports/combined");
+  invalidateApiCache("/reports/dispatch-monitoring");
+  invalidateApiCache("/reports/operations");
+  invalidateReportPageCache("combined");
+  invalidateReportPageCache("dispatch-monitoring");
+};
 
 async function unwrap<T>(request: Promise<ApiResponse<T>>) {
   const response = await request;

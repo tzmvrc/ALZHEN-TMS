@@ -18,7 +18,10 @@ type ReportDropdownEditorProps = {
   allowAdd?: boolean;
   canManageOptions?: boolean;
   autoOpen?: boolean;
+  popoverZIndex?: number;
+  showStoredValue?: boolean;
   onSelect: (value: string) => void;
+  onSearch?: (value: string) => void;
   onCommitSelection?: (value: string) => void;
   onCommitBlur?: () => void;
   onAdd?: (displayLabel: string) => Promise<boolean>;
@@ -39,7 +42,10 @@ export default function ReportDropdownEditor({
   allowAdd = false,
   canManageOptions = false,
   autoOpen = true,
+  popoverZIndex = 120,
+  showStoredValue = true,
   onSelect,
+  onSearch,
   onCommitSelection,
   onCommitBlur,
   onAdd,
@@ -195,7 +201,7 @@ export default function ReportDropdownEditor({
       role="listbox"
       aria-label={`${label} options`}
       className="fixed z-[120] max-h-[min(75vh,22rem)] overflow-y-auto rounded-xl border border-amber-200 bg-white py-1 shadow-xl"
-      style={position}>
+      style={{ ...position, zIndex: popoverZIndex }}>
       {value && <div className="border-b border-slate-100 px-3 py-2 text-[11px] text-slate-500">Current: <span className="font-semibold text-slate-700">{displayValue ?? value}</span></div>}
       {loading ? (
         <p className="px-3 py-2 text-xs text-slate-500">Loading options...</p>
@@ -217,7 +223,7 @@ export default function ReportDropdownEditor({
                 <button type="button" role="option" aria-selected={option.value === value} onMouseDown={(event) => event.preventDefault()} onMouseEnter={() => setActiveIndex(index)} onClick={() => { onSelect(option.value); close(false); requestAnimationFrame(() => triggerRef.current?.focus()); }} className="flex min-h-10 min-w-0 flex-1 items-center justify-between gap-2 px-2.5 py-1.5 text-left text-xs text-slate-700">
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-xs font-bold text-slate-800">{option.label}</span>
-                    <span className="block truncate text-[10px] font-normal text-slate-500">{option.value}</span>
+                    {showStoredValue && <span className="block truncate text-[10px] font-normal text-slate-500">{option.value}</span>}
                   </span>
                   {option.value === value && <Check aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-emerald-700" />}
                 </button>
@@ -252,9 +258,9 @@ export default function ReportDropdownEditor({
     <>
       <div ref={rootRef} className="relative min-w-[150px] max-w-full">
         {open ? (
-          <input ref={inputRef} type="text" role="combobox" aria-label={`Search ${label} options`} aria-autocomplete="list" aria-expanded="true" aria-controls={listId} autoComplete="off" disabled={disabled || busy} value={query} onChange={(event) => { setQuery(event.target.value); setActiveIndex(0); }} onKeyDown={handleKeyDown} placeholder={(displayValue ?? value) ? `Current: ${displayValue ?? value}` : `Search ${label.toLowerCase()}`} className="w-full rounded-md border border-amber-300 bg-white px-2.5 py-1.5 pr-8 text-xs font-medium text-slate-800 shadow-sm outline-none transition focus:border-amber-500 focus:ring-2 focus:ring-amber-100 disabled:opacity-60" />
+          <input ref={inputRef} type="text" role="combobox" aria-label={`Search ${label} options`} aria-autocomplete="list" aria-expanded="true" aria-controls={listId} autoComplete="off" disabled={disabled || busy} value={query} onChange={(event) => { setQuery(event.target.value); onSearch?.(event.target.value); setActiveIndex(0); }} onKeyDown={handleKeyDown} placeholder={(displayValue ?? value) ? `Current: ${displayValue ?? value}` : `Search ${label.toLowerCase()}`} className="w-full rounded-md border border-amber-300 bg-white px-2.5 py-1.5 pr-8 text-xs font-medium text-slate-800 shadow-sm outline-none transition focus:border-amber-500 focus:ring-2 focus:ring-amber-100 disabled:opacity-60" />
         ) : (
-          <button ref={triggerRef} type="button" disabled={disabled} onBlur={() => onCommitBlur?.()} onClick={() => { setQuery(""); setActiveIndex(Math.max(0, options.findIndex((option) => option.value === value))); setOpen(true); }} className="flex w-full items-center justify-between gap-1.5 rounded-md border border-amber-300 bg-white px-2.5 py-1.5 text-left text-xs font-medium text-slate-800 shadow-sm hover:bg-amber-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 disabled:opacity-60">
+          <button ref={triggerRef} type="button" disabled={disabled} onBlur={() => onCommitBlur?.()} onClick={() => { setQuery(""); onSearch?.(""); setActiveIndex(Math.max(0, options.findIndex((option) => option.value === value))); setOpen(true); }} className="flex w-full items-center justify-between gap-1.5 rounded-md border border-amber-300 bg-white px-2.5 py-1.5 text-left text-xs font-medium text-slate-800 shadow-sm hover:bg-amber-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 disabled:opacity-60">
             <span className="truncate">{(displayValue ?? value) || `Choose ${label.toLowerCase()}`}</span><ChevronDown aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-amber-700" />
           </button>
         )}

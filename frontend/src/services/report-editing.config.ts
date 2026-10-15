@@ -286,6 +286,8 @@ const tripScalars: Record<string, ReportEditDefinition> = {
 };
 
 const stopScalars: Record<string, ReportEditDefinition> = {
+  dispatch_number: stopField("Dispatch Number", "dispatch_number"),
+  transaction_number: stopField("Transaction Number", "transaction_number"),
   arrival_time: {
     ...stopField("Arrival Time", "arrival_time", "date"),
     editor: "datetime",
@@ -360,8 +362,8 @@ const storeCallScalars: Record<string, ReportEditDefinition> = {
       customerIdField: "customer_id",
     },
   },
-  dispatch_number: tripScalars.dispatch_number,
-  transaction_number: tripScalars.transaction_number,
+  dispatch_number: stopScalars.dispatch_number,
+  transaction_number: stopScalars.transaction_number,
   customer_name: customer,
   driver_name: driver,
   plate_number: truck,
@@ -412,8 +414,8 @@ const REPORT_EDITING: Record<
 > = {
   combined: commonTrip,
   "dispatch-monitoring": {
-    dispatch_number: tripScalars.dispatch_number,
-    transaction_number: tripScalars.transaction_number,
+    dispatch_number: stopScalars.dispatch_number,
+    transaction_number: stopScalars.transaction_number,
     loading_date: tripScalars.loading_date,
     trip_status: tripStatus,
     letter_status: letterStatus,
@@ -451,7 +453,7 @@ const REPORT_EDITING: Record<
     lbc_tracking_number: tripScalars.lbc_tracking_number,
   },
   dispatch: {
-    dispatch_number: tripScalars.dispatch_number,
+    dispatch_number: stopScalars.dispatch_number,
     loading_date: tripScalars.loading_date,
     estimated_delivery_date: tripScalars.estimated_delivery_date,
     wh_code: warehouse,
@@ -471,7 +473,7 @@ const REPORT_EDITING: Record<
     quantity: lineItemScalars.quantity,
     cbm: lineItemScalars.cbm,
     trip_number: tripScalars.trip_number,
-    transaction_number: tripScalars.transaction_number,
+    transaction_number: stopScalars.transaction_number,
     added_to_report: tripScalars.added_to_report,
     subcon_rate_manual: tripScalars.subcon_rate_manual,
     remarks: tripField("Remarks", "remarks"),
@@ -493,7 +495,7 @@ const REPORT_EDITING: Record<
     letter_status: letterStatus,
   },
   "trip-booking": {
-    dispatch_number: tripScalars.dispatch_number,
+    dispatch_number: stopScalars.dispatch_number,
     trip_number: tripScalars.trip_number,
     loading_date: tripScalars.loading_date,
     warehouse_name: warehouse,
@@ -512,7 +514,7 @@ const REPORT_EDITING: Record<
     quantity: lineItemScalars.quantity,
     cbm: lineItemScalars.cbm,
     customer_model: lineItemScalars.customer_model,
-    transaction_number: tripScalars.transaction_number,
+    transaction_number: stopScalars.transaction_number,
     trip_type: tripType,
     trip_status: tripStatus,
     delivery_status: deliveryStatus,
@@ -566,6 +568,22 @@ const REPORT_EDITING: Record<
 export function getReportEditDefinition(
   reportKey: ReportKey,
   columnKey: string,
+  row?: Record<string, unknown>,
 ): ReportEditDefinition | null {
+  if (["combined", "dispatch-monitoring"].includes(reportKey)) {
+    const fields: Record<string, ReportEditDefinition> = {
+      transaction_dr_number: stopField("Transaction DR Number", "dr_number"),
+      transaction_quantity: stopField("Transaction Quantity", "quantity", "number"),
+      transaction_total_cbm: stopField("Total CBM", "total_cbm", "number"),
+      transmittal_ref: stopField("Transmittal Reference", "transmittal_ref"),
+    };
+    if (fields[columnKey]) return columnKey === "transmittal_ref" && row?.transmittal_ref_conflict ? null : fields[columnKey];
+  }
+  if (row && ["dispatch_number", "transaction_number"].includes(columnKey)) {
+    // Stop rows always target the stop. Only a genuine trip-only row can edit
+    // the parent identifier; missing child IDs never become parent writes.
+    if (row.trip_stop_id || row._trip_stop_id) return stopScalars[columnKey];
+    return tripScalars[columnKey] ?? null;
+  }
   return REPORT_EDITING[reportKey][columnKey] ?? null;
 }

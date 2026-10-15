@@ -1,0 +1,1697 @@
+[
+  {
+    "viewname": "v_dispatch_monitoring",
+    "definition": " WITH unique_active_primary_assignments AS (\n         SELECT assignment.id,\n            assignment.trip_id,\n            assignment.truck_id,\n            assignment.driver_id,\n            assignment.trucking_company_id,\n            assignment.assignment_type,\n            assignment.assigned_at,\n            assignment.unassigned_at,\n            assignment.remarks,\n            assignment.created_at,\n            assignment.updated_at\n           FROM trip_truck_assignments assignment\n          WHERE ((assignment.assignment_type = 'PRIMARY'::text) AND (assignment.unassigned_at IS NULL) AND (NOT (EXISTS ( SELECT 1\n                   FROM trip_truck_assignments other\n                  WHERE ((other.trip_id = assignment.trip_id) AND (other.assignment_type = 'PRIMARY'::text) AND (other.unassigned_at IS NULL) AND (other.id <> assignment.id))))))\n        )\n SELECT t.id AS trip_id,\n        CASE\n            WHEN (trip_stops.id IS NULL) THEN t.dispatch_number\n            ELSE trip_stops.dispatch_number\n        END AS dispatch_number,\n    t.loading_date,\n    warehouses.code AS warehouse_code,\n    warehouses.name AS warehouse_name,\n    trucks.plate_number,\n    concat_ws(' '::text, drivers.first_name, drivers.last_name) AS driver_name,\n    trucking_companies.name AS trucking_company,\n    t.status AS trip_status,\n    trip_stops.stop_sequence,\n    customers.name AS customer_name,\n    customer_stores.name AS store_name,\n    trip_stops.delivery_status,\n    trip_stops.arrival_time,\n    trip_stops.start_unloading_time,\n    trip_stops.finish_unloading_time,\n    trip_stops.departure_time,\n    t.remarks,\n    t.transaction_number,\n    t.trip_number,\n    t.added_to_report,\n    t.letter_status,\n    t.truck_allocated_by,\n    concat_ws(' '::text, allocated_by.first_name, allocated_by.last_name) AS truck_allocated_by_name,\n    t.subcon_rate_manual,\n    warehouse_departure.warehouse_departure_time,\n    t.signed_dr_upload_date,\n    t.transmittal_date,\n    t.tms_date,\n    t.pod_ac_shipping_date,\n    t.lbc_tracking_number,\n    t.tms_done_by,\n    concat_ws(' '::text, tms_done.first_name, tms_done.last_name) AS tms_done_by_name,\n    t.id AS _trip_id,\n    trip_stops.id AS _trip_stop_id,\n    trip_types.id AS _trip_type_id,\n    t.warehouse_id AS _warehouse_id,\n    trip_stops.customer_id AS _customer_id,\n    trip_stops.store_id AS _store_id,\n    tta.truck_id AS _truck_id,\n    tta.driver_id AS _driver_id,\n    tta.trucking_company_id AS _trucking_company_id,\n    tta.id AS _assignment_id\n   FROM ((((((((((((trips t\n     LEFT JOIN warehouses ON ((warehouses.id = t.warehouse_id)))\n     LEFT JOIN unique_active_primary_assignments tta ON ((tta.trip_id = t.id)))\n     LEFT JOIN trucks ON ((trucks.id = tta.truck_id)))\n     LEFT JOIN drivers ON ((drivers.id = tta.driver_id)))\n     LEFT JOIN trucking_companies ON ((trucking_companies.id = tta.trucking_company_id)))\n     LEFT JOIN trip_stops ON ((trip_stops.trip_id = t.id)))\n     LEFT JOIN customers ON ((customers.id = trip_stops.customer_id)))\n     LEFT JOIN customer_stores ON ((customer_stores.id = trip_stops.store_id)))\n     LEFT JOIN profiles allocated_by ON ((allocated_by.id = t.truck_allocated_by)))\n     LEFT JOIN profiles tms_done ON ((tms_done.id = t.tms_done_by)))\n     LEFT JOIN LATERAL ( SELECT min(trip_events.event_time) AS warehouse_departure_time\n           FROM trip_events\n          WHERE ((trip_events.trip_id = t.id) AND (trip_events.event_type = 'WAREHOUSE_DEPARTURE'::text))) warehouse_departure ON (true))\n     LEFT JOIN trip_types ON ((trip_types.id = t.trip_type_id)));",
+    "reloptions": null,
+    "columns": [
+      {
+        "name": "trip_id",
+        "type": "uuid",
+        "ordinal": 1
+      },
+      {
+        "name": "dispatch_number",
+        "type": "text",
+        "ordinal": 2
+      },
+      {
+        "name": "loading_date",
+        "type": "date",
+        "ordinal": 3
+      },
+      {
+        "name": "warehouse_code",
+        "type": "text",
+        "ordinal": 4
+      },
+      {
+        "name": "warehouse_name",
+        "type": "text",
+        "ordinal": 5
+      },
+      {
+        "name": "plate_number",
+        "type": "text",
+        "ordinal": 6
+      },
+      {
+        "name": "driver_name",
+        "type": "text",
+        "ordinal": 7
+      },
+      {
+        "name": "trucking_company",
+        "type": "text",
+        "ordinal": 8
+      },
+      {
+        "name": "trip_status",
+        "type": "text",
+        "ordinal": 9
+      },
+      {
+        "name": "stop_sequence",
+        "type": "integer",
+        "ordinal": 10
+      },
+      {
+        "name": "customer_name",
+        "type": "text",
+        "ordinal": 11
+      },
+      {
+        "name": "store_name",
+        "type": "text",
+        "ordinal": 12
+      },
+      {
+        "name": "delivery_status",
+        "type": "text",
+        "ordinal": 13
+      },
+      {
+        "name": "arrival_time",
+        "type": "timestamp with time zone",
+        "ordinal": 14
+      },
+      {
+        "name": "start_unloading_time",
+        "type": "timestamp with time zone",
+        "ordinal": 15
+      },
+      {
+        "name": "finish_unloading_time",
+        "type": "timestamp with time zone",
+        "ordinal": 16
+      },
+      {
+        "name": "departure_time",
+        "type": "timestamp with time zone",
+        "ordinal": 17
+      },
+      {
+        "name": "remarks",
+        "type": "text",
+        "ordinal": 18
+      },
+      {
+        "name": "transaction_number",
+        "type": "text",
+        "ordinal": 19
+      },
+      {
+        "name": "trip_number",
+        "type": "integer",
+        "ordinal": 20
+      },
+      {
+        "name": "added_to_report",
+        "type": "boolean",
+        "ordinal": 21
+      },
+      {
+        "name": "letter_status",
+        "type": "text",
+        "ordinal": 22
+      },
+      {
+        "name": "truck_allocated_by",
+        "type": "uuid",
+        "ordinal": 23
+      },
+      {
+        "name": "truck_allocated_by_name",
+        "type": "text",
+        "ordinal": 24
+      },
+      {
+        "name": "subcon_rate_manual",
+        "type": "numeric",
+        "ordinal": 25
+      },
+      {
+        "name": "warehouse_departure_time",
+        "type": "timestamp with time zone",
+        "ordinal": 26
+      },
+      {
+        "name": "signed_dr_upload_date",
+        "type": "date",
+        "ordinal": 27
+      },
+      {
+        "name": "transmittal_date",
+        "type": "date",
+        "ordinal": 28
+      },
+      {
+        "name": "tms_date",
+        "type": "date",
+        "ordinal": 29
+      },
+      {
+        "name": "pod_ac_shipping_date",
+        "type": "date",
+        "ordinal": 30
+      },
+      {
+        "name": "lbc_tracking_number",
+        "type": "text",
+        "ordinal": 31
+      },
+      {
+        "name": "tms_done_by",
+        "type": "uuid",
+        "ordinal": 32
+      },
+      {
+        "name": "tms_done_by_name",
+        "type": "text",
+        "ordinal": 33
+      },
+      {
+        "name": "_trip_id",
+        "type": "uuid",
+        "ordinal": 34
+      },
+      {
+        "name": "_trip_stop_id",
+        "type": "uuid",
+        "ordinal": 35
+      },
+      {
+        "name": "_trip_type_id",
+        "type": "uuid",
+        "ordinal": 36
+      },
+      {
+        "name": "_warehouse_id",
+        "type": "uuid",
+        "ordinal": 37
+      },
+      {
+        "name": "_customer_id",
+        "type": "uuid",
+        "ordinal": 38
+      },
+      {
+        "name": "_store_id",
+        "type": "uuid",
+        "ordinal": 39
+      },
+      {
+        "name": "_truck_id",
+        "type": "uuid",
+        "ordinal": 40
+      },
+      {
+        "name": "_driver_id",
+        "type": "uuid",
+        "ordinal": 41
+      },
+      {
+        "name": "_trucking_company_id",
+        "type": "uuid",
+        "ordinal": 42
+      },
+      {
+        "name": "_assignment_id",
+        "type": "uuid",
+        "ordinal": 43
+      }
+    ],
+    "grants": [
+      {
+        "grantee": "postgres",
+        "privilege": "INSERT"
+      },
+      {
+        "grantee": "postgres",
+        "privilege": "SELECT"
+      },
+      {
+        "grantee": "postgres",
+        "privilege": "UPDATE"
+      },
+      {
+        "grantee": "postgres",
+        "privilege": "DELETE"
+      },
+      {
+        "grantee": "postgres",
+        "privilege": "TRUNCATE"
+      },
+      {
+        "grantee": "postgres",
+        "privilege": "REFERENCES"
+      },
+      {
+        "grantee": "postgres",
+        "privilege": "TRIGGER"
+      },
+      {
+        "grantee": "anon",
+        "privilege": "TRUNCATE"
+      },
+      {
+        "grantee": "anon",
+        "privilege": "REFERENCES"
+      },
+      {
+        "grantee": "anon",
+        "privilege": "TRIGGER"
+      },
+      {
+        "grantee": "authenticated",
+        "privilege": "TRUNCATE"
+      },
+      {
+        "grantee": "authenticated",
+        "privilege": "REFERENCES"
+      },
+      {
+        "grantee": "authenticated",
+        "privilege": "TRIGGER"
+      },
+      {
+        "grantee": "service_role",
+        "privilege": "INSERT"
+      },
+      {
+        "grantee": "service_role",
+        "privilege": "SELECT"
+      },
+      {
+        "grantee": "service_role",
+        "privilege": "UPDATE"
+      },
+      {
+        "grantee": "service_role",
+        "privilege": "DELETE"
+      },
+      {
+        "grantee": "service_role",
+        "privilege": "TRUNCATE"
+      },
+      {
+        "grantee": "service_role",
+        "privilege": "REFERENCES"
+      },
+      {
+        "grantee": "service_role",
+        "privilege": "TRIGGER"
+      }
+    ]
+  },
+  {
+    "viewname": "v_dispatch_report",
+    "definition": " WITH dispatch_scopes AS (\n         SELECT trips_1.id AS trip_id,\n            trip_stops_1.id AS trip_stop_id,\n            trip_line_items_1.id AS trip_line_item_id,\n            NULL::date AS incident_date,\n            NULL::text AS ir_status,\n            NULL::date AS ir_submitted_date,\n            NULL::text AS backload_reason,\n            NULL::numeric AS backload_number_of_boxes,\n            NULL::text AS backload_comments,\n            NULL::numeric AS offload_number_of_boxes,\n            NULL::text AS offload_reason,\n            NULL::text AS offload_comments,\n            NULL::uuid AS incident_id,\n            NULL::uuid AS backload_id,\n            NULL::uuid AS offload_id\n           FROM ((trips trips_1\n             LEFT JOIN trip_stops trip_stops_1 ON ((trip_stops_1.trip_id = trips_1.id)))\n             LEFT JOIN trip_line_items trip_line_items_1 ON (((trip_line_items_1.trip_stop_id = trip_stops_1.id) AND (trip_line_items_1.trip_id = trips_1.id))))\n        UNION ALL\n         SELECT inc.trip_id,\n            inc.trip_stop_id,\n            NULL::uuid AS uuid,\n            inc.incident_date,\n            inc.status,\n            inc.submitted_date,\n            NULL::text AS text,\n            NULL::numeric AS \"numeric\",\n            NULL::text AS text,\n            NULL::numeric AS \"numeric\",\n            NULL::text AS text,\n            NULL::text AS text,\n            inc.id,\n            NULL::uuid AS uuid,\n            NULL::uuid AS uuid\n           FROM incidents inc\n        UNION ALL\n         SELECT bl.trip_id,\n            bl.trip_stop_id,\n            NULL::uuid AS uuid,\n            NULL::date AS date,\n            NULL::text AS text,\n            NULL::date AS date,\n            bl.reason,\n            bl.number_of_boxes,\n            bl.comments,\n            NULL::numeric AS \"numeric\",\n            NULL::text AS text,\n            NULL::text AS text,\n            NULL::uuid AS uuid,\n            bl.id,\n            NULL::uuid AS uuid\n           FROM backloads bl\n        UNION ALL\n         SELECT off.trip_id,\n            off.trip_stop_id,\n            NULL::uuid AS uuid,\n            NULL::date AS date,\n            NULL::text AS text,\n            NULL::date AS date,\n            NULL::text AS text,\n            NULL::numeric AS \"numeric\",\n            NULL::text AS text,\n            off.number_of_boxes,\n            off.reason,\n            off.comments,\n            NULL::uuid AS uuid,\n            NULL::uuid AS uuid,\n            off.id\n           FROM offloads off\n        ), unique_active_primary_assignments AS (\n         SELECT assignment.id,\n            assignment.trip_id,\n            assignment.truck_id,\n            assignment.driver_id,\n            assignment.trucking_company_id,\n            assignment.assignment_type,\n            assignment.assigned_at,\n            assignment.unassigned_at,\n            assignment.remarks,\n            assignment.created_at,\n            assignment.updated_at\n           FROM trip_truck_assignments assignment\n          WHERE ((assignment.assignment_type = 'PRIMARY'::text) AND (assignment.unassigned_at IS NULL) AND (NOT (EXISTS ( SELECT 1\n                   FROM trip_truck_assignments other\n                  WHERE ((other.trip_id = assignment.trip_id) AND (other.assignment_type = 'PRIMARY'::text) AND (other.unassigned_at IS NULL) AND (other.id <> assignment.id))))))\n        )\n SELECT\n        CASE\n            WHEN (dispatch_scopes.trip_stop_id IS NULL) THEN trips.dispatch_number\n            ELSE trip_stops.dispatch_number\n        END AS dispatch_number,\n    trips.loading_date,\n    trips.estimated_delivery_date,\n    trip_stops.delivery_status,\n    warehouses.code AS wh_code,\n    warehouses.name AS ship_from,\n    customer_stores.name AS ship_to,\n    customers.name AS customer_name,\n    trucks.plate_number,\n    trip_line_items.dr_number,\n    trip_line_items.sap_so_number,\n    trip_line_items.customer_po_number,\n    trip_line_items.internal_po_number,\n    products.model_code AS product_model,\n    products.category,\n    trip_line_items.quantity,\n    trip_line_items.cbm,\n    customer_stores.province,\n    customer_stores.city,\n    trips.remarks,\n    trips.transaction_number,\n    trips.trip_number,\n    trips.added_to_report,\n    trips.letter_status,\n    ((profiles.first_name || ' '::text) || profiles.last_name) AS driver_name,\n    trucking_companies.name AS trucking_company,\n    trips.subcon_rate_manual,\n    trip_stops.arrival_time,\n    trip_stops.start_unloading_time,\n    trip_stops.finish_unloading_time,\n    trip_stops.departure_time,\n    trip_line_items.customer_model,\n    dispatch_scopes.incident_date,\n    dispatch_scopes.ir_status,\n    dispatch_scopes.ir_submitted_date,\n    dispatch_scopes.backload_reason,\n    (dispatch_scopes.backload_number_of_boxes)::numeric(14,3) AS backload_number_of_boxes,\n    dispatch_scopes.backload_comments,\n    (dispatch_scopes.offload_number_of_boxes)::numeric(14,3) AS offload_number_of_boxes,\n    dispatch_scopes.offload_reason,\n    dispatch_scopes.offload_comments,\n    trips.signed_dr_upload_date,\n    trips.transmittal_date,\n    trips.tms_date,\n    trips.pod_ac_shipping_date,\n    trips.lbc_tracking_number,\n    ((profiles_tms.first_name || ' '::text) || profiles_tms.last_name) AS tms_done_by_name,\n    trips.id AS _trip_id,\n    dispatch_scopes.trip_stop_id AS _trip_stop_id,\n    dispatch_scopes.trip_line_item_id AS _trip_line_item_id,\n    trip_line_items.product_id AS _product_id,\n    trips.warehouse_id AS _warehouse_id,\n    trip_stops.customer_id AS _customer_id,\n    trip_stops.store_id AS _store_id,\n    tta.truck_id AS _truck_id,\n    tta.driver_id AS _driver_id,\n    tta.trucking_company_id AS _trucking_company_id,\n    tta.id AS _assignment_id,\n    trips.tms_done_by AS _tms_done_by,\n    dispatch_scopes.incident_id AS _incident_id,\n    dispatch_scopes.backload_id AS _backload_id,\n    dispatch_scopes.offload_id AS _offload_id\n   FROM (((((((((((((dispatch_scopes\n     JOIN trips ON ((trips.id = dispatch_scopes.trip_id)))\n     LEFT JOIN warehouses ON ((warehouses.id = trips.warehouse_id)))\n     LEFT JOIN trip_stops ON (((trip_stops.id = dispatch_scopes.trip_stop_id) AND (trip_stops.trip_id = trips.id))))\n     LEFT JOIN trip_line_items ON (((trip_line_items.id = dispatch_scopes.trip_line_item_id) AND (trip_line_items.trip_id = trips.id) AND (NOT (trip_line_items.trip_stop_id IS DISTINCT FROM dispatch_scopes.trip_stop_id)))))\n     LEFT JOIN products ON ((products.id = trip_line_items.product_id)))\n     LEFT JOIN customer_stores ON ((customer_stores.id = trip_stops.store_id)))\n     LEFT JOIN customers ON ((customers.id = trip_stops.customer_id)))\n     LEFT JOIN unique_active_primary_assignments tta ON ((tta.trip_id = trips.id)))\n     LEFT JOIN trucks ON ((trucks.id = tta.truck_id)))\n     LEFT JOIN drivers ON ((drivers.id = tta.driver_id)))\n     LEFT JOIN trucking_companies ON ((trucking_companies.id = tta.trucking_company_id)))\n     LEFT JOIN profiles ON ((profiles.id = drivers.profile_id)))\n     LEFT JOIN profiles profiles_tms ON ((profiles_tms.id = trips.tms_done_by)));",
+    "reloptions": null,
+    "columns": [
+      {
+        "name": "dispatch_number",
+        "type": "text",
+        "ordinal": 1
+      },
+      {
+        "name": "loading_date",
+        "type": "date",
+        "ordinal": 2
+      },
+      {
+        "name": "estimated_delivery_date",
+        "type": "date",
+        "ordinal": 3
+      },
+      {
+        "name": "delivery_status",
+        "type": "text",
+        "ordinal": 4
+      },
+      {
+        "name": "wh_code",
+        "type": "text",
+        "ordinal": 5
+      },
+      {
+        "name": "ship_from",
+        "type": "text",
+        "ordinal": 6
+      },
+      {
+        "name": "ship_to",
+        "type": "text",
+        "ordinal": 7
+      },
+      {
+        "name": "customer_name",
+        "type": "text",
+        "ordinal": 8
+      },
+      {
+        "name": "plate_number",
+        "type": "text",
+        "ordinal": 9
+      },
+      {
+        "name": "dr_number",
+        "type": "text",
+        "ordinal": 10
+      },
+      {
+        "name": "sap_so_number",
+        "type": "text",
+        "ordinal": 11
+      },
+      {
+        "name": "customer_po_number",
+        "type": "text",
+        "ordinal": 12
+      },
+      {
+        "name": "internal_po_number",
+        "type": "text",
+        "ordinal": 13
+      },
+      {
+        "name": "product_model",
+        "type": "text",
+        "ordinal": 14
+      },
+      {
+        "name": "category",
+        "type": "text",
+        "ordinal": 15
+      },
+      {
+        "name": "quantity",
+        "type": "numeric(14,3)",
+        "ordinal": 16
+      },
+      {
+        "name": "cbm",
+        "type": "numeric(14,6)",
+        "ordinal": 17
+      },
+      {
+        "name": "province",
+        "type": "text",
+        "ordinal": 18
+      },
+      {
+        "name": "city",
+        "type": "text",
+        "ordinal": 19
+      },
+      {
+        "name": "remarks",
+        "type": "text",
+        "ordinal": 20
+      },
+      {
+        "name": "transaction_number",
+        "type": "text",
+        "ordinal": 21
+      },
+      {
+        "name": "trip_number",
+        "type": "integer",
+        "ordinal": 22
+      },
+      {
+        "name": "added_to_report",
+        "type": "boolean",
+        "ordinal": 23
+      },
+      {
+        "name": "letter_status",
+        "type": "text",
+        "ordinal": 24
+      },
+      {
+        "name": "driver_name",
+        "type": "text",
+        "ordinal": 25
+      },
+      {
+        "name": "trucking_company",
+        "type": "text",
+        "ordinal": 26
+      },
+      {
+        "name": "subcon_rate_manual",
+        "type": "numeric",
+        "ordinal": 27
+      },
+      {
+        "name": "arrival_time",
+        "type": "timestamp with time zone",
+        "ordinal": 28
+      },
+      {
+        "name": "start_unloading_time",
+        "type": "timestamp with time zone",
+        "ordinal": 29
+      },
+      {
+        "name": "finish_unloading_time",
+        "type": "timestamp with time zone",
+        "ordinal": 30
+      },
+      {
+        "name": "departure_time",
+        "type": "timestamp with time zone",
+        "ordinal": 31
+      },
+      {
+        "name": "customer_model",
+        "type": "text",
+        "ordinal": 32
+      },
+      {
+        "name": "incident_date",
+        "type": "date",
+        "ordinal": 33
+      },
+      {
+        "name": "ir_status",
+        "type": "text",
+        "ordinal": 34
+      },
+      {
+        "name": "ir_submitted_date",
+        "type": "date",
+        "ordinal": 35
+      },
+      {
+        "name": "backload_reason",
+        "type": "text",
+        "ordinal": 36
+      },
+      {
+        "name": "backload_number_of_boxes",
+        "type": "numeric(14,3)",
+        "ordinal": 37
+      },
+      {
+        "name": "backload_comments",
+        "type": "text",
+        "ordinal": 38
+      },
+      {
+        "name": "offload_number_of_boxes",
+        "type": "numeric(14,3)",
+        "ordinal": 39
+      },
+      {
+        "name": "offload_reason",
+        "type": "text",
+        "ordinal": 40
+      },
+      {
+        "name": "offload_comments",
+        "type": "text",
+        "ordinal": 41
+      },
+      {
+        "name": "signed_dr_upload_date",
+        "type": "date",
+        "ordinal": 42
+      },
+      {
+        "name": "transmittal_date",
+        "type": "date",
+        "ordinal": 43
+      },
+      {
+        "name": "tms_date",
+        "type": "date",
+        "ordinal": 44
+      },
+      {
+        "name": "pod_ac_shipping_date",
+        "type": "date",
+        "ordinal": 45
+      },
+      {
+        "name": "lbc_tracking_number",
+        "type": "text",
+        "ordinal": 46
+      },
+      {
+        "name": "tms_done_by_name",
+        "type": "text",
+        "ordinal": 47
+      },
+      {
+        "name": "_trip_id",
+        "type": "uuid",
+        "ordinal": 48
+      },
+      {
+        "name": "_trip_stop_id",
+        "type": "uuid",
+        "ordinal": 49
+      },
+      {
+        "name": "_trip_line_item_id",
+        "type": "uuid",
+        "ordinal": 50
+      },
+      {
+        "name": "_product_id",
+        "type": "uuid",
+        "ordinal": 51
+      },
+      {
+        "name": "_warehouse_id",
+        "type": "uuid",
+        "ordinal": 52
+      },
+      {
+        "name": "_customer_id",
+        "type": "uuid",
+        "ordinal": 53
+      },
+      {
+        "name": "_store_id",
+        "type": "uuid",
+        "ordinal": 54
+      },
+      {
+        "name": "_truck_id",
+        "type": "uuid",
+        "ordinal": 55
+      },
+      {
+        "name": "_driver_id",
+        "type": "uuid",
+        "ordinal": 56
+      },
+      {
+        "name": "_trucking_company_id",
+        "type": "uuid",
+        "ordinal": 57
+      },
+      {
+        "name": "_assignment_id",
+        "type": "uuid",
+        "ordinal": 58
+      },
+      {
+        "name": "_tms_done_by",
+        "type": "uuid",
+        "ordinal": 59
+      },
+      {
+        "name": "_incident_id",
+        "type": "uuid",
+        "ordinal": 60
+      },
+      {
+        "name": "_backload_id",
+        "type": "uuid",
+        "ordinal": 61
+      },
+      {
+        "name": "_offload_id",
+        "type": "uuid",
+        "ordinal": 62
+      }
+    ],
+    "grants": [
+      {
+        "grantee": "postgres",
+        "privilege": "INSERT"
+      },
+      {
+        "grantee": "postgres",
+        "privilege": "SELECT"
+      },
+      {
+        "grantee": "postgres",
+        "privilege": "UPDATE"
+      },
+      {
+        "grantee": "postgres",
+        "privilege": "DELETE"
+      },
+      {
+        "grantee": "postgres",
+        "privilege": "TRUNCATE"
+      },
+      {
+        "grantee": "postgres",
+        "privilege": "REFERENCES"
+      },
+      {
+        "grantee": "postgres",
+        "privilege": "TRIGGER"
+      },
+      {
+        "grantee": "anon",
+        "privilege": "TRUNCATE"
+      },
+      {
+        "grantee": "anon",
+        "privilege": "REFERENCES"
+      },
+      {
+        "grantee": "anon",
+        "privilege": "TRIGGER"
+      },
+      {
+        "grantee": "authenticated",
+        "privilege": "TRUNCATE"
+      },
+      {
+        "grantee": "authenticated",
+        "privilege": "REFERENCES"
+      },
+      {
+        "grantee": "authenticated",
+        "privilege": "TRIGGER"
+      },
+      {
+        "grantee": "service_role",
+        "privilege": "INSERT"
+      },
+      {
+        "grantee": "service_role",
+        "privilege": "SELECT"
+      },
+      {
+        "grantee": "service_role",
+        "privilege": "UPDATE"
+      },
+      {
+        "grantee": "service_role",
+        "privilege": "DELETE"
+      },
+      {
+        "grantee": "service_role",
+        "privilege": "TRUNCATE"
+      },
+      {
+        "grantee": "service_role",
+        "privilege": "REFERENCES"
+      },
+      {
+        "grantee": "service_role",
+        "privilege": "TRIGGER"
+      }
+    ]
+  },
+  {
+    "viewname": "v_store_calling",
+    "definition": " SELECT sc.id AS store_call_id,\n    t.dispatch_number,\n    t.loading_date,\n    ts.stop_sequence,\n    c.name AS customer_name,\n    cs.name AS store_name,\n    tr.plate_number,\n    concat_ws(' '::text, d.first_name, d.last_name) AS driver_name,\n    tc.name AS trucking_company,\n    concat_ws(' '::text, assigned.first_name, assigned.last_name) AS assigned_to,\n    sc.date_assigned,\n    sc.date_of_contact,\n    sc.time_texted,\n    sc.time_called,\n    sc.contact_number,\n    sc.contact_name,\n    sc.status,\n    sc.confirmation_status,\n    sc.remarks,\n    w.code AS warehouse_code,\n    w.name AS ship_from\n   FROM ((((((((((store_calls sc\n     LEFT JOIN trips t ON ((t.id = sc.trip_id)))\n     LEFT JOIN warehouses w ON ((w.id = t.warehouse_id)))\n     LEFT JOIN trip_stops ts ON ((ts.id = sc.trip_stop_id)))\n     LEFT JOIN customers c ON ((c.id = ts.customer_id)))\n     LEFT JOIN customer_stores cs ON ((cs.id = ts.store_id)))\n     LEFT JOIN trip_truck_assignments tta ON (((tta.trip_id = t.id) AND (tta.assignment_type = 'PRIMARY'::text))))\n     LEFT JOIN trucks tr ON ((tr.id = tta.truck_id)))\n     LEFT JOIN drivers d ON ((d.id = tta.driver_id)))\n     LEFT JOIN trucking_companies tc ON ((tc.id = tta.trucking_company_id)))\n     LEFT JOIN profiles assigned ON ((assigned.id = sc.assigned_to)));",
+    "reloptions": null,
+    "columns": [
+      {
+        "name": "store_call_id",
+        "type": "uuid",
+        "ordinal": 1
+      },
+      {
+        "name": "dispatch_number",
+        "type": "text",
+        "ordinal": 2
+      },
+      {
+        "name": "loading_date",
+        "type": "date",
+        "ordinal": 3
+      },
+      {
+        "name": "stop_sequence",
+        "type": "integer",
+        "ordinal": 4
+      },
+      {
+        "name": "customer_name",
+        "type": "text",
+        "ordinal": 5
+      },
+      {
+        "name": "store_name",
+        "type": "text",
+        "ordinal": 6
+      },
+      {
+        "name": "plate_number",
+        "type": "text",
+        "ordinal": 7
+      },
+      {
+        "name": "driver_name",
+        "type": "text",
+        "ordinal": 8
+      },
+      {
+        "name": "trucking_company",
+        "type": "text",
+        "ordinal": 9
+      },
+      {
+        "name": "assigned_to",
+        "type": "text",
+        "ordinal": 10
+      },
+      {
+        "name": "date_assigned",
+        "type": "timestamp with time zone",
+        "ordinal": 11
+      },
+      {
+        "name": "date_of_contact",
+        "type": "timestamp with time zone",
+        "ordinal": 12
+      },
+      {
+        "name": "time_texted",
+        "type": "timestamp with time zone",
+        "ordinal": 13
+      },
+      {
+        "name": "time_called",
+        "type": "timestamp with time zone",
+        "ordinal": 14
+      },
+      {
+        "name": "contact_number",
+        "type": "text",
+        "ordinal": 15
+      },
+      {
+        "name": "contact_name",
+        "type": "text",
+        "ordinal": 16
+      },
+      {
+        "name": "status",
+        "type": "text",
+        "ordinal": 17
+      },
+      {
+        "name": "confirmation_status",
+        "type": "text",
+        "ordinal": 18
+      },
+      {
+        "name": "remarks",
+        "type": "text",
+        "ordinal": 19
+      },
+      {
+        "name": "warehouse_code",
+        "type": "text",
+        "ordinal": 20
+      },
+      {
+        "name": "ship_from",
+        "type": "text",
+        "ordinal": 21
+      }
+    ],
+    "grants": [
+      {
+        "grantee": "postgres",
+        "privilege": "INSERT"
+      },
+      {
+        "grantee": "postgres",
+        "privilege": "SELECT"
+      },
+      {
+        "grantee": "postgres",
+        "privilege": "UPDATE"
+      },
+      {
+        "grantee": "postgres",
+        "privilege": "DELETE"
+      },
+      {
+        "grantee": "postgres",
+        "privilege": "TRUNCATE"
+      },
+      {
+        "grantee": "postgres",
+        "privilege": "REFERENCES"
+      },
+      {
+        "grantee": "postgres",
+        "privilege": "TRIGGER"
+      },
+      {
+        "grantee": "anon",
+        "privilege": "TRUNCATE"
+      },
+      {
+        "grantee": "anon",
+        "privilege": "REFERENCES"
+      },
+      {
+        "grantee": "anon",
+        "privilege": "TRIGGER"
+      },
+      {
+        "grantee": "authenticated",
+        "privilege": "TRUNCATE"
+      },
+      {
+        "grantee": "authenticated",
+        "privilege": "REFERENCES"
+      },
+      {
+        "grantee": "authenticated",
+        "privilege": "TRIGGER"
+      },
+      {
+        "grantee": "service_role",
+        "privilege": "INSERT"
+      },
+      {
+        "grantee": "service_role",
+        "privilege": "SELECT"
+      },
+      {
+        "grantee": "service_role",
+        "privilege": "UPDATE"
+      },
+      {
+        "grantee": "service_role",
+        "privilege": "DELETE"
+      },
+      {
+        "grantee": "service_role",
+        "privilege": "TRUNCATE"
+      },
+      {
+        "grantee": "service_role",
+        "privilege": "REFERENCES"
+      },
+      {
+        "grantee": "service_role",
+        "privilege": "TRIGGER"
+      }
+    ]
+  },
+  {
+    "viewname": "v_tms_combined",
+    "definition": " WITH unique_active_primary_assignments AS (\n         SELECT assignment.id,\n            assignment.trip_id,\n            assignment.truck_id,\n            assignment.driver_id,\n            assignment.trucking_company_id,\n            assignment.assignment_type,\n            assignment.assigned_at,\n            assignment.unassigned_at,\n            assignment.remarks,\n            assignment.created_at,\n            assignment.updated_at\n           FROM trip_truck_assignments assignment\n          WHERE ((assignment.assignment_type = 'PRIMARY'::text) AND (assignment.unassigned_at IS NULL) AND (NOT (EXISTS ( SELECT 1\n                   FROM trip_truck_assignments other\n                  WHERE ((other.trip_id = assignment.trip_id) AND (other.assignment_type = 'PRIMARY'::text) AND (other.unassigned_at IS NULL) AND (other.id <> assignment.id))))))\n        )\n SELECT t.id AS trip_id,\n        CASE\n            WHEN (ts.id IS NULL) THEN t.dispatch_number\n            ELSE ts.dispatch_number\n        END AS dispatch_number,\n    t.loading_date,\n    t.estimated_delivery_date,\n    t.status AS trip_status,\n    tt.name AS trip_type,\n    w.code AS warehouse_code,\n    w.name AS warehouse_name,\n    tc.name AS trucking_company,\n    tr.plate_number,\n    concat_ws(' '::text, d.first_name, d.last_name) AS driver_name,\n    ts.id AS trip_stop_id,\n    ts.stop_sequence,\n    c.id AS customer_id,\n    c.name AS customer_name,\n    cs.id AS store_id,\n    cs.name AS store_name,\n    cs.province,\n    cs.city,\n    ts.delivery_status,\n    ts.arrival_time,\n    ts.start_unloading_time,\n    ts.finish_unloading_time,\n    ts.departure_time,\n    p.sku,\n    p.model_code,\n    p.name AS product_name,\n    p.category,\n    li.quantity,\n    li.cbm,\n    li.dr_number,\n    li.sap_so_number,\n    li.customer_po_number,\n    li.internal_po_number,\n    li.customer_model,\n    t.remarks AS trip_remarks,\n    ts.remarks AS stop_remarks,\n    li.remarks AS item_remarks,\n    t.transaction_number,\n    t.trip_number,\n    t.added_to_report,\n    t.letter_status,\n    t.truck_allocated_by,\n    concat_ws(' '::text, allocated_by.first_name, allocated_by.last_name) AS truck_allocated_by_name,\n    t.subcon_rate_manual,\n    wh_departure.warehouse_departure_time,\n    t.signed_dr_upload_date,\n    t.transmittal_date,\n    t.tms_date,\n    t.tms_done_by,\n    concat_ws(' '::text, tms_done.first_name, tms_done.last_name) AS tms_done_by_name,\n    t.pod_ac_shipping_date,\n    t.lbc_tracking_number,\n    li.id AS trip_line_item_id,\n    t.id AS _trip_id,\n    ts.id AS _trip_stop_id,\n    li.id AS _trip_line_item_id,\n    tt.id AS _trip_type_id,\n    t.warehouse_id AS _warehouse_id,\n    ts.customer_id AS _customer_id,\n    ts.store_id AS _store_id,\n    tta.truck_id AS _truck_id,\n    tta.driver_id AS _driver_id,\n    tta.trucking_company_id AS _trucking_company_id,\n    li.product_id AS _product_id,\n    tta.id AS _assignment_id,\n    t.truck_allocated_by AS _truck_allocated_by,\n    t.tms_done_by AS _tms_done_by\n   FROM ((((((((((((((trips t\n     LEFT JOIN trip_types tt ON ((tt.id = t.trip_type_id)))\n     LEFT JOIN warehouses w ON ((w.id = t.warehouse_id)))\n     LEFT JOIN unique_active_primary_assignments tta ON ((tta.trip_id = t.id)))\n     LEFT JOIN trucks tr ON ((tr.id = tta.truck_id)))\n     LEFT JOIN trucking_companies tc ON ((tc.id = tta.trucking_company_id)))\n     LEFT JOIN drivers d ON ((d.id = tta.driver_id)))\n     LEFT JOIN trip_stops ts ON ((ts.trip_id = t.id)))\n     LEFT JOIN customers c ON ((c.id = ts.customer_id)))\n     LEFT JOIN customer_stores cs ON ((cs.id = ts.store_id)))\n     LEFT JOIN trip_line_items li ON (((li.trip_stop_id = ts.id) AND (li.trip_id = t.id))))\n     LEFT JOIN products p ON ((p.id = li.product_id)))\n     LEFT JOIN profiles allocated_by ON ((allocated_by.id = t.truck_allocated_by)))\n     LEFT JOIN profiles tms_done ON ((tms_done.id = t.tms_done_by)))\n     LEFT JOIN ( SELECT trip_events.trip_id,\n            min(trip_events.event_time) AS warehouse_departure_time\n           FROM trip_events\n          WHERE (trip_events.event_type = 'WAREHOUSE_DEPARTURE'::text)\n          GROUP BY trip_events.trip_id) wh_departure ON ((wh_departure.trip_id = t.id)));",
+    "reloptions": null,
+    "columns": [
+      {
+        "name": "trip_id",
+        "type": "uuid",
+        "ordinal": 1
+      },
+      {
+        "name": "dispatch_number",
+        "type": "text",
+        "ordinal": 2
+      },
+      {
+        "name": "loading_date",
+        "type": "date",
+        "ordinal": 3
+      },
+      {
+        "name": "estimated_delivery_date",
+        "type": "date",
+        "ordinal": 4
+      },
+      {
+        "name": "trip_status",
+        "type": "text",
+        "ordinal": 5
+      },
+      {
+        "name": "trip_type",
+        "type": "text",
+        "ordinal": 6
+      },
+      {
+        "name": "warehouse_code",
+        "type": "text",
+        "ordinal": 7
+      },
+      {
+        "name": "warehouse_name",
+        "type": "text",
+        "ordinal": 8
+      },
+      {
+        "name": "trucking_company",
+        "type": "text",
+        "ordinal": 9
+      },
+      {
+        "name": "plate_number",
+        "type": "text",
+        "ordinal": 10
+      },
+      {
+        "name": "driver_name",
+        "type": "text",
+        "ordinal": 11
+      },
+      {
+        "name": "trip_stop_id",
+        "type": "uuid",
+        "ordinal": 12
+      },
+      {
+        "name": "stop_sequence",
+        "type": "integer",
+        "ordinal": 13
+      },
+      {
+        "name": "customer_id",
+        "type": "uuid",
+        "ordinal": 14
+      },
+      {
+        "name": "customer_name",
+        "type": "text",
+        "ordinal": 15
+      },
+      {
+        "name": "store_id",
+        "type": "uuid",
+        "ordinal": 16
+      },
+      {
+        "name": "store_name",
+        "type": "text",
+        "ordinal": 17
+      },
+      {
+        "name": "province",
+        "type": "text",
+        "ordinal": 18
+      },
+      {
+        "name": "city",
+        "type": "text",
+        "ordinal": 19
+      },
+      {
+        "name": "delivery_status",
+        "type": "text",
+        "ordinal": 20
+      },
+      {
+        "name": "arrival_time",
+        "type": "timestamp with time zone",
+        "ordinal": 21
+      },
+      {
+        "name": "start_unloading_time",
+        "type": "timestamp with time zone",
+        "ordinal": 22
+      },
+      {
+        "name": "finish_unloading_time",
+        "type": "timestamp with time zone",
+        "ordinal": 23
+      },
+      {
+        "name": "departure_time",
+        "type": "timestamp with time zone",
+        "ordinal": 24
+      },
+      {
+        "name": "sku",
+        "type": "text",
+        "ordinal": 25
+      },
+      {
+        "name": "model_code",
+        "type": "text",
+        "ordinal": 26
+      },
+      {
+        "name": "product_name",
+        "type": "text",
+        "ordinal": 27
+      },
+      {
+        "name": "category",
+        "type": "text",
+        "ordinal": 28
+      },
+      {
+        "name": "quantity",
+        "type": "numeric(14,3)",
+        "ordinal": 29
+      },
+      {
+        "name": "cbm",
+        "type": "numeric(14,6)",
+        "ordinal": 30
+      },
+      {
+        "name": "dr_number",
+        "type": "text",
+        "ordinal": 31
+      },
+      {
+        "name": "sap_so_number",
+        "type": "text",
+        "ordinal": 32
+      },
+      {
+        "name": "customer_po_number",
+        "type": "text",
+        "ordinal": 33
+      },
+      {
+        "name": "internal_po_number",
+        "type": "text",
+        "ordinal": 34
+      },
+      {
+        "name": "customer_model",
+        "type": "text",
+        "ordinal": 35
+      },
+      {
+        "name": "trip_remarks",
+        "type": "text",
+        "ordinal": 36
+      },
+      {
+        "name": "stop_remarks",
+        "type": "text",
+        "ordinal": 37
+      },
+      {
+        "name": "item_remarks",
+        "type": "text",
+        "ordinal": 38
+      },
+      {
+        "name": "transaction_number",
+        "type": "text",
+        "ordinal": 39
+      },
+      {
+        "name": "trip_number",
+        "type": "integer",
+        "ordinal": 40
+      },
+      {
+        "name": "added_to_report",
+        "type": "boolean",
+        "ordinal": 41
+      },
+      {
+        "name": "letter_status",
+        "type": "text",
+        "ordinal": 42
+      },
+      {
+        "name": "truck_allocated_by",
+        "type": "uuid",
+        "ordinal": 43
+      },
+      {
+        "name": "truck_allocated_by_name",
+        "type": "text",
+        "ordinal": 44
+      },
+      {
+        "name": "subcon_rate_manual",
+        "type": "numeric",
+        "ordinal": 45
+      },
+      {
+        "name": "warehouse_departure_time",
+        "type": "timestamp with time zone",
+        "ordinal": 46
+      },
+      {
+        "name": "signed_dr_upload_date",
+        "type": "date",
+        "ordinal": 47
+      },
+      {
+        "name": "transmittal_date",
+        "type": "date",
+        "ordinal": 48
+      },
+      {
+        "name": "tms_date",
+        "type": "date",
+        "ordinal": 49
+      },
+      {
+        "name": "tms_done_by",
+        "type": "uuid",
+        "ordinal": 50
+      },
+      {
+        "name": "tms_done_by_name",
+        "type": "text",
+        "ordinal": 51
+      },
+      {
+        "name": "pod_ac_shipping_date",
+        "type": "date",
+        "ordinal": 52
+      },
+      {
+        "name": "lbc_tracking_number",
+        "type": "text",
+        "ordinal": 53
+      },
+      {
+        "name": "trip_line_item_id",
+        "type": "uuid",
+        "ordinal": 54
+      },
+      {
+        "name": "_trip_id",
+        "type": "uuid",
+        "ordinal": 55
+      },
+      {
+        "name": "_trip_stop_id",
+        "type": "uuid",
+        "ordinal": 56
+      },
+      {
+        "name": "_trip_line_item_id",
+        "type": "uuid",
+        "ordinal": 57
+      },
+      {
+        "name": "_trip_type_id",
+        "type": "uuid",
+        "ordinal": 58
+      },
+      {
+        "name": "_warehouse_id",
+        "type": "uuid",
+        "ordinal": 59
+      },
+      {
+        "name": "_customer_id",
+        "type": "uuid",
+        "ordinal": 60
+      },
+      {
+        "name": "_store_id",
+        "type": "uuid",
+        "ordinal": 61
+      },
+      {
+        "name": "_truck_id",
+        "type": "uuid",
+        "ordinal": 62
+      },
+      {
+        "name": "_driver_id",
+        "type": "uuid",
+        "ordinal": 63
+      },
+      {
+        "name": "_trucking_company_id",
+        "type": "uuid",
+        "ordinal": 64
+      },
+      {
+        "name": "_product_id",
+        "type": "uuid",
+        "ordinal": 65
+      },
+      {
+        "name": "_assignment_id",
+        "type": "uuid",
+        "ordinal": 66
+      },
+      {
+        "name": "_truck_allocated_by",
+        "type": "uuid",
+        "ordinal": 67
+      },
+      {
+        "name": "_tms_done_by",
+        "type": "uuid",
+        "ordinal": 68
+      }
+    ],
+    "grants": [
+      {
+        "grantee": "postgres",
+        "privilege": "INSERT"
+      },
+      {
+        "grantee": "postgres",
+        "privilege": "SELECT"
+      },
+      {
+        "grantee": "postgres",
+        "privilege": "UPDATE"
+      },
+      {
+        "grantee": "postgres",
+        "privilege": "DELETE"
+      },
+      {
+        "grantee": "postgres",
+        "privilege": "TRUNCATE"
+      },
+      {
+        "grantee": "postgres",
+        "privilege": "REFERENCES"
+      },
+      {
+        "grantee": "postgres",
+        "privilege": "TRIGGER"
+      },
+      {
+        "grantee": "anon",
+        "privilege": "TRUNCATE"
+      },
+      {
+        "grantee": "anon",
+        "privilege": "REFERENCES"
+      },
+      {
+        "grantee": "anon",
+        "privilege": "TRIGGER"
+      },
+      {
+        "grantee": "authenticated",
+        "privilege": "TRUNCATE"
+      },
+      {
+        "grantee": "authenticated",
+        "privilege": "REFERENCES"
+      },
+      {
+        "grantee": "authenticated",
+        "privilege": "TRIGGER"
+      },
+      {
+        "grantee": "service_role",
+        "privilege": "INSERT"
+      },
+      {
+        "grantee": "service_role",
+        "privilege": "SELECT"
+      },
+      {
+        "grantee": "service_role",
+        "privilege": "UPDATE"
+      },
+      {
+        "grantee": "service_role",
+        "privilege": "DELETE"
+      },
+      {
+        "grantee": "service_role",
+        "privilege": "TRUNCATE"
+      },
+      {
+        "grantee": "service_role",
+        "privilege": "REFERENCES"
+      },
+      {
+        "grantee": "service_role",
+        "privilege": "TRIGGER"
+      }
+    ]
+  },
+  {
+    "viewname": "v_trip_booking",
+    "definition": " WITH trip_booking_scopes AS (\n         SELECT trips_1.id AS trip_id,\n            trip_stops_1.id AS trip_stop_id,\n            trip_line_items_1.id AS trip_line_item_id,\n            NULL::uuid AS billing_id\n           FROM ((trips trips_1\n             LEFT JOIN trip_stops trip_stops_1 ON ((trip_stops_1.trip_id = trips_1.id)))\n             LEFT JOIN trip_line_items trip_line_items_1 ON (((trip_line_items_1.trip_stop_id = trip_stops_1.id) AND (trip_line_items_1.trip_id = trips_1.id))))\n        UNION ALL\n         SELECT billings_1.trip_id,\n            NULL::uuid AS uuid,\n            NULL::uuid AS uuid,\n            billings_1.id\n           FROM billings billings_1\n        ), unique_active_primary_assignments AS (\n         SELECT assignment.id,\n            assignment.trip_id,\n            assignment.truck_id,\n            assignment.driver_id,\n            assignment.trucking_company_id,\n            assignment.assignment_type,\n            assignment.assigned_at,\n            assignment.unassigned_at,\n            assignment.remarks,\n            assignment.created_at,\n            assignment.updated_at\n           FROM trip_truck_assignments assignment\n          WHERE ((assignment.assignment_type = 'PRIMARY'::text) AND (assignment.unassigned_at IS NULL) AND (NOT (EXISTS ( SELECT 1\n                   FROM trip_truck_assignments other\n                  WHERE ((other.trip_id = assignment.trip_id) AND (other.assignment_type = 'PRIMARY'::text) AND (other.unassigned_at IS NULL) AND (other.id <> assignment.id))))))\n        )\n SELECT\n        CASE\n            WHEN (trip_booking_scopes.trip_stop_id IS NULL) THEN trips.dispatch_number\n            ELSE trip_stops.dispatch_number\n        END AS dispatch_number,\n    trips.loading_date,\n    trips.estimated_delivery_date,\n    trip_types.name AS trip_type,\n    warehouses.code AS warehouse_code,\n    warehouses.name AS warehouse_name,\n    trip_stops.stop_sequence,\n    customers.name AS customer_name,\n    customer_stores.name AS store_name,\n    trucks.plate_number,\n    ((profiles.first_name || ' '::text) || profiles.last_name) AS driver_name,\n    trucking_companies.name AS trucking_company,\n    trip_line_items.dr_number,\n    trip_line_items.sap_so_number,\n    trip_line_items.customer_po_number,\n    trip_line_items.internal_po_number,\n    products.sku,\n    products.model_code,\n    products.name AS product_name,\n    trip_line_items.quantity,\n    trip_line_items.cbm,\n    trips.status AS trip_status,\n    trip_stops.delivery_status,\n    trips.remarks,\n    trips.transaction_number,\n    trips.trip_number,\n    trips.added_to_report,\n    trips.letter_status,\n    trips.truck_allocated_by,\n    ((profiles_allocated.first_name || ' '::text) || profiles_allocated.last_name) AS truck_allocated_by_name,\n    products.category AS product_category,\n    trip_line_items.customer_model,\n    trips.subcon_rate_manual,\n    trips.signed_dr_upload_date,\n    trips.transmittal_date,\n    trips.tms_date,\n    trips.tms_done_by,\n    ((profiles_tms.first_name || ' '::text) || profiles_tms.last_name) AS tms_done_by_name,\n    trips.pod_ac_shipping_date,\n    trips.lbc_tracking_number,\n    billings.invoice_number,\n    trips.id AS _trip_id,\n    trip_booking_scopes.trip_stop_id AS _trip_stop_id,\n    trip_booking_scopes.trip_line_item_id AS _trip_line_item_id,\n    trip_line_items.product_id AS _product_id,\n    trips.trip_type_id AS _trip_type_id,\n    trips.warehouse_id AS _warehouse_id,\n    trip_stops.customer_id AS _customer_id,\n    trip_stops.store_id AS _store_id,\n    tta.truck_id AS _truck_id,\n    tta.driver_id AS _driver_id,\n    tta.trucking_company_id AS _trucking_company_id,\n    tta.id AS _assignment_id,\n    trips.truck_allocated_by AS _truck_allocated_by,\n    trips.tms_done_by AS _tms_done_by,\n    trip_booking_scopes.billing_id AS _billing_id\n   FROM ((((((((((((((((trip_booking_scopes\n     JOIN trips ON ((trips.id = trip_booking_scopes.trip_id)))\n     LEFT JOIN trip_types ON ((trip_types.id = trips.trip_type_id)))\n     LEFT JOIN warehouses ON ((warehouses.id = trips.warehouse_id)))\n     LEFT JOIN trip_stops ON (((trip_stops.id = trip_booking_scopes.trip_stop_id) AND (trip_stops.trip_id = trips.id))))\n     LEFT JOIN customers ON ((customers.id = trip_stops.customer_id)))\n     LEFT JOIN customer_stores ON ((customer_stores.id = trip_stops.store_id)))\n     LEFT JOIN trip_line_items ON (((trip_line_items.id = trip_booking_scopes.trip_line_item_id) AND (trip_line_items.trip_id = trips.id) AND (NOT (trip_line_items.trip_stop_id IS DISTINCT FROM trip_booking_scopes.trip_stop_id)))))\n     LEFT JOIN products ON ((products.id = trip_line_items.product_id)))\n     LEFT JOIN unique_active_primary_assignments tta ON ((tta.trip_id = trips.id)))\n     LEFT JOIN trucks ON ((trucks.id = tta.truck_id)))\n     LEFT JOIN drivers ON ((drivers.id = tta.driver_id)))\n     LEFT JOIN trucking_companies ON ((trucking_companies.id = tta.trucking_company_id)))\n     LEFT JOIN profiles ON ((profiles.id = drivers.profile_id)))\n     LEFT JOIN profiles profiles_allocated ON ((profiles_allocated.id = trips.truck_allocated_by)))\n     LEFT JOIN profiles profiles_tms ON ((profiles_tms.id = trips.tms_done_by)))\n     LEFT JOIN billings ON (((billings.id = trip_booking_scopes.billing_id) AND (billings.trip_id = trips.id))));",
+    "reloptions": null,
+    "columns": [
+      {
+        "name": "dispatch_number",
+        "type": "text",
+        "ordinal": 1
+      },
+      {
+        "name": "loading_date",
+        "type": "date",
+        "ordinal": 2
+      },
+      {
+        "name": "estimated_delivery_date",
+        "type": "date",
+        "ordinal": 3
+      },
+      {
+        "name": "trip_type",
+        "type": "text",
+        "ordinal": 4
+      },
+      {
+        "name": "warehouse_code",
+        "type": "text",
+        "ordinal": 5
+      },
+      {
+        "name": "warehouse_name",
+        "type": "text",
+        "ordinal": 6
+      },
+      {
+        "name": "stop_sequence",
+        "type": "integer",
+        "ordinal": 7
+      },
+      {
+        "name": "customer_name",
+        "type": "text",
+        "ordinal": 8
+      },
+      {
+        "name": "store_name",
+        "type": "text",
+        "ordinal": 9
+      },
+      {
+        "name": "plate_number",
+        "type": "text",
+        "ordinal": 10
+      },
+      {
+        "name": "driver_name",
+        "type": "text",
+        "ordinal": 11
+      },
+      {
+        "name": "trucking_company",
+        "type": "text",
+        "ordinal": 12
+      },
+      {
+        "name": "dr_number",
+        "type": "text",
+        "ordinal": 13
+      },
+      {
+        "name": "sap_so_number",
+        "type": "text",
+        "ordinal": 14
+      },
+      {
+        "name": "customer_po_number",
+        "type": "text",
+        "ordinal": 15
+      },
+      {
+        "name": "internal_po_number",
+        "type": "text",
+        "ordinal": 16
+      },
+      {
+        "name": "sku",
+        "type": "text",
+        "ordinal": 17
+      },
+      {
+        "name": "model_code",
+        "type": "text",
+        "ordinal": 18
+      },
+      {
+        "name": "product_name",
+        "type": "text",
+        "ordinal": 19
+      },
+      {
+        "name": "quantity",
+        "type": "numeric(14,3)",
+        "ordinal": 20
+      },
+      {
+        "name": "cbm",
+        "type": "numeric(14,6)",
+        "ordinal": 21
+      },
+      {
+        "name": "trip_status",
+        "type": "text",
+        "ordinal": 22
+      },
+      {
+        "name": "delivery_status",
+        "type": "text",
+        "ordinal": 23
+      },
+      {
+        "name": "remarks",
+        "type": "text",
+        "ordinal": 24
+      },
+      {
+        "name": "transaction_number",
+        "type": "text",
+        "ordinal": 25
+      },
+      {
+        "name": "trip_number",
+        "type": "integer",
+        "ordinal": 26
+      },
+      {
+        "name": "added_to_report",
+        "type": "boolean",
+        "ordinal": 27
+      },
+      {
+        "name": "letter_status",
+        "type": "text",
+        "ordinal": 28
+      },
+      {
+        "name": "truck_allocated_by",
+        "type": "uuid",
+        "ordinal": 29
+      },
+      {
+        "name": "truck_allocated_by_name",
+        "type": "text",
+        "ordinal": 30
+      },
+      {
+        "name": "product_category",
+        "type": "text",
+        "ordinal": 31
+      },
+      {
+        "name": "customer_model",
+        "type": "text",
+        "ordinal": 32
+      },
+      {
+        "name": "subcon_rate_manual",
+        "type": "numeric",
+        "ordinal": 33
+      },
+      {
+        "name": "signed_dr_upload_date",
+        "type": "date",
+        "ordinal": 34
+      },
+      {
+        "name": "transmittal_date",
+        "type": "date",
+        "ordinal": 35
+      },
+      {
+        "name": "tms_date",
+        "type": "date",
+        "ordinal": 36
+      },
+      {
+        "name": "tms_done_by",
+        "type": "uuid",
+        "ordinal": 37
+      },
+      {
+        "name": "tms_done_by_name",
+        "type": "text",
+        "ordinal": 38
+      },
+      {
+        "name": "pod_ac_shipping_date",
+        "type": "date",
+        "ordinal": 39
+      },
+      {
+        "name": "lbc_tracking_number",
+        "type": "text",
+        "ordinal": 40
+      },
+      {
+        "name": "invoice_number",
+        "type": "text",
+        "ordinal": 41
+      },
+      {
+        "name": "_trip_id",
+        "type": "uuid",
+        "ordinal": 42
+      },
+      {
+        "name": "_trip_stop_id",
+        "type": "uuid",
+        "ordinal": 43
+      },
+      {
+        "name": "_trip_line_item_id",
+        "type": "uuid",
+        "ordinal": 44
+      },
+      {
+        "name": "_product_id",
+        "type": "uuid",
+        "ordinal": 45
+      },
+      {
+        "name": "_trip_type_id",
+        "type": "uuid",
+        "ordinal": 46
+      },
+      {
+        "name": "_warehouse_id",
+        "type": "uuid",
+        "ordinal": 47
+      },
+      {
+        "name": "_customer_id",
+        "type": "uuid",
+        "ordinal": 48
+      },
+      {
+        "name": "_store_id",
+        "type": "uuid",
+        "ordinal": 49
+      },
+      {
+        "name": "_truck_id",
+        "type": "uuid",
+        "ordinal": 50
+      },
+      {
+        "name": "_driver_id",
+        "type": "uuid",
+        "ordinal": 51
+      },
+      {
+        "name": "_trucking_company_id",
+        "type": "uuid",
+        "ordinal": 52
+      },
+      {
+        "name": "_assignment_id",
+        "type": "uuid",
+        "ordinal": 53
+      },
+      {
+        "name": "_truck_allocated_by",
+        "type": "uuid",
+        "ordinal": 54
+      },
+      {
+        "name": "_tms_done_by",
+        "type": "uuid",
+        "ordinal": 55
+      },
+      {
+        "name": "_billing_id",
+        "type": "uuid",
+        "ordinal": 56
+      }
+    ],
+    "grants": [
+      {
+        "grantee": "postgres",
+        "privilege": "INSERT"
+      },
+      {
+        "grantee": "postgres",
+        "privilege": "SELECT"
+      },
+      {
+        "grantee": "postgres",
+        "privilege": "UPDATE"
+      },
+      {
+        "grantee": "postgres",
+        "privilege": "DELETE"
+      },
+      {
+        "grantee": "postgres",
+        "privilege": "TRUNCATE"
+      },
+      {
+        "grantee": "postgres",
+        "privilege": "REFERENCES"
+      },
+      {
+        "grantee": "postgres",
+        "privilege": "TRIGGER"
+      },
+      {
+        "grantee": "anon",
+        "privilege": "TRUNCATE"
+      },
+      {
+        "grantee": "anon",
+        "privilege": "REFERENCES"
+      },
+      {
+        "grantee": "anon",
+        "privilege": "TRIGGER"
+      },
+      {
+        "grantee": "authenticated",
+        "privilege": "TRUNCATE"
+      },
+      {
+        "grantee": "authenticated",
+        "privilege": "REFERENCES"
+      },
+      {
+        "grantee": "authenticated",
+        "privilege": "TRIGGER"
+      },
+      {
+        "grantee": "service_role",
+        "privilege": "INSERT"
+      },
+      {
+        "grantee": "service_role",
+        "privilege": "SELECT"
+      },
+      {
+        "grantee": "service_role",
+        "privilege": "UPDATE"
+      },
+      {
+        "grantee": "service_role",
+        "privilege": "DELETE"
+      },
+      {
+        "grantee": "service_role",
+        "privilege": "TRUNCATE"
+      },
+      {
+        "grantee": "service_role",
+        "privilege": "REFERENCES"
+      },
+      {
+        "grantee": "service_role",
+        "privilege": "TRIGGER"
+      }
+    ]
+  }
+]

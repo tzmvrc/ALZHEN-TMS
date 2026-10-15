@@ -2,6 +2,7 @@ import { Router } from "express";
 import express from "express";
 import { authMiddleware } from "../middleware/auth.middleware.js";
 import { requireRole } from "../middleware/role.middleware.js";
+import { archiveTransaction, saveTransactionReference } from "../controllers/transaction.controller.js";
 import {
   listImages,
   removeImage,
@@ -29,10 +30,13 @@ import {
   updateTrip,
   updateTripBilling,
   updateTripLineItem,
+  updateTripUnscopedLineItem,
   updateTripStop,
 } from "../controllers/trip.controller.js";
 
 const router = Router();
+router.patch("/:id/transaction-archive", authMiddleware, requireRole("ADMIN", "STAFF"), archiveTransaction);
+router.patch("/:id/stops/:stopId/transmittal-reference", authMiddleware, requireRole("ADMIN", "STAFF"), saveTransactionReference);
 
 router.get(
   "/:id/images",
@@ -140,6 +144,12 @@ router.patch(
   authMiddleware,
   requireRole("ADMIN", "STAFF"),
   updateTripLineItem,
+);
+router.patch(
+  "/:id/line-items/:lineItemId",
+  authMiddleware,
+  requireRole("ADMIN", "STAFF"),
+  updateTripUnscopedLineItem,
 );
 router.delete(
   "/:id/stops/:stopId/line-items/:lineItemId",

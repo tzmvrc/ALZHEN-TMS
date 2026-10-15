@@ -13,6 +13,7 @@ import {
   getTripList,
   getTripStops,
   updateTripLineItemRecord,
+  updateTripUnscopedLineItemRecord,
   updateTripBillingRecord as updateTripBillingRecordData,
   updateTripRecord,
   updateTripStopRecord,
@@ -433,6 +434,21 @@ export async function updateTripLineItem(req: Request, res: Response) {
       message,
       "TRIP_LINE_ITEM_UPDATE_FAILED",
     );
+  }
+}
+
+export async function updateTripUnscopedLineItem(req: Request, res: Response) {
+  try {
+    const tripId = Array.isArray(req.params.id) ? req.params.id[0] : (req.params.id ?? "");
+    const lineItemId = Array.isArray(req.params.lineItemId) ? req.params.lineItemId[0] : (req.params.lineItemId ?? "");
+    const result = await updateTripUnscopedLineItemRecord(tripId, lineItemId, req.body ?? {});
+    return sendSuccess(res, 200, "Trip line item updated successfully", result);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to update trip line item";
+    const notFound = ["Trip not found", "Line item not found", "Line item does not belong to this trip", "Line item does not belong to this stop"].includes(message);
+    const conflict = message.includes("already exists") || message.includes("duplicate");
+    const invalid = message.includes("Invalid") || message.includes("must be") || message.includes("field") || message.includes("required");
+    return sendError(res, notFound ? 404 : conflict ? 409 : invalid ? 400 : 500, message, "TRIP_LINE_ITEM_UPDATE_FAILED");
   }
 }
 

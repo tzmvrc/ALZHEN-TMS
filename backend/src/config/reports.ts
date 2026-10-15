@@ -10,6 +10,9 @@ export const REPORT_DEFINITIONS: Record<string, ReportDefinition> = {
       { key: "transaction_number", title: "Transaction No.", type: "text" },
       { key: "trip_number", title: "Trip No.", type: "number" },
       { key: "loading_date", title: "Loading Date", type: "date" },
+      { key: "warehouse_arrival_at", title: "Warehouse Arrival", type: "date" },
+      { key: "loading_start_at", title: "Loading Start", type: "date" },
+      { key: "loading_finished_at", title: "Loading Finish", type: "date" },
       {
         key: "estimated_delivery_date",
         title: "Estimated Delivery Date",
@@ -21,6 +24,7 @@ export const REPORT_DEFINITIONS: Record<string, ReportDefinition> = {
       { key: "trip_type", title: "Trip Type", type: "text" },
       { key: "warehouse_code", title: "Warehouse Code", type: "text" },
       { key: "warehouse_name", title: "Warehouse Name", type: "text" },
+      { key: "route", title: "Route", type: "text" },
       { key: "trucking_company", title: "Trucking Company", type: "text" },
       { key: "plate_number", title: "Plate No.", type: "text" },
       { key: "driver_name", title: "Driver Name", type: "text" },
@@ -131,8 +135,12 @@ export const REPORT_DEFINITIONS: Record<string, ReportDefinition> = {
     columns: [
       { key: "dispatch_number", title: "Dispatch No.", type: "text" },
       { key: "loading_date", title: "Loading Date", type: "date" },
+      { key: "warehouse_arrival_at", title: "Warehouse Arrival", type: "date" },
+      { key: "loading_start_at", title: "Loading Start", type: "date" },
+      { key: "loading_finished_at", title: "Loading Finish", type: "date" },
       { key: "ship_from", title: "Ship From", type: "text" },
       { key: "ship_to", title: "Ship To", type: "text" },
+      { key: "route", title: "Route", type: "text" },
       { key: "customer_name", title: "Customer", type: "text" },
       { key: "driver_name", title: "Driver Name", type: "text" },
       { key: "plate_number", title: "Plate No.", type: "text" },
@@ -234,8 +242,12 @@ export const REPORT_DEFINITIONS: Record<string, ReportDefinition> = {
       { key: "dispatch_number", title: "Dispatch No.", type: "text" },
       { key: "transaction_number", title: "Transaction No.", type: "text" },
       { key: "loading_date", title: "Loading Date", type: "date" },
+      { key: "warehouse_arrival_at", title: "Warehouse Arrival", type: "date" },
+      { key: "loading_start_at", title: "Loading Start", type: "date" },
+      { key: "loading_finished_at", title: "Loading Finish", type: "date" },
       { key: "warehouse_code", title: "Warehouse Code", type: "text" },
       { key: "warehouse_name", title: "Warehouse", type: "text" },
+      { key: "route", title: "Route", type: "text" },
       { key: "driver_name", title: "Driver Name", type: "text" },
       { key: "plate_number", title: "Plate No.", type: "text" },
       { key: "trucking_company", title: "Trucking Company", type: "text" },
@@ -316,6 +328,7 @@ export const REPORT_DEFINITIONS: Record<string, ReportDefinition> = {
       { key: "loading_date", title: "Loading Date", type: "date" },
       { key: "warehouse_name", title: "Ship From", type: "text" },
       { key: "store_name", title: "Ship To", type: "text" },
+      { key: "route", title: "Route", type: "text" },
       { key: "customer_name", title: "Customer", type: "text" },
       { key: "trucking_company", title: "Trucking Company", type: "text" },
       { key: "dr_number", title: "DR", type: "text" },
@@ -401,6 +414,7 @@ export const REPORT_DEFINITIONS: Record<string, ReportDefinition> = {
     title: "Store calling report",
     columns: [
       { key: "dispatch_number", title: "Dispatch No.", type: "text" },
+      { key: "route", title: "Route", type: "text" },
       { key: "ship_to", title: "Ship To", type: "text" },
       { key: "customer_name", title: "Customer", type: "text" },
       { key: "driver_name", title: "Driver Name", type: "text" },
@@ -572,6 +586,15 @@ export const REPORT_DEFINITIONS: Record<string, ReportDefinition> = {
   },
 };
 
+for (const key of ["combined", "dispatch-monitoring"]) {
+  REPORT_DEFINITIONS[key].columns.splice(2, 0,
+    { key: "transaction_dr_number", title: "Transaction DR Number", type: "text" },
+    { key: "transaction_quantity", title: "Transaction Quantity", type: "number" },
+    { key: "transaction_total_cbm", title: "Total CBM", type: "number" },
+    { key: "transmittal_ref", title: "Transmittal Reference", type: "text" },
+  );
+}
+
 for (const key of [
   "combined",
   "dispatch-monitoring",
@@ -580,7 +603,9 @@ for (const key of [
   "store-calling",
 ]) {
   const definition = REPORT_DEFINITIONS[key];
-  definition.sortableColumns = definition.columns.map((column) => column.key);
+  definition.sortableColumns = definition.columns
+    .filter((column) => column.key !== "route")
+    .map((column) => column.key);
 }
 
 export const REPORT_KEYS = Object.keys(REPORT_DEFINITIONS);

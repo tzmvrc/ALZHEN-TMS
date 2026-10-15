@@ -192,10 +192,13 @@ export default function SearchableRelationshipEditor({
         aria-controls={listId}
         aria-activedescendant={isOpen && options.length ? `${listId}-${activeIndex}` : undefined}
         value={query}
-        placeholder={value ? `Current: ${value}` : "Search records"}
+        placeholder="Search records"
         onFocus={() => {
           if (!disabled) {
-            setQuery("");
+            // Keep the saved value in the real input value while editing. The
+            // previous placeholder-only treatment looked like existing data
+            // but left the editor empty, so typing replaced an invisible value.
+            setQuery(value);
             setIsOpen(true);
           }
         }}

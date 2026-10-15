@@ -1,0 +1,597 @@
+{
+  "counts": {
+    "items": 0,
+    "offloads": 1,
+    "receipts": 1
+  },
+  "grants": [
+    {
+      "acl": [
+        "postgres=arwdDxtm/postgres",
+        "anon=Dxtm/postgres",
+        "authenticated=Dxtm/postgres",
+        "service_role=arwdDxtm/postgres"
+      ],
+      "rls": true,
+      "relation": "offloads"
+    },
+    {
+      "acl": [
+        "postgres=arwdDxtm/postgres",
+        "anon=Dxtm/postgres",
+        "authenticated=Dxtm/postgres",
+        "service_role=arwDxtm/postgres"
+      ],
+      "rls": true,
+      "relation": "offload_items"
+    },
+    {
+      "acl": [
+        "postgres=arwdDxtm/postgres",
+        "service_role=ardDxtm/postgres"
+      ],
+      "rls": true,
+      "relation": "report_receipts"
+    }
+  ],
+  "hashes": {
+    "items": "d751713988987e9331980363e24189ce",
+    "offloads": "3e13745ca0785a24028bc4276a3cbb81",
+    "receipts": "b56bef3bc65b60e8cac705cc17735dcf"
+  },
+  "columns": [
+    {
+      "type": "uuid",
+      "table": "offload_items",
+      "column": "id",
+      "default": "gen_random_uuid()",
+      "nullable": "NO"
+    },
+    {
+      "type": "uuid",
+      "table": "offload_items",
+      "column": "offload_id",
+      "default": null,
+      "nullable": "NO"
+    },
+    {
+      "type": "uuid",
+      "table": "offload_items",
+      "column": "trip_line_item_id",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "offload_items",
+      "column": "ship_to_snapshot",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "offload_items",
+      "column": "customer_name_snapshot",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "offload_items",
+      "column": "dr_number",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "offload_items",
+      "column": "sap_so_number",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "offload_items",
+      "column": "customer_po_number",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "offload_items",
+      "column": "customer_model",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "numeric",
+      "table": "offload_items",
+      "column": "quantity",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "numeric",
+      "table": "offload_items",
+      "column": "total_cbm",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "offload_items",
+      "column": "remarks",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "offload_items",
+      "column": "reason",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "timestamp with time zone",
+      "table": "offload_items",
+      "column": "created_at",
+      "default": "now()",
+      "nullable": "NO"
+    },
+    {
+      "type": "timestamp with time zone",
+      "table": "offload_items",
+      "column": "updated_at",
+      "default": "now()",
+      "nullable": "NO"
+    },
+    {
+      "type": "uuid",
+      "table": "offloads",
+      "column": "id",
+      "default": "gen_random_uuid()",
+      "nullable": "NO"
+    },
+    {
+      "type": "uuid",
+      "table": "offloads",
+      "column": "trip_id",
+      "default": null,
+      "nullable": "NO"
+    },
+    {
+      "type": "uuid",
+      "table": "offloads",
+      "column": "trip_stop_id",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "offloads",
+      "column": "reason",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "numeric",
+      "table": "offloads",
+      "column": "number_of_boxes",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "offloads",
+      "column": "comments",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "uuid",
+      "table": "offloads",
+      "column": "created_by",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "timestamp with time zone",
+      "table": "offloads",
+      "column": "created_at",
+      "default": "now()",
+      "nullable": "NO"
+    },
+    {
+      "type": "timestamp with time zone",
+      "table": "offloads",
+      "column": "updated_at",
+      "default": "now()",
+      "nullable": "NO"
+    },
+    {
+      "type": "date",
+      "table": "offloads",
+      "column": "report_date",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "offloads",
+      "column": "customer_name_snapshot",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "offloads",
+      "column": "dr_number",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "uuid",
+      "table": "offloads",
+      "column": "route_id",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "offloads",
+      "column": "route_name_snapshot",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "offloads",
+      "column": "driver_name_snapshot",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "offloads",
+      "column": "plate_number_snapshot",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "offloads",
+      "column": "status",
+      "default": "'SUBMITTED'::text",
+      "nullable": "NO"
+    },
+    {
+      "type": "uuid",
+      "table": "offloads",
+      "column": "submitted_by",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "timestamp with time zone",
+      "table": "offloads",
+      "column": "submitted_at",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "offloads",
+      "column": "event_type",
+      "default": "'Offload'::text",
+      "nullable": "NO"
+    },
+    {
+      "type": "uuid",
+      "table": "profiles",
+      "column": "id",
+      "default": null,
+      "nullable": "NO"
+    },
+    {
+      "type": "text",
+      "table": "profiles",
+      "column": "role",
+      "default": "'TRUCKER'::text",
+      "nullable": "NO"
+    },
+    {
+      "type": "timestamp with time zone",
+      "table": "profiles",
+      "column": "created_at",
+      "default": "now()",
+      "nullable": "NO"
+    },
+    {
+      "type": "timestamp with time zone",
+      "table": "profiles",
+      "column": "updated_at",
+      "default": "now()",
+      "nullable": "NO"
+    },
+    {
+      "type": "text",
+      "table": "profiles",
+      "column": "first_name",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "profiles",
+      "column": "last_name",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "profiles",
+      "column": "profile_picture_path",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "uuid",
+      "table": "profiles",
+      "column": "created_by",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "boolean",
+      "table": "profiles",
+      "column": "is_admin",
+      "default": "false",
+      "nullable": "NO"
+    },
+    {
+      "type": "uuid",
+      "table": "report_receipts",
+      "column": "id",
+      "default": "gen_random_uuid()",
+      "nullable": "NO"
+    },
+    {
+      "type": "uuid",
+      "table": "report_receipts",
+      "column": "trip_id",
+      "default": null,
+      "nullable": "NO"
+    },
+    {
+      "type": "uuid",
+      "table": "report_receipts",
+      "column": "trip_stop_id",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "uuid",
+      "table": "report_receipts",
+      "column": "loading_report_id",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "uuid",
+      "table": "report_receipts",
+      "column": "unloading_report_id",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "uuid",
+      "table": "report_receipts",
+      "column": "backload_id",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "uuid",
+      "table": "report_receipts",
+      "column": "offload_id",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "text",
+      "table": "report_receipts",
+      "column": "storage_path",
+      "default": null,
+      "nullable": "NO"
+    },
+    {
+      "type": "text",
+      "table": "report_receipts",
+      "column": "file_name",
+      "default": null,
+      "nullable": "NO"
+    },
+    {
+      "type": "text",
+      "table": "report_receipts",
+      "column": "mime_type",
+      "default": null,
+      "nullable": "NO"
+    },
+    {
+      "type": "bigint",
+      "table": "report_receipts",
+      "column": "file_size_bytes",
+      "default": null,
+      "nullable": "NO"
+    },
+    {
+      "type": "uuid",
+      "table": "report_receipts",
+      "column": "uploaded_by",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "timestamp with time zone",
+      "table": "report_receipts",
+      "column": "received_at",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "type": "timestamp with time zone",
+      "table": "report_receipts",
+      "column": "created_at",
+      "default": "now()",
+      "nullable": "NO"
+    }
+  ],
+  "constraints": [
+    {
+      "name": "offloads_created_by_fkey",
+      "table": "offloads",
+      "definition": "FOREIGN KEY (created_by) REFERENCES profiles(id) ON UPDATE CASCADE ON DELETE SET NULL"
+    },
+    {
+      "name": "offloads_event_type_check",
+      "table": "offloads",
+      "definition": "CHECK ((event_type = ANY (ARRAY['Loading'::text, 'Unloading'::text, 'Backload'::text, 'Offload'::text])))"
+    },
+    {
+      "name": "offloads_pkey",
+      "table": "offloads",
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "name": "offloads_route_id_fkey",
+      "table": "offloads",
+      "definition": "FOREIGN KEY (route_id) REFERENCES tms_route_options(id)"
+    },
+    {
+      "name": "offloads_submitted_by_fkey",
+      "table": "offloads",
+      "definition": "FOREIGN KEY (submitted_by) REFERENCES profiles(id)"
+    },
+    {
+      "name": "offloads_trip_id_fkey",
+      "table": "offloads",
+      "definition": "FOREIGN KEY (trip_id) REFERENCES trips(id) ON UPDATE CASCADE ON DELETE CASCADE"
+    },
+    {
+      "name": "offloads_trip_stop_id_fkey",
+      "table": "offloads",
+      "definition": "FOREIGN KEY (trip_stop_id) REFERENCES trip_stops(id) ON UPDATE CASCADE ON DELETE SET NULL"
+    },
+    {
+      "name": "proposed_offload_stop_trip_fk",
+      "table": "offloads",
+      "definition": "FOREIGN KEY (trip_stop_id, trip_id) REFERENCES trip_stops(id, trip_id) ON UPDATE RESTRICT ON DELETE RESTRICT"
+    },
+    {
+      "name": "offload_items_offload_id_fkey",
+      "table": "offload_items",
+      "definition": "FOREIGN KEY (offload_id) REFERENCES offloads(id) ON DELETE CASCADE"
+    },
+    {
+      "name": "offload_items_pkey",
+      "table": "offload_items",
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "name": "offload_items_trip_line_item_id_fkey",
+      "table": "offload_items",
+      "definition": "FOREIGN KEY (trip_line_item_id) REFERENCES trip_line_items(id)"
+    },
+    {
+      "name": "proposed_receipt_backload_trip_fk",
+      "table": "report_receipts",
+      "definition": "FOREIGN KEY (backload_id, trip_id) REFERENCES backloads(id, trip_id) ON UPDATE RESTRICT ON DELETE RESTRICT"
+    },
+    {
+      "name": "proposed_receipt_loading_trip_fk",
+      "table": "report_receipts",
+      "definition": "FOREIGN KEY (loading_report_id, trip_id) REFERENCES loading_reports(id, trip_id) ON UPDATE RESTRICT ON DELETE RESTRICT"
+    },
+    {
+      "name": "proposed_receipt_offload_trip_fk",
+      "table": "report_receipts",
+      "definition": "FOREIGN KEY (offload_id, trip_id) REFERENCES offloads(id, trip_id) ON UPDATE RESTRICT ON DELETE RESTRICT"
+    },
+    {
+      "name": "proposed_receipt_stop_trip_fk",
+      "table": "report_receipts",
+      "definition": "FOREIGN KEY (trip_stop_id, trip_id) REFERENCES trip_stops(id, trip_id) ON UPDATE RESTRICT ON DELETE RESTRICT"
+    },
+    {
+      "name": "proposed_receipt_unloading_identity_fk",
+      "table": "report_receipts",
+      "definition": "FOREIGN KEY (unloading_report_id, trip_stop_id, trip_id) REFERENCES unloading_reports(id, trip_stop_id, trip_id) ON UPDATE RESTRICT ON DELETE RESTRICT"
+    },
+    {
+      "name": "proposed_receipts_exactly_one_parent_ck",
+      "table": "report_receipts",
+      "definition": "CHECK ((num_nonnulls(loading_report_id, unloading_report_id, backload_id, offload_id) = 1))"
+    },
+    {
+      "name": "proposed_unloading_receipt_requires_stop_ck",
+      "table": "report_receipts",
+      "definition": "CHECK (((unloading_report_id IS NULL) OR (trip_stop_id IS NOT NULL)))"
+    },
+    {
+      "name": "report_receipts_backload_id_fkey",
+      "table": "report_receipts",
+      "definition": "FOREIGN KEY (backload_id) REFERENCES backloads(id)"
+    },
+    {
+      "name": "report_receipts_file_size_bytes_check",
+      "table": "report_receipts",
+      "definition": "CHECK (((file_size_bytes > 0) AND (file_size_bytes <= 5242880)))"
+    },
+    {
+      "name": "report_receipts_loading_report_id_fkey",
+      "table": "report_receipts",
+      "definition": "FOREIGN KEY (loading_report_id) REFERENCES loading_reports(id)"
+    },
+    {
+      "name": "report_receipts_offload_id_fkey",
+      "table": "report_receipts",
+      "definition": "FOREIGN KEY (offload_id) REFERENCES offloads(id)"
+    },
+    {
+      "name": "report_receipts_one_parent",
+      "table": "report_receipts",
+      "definition": "CHECK ((num_nonnulls(loading_report_id, unloading_report_id, backload_id, offload_id) = 1))"
+    },
+    {
+      "name": "report_receipts_pkey",
+      "table": "report_receipts",
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "name": "report_receipts_storage_path_key",
+      "table": "report_receipts",
+      "definition": "UNIQUE (storage_path)"
+    },
+    {
+      "name": "report_receipts_trip_id_fkey",
+      "table": "report_receipts",
+      "definition": "FOREIGN KEY (trip_id) REFERENCES trips(id)"
+    },
+    {
+      "name": "report_receipts_trip_stop_id_fkey",
+      "table": "report_receipts",
+      "definition": "FOREIGN KEY (trip_stop_id) REFERENCES trip_stops(id)"
+    },
+    {
+      "name": "report_receipts_unloading_report_id_fkey",
+      "table": "report_receipts",
+      "definition": "FOREIGN KEY (unloading_report_id) REFERENCES unloading_reports(id)"
+    },
+    {
+      "name": "report_receipts_uploaded_by_fkey",
+      "table": "report_receipts",
+      "definition": "FOREIGN KEY (uploaded_by) REFERENCES profiles(id)"
+    }
+  ]
+}

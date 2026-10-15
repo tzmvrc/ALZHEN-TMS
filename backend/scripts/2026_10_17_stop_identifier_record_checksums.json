@@ -1,0 +1,17 @@
+[
+  {
+    "source": "trip_stops",
+    "records": 8,
+    "checksum": "55ab59e380931d1ab91ee2d167a5385f"
+  },
+  {
+    "source": "trip_truck_assignments",
+    "records": 4,
+    "checksum": "9740931f60d5df8f072d1a056f9c920e"
+  },
+  {
+    "source": "trips",
+    "records": 4,
+    "checksum": "39fb634af2d9b33e545fd385a824bd4f"
+  }
+]

@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "../config/supabase.js";
+import { normalizeTransactionNumber } from "./transaction-values.logic.js";
 import { assertActiveDropdownOption } from "./dropdown-option.service.js";
 import {
   TripCreateInput,
@@ -758,7 +759,12 @@ export async function deleteTripRecord(id: string) {
 }
 
 const TRIP_STOP_ALLOWED_FIELDS = [
+  "dr_number",
+  "quantity",
+  "total_cbm",
   "stop_sequence",
+  "dispatch_number",
+  "transaction_number",
   "customer_id",
   "store_id",
   "delivery_status",
@@ -896,6 +902,23 @@ function buildTripStopPayload(input: Record<string, unknown>) {
         payload[field] = normalized;
       } else if (value === null) {
         payload[field] = null;
+      }
+      continue;
+    }
+
+    if (field === "quantity" || field === "total_cbm") {
+      payload[field] = normalizeTransactionNumber(value, field);
+      continue;
+    }
+    if (field === "dr_number") {
+      payload[field] = value === null || value === "" ? "" : sanitizeString(value, field, 100);
+      continue;
+    }
+    if (field === "dispatch_number" || field === "transaction_number") {
+      if (value === null || value === "") {
+        payload[field] = null;
+      } else {
+        payload[field] = sanitizeString(value, field, 100);
       }
       continue;
     }
@@ -1336,7 +1359,7 @@ async function assertProductExists(productId: string | null | undefined) {
   }
 }
 
-function buildTripLineItemPayload(input: Record<string, unknown>) {
+export function buildTripLineItemPayload(input: Record<string, unknown>) {
   const payload: Record<string, unknown> = {};
 
   for (const field of TRIP_LINE_ITEM_ALLOWED_FIELDS) {
@@ -1360,6 +1383,10 @@ function buildTripLineItemPayload(input: Record<string, unknown>) {
     if (field === "quantity" || field === "cbm") {
       const normalized = normalizeNumericField(value, field);
       if (normalized !== undefined) {
+        if (normalized < 0) throw new Error(`${field} must be a non-negative number.`);
+        if (field === "quantity" && !Number.isSafeInteger(normalized)) {
+          throw new Error("quantity must be a non-negative whole number.");
+        }
         payload[field] = normalized;
       } else if (value === null) {
         payload[field] = null;
@@ -1490,7 +1517,7 @@ export async function createTripLineItemRecord(
 
 export async function updateTripLineItemRecord(
   tripId: string,
-  stopId: string,
+  stopId: string | null,
   lineItemId: string,
   input: Record<string, unknown>,
 ) {
@@ -1498,7 +1525,7 @@ export async function updateTripLineItemRecord(
     throw new Error("Invalid trip id");
   }
 
-  if (!isValidUuid(stopId)) {
+  if (stopId !== null && !isValidUuid(stopId)) {
     throw new Error("Invalid stop id");
   }
 
@@ -1521,7 +1548,7 @@ export async function updateTripLineItemRecord(
     throw new Error("Trip not found");
   }
 
-  await assertStopExistsForTrip(tripId, stopId);
+  if (stopId !== null) await assertStopExistsForTrip(tripId, stopId);
 
   const { data: existingItem, error: itemError } = await supabaseAdmin
     .from("trip_line_items")
@@ -1572,14 +1599,13 @@ export async function updateTripLineItemRecord(
     throw new Error("No valid trip line item fields were provided for update.");
   }
 
-  const { data, error } = await supabaseAdmin
+  let updateQuery = supabaseAdmin
     .from("trip_line_items")
     .update(payload)
     .eq("id", lineItemId)
-    .eq("trip_id", tripId)
-    .eq("trip_stop_id", stopId)
-    .select("*")
-    .single();
+    .eq("trip_id", tripId);
+  updateQuery = stopId === null ? updateQuery.is("trip_stop_id", null) : updateQuery.eq("trip_stop_id", stopId);
+  const { data, error } = await updateQuery.select("*").single();
 
   if (error) {
     console.error("Trip line item update failed:", {
@@ -1605,6 +1631,14 @@ export async function updateTripLineItemRecord(
   }
 
   return data;
+}
+
+export function updateTripUnscopedLineItemRecord(
+  tripId: string,
+  lineItemId: string,
+  input: Record<string, unknown>,
+) {
+  return updateTripLineItemRecord(tripId, null, lineItemId, input);
 }
 
 export async function deleteTripLineItemRecord(

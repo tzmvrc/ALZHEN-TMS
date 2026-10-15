@@ -17,6 +17,20 @@ function invalidateTripRelatedCache() {
   invalidateReportPageCache();
 }
 
+export async function saveTransactionReference(token: string, tripId: string, stopId: string, value: unknown, expectedVersion: number) {
+  const response = await apiPatch<ApiResponse<Record<string, unknown>>>(`/trips/${encodeURIComponent(tripId)}/stops/${encodeURIComponent(stopId)}/transmittal-reference`, { value, expected_version: expectedVersion }, token);
+  if (!response.success || !response.data) throw new Error(response.message ?? "Unable to save Transmittal reference.");
+  invalidateTripRelatedCache();
+  return response.data;
+}
+
+export async function archiveTransaction(token: string, tripId: string, stopId: string | null, archived: boolean) {
+  const response = await apiPatch<ApiResponse<Record<string, unknown>>>(`/trips/${encodeURIComponent(tripId)}/transaction-archive`, { trip_stop_id: stopId, archived }, token);
+  if (!response.success || !response.data) throw new Error(response.message ?? "Unable to archive transaction.");
+  invalidateTripRelatedCache();
+  return response.data;
+}
+
 export type TripRecord = Record<string, unknown> & {
   id?: string;
   dispatch_number?: string | null;
@@ -211,6 +225,24 @@ export async function updateTripLineItemRecord(
 
   if (!response.success || !response.data) {
     throw new Error(response.message ?? "Unable to save line item update.");
+  }
+  invalidateTripRelatedCache();
+  return response.data;
+}
+
+export async function updateTripUnscopedLineItemRecord(
+  token: string,
+  tripId: string,
+  lineItemId: string,
+  updates: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const response = await apiPatch<ApiResponse<Record<string, unknown>>>(
+    `/trips/${encodeURIComponent(tripId)}/line-items/${encodeURIComponent(lineItemId)}`,
+    updates,
+    token,
+  );
+  if (!response.success || !response.data) {
+    throw new Error(response.message ?? "Unable to save trip line item update.");
   }
   invalidateTripRelatedCache();
   return response.data;

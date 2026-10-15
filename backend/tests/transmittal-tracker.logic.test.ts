@@ -9,13 +9,14 @@ import {
   resolveLegacyPodCellValue,
   shouldSeedDefaultStaffPermission,
   TRACKER_EMPTY_OVERRIDE,
+  isTransmittalEligible,
   type TransmittalSourceValues,
 } from "../src/services/transmittal-tracker.logic.js";
 import { projectTrackerExportRows, projectTransmittalSheetRows, reconcileTrackerRows } from "../../frontend/src/services/transmittal-tracker-export.logic.ts";
 
 const fixture: TransmittalSourceValues = {
   stops: [
-    { id: "stop-1", trip_id: "trip-1", stop_sequence: 1, customer_id: "customer-1", store_id: "store-1", delivery_status: "Delivered", finish_unloading_time: "2026-10-02T10:00:00Z" },
+    { id: "stop-1", trip_id: "trip-1", stop_sequence: 1, customer_id: "customer-1", store_id: "store-1", delivery_status: "Delivered", finish_unloading_time: "2026-10-02T10:00:00Z", dr_number: "DR-2", dr_version: 2 },
     { id: "stop-2", trip_id: "trip-1", stop_sequence: 2, customer_id: "customer-2", store_id: "store-2", delivery_status: "Pending", finish_unloading_time: null },
   ],
   trips: [{ id: "trip-1", warehouse_id: "warehouse-1", loading_date: "2026-10-01", lbc_tracking_number: "LBC-1", pod_ac_shipping_date: "2026-10-05" }],
@@ -23,9 +24,9 @@ const fixture: TransmittalSourceValues = {
   stores: [{ id: "store-1", name: "Store A" }, { id: "store-2", name: "Store B" }],
   customers: [{ id: "customer-1", name: "Customer A" }, { id: "customer-2", name: "Customer B" }],
   assignments: [
-    { trip_id: "trip-1", truck_id: "truck-1", driver_id: "driver-1", assignment_type: "PRIMARY" },
-    { trip_id: "trip-1", truck_id: "truck-2", driver_id: "driver-2", assignment_type: "PRIMARY" },
-    { trip_id: "trip-1", truck_id: "truck-ignored", driver_id: "driver-ignored", assignment_type: "SECONDARY" },
+    { trip_id: "trip-1", truck_id: "truck-1", driver_id: "driver-1", assignment_type: "PRIMARY", unassigned_at: null },
+    { trip_id: "trip-1", truck_id: "truck-2", driver_id: "driver-2", assignment_type: "PRIMARY", unassigned_at: "2026-10-01T00:00:00Z" },
+    { trip_id: "trip-1", truck_id: "truck-ignored", driver_id: "driver-ignored", assignment_type: "SECONDARY", unassigned_at: null },
   ],
   trucks: [{ id: "truck-1", plate_number: "ABC-123" }, { id: "truck-2", plate_number: "XYZ-456" }, { id: "truck-ignored", plate_number: "IGNORED" }],
   drivers: [{ id: "driver-1", first_name: "Ada", last_name: "One" }, { id: "driver-2", first_name: "Bea", last_name: "Two" }, { id: "driver-ignored", first_name: "No", last_name: "Three" }],
@@ -42,10 +43,10 @@ test("trip_stops produce exactly one row per stop without POD rows or join multi
   const rows = buildTransmittalTrackerRows(fixture);
   assert.equal(rows.length, 2);
   assert.deepEqual(rows.map((row) => row.trip_stop_id), ["stop-1", "stop-2"]);
-  assert.equal(rows[0].delivery_receipt_no, "DR-1, DR-2");
+  assert.equal(rows[0].delivery_receipt_no, "DR-2");
   assert.equal(rows[0].sales_order_no, "SO-1, SO-2");
-  assert.equal(rows[0].plate_number, "ABC-123, XYZ-456");
-  assert.equal(rows[0].driver_name, "Ada One, Bea Two");
+  assert.equal(rows[0].plate_number, "ABC-123");
+  assert.equal(rows[0].driver_name, "Ada One");
   assert.equal(rows[0].delivered_to, "Store A");
   assert.equal(rows[0].date_created, "");
   assert.equal(rows[1].delivery_receipt_no, "DR-3");
@@ -62,8 +63,38 @@ test("transmittal reference is a stop cell, searchable and used for exact-refere
   assert.deepEqual(filterTransmittalTrackerRowsByReference(rows, "TR-2"), []);
 });
 
+test("three transactions retain independent references and DR values with one shared active truck and driver", () => {
+  const source = structuredClone(fixture);
+  source.stops.push({ ...source.stops[1], id: "stop-3", stop_sequence: 3 });
+  source.line_items.push({ trip_stop_id: "stop-3", dr_number: "DR-4", sap_so_number: "SO-4" });
+  const cells = new Map(source.stops.map((stop, index) => [stop.id, {
+    transmittal_ref: { value: `REF-${index + 1}`, version: 1, row_id: `row-${stop.id}` },
+  }]));
+  const before = buildTransmittalTrackerRows(source, cells);
+  cells.get("stop-2")!.transmittal_ref.value = "EDITED-2";
+  const after = buildTransmittalTrackerRows(source, cells);
+  assert.deepEqual(after.map((row) => row.trip_stop_id), ["stop-1", "stop-2", "stop-3"]);
+  assert.deepEqual(after.map((row) => row.transmittal_ref), ["REF-1", "EDITED-2", "REF-3"]);
+  assert.deepEqual(after.map((row) => row.delivery_receipt_no), before.map((row) => row.delivery_receipt_no));
+  assert.deepEqual(after.map((row) => row.driver_name), ["Ada One", "Ada One", "Ada One"]);
+  assert.deepEqual(after.map((row) => row.plate_number), ["ABC-123", "ABC-123", "ABC-123"]);
+  source.assignments[0].truck_id = "truck-2";
+  assert.deepEqual(buildTransmittalTrackerRows(source, cells).map((row) => row.plate_number), ["XYZ-456", "XYZ-456", "XYZ-456"]);
+});
+
+test("zero or multiple active PRIMARY assignments retain each tracker row without arbitrary assignment details", () => {
+  const source = structuredClone(fixture);
+  source.assignments[1].unassigned_at = null;
+  for (const assignments of [source.assignments, []]) {
+    const rows = buildTransmittalTrackerRows({ ...source, assignments });
+    assert.equal(rows.length, 2);
+    assert.deepEqual(rows.map((row) => row.plate_number), ["", ""]);
+    assert.deepEqual(rows.map((row) => row.driver_name), ["", ""]);
+  }
+});
+
 test("editable source projections are stop-scoped flex overrides and can be cleared without changing operational defaults", () => {
-  const rows = buildTransmittalTrackerRows(fixture, new Map([
+  const rows = buildTransmittalTrackerRows({ ...fixture, stops: fixture.stops.map((stop) => ({ ...stop, dr_number: null })) }, new Map([
     ["stop-1", {
       warehouse_code_override: { value: "CUSTOM-WH", version: 1, row_id: "flex-row-1" },
       delivery_receipt_no_override: { value: "DR-CUSTOM-1, DR-CUSTOM-2", version: 1, row_id: "flex-row-1" },
@@ -211,4 +242,19 @@ test("tracker search covers reference, store, plate, receipt, sales order and st
   assert.equal(filterTransmittalTrackerRows(rows, "SO-3")[0]?.trip_stop_id, "stop-2");
   assert.equal(filterTransmittalTrackerRows(rows, "Pending").length, 1);
   assert.equal(filterTransmittalTrackerRows(rows, "LBC-1").length, 2);
+});
+
+test("new completed stops need no POD while stored tracker history remains eligible", () => {
+  assert.equal(isTransmittalEligible({ delivery_status: "Completed" }, false), true);
+  assert.equal(isTransmittalEligible({ delivery_status: "Pending" }, false), false);
+  assert.equal(isTransmittalEligible({ delivery_status: "Pending" }, true), true);
+});
+
+test("conflicting historical DR numbers are surfaced without concatenation or source-data loss", () => {
+  const source = structuredClone(fixture); source.stops[0].dr_number = null;
+  const before = structuredClone(source.line_items);
+  const row = buildTransmittalTrackerRows(source)[0];
+  assert.equal(row.delivery_receipt_no, "");
+  assert.ok(row.legacy_conflicts.includes("delivery_receipt_no_override"));
+  assert.deepEqual(source.line_items, before);
 });

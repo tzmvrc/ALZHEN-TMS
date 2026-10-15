@@ -25,6 +25,8 @@ import {
 } from "lucide-react";
 import type ExcelJS from "exceljs";
 import { useAuth } from "../../context/AuthContext";
+import TableState from "./TableState";
+import { TRIP_EDIT_STEPS, tripEditFieldStep, tripEditFieldChanged, validateTripEditField } from "../../services/trip-edit-wizard";
 import FlexibleTableSectionTabs from "./FlexibleTableSectionTabs";
 import { ApiError, invalidateApiCache } from "../../services/api.service";
 import {
@@ -37,7 +39,6 @@ import {
   getReportFilters,
   getSortableFields,
   REPORTS,
-  REPORT_PAGE_STALE_TTL_MS,
   setCachedReportPage,
   updateCachedReportPages,
   type Pagination,
@@ -46,6 +47,7 @@ import {
   type ReportKey,
   type ReportRow,
 } from "../../services/report.service";
+import { getReportRowIdentity } from "../../services/report-row-identity";
 import type { FlexSectionKey } from "../../services/flexible-table.service";
 import {
   addDropdownOption,
@@ -68,10 +70,13 @@ import {
   updateTripLineItemRecord,
   updateTripRecord,
   updateTripStopRecord,
+  saveTransactionReference,
+  archiveTransaction,
 } from "../../services/trip.service";
 import SearchableRelationshipEditor from "./SearchableRelationshipEditor";
 import {
   ReportTextCellEditor,
+  ReportRowActionButton,
   ReportCellFormattingToolbar,
   ReportColumnActionsMenu,
   ReportColumnColorDialog,
@@ -225,27 +230,13 @@ function searchableValue(value: unknown): string {
   }
 }
 
-function rowKey(row: ReportRow, index: number): string {
-  const identity = [row.trip_id, row.trip_stop_id, row.trip_line_item_id]
-    .filter((value) => value !== null && value !== undefined && value !== "")
-    .join(":");
-  return identity || String(row.store_call_id ?? row.dispatch_number ?? index);
+function getReportRowKey(reportKey: ReportKey, row: ReportRow): string | null {
+  return getReportRowIdentity(reportKey, row);
 }
 
-function getReportRowKey(reportKey: ReportKey, row: ReportRow): string | null {
-  if (reportKey === "store-calling") {
-    return typeof row.store_call_id === "string" && row.store_call_id
-      ? `${reportKey}:store-call:${row.store_call_id}`
-      : null;
-  }
-  const ids = [
-    ["trip", row.trip_id],
-    ["stop", row.trip_stop_id],
-    ["line-item", row.trip_line_item_id],
-    ["assignment", row.assignment_id],
-    ["billing", row.billing_id],
-  ].filter(([, id]) => typeof id === "string" && id) as [string, string][];
-  return ids.length ? `${reportKey}:${ids.map(([kind, id]) => `${kind}:${id}`).join(":")}` : null;
+function rowKey(reportKey: ReportKey, row: ReportRow, index: number): string {
+  return getReportRowKey(reportKey, row) ??
+    String(row.store_call_id ?? row.dispatch_number ?? index);
 }
 
 function reportEditDiagnostic(event: string, details: Record<string, unknown>) {
@@ -407,11 +398,15 @@ const ReportSelectionToolbar = memo(function ReportSelectionToolbar({
   rows,
   columns,
   onEdit,
+  onArchive,
+  archiveHistory,
 }: {
   reportKey: ReportKey;
   rows: ReportRow[];
   columns: ReportColumn[];
   onEdit: () => void;
+  onArchive?: (row: ReportRow) => void;
+  archiveHistory?: boolean;
 }) {
   useSyncExternalStore(reportSelection.subscribe, reportSelection.revision, reportSelection.revision);
   const keys = reportSelection.getKeys(reportKey);
@@ -419,15 +414,7 @@ const ReportSelectionToolbar = memo(function ReportSelectionToolbar({
   const row = rows.find((candidate) => getReportRowKey(reportKey, candidate) === keys[0]);
   const hasEditableFields = Boolean(row && columns.some((column) => getEditableCellTarget(row, column.key, reportKey)));
   const canEdit = keys.length === 1 && Boolean(row) && hasEditableFields;
-  return (
-    <button
-      type="button"
-      disabled={!canEdit}
-      onClick={onEdit}
-      className="inline-flex min-h-10 items-center gap-2 rounded-full border border-[#b7d5ed] bg-[#edf6fd] px-3.5 text-sm font-semibold text-[#155b8d] transition hover:bg-[#e1f0fb] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9] disabled:cursor-not-allowed disabled:opacity-50">
-      Edit {keys.length > 1 ? `(${keys.length})` : "selected row"}
-    </button>
-  );
+  return <><ReportRowActionButton action="edit" disabled={!canEdit} onClick={onEdit} />{onArchive && <ReportRowActionButton action="delete" disabled={keys.length !== 1 || !row} label={archiveHistory ? "Restore selected transaction" : "Archive selected transaction"} onClick={() => { if (row) onArchive(row); }} />}</>;
 });
 
 function rowText(row: ReportRow, ...keys: string[]): string {
@@ -441,7 +428,8 @@ function rowText(row: ReportRow, ...keys: string[]): string {
 }
 
 function defaultReportColumnWidth(column: ReportColumn): number {
-  if (/remarks|comment|notes/i.test(column.key)) return 280;
+  if (/remarks|comment|notes/i.test(column.key)) return 360;
+  if (/customer_name|store_name|ship_to/i.test(column.key)) return 300;
   return Math.max(144, Math.min(360, column.title.length * 8 + 76));
 }
 
@@ -470,6 +458,7 @@ type SavedRowReconciliation = {
 };
 
 type EditingCell = {
+  transmittalVersion?: number;
   rowKey: string;
   field: string;
   definition: ReportEditDefinition;
@@ -533,7 +522,7 @@ function getEditableCellTarget(
   columnKey: string,
   reportKey: ReportKey,
 ): EditableCellTarget | null {
-  const definition = getReportEditDefinition(reportKey, columnKey);
+  const definition = getReportEditDefinition(reportKey, columnKey, row);
   if (!definition) return null;
   const recordId = row[definition.recordIdField];
   if (typeof recordId !== "string" || !recordId) return null;
@@ -657,7 +646,7 @@ function ReportVisualCards({
   rows: ReportRow[];
   columns: ReportColumn[];
   reportKey: ReportKey;
-  onOpenTrip?: (tripId: string) => void;
+  onOpenTrip?: (tripId: string, stopId?: string | null) => void;
 }) {
   const isStoreCall = reportKey === "store-calling";
   const groups = groupRows(rows, !isStoreCall);
@@ -965,6 +954,8 @@ export default function ReportDataView({
   toolbarLeading,
   toolbarActions,
   createdTripReference,
+  ongoingOnly = false,
+  transactionView = false,
 }: {
   initialReport?: ReportKey;
   notificationTarget?: AdminNotificationTarget | null;
@@ -972,7 +963,7 @@ export default function ReportDataView({
   showExport?: boolean;
   pageTitle?: string;
   pageSubtitle?: string;
-  onOpenTrip?: (tripId: string) => void;
+  onOpenTrip?: (tripId: string, stopId?: string | null) => void;
   onReportScopeChange?: (value: ReportKey) => void;
   /** Controls placed before search in the report toolbar. */
   toolbarLeading?: ReactNode;
@@ -980,6 +971,9 @@ export default function ReportDataView({
   toolbarActions?: ReactNode;
   /** Focus the table on a newly persisted trip after creation. */
   createdTripReference?: string | null;
+  /** Restrict Dispatch Monitoring to trips with at least one unfinished stop. */
+  ongoingOnly?: boolean;
+  transactionView?: boolean;
 }) {
   const { accessToken, refreshSession, profile } = useAuth();
   const navigate = useNavigate();
@@ -1015,19 +1009,27 @@ export default function ReportDataView({
   const [managingDropdownField, setManagingDropdownField] = useState<DropdownField | null>(null);
   useEffect(() => {
     if (!columnResize) return;
+    const previousUserSelect = document.body.style.userSelect;
+    document.body.style.userSelect = "none";
     const move = (event: PointerEvent) => {
       const width = Math.max(100, Math.min(800, columnResize.startWidth + event.clientX - columnResize.startX));
       setColumnLayout((current) => {
         const next = { ...current, widths: { ...(current.widths ?? {}), [columnResize.key]: width } };
-        try { window.localStorage.setItem(columnLayoutStorageKey, JSON.stringify(next)); } catch { /* Keep the report grid usable if storage is unavailable. */ }
         return next;
       });
     };
-    const finish = () => setColumnResize(null);
+    const finish = () => {
+      setColumnLayout((current) => {
+        try { window.localStorage.setItem(columnLayoutStorageKey, JSON.stringify(current)); } catch { /* Widths remain usable for this session. */ }
+        return current;
+      });
+      setColumnResize(null);
+    };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", finish);
     window.addEventListener("pointercancel", finish);
     return () => {
+      document.body.style.userSelect = previousUserSelect;
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", finish);
       window.removeEventListener("pointercancel", finish);
@@ -1051,6 +1053,16 @@ export default function ReportDataView({
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editModalBusy, setEditModalBusy] = useState(false);
   const [editModalError, setEditModalError] = useState("");
+  const [tripEditStep, setTripEditStep] = useState(0);
+  const tripEditHeading = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    if (transactionView && editModalOpen) tripEditHeading.current?.focus();
+  }, [transactionView, editModalOpen, tripEditStep]);
+  const [archiveHistory, setArchiveHistory] = useState(false);
+  const [archiveTarget, setArchiveTarget] = useState<ReportRow | null>(null);
+  const [archiveBusy, setArchiveBusy] = useState(false);
+  const [archiveError, setArchiveError] = useState("");
+  const archiveRequest = useRef(false);
   const [pagination, setPagination] = useState<Pagination | null>(null);
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
@@ -1058,6 +1070,7 @@ export default function ReportDataView({
   const [appliedFilters, setAppliedFilters] = useState<Record<string, string>>(
     {},
   );
+  const queryFilters = useMemo(() => transactionView ? { ...appliedFilters, active_transactions: "true", archive_scope: archiveHistory ? "archived" : "active" } : ongoingOnly ? { ...appliedFilters, ongoing_only: "true" } : appliedFilters, [appliedFilters, ongoingOnly, transactionView, archiveHistory]);
   const [filtersExpanded, setFiltersExpanded] = useState(false);
   const [sortBy, setSortBy] = useState(getSortableFields(initialReport)[0]);
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
@@ -1113,7 +1126,9 @@ export default function ReportDataView({
   const mentionControlActive = useRef(false);
   const sortableFields =
     columns.length > 0
-      ? columns.map((column) => column.key)
+      ? columns
+          .filter((column) => column.key !== "route")
+          .map((column) => column.key)
       : getSortableFields(reportKey);
   const activeSortBy = sortableFields.includes(sortBy)
     ? sortBy
@@ -1147,10 +1162,10 @@ export default function ReportDataView({
   );
   const gridColumns = useMemo(
     () => layoutColumnKeys.filter((key) => !hiddenColumnKeys.has(key)).flatMap((key) => {
-      const column = columns.find((item) => item.key === key);
+      const column = columns.find((item) => item.key === key && !(transactionView && key === "warehouse_code"));
       return column ? [column] : [];
     }),
-    [columns, hiddenColumnKeys, layoutColumnKeys],
+    [columns, hiddenColumnKeys, layoutColumnKeys, transactionView],
   );
   const hiddenColumns = useMemo(
     () => layoutColumnKeys.filter((key) => hiddenColumnKeys.has(key)).flatMap((key) => {
@@ -1211,7 +1226,7 @@ export default function ReportDataView({
   const queryKey = JSON.stringify({
     accessToken,
     activeSortBy,
-    appliedFilters,
+    appliedFilters: queryFilters,
     appliedSearch: effectiveSearch,
     page,
     reportKey,
@@ -1219,15 +1234,15 @@ export default function ReportDataView({
     sortBy: activeSortBy,
     sortOrder,
   });
-  const snapshotKey = JSON.stringify({ accessToken, activeSortBy, appliedFilters, appliedSearch: effectiveSearch, page, reportKey, sortOrder });
+  const snapshotKey = JSON.stringify({ accessToken, activeSortBy, appliedFilters: queryFilters, appliedSearch: effectiveSearch, page, reportKey, sortOrder });
   const pageOptions = useMemo(() => ({
     page,
     limit: 50,
     search: effectiveSearch,
     sortBy: activeSortBy,
     sortOrder,
-    filters: appliedFilters,
-  }), [activeSortBy, appliedFilters, effectiveSearch, page, sortOrder]);
+    filters: queryFilters,
+  }), [activeSortBy, queryFilters, effectiveSearch, page, sortOrder]);
   const snapshotKeyRef = useRef(snapshotKey);
   const loadedSnapshotKeyRef = useRef<string | null>(null);
   const reportKeyRef = useRef(reportKey);
@@ -1420,22 +1435,12 @@ export default function ReportDataView({
     let active = true;
     const cached = getCachedReportPage(reportKey, accessToken, pageOptions);
     const displayCache = cached ?? getStaleReportPage(reportKey, accessToken, pageOptions);
-    let staleCacheTimer: number | null = null;
     if (displayCache) {
       setColumns(displayCache.columns);
       setRows(displayCache.rows);
       setPagination(displayCache.pagination);
       setLoadedQueryKey(queryKey);
       loadedSnapshotKeyRef.current = snapshotKey;
-      if (!cached) {
-        staleCacheTimer = window.setTimeout(() => {
-          if (!active) return;
-          setColumns([]);
-          setRows([]);
-          setPagination(null);
-          setRequestError({ key: queryKey, message: "Cached report data expired. Retry to load current records." });
-        }, REPORT_PAGE_STALE_TTL_MS);
-      }
     } else if (loadedSnapshotKeyRef.current === snapshotKey) {
       setLoadedQueryKey(queryKey);
     } else {
@@ -1514,7 +1519,6 @@ export default function ReportDataView({
           rows: reconciledRows,
           pagination: result.pagination,
         });
-        if (staleCacheTimer !== null) window.clearTimeout(staleCacheTimer);
         loadedSnapshotKeyRef.current = snapshotKey;
         savedRowReconciliations.current = savedRowReconciliations.current.filter(
           (reconciliation) =>
@@ -1530,16 +1534,11 @@ export default function ReportDataView({
           status: cause instanceof ApiError ? cause.status : undefined,
         });
         if (!active) return;
-        if (staleCacheTimer !== null) window.clearTimeout(staleCacheTimer);
         if (cause instanceof ApiError && cause.status === 401) {
           await refreshSession();
           return;
         }
-        if (!cached && displayCache) {
-          setColumns([]);
-          setRows([]);
-          setPagination(null);
-        }
+        // Keep the last valid page visible during a failed background refresh.
         if (!displayCache || !cached) setRequestError({
           key: queryKey,
           message:
@@ -1550,7 +1549,6 @@ export default function ReportDataView({
                 : "Unable to load this report.",
         });
       } finally {
-        if (staleCacheTimer !== null) window.clearTimeout(staleCacheTimer);
         const remaining = (inFlightReportQueries.current.get(snapshotKey) ?? 1) - 1;
         if (remaining > 0) inFlightReportQueries.current.set(snapshotKey, remaining);
         else inFlightReportQueries.current.delete(snapshotKey);
@@ -1570,7 +1568,6 @@ export default function ReportDataView({
 
     return () => {
       active = false;
-      if (staleCacheTimer !== null) window.clearTimeout(staleCacheTimer);
     };
   }, [
     accessToken,
@@ -1695,7 +1692,7 @@ export default function ReportDataView({
       ? row[target.relationship.idField]
       : undefined;
     return {
-      rowKey: rowKey(row, index),
+      rowKey: rowKey(reportKey, row, index),
       field: columnKey,
       definition: target,
       dropdownField: target.dropdownField,
@@ -1711,6 +1708,7 @@ export default function ReportDataView({
         typeof relationshipId === "string" ? relationshipId : undefined,
       value: currentText,
       originalValue: currentText,
+      transmittalVersion: Number(row.transmittal_ref_version ?? 0),
       mentionProfileIds: [],
       assignmentEventKey:
         reportKey === "store-calling" && columnKey === "assigned_to"
@@ -1886,7 +1884,7 @@ export default function ReportDataView({
     if (!accessToken || cellSaveInFlight.current || !sourceTarget || sourceTarget.editor === "relationship") return;
     const sourceRowKey = getReportRowKey(reportKey, row);
     if (!sourceRowKey || displayedRowsRef.current.filter((candidate) => getReportRowKey(reportKey, candidate) === sourceRowKey).length !== 1) {
-      setCellSaveState({ rowKey: rowKey(row, index), field: column.key, status: "warning", message: "Fill is unavailable because this report row does not have a unique stable identity." });
+      setCellSaveState({ rowKey: rowKey(reportKey, row, index), field: column.key, status: "warning", message: "Fill is unavailable because this report row does not have a unique stable identity." });
       return;
     }
     const baseline = new Map<string, unknown>();
@@ -1941,7 +1939,7 @@ export default function ReportDataView({
     const targetColumnIndex = renderedGridColumns.findIndex((column) => column.key === gesture.targetField);
     if (sourceRowIndex < 0 || targetRowIndex < 0 || sourceColumnIndex < 0 || targetColumnIndex < 0) return;
     if (!Object.is(currentRows[sourceRowIndex][gesture.sourceField], gesture.baseline.get(`${gesture.sourceRowKey}\u0000${gesture.sourceField}`))) {
-      setCellSaveState({ rowKey: rowKey(currentRows[sourceRowIndex], sourceRowIndex), field: gesture.sourceField, status: "warning", message: "Fill cancelled because the source cell changed." });
+      setCellSaveState({ rowKey: rowKey(reportKey, currentRows[sourceRowIndex], sourceRowIndex), field: gesture.sourceField, status: "warning", message: "Fill cancelled because the source cell changed." });
       return;
     }
     const targets: Array<{ rowKey: string; field: string }> = [];
@@ -2030,6 +2028,20 @@ export default function ReportDataView({
     event.clipboardData.setData("text/plain", text);
   }
 
+  async function confirmTransactionArchive() {
+    if (!archiveTarget || !accessToken || archiveRequest.current) return;
+    if (cellSaveInFlight.current) { setArchiveError("Wait for the current cell save to finish, then retry."); return; }
+    const tripId = archiveTarget.trip_id;
+    const stopId = archiveTarget.trip_stop_id ?? archiveTarget._trip_stop_id;
+    if (typeof tripId !== "string" || (stopId != null && typeof stopId !== "string")) { setArchiveError("This row is missing its transaction identity."); return; }
+    archiveRequest.current = true; setArchiveBusy(true); setArchiveError("");
+    try {
+      await archiveTransaction(accessToken, tripId, typeof stopId === "string" ? stopId : null, !archiveHistory);
+      setArchiveTarget(null); reportSelection.clear(reportKey); setRetryVersion((current) => current + 1);
+    } catch (cause) { setArchiveError(cause instanceof Error ? cause.message : "Unable to save archive status."); }
+    finally { archiveRequest.current = false; setArchiveBusy(false); }
+  }
+
   function openSelectedRowEditor() {
     const keys = reportSelection.getKeys(reportKey);
     if (keys.length !== 1) return;
@@ -2038,6 +2050,7 @@ export default function ReportDataView({
     const rowIndex = rows.indexOf(row);
     const seen = new Set<string>();
     const fields = columns.flatMap((column) => {
+      if (transactionView && column.key === "warehouse_code") return [];
       const cell = createEditingCell(row, rowIndex, column.key);
       if (!cell) return [];
       const identity = [
@@ -2062,13 +2075,20 @@ export default function ReportDataView({
     setEditModalRecord(row);
     setEditModalFields(fields);
     setEditModalError("");
+    setTripEditStep(0);
     setEditModalOpen(true);
   }
 
   function updateModalCell(field: string, updater: (cell: EditingCell) => EditingCell) {
-    setEditModalFields((current) => current.map((item) =>
-      item.cell.field === field ? { ...item, cell: updater(item.cell) } : item,
-    ));
+    setEditModalFields((current) => {
+      const previous = current.find((item) => item.cell.field === field)?.cell;
+      const next = current.map((item) => item.cell.field === field ? { ...item, cell: updater(item.cell) } : item);
+      const updated = next.find((item) => item.cell.field === field)?.cell;
+      if (previous?.definition.sourceField === "customer_id" && updated?.relationshipId !== previous.relationshipId) {
+        return next.map((item) => item.cell.definition.sourceField === "store_id" ? { ...item, cell: { ...item.cell, value: "", relationshipId: undefined, relationshipOption: undefined } } : item);
+      }
+      return next;
+    });
   }
 
   async function addModalDropdownOption(target: EditingCell, rawValue: string): Promise<boolean> {
@@ -2081,6 +2101,10 @@ export default function ReportDataView({
 
   async function saveSelectedRowEdits() {
     if (editModalBusy) return;
+    if (transactionView) {
+      const invalid = editModalFields.map(({ cell }) => validateTripEditField(cell)).find(Boolean);
+      if (invalid) { setEditModalError(invalid); return; }
+    }
     setEditModalBusy(true);
     setEditModalError("");
     let nextFields = editModalFields;
@@ -2163,7 +2187,8 @@ export default function ReportDataView({
     const textValue = targetCell.value.trim();
     const isControlled = definition.editor === "status";
     const isRelationship = definition.editor === "relationship";
-    if (!textValue && (definition.required || isControlled || isRelationship)) {
+    const nullableStore = isRelationship && definition.sourceField === "store_id" && !definition.required;
+    if (!textValue && (definition.required || isControlled || (isRelationship && !nullableStore))) {
       setCellSaveState({
         rowKey: targetCell.rowKey,
         field: targetCell.field,
@@ -2175,7 +2200,7 @@ export default function ReportDataView({
 
     let nextValue: unknown = textValue || null;
     if (isRelationship) {
-      if (!targetCell.relationshipId) {
+      if (!targetCell.relationshipId && !(definition.sourceField === "store_id" && !textValue)) {
         setCellSaveState({
           rowKey: targetCell.rowKey,
           field: targetCell.field,
@@ -2184,7 +2209,7 @@ export default function ReportDataView({
         });
         return false;
       }
-      nextValue = targetCell.relationshipId;
+      nextValue = targetCell.relationshipId ?? null;
     } else if (definition.editor === "number" && textValue) {
       const parsed = Number(textValue);
       if (!Number.isFinite(parsed)) {
@@ -2196,7 +2221,7 @@ export default function ReportDataView({
         });
         return false;
       }
-      nextValue = parsed;
+      nextValue = definition.sourceEntity === "stop" && ["quantity", "total_cbm"].includes(definition.sourceField) ? textValue : parsed;
     } else if (definition.editor === "datetime" && textValue) {
       const parsed = new Date(textValue);
       if (Number.isNaN(parsed.getTime())) {
@@ -2347,7 +2372,9 @@ export default function ReportDataView({
         targetCell.tripId &&
         targetCell.stopId
       ) {
-        savedRecord = await updateTripStopRecord(
+        savedRecord = definition.sourceField === "transmittal_ref"
+          ? await saveTransactionReference(accessToken, targetCell.tripId, targetCell.stopId, nextValue, targetCell.transmittalVersion ?? 0)
+          : await updateTripStopRecord(
           accessToken,
           targetCell.tripId,
           targetCell.stopId,
@@ -2455,6 +2482,7 @@ export default function ReportDataView({
           ? savedRecord[definition.sourceField]
           : nextValue;
         savedRowPatch = { [targetCell.field]: confirmedValue };
+        if (definition.sourceField === "transmittal_ref") savedRowPatch.transmittal_ref_version = savedRecord.transmittal_ref_version;
       }
 
       const recordTarget: SavedRowReconciliation["target"] = {
@@ -2569,7 +2597,10 @@ export default function ReportDataView({
         status: "error",
         message: message,
       });
-      if (!keepEditing) setEditingCell(null);
+      // Keep the draft in the cell after a failed request so the user can
+      // correct it or retry without re-entering the value. No row/cache patch
+      // is applied until the backend confirms the write.
+      setEditingCell(targetCell);
       return false;
     } finally {
       cellSaveInFlight.current = false;
@@ -2790,7 +2821,10 @@ export default function ReportDataView({
             reportKey={reportKey}
             rows={displayedRows}
             columns={columns}
+            archiveHistory={archiveHistory}
+            onArchive={transactionView ? (row) => { setArchiveTarget(row); setArchiveError(""); } : undefined}
             onEdit={openSelectedRowEditor} />
+          {transactionView && <button type="button" aria-pressed={archiveHistory} onClick={() => { setArchiveHistory((current) => !current); setPage(1); reportSelection.clear(reportKey); }} className="rounded-full border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50">{archiveHistory ? "Back to active transactions" : "Archived transactions"}</button>}
         </div>
         <div className="flex min-w-0 flex-wrap items-center justify-end gap-2 lg:flex-none">
           {viewMode === "visual" && (
@@ -2947,17 +2981,29 @@ export default function ReportDataView({
         </div>
       )}
 
+      {archiveTarget && <div className="fixed inset-0 z-[2100] flex items-center justify-center bg-slate-900/30 p-4 backdrop-blur-sm">
+        <section role="alertdialog" aria-modal="true" aria-labelledby="transaction-archive-title" aria-describedby="transaction-archive-description" className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+          <h2 id="transaction-archive-title" className="text-lg font-semibold text-[#0b2341]">{archiveHistory ? "Restore transaction?" : "Archive transaction?"}</h2>
+          <p className="mt-2 text-sm font-semibold text-slate-700">{rowText(archiveTarget, "dispatch_number", "transaction_number", "trip_number")} · {rowText(archiveTarget, "store_name", "customer_name")}</p>
+          <p id="transaction-archive-description" className="mt-3 text-sm text-slate-600">{archiveHistory ? "This transaction will return to the active Trips list." : "This delivery transaction will be hidden from active Trips and new report choices. Its products, Offload reports, POD, receipts and Transmittal history remain stored. Sibling transactions remain active."}</p>
+          {archiveError && <p role="alert" className="mt-3 text-sm text-rose-700">{archiveError}</p>}
+          <footer className="mt-5 flex justify-end gap-2"><button type="button" disabled={archiveBusy} onClick={() => setArchiveTarget(null)} className="rounded-full px-4 py-2 text-sm text-slate-600 disabled:opacity-50">Cancel</button><button type="button" disabled={archiveBusy} onClick={() => void confirmTransactionArchive()} className="rounded-full bg-[#0b2341] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{archiveBusy ? "Saving…" : archiveHistory ? "Restore transaction" : "Archive transaction"}</button></footer>
+        </section>
+      </div>}
       {editModalOpen && editModalRecord && (
         <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-slate-900/20 p-4 backdrop-blur-[2px]" onMouseDown={(event) => {
           if (event.target === event.currentTarget && !editModalBusy) setEditModalOpen(false);
         }}>
           <section role="dialog" aria-modal="true" aria-labelledby="report-row-edit-title" className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
             <header className="border-b border-slate-100 px-5 py-4">
-              <h2 id="report-row-edit-title" className="text-lg font-semibold text-[#0b2341]">Edit report row</h2>
+              <h2 id="report-row-edit-title" ref={tripEditHeading} tabIndex={-1} className="text-lg font-semibold text-[#0b2341] outline-none">{transactionView ? `Edit transaction · ${TRIP_EDIT_STEPS[tripEditStep]}` : "Edit report row"}</h2>
               <p className="mt-1 text-sm text-slate-500">{REPORTS[reportKey].title} · {rowText(editModalRecord, "dispatch_number", "trip_number", "store_call_id") || "Selected record"}</p>
             </header>
+            {transactionView && <ol aria-label="Trip edit progress" className="grid grid-cols-2 gap-2 border-b border-slate-100 bg-slate-50 px-5 py-3 sm:grid-cols-4">{TRIP_EDIT_STEPS.map((label, index) => <li key={label} aria-current={index === tripEditStep ? "step" : undefined}><button type="button" disabled={editModalBusy || index > tripEditStep} onClick={() => { setTripEditStep(index); setEditModalError(""); }} className={`w-full rounded-lg px-2 py-2 text-left text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9] disabled:cursor-not-allowed ${index === tripEditStep ? "bg-[#0b2341] text-white" : index < tripEditStep ? "bg-emerald-50 text-emerald-700" : "text-slate-400"}`}>{index < tripEditStep ? "✓" : index + 1} {label}</button></li>)}</ol>}
             <div className="grid gap-4 overflow-y-auto p-5 sm:grid-cols-2">
-              {editModalFields.map(({ column, cell }) => {
+              {transactionView && tripEditStep === 1 && <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900 sm:col-span-2">Truck and driver assignments are shared by the other transactions on this physical trip.</p>}
+              {transactionView && tripEditStep === 3 && <div className="sm:col-span-2"><h3 className="mb-3 text-sm font-semibold text-slate-700">Review pending changes</h3>{editModalFields.filter(({ cell }) => tripEditFieldChanged(cell)).length === 0 ? <p className="text-sm text-slate-500">No changes.</p> : <dl className="grid gap-3 sm:grid-cols-2">{editModalFields.filter(({ cell }) => tripEditFieldChanged(cell)).map(({ column, cell }) => <div key={cell.field} className="rounded-lg border border-slate-100 p-3"><dt className="text-xs font-semibold text-slate-500">{column.title}</dt><dd className="mt-1 whitespace-pre-wrap break-words text-sm text-slate-800">{cell.value || "Blank"}{["trip", "assignment"].includes(cell.definition.sourceEntity) && <span className="ml-2 text-xs text-amber-700">Shared {cell.definition.sourceEntity}</span>}</dd></div>)}</dl>}</div>}
+              {editModalFields.filter(({ cell }) => !transactionView || tripEditStep < 3 && tripEditFieldStep(cell.definition) === tripEditStep).map(({ column, cell }) => {
                 const saving = editModalBusy || cellSaveInFlight.current;
                 const fieldKey = cell.definition.dropdownField;
                 const choices = cell.definition.editor === "boolean"
@@ -2965,7 +3011,7 @@ export default function ReportDataView({
                   : (fieldKey ? dropdownChoicesByField[fieldKey] : undefined) ?? [];
                 return (
                   <label key={`${cell.definition.sourceEntity}:${cell.definition.sourceField}:${cell.field}`} className="grid content-start gap-1.5 text-sm font-medium text-slate-700">
-                    <span>{column.title}</span>
+                    <span>{column.title}{transactionView && ["trip", "assignment"].includes(cell.definition.sourceEntity) && <span className="ml-2 text-[10px] font-normal text-amber-700">Shared {cell.definition.sourceEntity}</span>}</span>
                     {cell.definition.editor === "status" || cell.definition.editor === "boolean" ? (
                       <ReportDropdownEditor
                         label={column.title}
@@ -2990,7 +3036,7 @@ export default function ReportDataView({
                         value={cell.value}
                         autoFocus={false}
                         storeId={typeof editModalRecord[cell.definition.relationship.storeIdField ?? ""] === "string" ? String(editModalRecord[cell.definition.relationship.storeIdField ?? ""]) : undefined}
-                        customerId={typeof editModalRecord[cell.definition.relationship.customerIdField ?? ""] === "string" ? String(editModalRecord[cell.definition.relationship.customerIdField ?? ""]) : undefined}
+                        customerId={editModalFields.find((field) => field.cell.definition.sourceField === "customer_id")?.cell.relationshipId ?? (typeof editModalRecord[cell.definition.relationship.customerIdField ?? ""] === "string" ? String(editModalRecord[cell.definition.relationship.customerIdField ?? ""]) : undefined)}
                         disabled={saving}
                         onSelect={(option) => updateModalCell(cell.field, (current) => ({
                           ...current,
@@ -3018,7 +3064,12 @@ export default function ReportDataView({
             {editModalError && <p role="alert" className="mx-5 mb-3 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{editModalError}</p>}
             <footer className="flex justify-end gap-2 border-t border-slate-100 px-5 py-4">
               <button type="button" disabled={editModalBusy} onClick={() => setEditModalOpen(false)} className="rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50">Cancel</button>
-              <button type="button" disabled={editModalBusy || editModalFields.length === 0} onClick={() => void saveSelectedRowEdits()} className="rounded-full bg-[#ffd43b] px-4 py-2 text-sm font-semibold text-[#0b2341] hover:bg-[#f2c200] disabled:opacity-50">{editModalBusy ? "Saving…" : "Save changes"}</button>
+              {transactionView && tripEditStep > 0 && <button type="button" disabled={editModalBusy} onClick={() => { setTripEditStep((step) => step - 1); setEditModalError(""); }} className="rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50">Back</button>}
+              {transactionView && tripEditStep < 3 ? <button type="button" disabled={editModalBusy} onClick={() => {
+                const invalid = editModalFields.filter(({ cell }) => tripEditFieldStep(cell.definition) === tripEditStep).map(({ cell }) => validateTripEditField(cell)).find(Boolean);
+                if (invalid) { setEditModalError(invalid); return; }
+                setTripEditStep((step) => step + 1); setEditModalError("");
+              }} className="rounded-full bg-[#ffd43b] px-4 py-2 text-sm font-semibold text-[#0b2341] hover:bg-[#f2c200] disabled:opacity-50">Next</button> : <button type="button" disabled={editModalBusy || editModalFields.length === 0} onClick={() => void saveSelectedRowEdits()} className="rounded-full bg-[#ffd43b] px-4 py-2 text-sm font-semibold text-[#0b2341] hover:bg-[#f2c200] disabled:opacity-50">{editModalBusy ? "Saving…" : "Save changes"}</button>}
             </footer>
           </section>
         </div>
@@ -3034,7 +3085,8 @@ export default function ReportDataView({
       <section
         className={viewMode === "visual" ? "" : tableUi.shell}
       >
-      {activeError ? (
+      {activeError && displayedRows.length > 0 && <p role="alert" className="border-b border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">Showing the last loaded records. Refresh failed: {activeError}</p>}
+      {activeError && displayedRows.length === 0 ? (
         <div className="flex min-h-48 flex-col items-center justify-center gap-3 p-6 text-center">
           <p role="alert" className="text-sm text-rose-700">
             {activeError}
@@ -3081,10 +3133,8 @@ export default function ReportDataView({
                   rows={6}
                 />
               </div>
-            ) : displayedRows.length === 0 && (Boolean(appliedSearch.trim()) || hasAppliedFilters) ? (
-              <div className="flex min-h-48 w-full items-center justify-center px-4 py-12 text-center text-sm text-slate-500">
-                No matching records found.
-              </div>
+            ) : displayedRows.length === 0 ? (
+              <TableState message={Boolean(appliedSearch.trim()) || hasAppliedFilters ? "No matching records found." : "No report rows available"} />
             ) : (
               <table className="w-max min-w-full border-separate border-spacing-0 text-left">
                 <thead className={`${tableUi.thead} bg-white`}>
@@ -3174,7 +3224,7 @@ export default function ReportDataView({
                     </tr>
                   )}
                   {displayedRows.map((row, index) => {
-                    const currentRowKey = rowKey(row, index);
+                    const currentRowKey = rowKey(reportKey, row, index);
                     const selectionKey = getReportRowKey(reportKey, row);
                     return (
                       <tr

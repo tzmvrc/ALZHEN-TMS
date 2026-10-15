@@ -39,6 +39,11 @@ import {
   type TripImage,
 } from "../../../services/trip-image.service";
 import { subscribeToAdminRealtime } from "../../../services/realtime.service";
+import {
+  fetchTripOperations,
+  type OperationsReportData,
+  type ScopeReport,
+} from "../../../services/operations-report.service";
 
 type BookingPage = {
   rows: Record<string, unknown>[];
@@ -50,6 +55,7 @@ type DetailState = {
   stops: TripChildRecord[];
   lineItems: TripChildRecord[];
   events: TripEvent[];
+  operations: OperationsReportData;
   bookingRows: Record<string, unknown>[];
   bookingError: string | null;
   truckCapacityCbm: number | null;
@@ -647,9 +653,11 @@ function TripDetailSkeleton({ onBack }: { onBack: () => void }) {
 export default function TripDetailView({
   tripId,
   onBack,
+  initialStopId,
 }: {
   tripId: string;
   onBack: () => void;
+  initialStopId?: string | null;
 }) {
   const { accessToken, refreshSession } = useAuth();
   const navigate = useNavigate();
@@ -658,6 +666,7 @@ export default function TripDetailView({
   const [failure, setFailure] = useState<{ key: string; message: string } | null>(null);
   const [retry, setRetry] = useState(0);
   const [selectedStop, setSelectedStop] = useState<string | null>(null);
+  const [stopSelectionChanged, setStopSelectionChanged] = useState(false);
   const [selectedCargoItem, setSelectedCargoItem] = useState<Record<string, unknown> | null>(null);
   const [photoProduct, setPhotoProduct] = useState<{ id: string; name: string } | null>(null);
   const [viewProduct, setViewProduct] = useState<Record<string, unknown> | null>(null);
@@ -670,7 +679,7 @@ export default function TripDetailView({
       setRetry((value) => value + 1);
       return;
     }
-    const tripTables = ["trips", "trip_stops", "trip_line_items", "trip_events", "trip_truck_assignments", "billings"];
+    const tripTables = ["trips", "trip_stops", "trip_line_items", "trip_events", "trip_truck_assignments", "billings", "loading_reports", "unloading_reports", "backloads", "offloads"];
     if (event.kind === "recovered") {
       if (!tripTables.includes(event.table)) return;
     } else {
@@ -702,12 +711,13 @@ export default function TripDetailView({
     void (async () => {
       try {
         const tripResponse = await fetchTripDetail(accessToken, tripId);
-        const [stopsResult, itemsResult, eventsResult] = await Promise.allSettled([
+        const [stopsResult, itemsResult, eventsResult, operationsResult] = await Promise.allSettled([
           fetchTripStops(accessToken, tripId),
           fetchTripLineItems(accessToken, tripId),
           fetchTripEvents(accessToken, tripId),
+          fetchTripOperations(accessToken, tripId),
         ]);
-        const childResults = [stopsResult, itemsResult, eventsResult];
+        const childResults = [stopsResult, itemsResult, eventsResult, operationsResult];
         const authFailure = childResults.find(
           (result) =>
             result.status === "rejected" &&
@@ -718,9 +728,12 @@ export default function TripDetailView({
         const stops = stopsResult.status === "fulfilled" ? stopsResult.value : [];
         const lineItems = itemsResult.status === "fulfilled" ? itemsResult.value : [];
         const events = eventsResult.status === "fulfilled" ? eventsResult.value : [];
+        const operations = operationsResult.status === "fulfilled" ? operationsResult.value : {
+          trips: [], trip_options: [], stops: [], loading: [], unloading: [], backloads: [], offloads: [], event_rows: [],
+        };
         const sectionErrors = childResults.flatMap((result, index) => {
           if (result.status !== "rejected") return [];
-          const sections = ["Stops", "Products", "Events"];
+          const sections = ["Stops", "Products", "Events", "Operational reports"];
           const message = result.reason instanceof Error ? result.reason.message : "Unavailable";
           return [`${sections[index]}: ${message}`];
         });
@@ -778,6 +791,7 @@ export default function TripDetailView({
           stops,
           lineItems,
           events,
+          operations,
           bookingRows,
           bookingError,
           truckCapacityCbm,
@@ -829,6 +843,12 @@ export default function TripDetailView({
   const trip = detail?.trip;
   const dispatchNumber = String(trip?.dispatch_number ?? "Trip details");
   const stops = detail?.stops ?? [];
+  const initialStopIndex = initialStopId ? stops.findIndex((stop) => String(stop.id ?? "") === initialStopId) : -1;
+  const activeStopId = stopSelectionChanged
+    ? selectedStop
+    : initialStopIndex >= 0
+      ? String(stops[initialStopIndex].id ?? "")
+      : selectedStop;
   const reportRows = detail?.bookingRows ?? [];
   const orderedEvents = (detail?.events ?? [])
     .slice()
@@ -847,15 +867,17 @@ export default function TripDetailView({
     : "Store destinations not available";
 
   const stopKey = (stop: TripChildRecord, index: number) => String(stop.stop_sequence ?? index + 1);
-  const rowsForStop = (key: string) =>
-    reportRows.filter((row) => String(row.stop_sequence ?? "") === key);
-  const visibleRows = selectedStop ? rowsForStop(selectedStop) : reportRows;
+  const rowsForStop = (stopId: string) =>
+    reportRows.filter((row) => String(row.trip_stop_id ?? row._trip_stop_id ?? "") === stopId);
+  const visibleRows = activeStopId ? rowsForStop(activeStopId) : reportRows;
 
   const doneStops = stops.filter(stopIsDone).length;
   const progress = stops.length ? Math.round((doneStops / stops.length) * 100) : 0;
   const cargoRows = reportRows.length > 0 ? reportRows : detail?.lineItems ?? [];
-  const totalQty = sumOf(cargoRows, "quantity");
-  const totalCbm = sumOf(cargoRows, "cbm");
+  // Aggregate from the trip_line_items endpoint directly. Flattened report
+  // views can repeat a line when other one-to-many relations are joined.
+  const totalQty = detail?.lineItems.length ? sumOf(detail.lineItems, "quantity") : sumOf(cargoRows, "quantity");
+  const totalCbm = detail?.lineItems.length ? sumOf(detail.lineItems, "cbm") : sumOf(cargoRows, "cbm");
   const lineItemCount = detail?.lineItems.length ?? reportRows.length;
   const driverName = getBookingValue(reportRows, "driver_name");
   const plate = getBookingValue(reportRows, "plate_number", "No plate recorded");
@@ -901,6 +923,9 @@ export default function TripDetailView({
             <h2 className="truncate text-2xl font-bold tracking-tight text-[#0b2341]">
               {isLoading ? "Loading trip…" : dispatchNumber}
             </h2>
+            <p className="mt-1 text-xs text-slate-500">
+              Trip {valueText(trip?.trip_number)} · Date {dateText(trip?.loading_date)}
+            </p>
 
             <div className="mt-4 rounded-2xl bg-gradient-to-b from-[#f2f6fa] to-[#e6f0f9] p-4">
               <div className="flex items-end justify-between gap-4">
@@ -991,7 +1016,7 @@ export default function TripDetailView({
             <ul className="mt-4 max-h-[560px] space-y-2.5 overflow-y-auto pr-1">
               {stops.map((stop, index) => {
                 const key = stopKey(stop, index);
-                const match = rowsForStop(key)[0] ?? {};
+                const match = rowsForStop(String(stop.id ?? ""))[0] ?? {};
                 return (
                   <li
                     key={String(stop.id ?? stop.trip_stop_id ?? `${tripId}-${index}`)}
@@ -1072,6 +1097,53 @@ export default function TripDetailView({
         </section>
       </div>
 
+      {/* Operational report history is loaded through the authenticated,
+          trip-scoped API so each stop remains independently identified. */}
+      <section className={`${surface.card} min-w-0 p-5`}>
+        <CardHeader icon={<Clock />} title="Loading, unloading, backload & offload" />
+        {detail?.sectionErrors.some((message) => message.startsWith("Operational reports:")) && (
+          <p role="status" className="mt-3 rounded-xl bg-amber-50 px-4 py-3 text-xs text-amber-800">
+            {detail.sectionErrors.find((message) => message.startsWith("Operational reports:"))}
+          </p>
+        )}
+        <div className="mt-4 grid gap-4 lg:grid-cols-2">
+          <article className="rounded-xl border border-slate-100 p-4">
+            <h3 className="font-semibold text-[#0b2341]">Loading timeline · trip level</h3>
+            {detail?.operations.loading.length ? detail.operations.loading.map((report) => (
+              <dl key={report.id} className="mt-3 grid gap-x-4 gap-y-2 text-xs sm:grid-cols-3">
+                <TimestampDetail label="Warehouse arrival" value={report.warehouse_arrival_at} />
+                <TimestampDetail label="Loading started" value={report.loading_start_at} />
+                <TimestampDetail label="Loading finished" value={report.loading_finished_at} />
+              </dl>
+            )) : <p className="mt-2 text-sm text-slate-500">No loading timeline has been recorded.</p>}
+          </article>
+          <article className="rounded-xl border border-slate-100 p-4">
+            <h3 className="font-semibold text-[#0b2341]">Unloading timelines · per stop</h3>
+            <div className="mt-3 space-y-3">
+              {stops.length === 0 ? <p className="text-sm text-slate-500">No stops are recorded.</p> : stops.map((stop, index) => {
+                const timeline = detail?.operations.stops.find((item) => item.id === String(stop.id ?? ""));
+                const sequence = stop.stop_sequence ?? index + 1;
+                return <div key={String(stop.id ?? sequence)} className="rounded-lg bg-slate-50 p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-xs font-semibold text-[#0b2341]">Stop {String(sequence)} · {valueText(rowsForStop(String(stop.id ?? ""))[0]?.store_name, "Store not recorded")}</p>
+                    <StatusPill status={timeline?.delivery_status ?? stop.delivery_status} fallback="Pending" />
+                  </div>
+                  <dl className="mt-2 grid gap-x-4 gap-y-2 text-xs sm:grid-cols-3">
+                    <TimestampDetail label="Store arrival" value={timeline?.arrival_time} />
+                    <TimestampDetail label="Unloading started" value={timeline?.start_unloading_time} />
+                    <TimestampDetail label="Unloading finished" value={timeline?.finish_unloading_time} />
+                  </dl>
+                  {typeof timeline?.remarks === "string" && timeline.remarks && <p className="mt-2 text-xs text-slate-600">{timeline.remarks}</p>}
+                </div>;
+              })}
+            </div>
+          </article>
+          <ScopeHistory title="Backload records" records={detail?.operations.backloads ?? []} />
+          <ScopeHistory title="Offload records" records={detail?.operations.offloads ?? []} />
+        </div>
+        <p className="mt-3 text-[11px] text-slate-500">Reporter, submission status, receipt metadata, and report audit details are not available from the established report API contract.</p>
+      </section>
+
       {/* Products */}
       <section className={`${surface.card} min-w-0 overflow-hidden`}>
         <header className="flex flex-col gap-3 px-5 pb-3 pt-5 lg:flex-row lg:items-center lg:justify-between">
@@ -1091,16 +1163,16 @@ export default function TripDetailView({
           >
             {[
               { key: null as string | null, label: "All" },
-              ...stops.map((stop, index) => ({ key: stopKey(stop, index), label: `Stop ${stopKey(stop, index)}` })),
+              ...stops.map((stop, index) => ({ key: String(stop.id ?? `stop-${index}`), label: `Stop ${stopKey(stop, index)}` })),
             ].map(({ key, label }) => {
               const count = key === null ? reportRows.length : rowsForStop(key).length;
-              const isActive = selectedStop === key;
+              const isActive = activeStopId === key;
               return (
                 <button
                   key={label}
                   type="button"
                   aria-pressed={isActive}
-                  onClick={() => setSelectedStop(key)}
+                  onClick={() => { setStopSelectionChanged(true); setSelectedStop(key); }}
                   className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[11px] font-semibold transition-colors ${
                     isActive
                       ? "bg-white text-[#0b2341] shadow-[0_2px_8px_-2px_rgba(11,35,65,0.2)]"
@@ -1133,7 +1205,7 @@ export default function TripDetailView({
               {visibleRows.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="rounded-2xl bg-white px-4 py-8 text-center text-sm text-slate-500">
-                    {selectedStop ? "No products recorded for this stop." : "No product rows available."}
+                    {activeStopId ? "No products recorded for this stop." : "No product rows available."}
                   </td>
                 </tr>
               ) : (
@@ -1275,4 +1347,21 @@ export default function TripDetailView({
       )}
     </div>
   );
+}
+
+function TimestampDetail({ label, value }: { label: string; value: unknown }) {
+  return <div className="min-w-0"><dt className="text-[10px] font-medium uppercase tracking-wide text-slate-400">{label}</dt><dd className="mt-0.5 break-words text-xs font-medium text-slate-700">{dateText(value, true)}</dd></div>;
+}
+
+function ScopeHistory({ title, records }: { title: string; records: ScopeReport[] }) {
+  return <article className="rounded-xl border border-slate-100 p-4">
+    <h3 className="font-semibold text-[#0b2341]">{title}</h3>
+    {records.length === 0 ? <p className="mt-2 text-sm text-slate-500">No records.</p> : <ul className="mt-3 space-y-2">
+      {records.map((record) => <li key={record.id} className="rounded-lg bg-slate-50 p-3 text-xs">
+        <p className="font-medium text-slate-700">{record.trip_stop_id ? `Stop record · ${record.trip_stop_id.slice(0, 8)}` : "Whole-trip record"}</p>
+        <p className="mt-1">Reason: {record.reason || "Not recorded"} · Boxes: {record.number_of_boxes ?? "Not recorded"}</p>
+        {record.comments && <p className="mt-1 whitespace-pre-wrap text-slate-600">{record.comments}</p>}
+      </li>)}
+    </ul>}
+  </article>;
 }
