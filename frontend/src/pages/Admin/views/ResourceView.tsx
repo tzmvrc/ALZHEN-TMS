@@ -21,6 +21,7 @@ import CalendarView from "./CalendarView";
 import TripDetailView from "./TripDetailView";
 import TruckersView from "./TruckersView";
 import { createTrip } from "../../../services/trip.service";
+import { useToast } from "../../../components/ui/Toast";
 import AddTripForm, { type NewTripPayload } from "../../../components/admin/AddTripForm";
 import type { AdminNotificationTarget } from "../../../services/notification.service";
 
@@ -297,6 +298,7 @@ export default function ResourceView({
      parent does not route "trip-detail:<id>" ids, and so the list underneath
      keeps its page, search and filters while the trip is open. */
   const [localTripId, setLocalTripId] = useState<string | null>(null);
+  const [createdTripReference, setCreatedTripReference] = useState<string | null>(null);
   useEffect(() => {
     setLocalTripId(null);
   }, [id]);
@@ -393,7 +395,8 @@ export default function ResourceView({
             showReportPicker={false}
             showExport={false}
             onOpenTrip={openTrip}
-            toolbarActions={<AddTripButton />}
+            createdTripReference={createdTripReference}
+            toolbarActions={<AddTripButton onCreated={setCreatedTripReference} />}
           />
         </>
       )}
@@ -583,13 +586,21 @@ export default function ResourceView({
   );
 }
 
-function AddTripButton() {
+function AddTripButton({ onCreated }: { onCreated: (reference: string) => void }) {
   const [open, setOpen] = useState(false);
+  const { addToast } = useToast();
 
   const { accessToken } = useAuth();
   const createTripHandler = async (payload: NewTripPayload): Promise<void> => {
     if (!accessToken) throw new Error("You are signed out. Please sign in again.");
-    await createTrip(accessToken, payload);
+    const trip = await createTrip(accessToken, payload);
+    const reference = String(trip.dispatch_number ?? payload.trip.dispatch_number);
+    onCreated(reference);
+    addToast({
+      variant: "success",
+      title: "Trip saved",
+      description: `${reference} was saved to the database. The table is showing this dispatch reference.`,
+    });
   };
 
   return (

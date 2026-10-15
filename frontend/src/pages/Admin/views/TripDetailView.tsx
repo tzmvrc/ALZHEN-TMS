@@ -1213,7 +1213,7 @@ export default function TripDetailView({
 
       {viewProduct && (
         <div
-          className="fixed inset-0 z-[2000] flex items-center justify-center bg-[#0b2341]/45 p-4 backdrop-blur-sm"
+          className="fixed inset-0 z-[2000] flex items-center justify-center bg-slate-900/20 p-4 backdrop-blur-[2px]"
           role="presentation"
           onMouseDown={(event) => {
             if (event.target === event.currentTarget) setViewProduct(null);

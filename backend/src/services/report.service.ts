@@ -10,7 +10,7 @@ import {
   buildPaginationMeta,
   normalizePagination,
 } from "../utils/pagination.js";
-import { normalizeSortOrder, normalizeText } from "../utils/validation.js";
+import { isValidUuid, normalizeSortOrder, normalizeText } from "../utils/validation.js";
 import { buildIlikeOrFilter } from "../utils/postgrest-search.js";
 
 const REPORT_ROUTE_MAP = {
@@ -77,6 +77,7 @@ function applySearch(
   queryBuilder: any,
   searchValue: string | undefined,
   columns: ReportDefinition["columns"],
+  matchingTripIds: string[] = [],
 ) {
   const searchFilter = buildIlikeOrFilter(
     columns
@@ -88,6 +89,10 @@ function applySearch(
 
   const safeColumns = columns.filter((column) => !column.key.endsWith("_id"));
   const clauses = searchFilter ? [searchFilter] : [];
+  // Some deployed report views project blank references. An exact saved dispatch
+  // can still be found through its authoritative trip record before pagination.
+  const safeTripIds = matchingTripIds.filter(isValidUuid);
+  if (safeTripIds.length) clauses.push(`trip_id.in.(${safeTripIds.join(",")})`);
   const numericSearch = searchValue.trim();
   if (/^-?\d+(\.\d+)?$/.test(numericSearch)) {
     clauses.push(
@@ -216,6 +221,20 @@ async function attachOperationalRecordIds(rows: Record<string, unknown>[]) {
       if (row[publicName] == null && row[internalName] != null) {
         row[publicName] = row[internalName];
       }
+    }
+  }
+
+  const tripIds = [...new Set(rows.map((row) => row.trip_id).filter((id): id is string => typeof id === "string"))];
+  if (tripIds.length) {
+    const { data: trips, error } = await supabaseAdmin.from("trips")
+      .select("id, dispatch_number, transaction_number").in("id", tripIds);
+    if (error) throw new ApiError("Unable to load saved trip references", 500, "TRIP_REFERENCE_QUERY_FAILED");
+    const tripById = new Map((trips ?? []).map((trip) => [String(trip.id), trip]));
+    for (const row of rows) {
+      const trip = tripById.get(String(row.trip_id));
+      if (!trip) continue;
+      row.dispatch_number ??= trip.dispatch_number;
+      row.transaction_number ??= trip.transaction_number;
     }
   }
 
@@ -518,6 +537,13 @@ export async function getReportData(
   const sortBy = requestedSort && definition.sortableColumns.includes(requestedSort) ? requestedSort : definition.defaultSort;
   const sortOrder = normalizeSortOrder(getQueryString(query.sort_order), definition.defaultSortOrder);
 
+  let matchingTripIds: string[] = [];
+  if (search && ["combined", "dispatch-monitoring", "dispatch", "trip-booking"].includes(key)) {
+    const { data, error } = await supabaseAdmin.from("trips").select("id").eq("dispatch_number", search);
+    if (error) throw new ApiError("Unable to search saved trip references", 500, "TRIP_REFERENCE_QUERY_FAILED");
+    matchingTripIds = (data ?? []).map((trip) => String(trip.id));
+  }
+
   let lastError: Error | null = null;
   for (const viewName of viewNames) {
     let builder = supabaseAdmin.from(viewName).select("*", { count: "exact" });
@@ -540,7 +566,7 @@ export async function getReportData(
           title: column,
           type: "text" as const,
         }));
-    builder = applySearch(builder, search, searchColumns);
+    builder = applySearch(builder, search, searchColumns, matchingTripIds);
     builder = builder.order(sortBy, { ascending: sortOrder === "asc" });
     builder = builder.range(from, from + limit - 1);
     const { data, error, count } = await builder;

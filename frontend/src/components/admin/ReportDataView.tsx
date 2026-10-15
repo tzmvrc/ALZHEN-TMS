@@ -964,6 +964,7 @@ export default function ReportDataView({
   onReportScopeChange,
   toolbarLeading,
   toolbarActions,
+  createdTripReference,
 }: {
   initialReport?: ReportKey;
   notificationTarget?: AdminNotificationTarget | null;
@@ -977,6 +978,8 @@ export default function ReportDataView({
   toolbarLeading?: ReactNode;
   /** Extra action buttons rendered at the end of the controls row above the table. */
   toolbarActions?: ReactNode;
+  /** Focus the table on a newly persisted trip after creation. */
+  createdTripReference?: string | null;
 }) {
   const { accessToken, refreshSession, profile } = useAuth();
   const navigate = useNavigate();
@@ -1365,6 +1368,18 @@ export default function ReportDataView({
     setPinnedColumnSides({});
     setEditModalOpen(false);
   }, [initialReport, profile?.id]);
+
+  useEffect(() => {
+    if (!createdTripReference) return;
+    invalidateReportData(reportKeyRef.current);
+    setPage(1);
+    setSearch(createdTripReference);
+    setAppliedSearch(createdTripReference);
+    setAppliedFilters({});
+    setViewMode("table");
+    setRetryVersion((version) => version + 1);
+    reportSelection.clear();
+  }, [createdTripReference]);
 
   useEffect(() => {
     reportSelection.clear(reportKey);
@@ -2907,7 +2922,7 @@ export default function ReportDataView({
       )}
 
       {exportModalOpen && (
-        <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-[#0b2341]/45 p-4 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-slate-900/20 p-4 backdrop-blur-[2px]">
           <section role="dialog" aria-modal="true" aria-labelledby="report-export-title" className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl">
             <h2 id="report-export-title" className="text-lg font-semibold text-[#0b2341]">Export reports</h2>
             <p className="mt-1 text-sm text-slate-500">Exports use report access already granted to your account and include all pages of report data.</p>
@@ -2933,7 +2948,7 @@ export default function ReportDataView({
       )}
 
       {editModalOpen && editModalRecord && (
-        <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-[#0b2341]/45 p-4 backdrop-blur-sm" onMouseDown={(event) => {
+        <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-slate-900/20 p-4 backdrop-blur-[2px]" onMouseDown={(event) => {
           if (event.target === event.currentTarget && !editModalBusy) setEditModalOpen(false);
         }}>
           <section role="dialog" aria-modal="true" aria-labelledby="report-row-edit-title" className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">

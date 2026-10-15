@@ -275,8 +275,8 @@ export async function updateStoreCallRecord(
   return response.data;
 }
 
-/* Creates a trip together with its stops and line items.
-   Assumes POST /trips accepts { trip, stops: [{ stop_sequence, store_id, line_items }] }. */
+/* Persists the trip bundle through the backend, including stops, product lines,
+   and any initial vehicle assignment. */
 export async function createTrip(
   token: string,
   payload: Record<string, unknown>,

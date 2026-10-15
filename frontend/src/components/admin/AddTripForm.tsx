@@ -1,7 +1,7 @@
 // src/pages/Admin/views/AddTripForm.tsx
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import {
-  ChevronLeft, ChevronDown, Plus, Trash2, X, Package, Truck, MapPin,
+  ChevronLeft, ChevronDown, Plus, Trash2, X, Truck,
   Store, Calendar, Hash, FileText, CheckCircle2, Circle, Check,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
@@ -15,16 +15,22 @@ export type NewTripPayload = {
     status: string;
     trip_type_id: string | null;
     warehouse_id: string;
-    truck_id: string;
+    truck_id: string | null;
     driver_id: string | null;
     remarks: string | null;
   };
   stops: Array<{
     stop_sequence: number;
     store_id: string;
+    customer_id: string | null;
+    remarks: string | null;
     line_items: Array<{
       product_id: string;
       dr_number: string | null;
+      sap_so_number: string | null;
+      customer_po_number: string | null;
+      internal_po_number: string | null;
+      remarks: string | null;
       quantity: number;
       cbm: number | null;
     }>;
@@ -33,8 +39,8 @@ export type NewTripPayload = {
 
 type Option = RelationshipOption;
 type Lookups = Record<"trip-types" | "warehouses" | "trucks" | "drivers" | "stores" | "products", Option[]>;
-type ItemDraft = { key: number; productId: string; dr: string; dn: string; qty: string; cbm: string };
-type StopDraft = { key: number; storeId: string; customer: string; items: ItemDraft[] };
+type ItemDraft = { key: number; productId: string; dr: string; dn: string; sp: string; so: string; sapSo: string; customerPo: string; po: string; category: string; unitCbm: string; itemStatus: string; warehouse: string; qty: string; cbm: string };
+type StopDraft = { key: number; storeId: string; customer: string; city: string; province: string; address: string; items: ItemDraft[] };
 
 const STATUSES = ["PLANNED", "LOADING", "IN_TRANSIT", "DELIVERED", "CANCELLED"];
 const EMPTY_LOOKUPS: Lookups = { "trip-types": [], warehouses: [], trucks: [], drivers: [], stores: [], products: [] };
@@ -46,8 +52,8 @@ const input = `${inputBase} px-3.5 py-2.5`;
 const selectButton = `${inputBase} flex items-center justify-between gap-2 px-3.5 py-2.5 text-left hover:border-slate-300`;
 
 let uid = 0;
-const newItem = (): ItemDraft => ({ key: ++uid, productId: "", dr: "", dn: "", qty: "", cbm: "" });
-const newStop = (): StopDraft => ({ key: ++uid, storeId: "", customer: "", items: [newItem()] });
+const newItem = (): ItemDraft => ({ key: ++uid, productId: "", dr: "", dn: "", sp: "", so: "", sapSo: "", customerPo: "", po: "", category: "", unitCbm: "", itemStatus: "", warehouse: "", qty: "", cbm: "" });
+const newStop = (): StopDraft => ({ key: ++uid, storeId: "", customer: "", city: "", province: "", address: "", items: [newItem()] });
 const num = (v: string) => (v.trim() === "" ? NaN : Number(v));
 
 const STATUS_STYLES: Record<string, string> = {
@@ -226,7 +232,9 @@ export default function AddTripForm({
   const [lookupError, setLookupError] = useState("");
 
   const [dispatchNo, setDispatchNo] = useState("");
-  const [spNo, setSpNo] = useState("");
+  const [requestSubject, setRequestSubject] = useState("");
+  const [requestSender, setRequestSender] = useState("");
+  const [truckRequirement, setTruckRequirement] = useState("");
   const [loadingDate, setLoadingDate] = useState("");
   const [etaDate, setEtaDate] = useState("");
   const [tripTypeId, setTripTypeId] = useState("");
@@ -268,12 +276,12 @@ export default function AddTripForm({
 
   const progress = useMemo(() => {
     const checks = [
-      !!dispatchNo.trim(), !!loadingDate, !!warehouseId, !!truckId,
+      !!dispatchNo.trim(), !!loadingDate, !!warehouseId,
       stops.length > 0 && stops.every((s) => !!s.storeId),
       stops.every((s) => s.items.length > 0 && s.items.every((i) => !!i.productId && num(i.qty) > 0)),
     ];
     return Math.round((checks.filter(Boolean).length / checks.length) * 100);
-  }, [dispatchNo, loadingDate, warehouseId, truckId, stops]);
+  }, [dispatchNo, loadingDate, warehouseId, stops]);
 
   const updateStop = (key: number, patch: Partial<StopDraft>) =>
     setStops((list) => list.map((s) => (s.key === key ? { ...s, ...patch } : s)));
@@ -282,18 +290,20 @@ export default function AddTripForm({
       ? { ...s, items: s.items.map((i) => (i.key === itemKey ? { ...i, ...patch } : i)) } : s));
 
   function validate(): string {
-    if (!dispatchNo.trim()) return "Enter the PHTRUCK number.";
+    if (!dispatchNo.trim()) return "Enter the dispatch reference.";
     if (!loadingDate) return "Choose the loading date.";
     if (etaDate && etaDate < loadingDate) return "Estimated delivery cannot be before the loading date.";
     if (!warehouseId) return "Choose the origin warehouse.";
-    if (!truckId) return "Choose a truck.";
+    if (driverId && !truckId) return "Choose a truck before assigning a driver.";
+    if (!stops.length) return "Add at least one delivery stop.";
     for (const [i, stop] of stops.entries()) {
       if (!stop.storeId) return `Stop ${i + 1}: choose a store.`;
       if (stop.items.length === 0) return `Stop ${i + 1}: add at least one product.`;
       for (const item of stop.items) {
         if (!item.productId) return `Stop ${i + 1}: choose a product for every line.`;
-        if (!(num(item.qty) > 0)) return `Stop ${i + 1}: enter a quantity above zero for every line.`;
-        if (item.cbm.trim() !== "" && !(num(item.cbm) >= 0)) return `Stop ${i + 1}: CBM must be a valid number.`;
+        if (!Number.isSafeInteger(num(item.qty)) || !(num(item.qty) > 0)) return `Stop ${i + 1}: enter a whole quantity above zero for every line.`;
+        if (item.unitCbm.trim() && (!Number.isFinite(num(item.unitCbm)) || num(item.unitCbm) < 0)) return `Stop ${i + 1}: unit CBM must be a non-negative number.`;
+        if (item.cbm.trim() !== "" && (!Number.isFinite(num(item.cbm)) || num(item.cbm) < 0)) return `Stop ${i + 1}: CBM must be a valid number.`;
       }
     }
     return "";
@@ -302,12 +312,14 @@ export default function AddTripForm({
   function advanceStep() {
     let problem = "";
     if (step === 0) {
-      if (!dispatchNo.trim()) problem = "Enter the PHTRUCK number to continue.";
+      if (!dispatchNo.trim()) problem = "Enter the dispatch reference to continue.";
       else if (!loadingDate) problem = "Choose the loading date to continue.";
       else if (etaDate && etaDate < loadingDate) problem = "Estimated delivery cannot be before the loading date.";
     } else if (step === 1) {
       if (!warehouseId) problem = "Choose the origin warehouse to continue.";
-      else if (!truckId) problem = "Choose a truck to continue.";
+      else if (driverId && !truckId) problem = "Choose a truck before assigning a driver.";
+    } else if (step === 2) {
+      problem = validate();
     }
     setError(problem);
     if (!problem) setStep((c) => Math.min(STEPS.length - 1, c + 1));
@@ -328,16 +340,22 @@ export default function AddTripForm({
           status,
           trip_type_id: tripTypeId || null,
           warehouse_id: warehouseId,
-          truck_id: truckId,
+          truck_id: truckId || null,
           driver_id: driverId || null,
-          remarks: [spNo.trim() && `SP: ${spNo.trim()}`, remarks.trim()].filter(Boolean).join(" · ") || null,
+          remarks: [requestSubject.trim() && `Email subject: ${requestSubject.trim()}`, requestSender.trim() && `Requested by: ${requestSender.trim()}`, truckRequirement.trim() && `Truck requirement: ${truckRequirement.trim()}`, remarks.trim()].filter(Boolean).join(" · ") || null,
         },
         stops: stops.map((stop, index) => ({
           stop_sequence: index + 1,
           store_id: stop.storeId,
+          customer_id: lookups.stores.find((option) => option.id === stop.storeId)?.values?.customer_id || null,
+          remarks: [stop.customer && `Customer: ${stop.customer}`, stop.province && `Province: ${stop.province}`, stop.city && `City: ${stop.city}`, stop.address && `Ship-to address: ${stop.address}`].filter(Boolean).join(" · ") || null,
           line_items: stop.items.map((item) => ({
             product_id: item.productId,
             dr_number: item.dr.trim() || null,
+            sap_so_number: item.sapSo.trim() || null,
+            customer_po_number: item.customerPo.trim() || null,
+            internal_po_number: item.po.trim() || null,
+            remarks: [item.sp && `SP: ${item.sp}`, item.dn && `DN: ${item.dn}`, item.so && `SO: ${item.so}`, item.category && `Category: ${item.category}`, item.unitCbm && `Unit CBM: ${item.unitCbm}`, item.itemStatus && `Item status: ${item.itemStatus}`, item.warehouse && `Source warehouse: ${item.warehouse}`].filter(Boolean).join(" · ") || null,
             quantity: num(item.qty),
             cbm: item.cbm.trim() === "" ? null : num(item.cbm),
           })),
@@ -387,17 +405,17 @@ export default function AddTripForm({
               <section className="space-y-4">
                 <div>
                   <h4 className="text-sm font-medium text-slate-700">Trip details</h4>
-                  <p className="mt-0.5 text-xs text-slate-400">From the dispatch email — PHTRUCK, SP, and dates.</p>
+                  <p className="mt-0.5 text-xs text-slate-400">From the dispatch email — dispatch reference, requested schedule, and email details.</p>
                 </div>
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <Field label="PHTRUCK number" required>
+                  <p className="text-xs text-slate-400 sm:col-span-2">Use one trip per dispatch reference. If the email has no PHTRUCK number, enter an internal dispatch reference. SP and order references belong to each product line.</p>
+                  <Field label="PHTRUCK / Dispatch reference" required>
                     <input value={dispatchNo} onChange={(e) => setDispatchNo(e.target.value)} className={input}
-                      placeholder="e.g. PHTRUCK202609100445" />
+                      placeholder="PHTRUCK number or your dispatch reference" />
                   </Field>
-                  <Field label="SP number">
-                    <input value={spNo} onChange={(e) => setSpNo(e.target.value)} className={input}
-                      placeholder="e.g. SPPH26091000347" />
-                  </Field>
+                  <Field label="Email subject"><input value={requestSubject} onChange={(e) => setRequestSubject(e.target.value)} className={input} placeholder="e.g. ALZHEN PICK UP @CEBU SQ - ILOILO" /></Field>
+                  <Field label="Requested by / Sender"><input value={requestSender} onChange={(e) => setRequestSender(e.target.value)} className={input} placeholder="Sender name or email" /></Field>
+                  <Field label="Truck requirement"><input value={truckRequirement} onChange={(e) => setTruckRequirement(e.target.value)} className={input} placeholder="e.g. 1-10W, 6-10W, combined PH01 / PH6G" /></Field>
                   <Field label="Trip type">
                     <Dropdown value={tripTypeId} onChange={setTripTypeId} options={lookups["trip-types"]}
                       placeholder="Choose trip type" loading={loadingLookups} />
@@ -429,9 +447,9 @@ export default function AddTripForm({
                     <Dropdown value={warehouseId} onChange={setWarehouseId} options={lookups.warehouses}
                       placeholder="Choose warehouse" loading={loadingLookups} />
                   </Field>
-                  <Field label="Truck (plate)" required>
+                  <Field label="Truck (plate) - optional while planning">
                     <Dropdown value={truckId} onChange={setTruckId} options={lookups.trucks}
-                      placeholder="Choose truck" loading={loadingLookups} />
+                      placeholder="Assign later" loading={loadingLookups} />
                   </Field>
                   <Field label="Driver">
                     <Dropdown value={driverId} onChange={setDriverId} options={lookups.drivers}
@@ -450,7 +468,7 @@ export default function AddTripForm({
                 <div className="flex items-end justify-between gap-3">
                   <div>
                     <h4 className="text-sm font-medium text-slate-700">Stops and products</h4>
-                    <p className="mt-0.5 text-xs text-slate-400">One stop per unique "Ship To" — one line per DR/Model.</p>
+                    <p className="mt-0.5 text-xs text-slate-400">Group by actual delivery address. Keep separate lines for each SP, DR, and model; copy Total CBM from the email.</p>
                   </div>
                   <span className="text-[11px] text-slate-400">
                     {stops.length} stop{stops.length === 1 ? "" : "s"}
@@ -466,13 +484,18 @@ export default function AddTripForm({
                         </span>
                         <div className="min-w-0 flex-1 grid gap-3 sm:grid-cols-2">
                           <Field label="Ship To / Store" required>
-                            <Dropdown value={stop.storeId} onChange={(v) => updateStop(stop.key, { storeId: v })}
+                            <Dropdown value={stop.storeId} onChange={(v) => { const location = lookups.stores.find((option) => option.id === v)?.values; updateStop(stop.key, { storeId: v, city: location?.city ?? "", province: location?.province ?? "" }); }}
                               options={lookups.stores} placeholder="Choose store" loading={loadingLookups} />
                           </Field>
                           <Field label="Customer">
                             <input value={stop.customer} onChange={(e) => updateStop(stop.key, { customer: e.target.value })}
                               className={input} placeholder="e.g. DES MARKETING, INC." />
                           </Field>
+                          {([['Province', 'province'], ['City', 'city'], ['Ship-to address / End user', 'address']] as const).map(([label, field]) => (
+                            <Field key={field} label={label}>
+                              <input value={stop[field]} onChange={(e) => updateStop(stop.key, { [field]: e.target.value })} className={input} />
+                            </Field>
+                          ))}
                         </div>
                         {stops.length > 1 && (
                           <button type="button" onClick={() => setStops((l) => l.filter((s) => s.key !== stop.key))}
@@ -485,10 +508,10 @@ export default function AddTripForm({
 
                       <div className="space-y-3 p-4">
                         {stop.items.map((item, ii) => (
-                          <div key={item.key} className="grid grid-cols-2 items-end gap-2.5 sm:grid-cols-[minmax(0,2fr)_1fr_1fr_72px_80px_auto]">
+                          <div key={item.key} className="grid grid-cols-2 items-end gap-2.5 sm:grid-cols-3 rounded-lg border border-slate-100 p-3">
                             <div className="col-span-2 sm:col-span-1">
                               <Field label="Product (Model)" required>
-                                <Dropdown value={item.productId} onChange={(v) => updateItem(stop.key, item.key, { productId: v })}
+                                <Dropdown value={item.productId} onChange={(v) => updateItem(stop.key, item.key, { productId: v, category: lookups.products.find((option) => option.id === v)?.values?.product_category ?? "" })}
                                   options={lookups.products} placeholder="Choose product" loading={loadingLookups} />
                               </Field>
                             </div>
@@ -505,11 +528,18 @@ export default function AddTripForm({
                                 onChange={(e) => updateItem(stop.key, item.key, { qty: e.target.value })}
                                 className={input} placeholder="0" />
                             </Field>
-                            <Field label="CBM">
-                              <input type="number" min="0" step="0.0001" value={item.cbm}
+                            <Field label="Total CBM (line)">
+                              <input type="number" min="0" step="any" value={item.cbm}
                                 onChange={(e) => updateItem(stop.key, item.key, { cbm: e.target.value })}
                                 className={input} placeholder="0" />
                             </Field>
+                            <button type="button"
+                              disabled={!Number.isFinite(num(item.unitCbm)) || num(item.unitCbm) < 0 || !(num(item.qty) > 0)}
+                              onClick={() => updateItem(stop.key, item.key, { cbm: String(Number((num(item.unitCbm) * num(item.qty)).toFixed(8))) })}
+                              className="text-xs text-[#2678b9] disabled:text-slate-300">
+                              Calculate total from unit CBM
+                            </button>
+                            {([['SP number', 'sp'], ['SO no.', 'so'], ['SAP SO no.', 'sapSo'], ['Customer PO', 'customerPo'], ['PO no.', 'po'], ['Product category', 'category'], ['Unit CBM', 'unitCbm'], ['Item status / Instructions', 'itemStatus'], ['Source warehouse (if different)', 'warehouse']] as const).map(([label, field]) => <Field key={field} label={label}><input value={item[field]} onChange={(e) => updateItem(stop.key, item.key, { [field]: e.target.value })} className={input} /></Field>)}
                             <button type="button" disabled={stop.items.length === 1}
                               onClick={() => updateStop(stop.key, { items: stop.items.filter((i) => i.key !== item.key) })}
                               aria-label={`Remove product line ${ii + 1}`}
@@ -548,7 +578,9 @@ export default function AddTripForm({
                     <dl className="space-y-1.5 text-sm">
                       {[
                         ["PHTRUCK", dispatchNo || "—"],
-                        ["SP", spNo || "—"],
+                        ["Email", requestSubject || "Not provided"],
+                        ["Requested by", requestSender || "Not provided"],
+                        ["Truck requirement", truckRequirement || "Not provided"],
                         ["Loading", loadingDate || "—"],
                         ["Delivery", etaDate || "—"],
                       ].map(([k, v]) => (
@@ -577,6 +609,7 @@ export default function AddTripForm({
                   </div>
                 </div>
 
+                <div className="space-y-3">{stops.map((stop, index) => <div key={stop.key} className="rounded-xl border border-slate-100 p-4"><p className="text-sm font-medium text-slate-700">{index + 1}. {labelOf(lookups.stores, stop.storeId)}</p><p className="mt-1 text-xs text-slate-500">{[stop.customer, stop.address, stop.city, stop.province].filter(Boolean).join(", ")}</p>{stop.items.map((item) => <div key={item.key} className="mt-3 border-t border-slate-100 pt-2 text-xs text-slate-600"><p>{labelOf(lookups.products, item.productId)} - {item.qty} qty - {item.cbm || "0"} total CBM</p><p className="mt-1 break-words text-slate-400">{[item.sp && `SP: ${item.sp}`, item.dr && `DR: ${item.dr}`, item.dn && `DN: ${item.dn}`, item.so && `SO: ${item.so}`, item.sapSo && `SAP SO: ${item.sapSo}`, item.customerPo && `Customer PO: ${item.customerPo}`, item.po && `PO: ${item.po}`, item.category, item.itemStatus, item.warehouse].filter(Boolean).join(" / ")}</p></div>)}</div>)}</div>
                 <div className="rounded-xl bg-slate-50/60 p-3 text-[11px]">
                   <p className="font-medium text-slate-600">{progress === 100 ? "Ready to create" : "Almost there"}</p>
                   <p className="mt-0.5 text-slate-400">
@@ -627,11 +660,11 @@ export default function AddTripForm({
             <div className="rounded-xl border border-slate-100 bg-slate-50/40 p-4">
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <p className="text-[10px] font-medium uppercase tracking-wide text-slate-400">PHTRUCK</p>
+                  <p className="text-[10px] font-medium uppercase tracking-wide text-slate-400">Dispatch reference</p>
                   <p className={`truncate text-sm font-medium ${dispatchNo ? "text-slate-800" : "text-slate-300"}`}>
                     {dispatchNo || "Not set"}
                   </p>
-                  {spNo && <p className="mt-0.5 truncate text-[11px] text-slate-400">SP {spNo}</p>}
+                  {requestSubject && <p className="mt-0.5 truncate text-[11px] text-slate-400">{requestSubject}</p>}
                 </div>
                 <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ring-1 ${STATUS_STYLES[status] ?? "bg-white text-slate-600 ring-slate-200"}`}>
                   {status.replaceAll("_", " ")}
@@ -711,7 +744,7 @@ export default function AddTripForm({
                               </p>
                               {(it.dr || it.dn) && (
                                 <p className="truncate text-[10px] text-slate-400">
-                                  {it.dr && `DR ${it.dr}`}{it.dr && it.dn && " · "}{it.dn && `DN ${it.dn}`}
+                                  {it.sp && `SP ${it.sp} · `}{it.dr && `DR ${it.dr}`}{it.dr && it.dn && " · "}{it.dn && `DN ${it.dn}`}
                                 </p>
                               )}
                             </div>

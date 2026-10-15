@@ -17,6 +17,9 @@ import {
   updateTripRecord,
   updateTripStopRecord,
 } from "../services/trip.service.js";
+import { saveTripBundle } from "../services/trip-bundle.logic.js";
+import { createTripAssignment } from "../services/assignment.service.js";
+import { supabaseAdmin } from "../config/supabase.js";
 import { sendError, sendSuccess } from "../utils/api-response.js";
 import { notifyMentionAfterRemarksSave } from "../services/notification.service.js";
 
@@ -77,7 +80,20 @@ export async function getTripByDispatch(req: Request, res: Response) {
 
 export async function createTrip(req: Request, res: Response) {
   try {
-    const result = await createTripRecord(req.body, req.user, req.profile);
+    const result = req.body && "trip" in req.body
+      ? await saveTripBundle(req.body, {
+          createTrip: (input) => createTripRecord(input, req.user, req.profile),
+          createStop: createTripStopRecord,
+          createLine: createTripLineItemRecord,
+          createAssignment: createTripAssignment,
+          rollback: async (tripId) => {
+            for (const table of ["trip_truck_assignments", "trip_line_items", "trip_stops", "trips"]) {
+              const { error } = await supabaseAdmin.from(table).delete().eq(table === "trips" ? "id" : "trip_id", tripId);
+              if (error) throw error;
+            }
+          },
+        })
+      : await createTripRecord(req.body, req.user, req.profile);
     return sendSuccess(res, 201, "Trip created successfully", result);
   } catch (error) {
     const message =

@@ -329,7 +329,7 @@ export default function RequestsView() {
       {/* Centered modal */}
       {modalOpen && selected && createPortal(
         <div
-          className="fixed inset-0 z-[2000] flex items-end justify-center bg-[#0b2341]/45 p-0 backdrop-blur-sm sm:items-center sm:p-4"
+          className="fixed inset-0 z-[2000] flex items-end justify-center bg-slate-900/20 p-0 backdrop-blur-[2px] sm:items-center sm:p-4"
           role="presentation"
           onMouseDown={(event) => {
             if (event.target === event.currentTarget) setDetailOpen(false);
