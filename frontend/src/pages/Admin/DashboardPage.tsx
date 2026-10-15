@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import type { DashboardData } from "../../types/dashboard";
 import OverviewView from "./views/OverviewView";
+import LiveTripAlerts from "../../components/admin/LiveTripAlerts";
 import ResourceView from "./views/ResourceView";
 import ClientWebsiteWorkspace from "./clientwebsite";
 import { defaultDashboardData } from "./data/defaultDashboardData";
@@ -529,6 +530,10 @@ export default function DashboardPage({
   const currentActiveId = isClientWebsite ? clientTab : activeId;
 
   return (
+    <LiveTripAlerts key={profile?.id ?? "no-profile"} onOpenTrip={(tripId, stopId) => {
+      setWorkspace("Operational Admin");
+      setActiveId(`trip-detail:${tripId}:overview${stopId ? `:stop:${stopId}` : ""}`);
+    }}>
     <div className="dotted-surface relative min-h-screen overflow-x-hidden text-slate-900">
       {profile?.role === "ADMIN" && newNotification && (
         <div
@@ -719,5 +724,6 @@ export default function DashboardPage({
         />
       </div>
     </div>
+    </LiveTripAlerts>
   );
 }

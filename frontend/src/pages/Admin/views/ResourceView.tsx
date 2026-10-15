@@ -293,7 +293,7 @@ export default function ResourceView({
   ) => void;
 }) {
   const { accessToken, profile } = useAuth();
-  const [tripDetailPrefix, tripDetailId, tripReturnView] = id.split(":");
+  const [tripDetailPrefix, tripDetailId, tripReturnView, stopPrefix, routeStopId] = id.split(":");
   /* Trip opened from a table/visual card. Held locally so it works even if the
      parent does not route "trip-detail:<id>" ids, and so the list underneath
      keeps its page, search and filters while the trip is open. */
@@ -541,6 +541,7 @@ export default function ResourceView({
       {isTripDetail && (
         <TripDetailView
           tripId={tripDetailId}
+          initialStopId={stopPrefix === "stop" ? routeStopId : undefined}
           onBack={() => onNavigate?.(tripReturnView || "dispatches")}
         />
       )}

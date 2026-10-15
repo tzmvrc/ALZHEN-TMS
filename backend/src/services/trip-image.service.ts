@@ -38,14 +38,15 @@ function databaseFailure(action: string, error: { code?: string; message?: strin
   });
 
   if (
-    error.code === "42703" ||
-    error.code === "PGRST204" ||
     error.message?.includes("display_order")
   ) {
     return new TripImageError(
       "Trip photo database schema is missing display_order. Apply backend/migrations/2026_10_06_create_trip_images.sql in Supabase, then retry.",
       502,
     );
+  }
+  if (error.code === "42703" || error.code === "PGRST204") {
+    return new TripImageError("Trip receipt schema is missing. Apply backend/migrations/2026_10_16_trip_receipt_ocr.sql in Supabase, then retry.", 502);
   }
   if (error.code === "42P01" || error.code === "PGRST205") {
     return new TripImageError(
@@ -137,6 +138,7 @@ export async function listTripImages(tripId: string) {
     .from("trip_images")
     .select("id, trip_id, storage_path, file_name, display_order, created_at, updated_at")
     .eq("trip_id", tripId)
+    .eq("kind", "photo")
     .order("display_order", { ascending: true })
     .order("created_at", { ascending: true });
   if (error) throw databaseFailure("load trip photos", error);
@@ -148,6 +150,7 @@ export async function uploadTripImage(
   bytes: Buffer,
   contentType: string,
   originalName: string,
+  receipt?: { stopId: string; profileId: string; drNumber: string },
 ) {
   await assertTripExists(tripId);
   await ensureTripImageBucket();
@@ -162,7 +165,8 @@ export async function uploadTripImage(
   const { count, error: countError } = await supabaseAdmin
     .from("trip_images")
     .select("id", { count: "exact", head: true })
-    .eq("trip_id", tripId);
+    .eq("trip_id", tripId)
+    .eq("kind", receipt ? "receipt" : "photo");
   if (countError) throw databaseFailure("check the trip photo limit", countError);
   if ((count ?? 0) >= maxImagesPerTrip) {
     throw new TripImageError(`A trip can have up to ${maxImagesPerTrip} photos.`, 409);
@@ -202,6 +206,8 @@ export async function uploadTripImage(
       trip_id: tripId,
       storage_path: storagePath,
       file_name: fileName,
+      kind: receipt ? "receipt" : "photo",
+      ...(receipt ? { trip_stop_id: receipt.stopId, uploaded_by: receipt.profileId, dr_number: receipt.drNumber } : {}),
       display_order: Number(last?.display_order ?? -1) + 1,
     })
     .select("id, trip_id, storage_path, file_name, display_order, created_at, updated_at")
@@ -242,7 +248,7 @@ export async function deleteTripImage(tripId: string, imageId: string) {
     .delete()
     .eq("id", imageId)
     .eq("trip_id", tripId)
-    .select("id, trip_id, storage_path, file_name, display_order, created_at, updated_at")
+    .select("*")
     .maybeSingle();
   if (deleteError) throw databaseFailure("remove trip photo details", deleteError);
   if (!deleted) throw new TripImageError("Trip photo not found.", 404);

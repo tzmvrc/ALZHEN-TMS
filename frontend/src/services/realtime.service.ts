@@ -156,6 +156,12 @@ function invalidateForTable(table: string, payload?: RealtimePayload) {
   }
 
   if (table === "trips") invalidateApiCache("/trips");
+  // Loading reports also project milestones onto the cached trip detail.
+  if (["loading_reports", "unloading_reports", "driver_trip_updates"].includes(table)) {
+    const ids = [payload?.new?.trip_id, payload?.old?.trip_id].filter((id): id is string => typeof id === "string");
+    if (!payload) invalidateApiCache("/trips");
+    else for (const id of ids) invalidateApiCache(`/trips/${encodeURIComponent(id)}`);
+  }
   // Active trip lists depend on whether their delivery stops are archived.
   if (table === "trip_stops") invalidateApiCache("/trips?");
   if (["trips", "trip_events", "trip_stops", "store_calls", "customer_stores", "warehouses"].includes(table)) {

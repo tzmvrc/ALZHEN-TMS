@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabaseAdmin } from "../config/supabase.js";
 import { buildIlikeOrFilter } from "../utils/postgrest-search.js";
 import { deleteTripImage, uploadTripImage } from "./trip-image.service.js";
+import { storeDriverReceiptText } from "./trip-receipt.service.js";
 
 export type TruckerListItem = {
   id: string;
@@ -919,7 +920,7 @@ export async function saveDriverTripReceipt(
     throw new Error("Enter a valid delivery receipt number.");
   }
 
-  const image = await uploadTripImage(tripId, bytes, contentType, fileName);
+  const image = await uploadTripImage(tripId, bytes, contentType, fileName, { stopId: tripStopId, profileId, drNumber: cleanDrNumber });
   try {
     const update = await updateDriverTripStatus(profileId, {
       trip_id: tripId,
@@ -930,6 +931,7 @@ export async function saveDriverTripReceipt(
     });
     return {
       ...update,
+      receipt_id: image.id,
       storage_path: image.storage_path,
       file_name: image.file_name,
       signed_url: image.signed_url,
@@ -942,6 +944,15 @@ export async function saveDriverTripReceipt(
     }
     throw error;
   }
+}
+
+export async function saveDriverReceiptOcr(profileId: string, tripId: string, stopId: string, input: Record<string, unknown>) {
+  await assertDriverHasActiveTrip(profileId, tripId);
+  const { data: stop, error } = await supabaseAdmin.from("trip_stops").select("id, archived_at")
+    .eq("trip_id", tripId).eq("id", stopId).maybeSingle();
+  if (error) throw new Error("Unable to verify delivery stop.");
+  if (!stop || stop.archived_at) throw new Error("This dispatch has been archived or removed. Refresh your assigned trips.");
+  return storeDriverReceiptText(tripId, stopId, profileId, input);
 }
 
 export async function getTruckerList(query: Record<string, unknown>) {

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   ArrowLeft,
+  Check,
   ChevronLeft,
   ChevronRight,
   Clock,
@@ -10,10 +11,8 @@ import {
   Images,
   ListChecks,
   Package,
-  Route,
   Trash2,
   Truck,
-  UserRound,
   X,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -24,6 +23,7 @@ import {
   fetchTripEvents,
   fetchTripLineItems,
   fetchTripStops,
+  invalidateTripCache,
   type TripChildRecord,
   type TripEvent,
   type TripRecord,
@@ -31,18 +31,21 @@ import {
 import LiveTripMap, { type TripEventTrack, type TripLocationRoute } from "../../../components/admin/LiveTripMap";
 import { surface } from "../../../components/admin/dashboardStyles";
 import ProductPhotoManager from "../../../components/admin/ProductPhotoManager";
+import ReceiptReviewCard from "../../../components/admin/ReceiptReviewCard";
+import OperationsTimeline from "../../../components/admin/OperationsTimeline";
 import truckBg from "../../../assets/trip-truck.png";
 import {
   deleteTripImage,
   fetchTripImages,
+  invalidateTripImagesCache,
   uploadTripImage,
   type TripImage,
 } from "../../../services/trip-image.service";
 import { subscribeToAdminRealtime } from "../../../services/realtime.service";
+import { RECEIPT_TABLES } from "../../../services/live-activity.service";
 import {
   fetchTripOperations,
   type OperationsReportData,
-  type ScopeReport,
 } from "../../../services/operations-report.service";
 
 type BookingPage = {
@@ -168,22 +171,6 @@ function CardHeader({
   );
 }
 
-function MiniStat({ label, value, hint }: { label: string; value: string; hint?: string }) {
-  return (
-    <div className={`${surface.card} flex flex-col justify-between gap-3 p-5`}>
-      <p className="text-[13px] font-semibold text-[#0b2341]">{label}</p>
-      <div className="flex items-end justify-between gap-2">
-        <p className="text-3xl font-bold leading-none tabular-nums text-[#0b2341]">{value}</p>
-        {hint && (
-          <span className="rounded-full bg-[#e6f0f9] px-2 py-0.5 text-[10px] font-semibold text-[#1d5f94]">
-            {hint}
-          </span>
-        )}
-      </div>
-    </div>
-  );
-}
-
 function ProductPhotoThumb({ src }: { src: string | null }) {
   const [failed, setFailed] = useState(false);
   if (!src || failed) {
@@ -243,16 +230,22 @@ function TripGallery({
   }, [accessToken, imageRefreshVersion, tripId]);
 
   useEffect(() => subscribeToAdminRealtime((event) => {
-    if (event.kind === "resume") {
+    /* Cached photo lists live for 45s, so drop the cache before re-reading or the
+       new photo would not show up until it expired. */
+    const refresh = () => {
+      invalidateTripImagesCache(tripId);
       setImageRefreshVersion((version) => version + 1);
+    };
+    if (event.kind === "resume") {
+      refresh();
       return;
     }
     if (event.kind === "recovered") {
-      if (event.table === "trip_images") setImageRefreshVersion((version) => version + 1);
+      if (event.table === "trip_images") refresh();
       return;
     }
     if (event.payload.table === "trip_images" && [event.payload.new?.trip_id, event.payload.old?.trip_id].includes(tripId)) {
-      setImageRefreshVersion((version) => version + 1);
+      refresh();
     }
   }), [tripId]);
 
@@ -336,7 +329,7 @@ function TripGallery({
           ) : undefined
         }
       />
-      <div className="relative mt-4 aspect-[4/3] overflow-hidden rounded-2xl bg-slate-100">
+      <div className="relative mt-4 aspect-[16/10] overflow-hidden rounded-2xl bg-slate-100">
         {photos.length > 0 ? (
           <>
             <img
@@ -471,8 +464,6 @@ function VehicleCard({
   onSelectItem,
   truckCapacityCbm,
   totalCbm,
-  driverName,
-  company,
 }: {
   plate: string;
   status: unknown;
@@ -481,8 +472,6 @@ function VehicleCard({
   onSelectItem: (item: Record<string, unknown>) => void;
   truckCapacityCbm: number | null;
   totalCbm: number;
-  driverName: string;
-  company: string;
 }) {
   const slots = Array.from({ length: TRUCK_SLOTS }, (_, i) => cargoRows[i] ?? null);
   const remainingCbm = truckCapacityCbm !== null ? Math.max(0, truckCapacityCbm - totalCbm) : null;
@@ -490,120 +479,107 @@ function VehicleCard({
     truckCapacityCbm !== null && truckCapacityCbm > 0
       ? Math.min(100, Math.round((totalCbm / truckCapacityCbm) * 100))
       : 0;
-  const hasDriver = driverName !== "Not recorded";
 
   return (
     <div className={`${surface.card} flex h-full flex-col p-5`}>
       <CardHeader
         icon={<Truck />}
-        title="Vehicle"
+        title="Vehicle & load"
         right={
-          <span className="text-xs text-slate-400">
-            {cargoRows.length} cargo line{cargoRows.length === 1 ? "" : "s"}
+          <span className="flex min-w-0 items-center gap-2 text-xs">
+            <span className="truncate font-semibold text-[#0b2341]">{plate}</span>
+            <span aria-hidden="true" className="text-slate-300">·</span>
+            <span className="shrink-0 font-semibold text-emerald-600">
+              {valueText(status, "Status unknown").replaceAll("_", " ")}
+            </span>
           </span>
         }
       />
 
-      <div className="mt-4 grid grid-cols-3 gap-3">
-        {[
-          ["Max CBM", truckCapacityCbm !== null ? formatNumber(truckCapacityCbm) : "—"],
-          ["Load CBM", formatNumber(totalCbm)],
-          ["Remaining", remainingCbm !== null ? formatNumber(remainingCbm) : "—"],
-        ].map(([label, value]) => (
-          <div key={label} className="rounded-2xl border border-slate-200/80 px-2 py-3.5 text-center">
-            <p className="text-xl font-bold tabular-nums text-[#0b2341]">{value}</p>
-            <p className="mt-0.5 text-[11px] text-slate-500">{label}</p>
+      <div className="mt-4 grid flex-1 gap-4 md:grid-cols-[minmax(0,1fr)_190px]">
+        <div className="flex min-w-0 flex-col justify-center">
+          <div className="relative w-full overflow-hidden rounded-2xl bg-[#f8fafc] p-2">
+            <img src={truckBg} alt="Delivery truck side view" className="h-auto w-full object-contain" />
+            <div className="absolute bottom-[40%] left-[28%] right-[4%] top-[20%] grid grid-cols-6 grid-rows-2 gap-1 p-3">
+              {slots.map((item, index) => {
+                const isSelected = Boolean(selectedItem && item && selectedItem.id === item.id);
+                const itemName = item
+                  ? valueText(item.product_name ?? item.item_name ?? `Item ${index + 1}`)
+                  : "";
+                const itemCbm = item?.cbm;
+                const itemCbmLabel =
+                  itemCbm === null || itemCbm === undefined || itemCbm === ""
+                    ? "CBM not set"
+                    : Number.isFinite(Number(itemCbm))
+                      ? `${formatNumber(Number(itemCbm))} CBM`
+                      : `${String(itemCbm)} CBM`;
+                const base =
+                  "relative flex flex-col items-center justify-center rounded-md border text-[9px] font-medium transition-all";
+                if (!item) {
+                  return (
+                    <div key={index} className={`${base} border-dashed border-slate-300/70 bg-white/60`}>
+                      <span className="text-slate-300">+</span>
+                    </div>
+                  );
+                }
+                return (
+                  <button
+                    key={index}
+                    type="button"
+                    onClick={() => onSelectItem(item)}
+                    aria-pressed={isSelected}
+                    aria-label={`Select ${itemName}`}
+                    className={`${base} cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9] ${
+                      isSelected
+                        ? "border-blue-500 bg-blue-50 ring-1 ring-blue-400"
+                        : "border-slate-300 bg-white/95 hover:border-slate-400"
+                    }`}
+                  >
+                    <span className="line-clamp-2 text-center leading-tight">{itemName}</span>
+                    <span className="text-[8px] text-slate-500">{itemCbmLabel}</span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
-        ))}
-      </div>
+          <p className="mt-2 text-center text-[11px] text-slate-400">
+            {cargoRows.length} cargo line{cargoRows.length === 1 ? "" : "s"}
+            {cargoRows.length > TRUCK_SLOTS && <> · showing {TRUCK_SLOTS} of {cargoRows.length}</>}
+          </p>
+        </div>
 
-      <div className="relative mt-4 w-full overflow-hidden rounded-2xl bg-[#f8fafc] p-2">
-        <img src={truckBg} alt="Delivery truck side view" className="h-auto w-full object-contain" />
-        <div className="absolute bottom-[40%] left-[28%] right-[4%] top-[20%] grid grid-cols-6 grid-rows-2 gap-1 p-3">
-          {slots.map((item, index) => {
-            const isSelected = Boolean(selectedItem && item && selectedItem.id === item.id);
-            const itemName = item
-              ? valueText(item.product_name ?? item.item_name ?? `Item ${index + 1}`)
-              : "";
-            const itemCbm = item?.cbm;
-            const itemCbmLabel =
-              itemCbm === null || itemCbm === undefined || itemCbm === ""
-                ? "CBM not set"
-                : Number.isFinite(Number(itemCbm))
-                  ? `${formatNumber(Number(itemCbm))} CBM`
-                  : `${String(itemCbm)} CBM`;
-            const base =
-              "relative flex flex-col items-center justify-center rounded-md border text-[8px] font-medium transition-all";
-            if (!item) {
-              return (
-                <div key={index} className={`${base} border-dashed border-slate-300/70 bg-white/60`}>
-                  <span className="text-slate-300">+</span>
-                </div>
-              );
-            }
-            return (
-              <button
-                key={index}
-                type="button"
-                onClick={() => onSelectItem(item)}
-                aria-pressed={isSelected}
-                aria-label={`Select ${itemName}`}
-                className={`${base} cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9] ${
-                  isSelected
-                    ? "border-blue-500 bg-blue-50 ring-1 ring-blue-400"
-                    : "border-slate-300 bg-white/95 hover:border-slate-400"
-                }`}
-              >
-                <span className="line-clamp-2 text-center leading-tight">{itemName}</span>
-                <span className="text-[7px] text-slate-500">{itemCbmLabel}</span>
-              </button>
-            );
-          })}
+        <div className="flex min-w-0 flex-col gap-3">
+          <div className="flex justify-center rounded-2xl bg-[#f2f6fa] px-3 pb-3 pt-4">
+            <LoadGauge percentage={loadPercentage} />
+          </div>
+          <dl className="grid gap-2">
+            {[
+              ["Max CBM", truckCapacityCbm !== null ? formatNumber(truckCapacityCbm) : "—"],
+              ["Load CBM", formatNumber(totalCbm)],
+              ["Remaining", remainingCbm !== null ? formatNumber(remainingCbm) : "—"],
+            ].map(([label, value]) => (
+              <div key={label} className="flex items-baseline justify-between gap-2 rounded-xl border border-slate-200/80 px-3 py-2">
+                <dt className="text-[11px] text-slate-500">{label}</dt>
+                <dd className="text-sm font-bold tabular-nums text-[#0b2341]">{value}</dd>
+              </div>
+            ))}
+          </dl>
         </div>
       </div>
-      <p className="mt-2 text-center text-[11px] text-slate-500">
-        <span className="font-medium text-slate-600">{plate}</span> ·{" "}
-        <span className="font-semibold text-emerald-600">
-          {valueText(status, "Status unknown").replaceAll("_", " ")}
-        </span>
-        {cargoRows.length > TRUCK_SLOTS && (
-          <span className="text-slate-400"> · showing {TRUCK_SLOTS} of {cargoRows.length} items</span>
+
+      <div className="mt-4 rounded-2xl bg-[#f2f6fa] px-4 py-3 text-xs">
+        {selectedItem ? (
+          <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+            <p className="min-w-0 truncate text-sm font-semibold text-[#0b2341]">
+              {valueText(selectedItem.product_name ?? selectedItem.item_name)}
+            </p>
+            <p className="text-slate-500">
+              Qty {valueText(selectedItem.quantity, "—")} · {valueText(selectedItem.cbm, "—")} CBM
+            </p>
+          </div>
+        ) : (
+          <p className="text-slate-500">Select a cargo slot on the truck to see its details.</p>
         )}
-      </p>
-
-      <div className="mt-4 flex items-center justify-between gap-4 rounded-2xl bg-[#f2f6fa] px-4 py-3">
-        <div className="shrink-0 scale-90">
-          <LoadGauge percentage={loadPercentage} />
-        </div>
-        <div className="min-w-0 flex-1 text-xs">
-          {selectedItem ? (
-            <>
-              <p className="text-[10px] font-medium uppercase tracking-wide text-slate-400">Selected item</p>
-              <p className="mt-0.5 truncate text-sm font-semibold text-[#0b2341]">
-                {valueText(selectedItem.product_name ?? selectedItem.item_name)}
-              </p>
-              <p className="mt-0.5 text-slate-500">
-                Qty {valueText(selectedItem.quantity, "—")} · {valueText(selectedItem.cbm, "—")} CBM
-              </p>
-            </>
-          ) : (
-            <p className="text-slate-500">Select a cargo slot on the truck to see its details.</p>
-          )}
-        </div>
-      </div>
-
-      <div className="mt-4 flex items-center gap-3 border-t border-slate-100 pt-4">
-        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#ffd43b] text-[#0b2341]">
-          {hasDriver ? (
-            <span className="text-sm font-bold">{driverName.charAt(0).toUpperCase()}</span>
-          ) : (
-            <UserRound aria-hidden="true" className="h-5 w-5" />
-          )}
-        </span>
-        <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-[#0b2341]">{driverName}</p>
-          <p className="truncate text-[11px] text-slate-500">Driver · {company}</p>
-        </div>
       </div>
     </div>
   );
@@ -622,32 +598,31 @@ function TripDetailSkeleton({ onBack }: { onBack: () => void }) {
         <button type="button" onClick={onBack} className="inline-flex h-10 items-center gap-2 rounded-full border border-slate-200 bg-white pl-3 pr-4 text-xs font-semibold text-[#0b2341] shadow-sm">
           <ArrowLeft aria-hidden="true" className="h-4 w-4" />Back to trips
         </button>
-        <div aria-hidden="true" className={`${block} hidden h-4 w-52 sm:block`} />
       </header>
 
-      <section aria-hidden="true" className="grid grid-cols-1 items-stretch gap-4 xl:grid-cols-12">
-        <div className={`${card} space-y-5 xl:col-span-4`}>
-          <div className="flex items-center gap-3"><div className={`${block} h-10 w-10 rounded-full`} /><div className={`${block} h-5 w-36`} /></div>
-          <div className={`${block} h-3 w-28`} /><div className={`${block} h-8 w-48`} />
-          <div className="rounded-2xl bg-[#f2f6fa] p-4"><div className="flex justify-between"><div className={`${block} h-9 w-20`} /><div className={`${block} h-9 w-20`} /></div><div className={`${block} mt-4 h-2 w-full`} /></div>
-          <div className="space-y-4"><div className={`${block} h-4 w-full`} /><div className={`${block} h-4 w-4/5`} /></div>
+      <section aria-hidden="true" className={`${card} grid gap-6 xl:grid-cols-12`}>
+        <div className="space-y-4 xl:col-span-5">
+          <div className={`${block} h-3 w-24`} />
+          <div className={`${block} h-8 w-56`} />
+          <div className={`${block} h-2 w-full`} />
+          <div className={`${block} h-4 w-4/5`} />
         </div>
-        <div aria-hidden="true" className={`${block} min-h-[300px] xl:col-span-5`} />
-        <div className={`${card} space-y-4 xl:col-span-3`}>
-          <div className={`${block} h-5 w-32`} />
-          {Array.from({ length: 5 }, (_, index) => <div key={index} className="flex gap-3"><div className={`${block} h-10 w-10 rounded-full`} /><div className="flex-1 space-y-2"><div className={`${block} h-3 w-3/4`} /><div className={`${block} h-3 w-1/2`} /></div></div>)}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 xl:col-span-7">
+          {Array.from({ length: 8 }, (_, index) => <div key={index} className={`${block} h-16`} />)}
         </div>
       </section>
 
-      <section aria-hidden="true" className="grid grid-cols-1 items-stretch gap-4 xl:grid-cols-12">
-        <div className={`${block} min-h-[220px] xl:col-span-4`} />
-        <div className={`${block} min-h-[220px] xl:col-span-5`} />
-        <div className={`${card} min-h-[220px] space-y-4 xl:col-span-3`}><div className={`${block} h-5 w-36`} />{Array.from({ length: 4 }, (_, index) => <div key={index} className={`${block} h-12 w-full`} />)}</div>
+      <section aria-hidden="true" className="grid grid-cols-1 gap-4 xl:h-[480px] xl:grid-cols-12">
+        <div className={`${block} min-h-[300px] xl:col-span-8`} />
+        <div className={`${card} space-y-4 xl:col-span-4`}>
+          <div className={`${block} h-9 w-full rounded-full`} />
+          {Array.from({ length: 4 }, (_, index) => <div key={index} className="flex gap-3"><div className={`${block} h-8 w-8 rounded-full`} /><div className="flex-1 space-y-2"><div className={`${block} h-3 w-3/4`} /><div className={`${block} h-3 w-1/2`} /></div></div>)}
+        </div>
       </section>
 
-      <section aria-hidden="true" className={`${card} space-y-4`}>
-        <div className="flex items-center justify-between"><div className={`${block} h-5 w-28`} /><div className={`${block} h-8 w-48`} /></div>
-        {Array.from({ length: 4 }, (_, index) => <div key={index} className={`${block} h-14 w-full`} />)}
+      <section aria-hidden="true" className="grid grid-cols-1 gap-4 xl:grid-cols-12">
+        <div className={`${block} min-h-[320px] xl:col-span-7`} />
+        <div className={`${block} min-h-[320px] xl:col-span-5`} />
       </section>
       <span className="sr-only">Loading trip details</span>
     </div>
@@ -669,31 +644,43 @@ export default function TripDetailView({
   const [loadedKey, setLoadedKey] = useState<string | null>(null);
   const [failure, setFailure] = useState<{ key: string; message: string } | null>(null);
   const [retry, setRetry] = useState(0);
+  const [receiptTick, setReceiptTick] = useState(0);
   const [selectedStop, setSelectedStop] = useState<string | null>(null);
   const [stopSelectionChanged, setStopSelectionChanged] = useState(false);
   const [selectedCargoItem, setSelectedCargoItem] = useState<Record<string, unknown> | null>(null);
   const [photoProduct, setPhotoProduct] = useState<{ id: string; name: string } | null>(null);
   const [viewProduct, setViewProduct] = useState<Record<string, unknown> | null>(null);
   const [productPhotoOverrides, setProductPhotoOverrides] = useState<Record<string, string | null>>({});
+  const [sidePanel, setSidePanel] = useState<"stops" | "activity">("stops");
   const requestKey = `${accessToken ?? "no-session"}:${tripId}:${retry}`;
   const realtimeRefreshTimer = useRef<number | null>(null);
 
   useEffect(() => subscribeToAdminRealtime((event) => {
     if (event.kind === "resume") {
+      invalidateTripCache(tripId);
       setRetry((value) => value + 1);
       return;
     }
     const tripTables = ["trips", "trip_stops", "trip_line_items", "trip_events", "trip_truck_assignments", "billings", "loading_reports", "unloading_reports", "backloads", "offloads"];
+    const receiptTables: readonly string[] = RECEIPT_TABLES;
     if (event.kind === "recovered") {
+      if (receiptTables.includes(event.table)) setReceiptTick((value) => value + 1);
       if (!tripTables.includes(event.table)) return;
     } else {
       const { table, new: next, old } = event.payload;
+      /* A receipt photo or its text changed: refresh just the receipt card, not the whole trip. */
+      if (receiptTables.includes(table) && [next?.trip_id, old?.trip_id].includes(tripId)) {
+        setReceiptTick((value) => value + 1);
+      }
       if (!tripTables.includes(table)) return;
       const relatedId = table === "trips"
         ? [next?.id, old?.id].find((value) => typeof value === "string")
         : [next?.trip_id, old?.trip_id].find((value) => typeof value === "string");
       if (relatedId !== tripId) return;
     }
+    /* Events, stops and details are cached (45s for events). Without this the refresh below
+       would hand back the old data and truck updates would look like they lag. */
+    invalidateTripCache(tripId);
     if (realtimeRefreshTimer.current !== null) window.clearTimeout(realtimeRefreshTimer.current);
     realtimeRefreshTimer.current = window.setTimeout(() => {
       realtimeRefreshTimer.current = null;
@@ -912,6 +899,12 @@ export default function TripDetailView({
     ? productRows.filter((row) => String(row.trip_stop_id ?? row._trip_stop_id ?? "") === activeStopId)
     : productRows;
 
+  const stopLabels = Object.fromEntries(
+    stops.map((stop, index) => [
+      String(stop.id ?? ""),
+      `Stop ${stopKey(stop, index)} · ${valueText(rowsForStop(String(stop.id ?? ""))[0]?.store_name, "Store not recorded")}`,
+    ]),
+  );
   const doneStops = stops.filter(stopIsDone).length;
   const progress = stops.length ? Math.round((doneStops / stops.length) * 100) : 0;
   const cargoRows = productRows;
@@ -924,22 +917,37 @@ export default function TripDetailView({
   const plate = getBookingValue(reportRows, "plate_number", "No plate recorded");
   const placeholder = isLoading ? "…" : undefined;
   const timelineEvents = orderedEvents.slice().reverse();
+  const nextStopIndex = stops.findIndex((stop) => !stopIsDone(stop));
+  const company = getBookingValue(reportRows, "trucking_company");
+  const detailFacts: Array<{ label: string; value: string; sub?: string }> = [
+    { label: "Driver", value: driverName, sub: company !== "Not recorded" ? company : undefined },
+    { label: "Vehicle", value: plate },
+    { label: "Loading date", value: shortDate(trip?.loading_date) },
+    { label: "Est. delivery", value: shortDate(trip?.estimated_delivery_date) },
+  ];
+  const cargoFacts: Array<{ label: string; value: string }> = [
+    { label: "Items", value: placeholder ?? String(lineItemCount) },
+    { label: "Quantity", value: placeholder ?? formatNumber(totalQty) },
+    { label: "Total CBM", value: placeholder ?? formatNumber(totalCbm) },
+    { label: "Events", value: placeholder ?? String(orderedEvents.length) },
+  ];
+  const sideTabs = [
+    { key: "stops" as const, label: "Stops", count: stops.length, Icon: ListChecks },
+    { key: "activity" as const, label: "Activity", count: orderedEvents.length, Icon: History },
+  ];
 
   return (
     <div className="space-y-4">
       {/* Top bar */}
-      <header className="flex items-center justify-between gap-3">
+      <header className="flex flex-wrap items-center gap-x-4 gap-y-3">
         <button
           type="button"
           onClick={onBack}
-          className="inline-flex h-10 items-center gap-2 rounded-full border border-slate-200 bg-white pl-3 pr-4 text-xs font-semibold text-[#0b2341] shadow-sm transition hover:bg-slate-50"
+          className="inline-flex h-10 shrink-0 items-center gap-2 rounded-full border border-slate-200 bg-white pl-3 pr-4 text-xs font-semibold text-[#0b2341] shadow-sm transition hover:bg-slate-50"
         >
           <ArrowLeft aria-hidden="true" className="h-4 w-4" />
           Back to trips
         </button>
-        <p className="hidden text-xs text-slate-500 sm:block">
-          Loading {shortDate(trip?.loading_date)} · ETA {shortDate(trip?.estimated_delivery_date)}
-        </p>
       </header>
 
       {detail && detail.sectionErrors.length > 0 && (
@@ -954,47 +962,16 @@ export default function TripDetailView({
         </p>
       )}
 
-      {/* Row 1: overview | vehicle | stops */}
-      <div className="grid grid-cols-1 items-stretch gap-4 xl:grid-cols-12">
-        {/* Overview + mini stats */}
-        <div className="flex min-w-0 flex-col gap-4 xl:col-span-4">
-          <section className={`${surface.card} p-5`}>
-            <CardHeader
-              icon={<Route />}
-              title="Trip overview"
-              right={<StatusPill status={trip?.status} fallback="Loading" />}
-            />
-            <p className="mt-4 text-[11px] font-medium uppercase tracking-wide text-slate-400">
-              Dispatch number
+      {/* Summary: what trip is this, where is it at, who is driving, how much is on board */}
+      <section className={`${surface.card} p-5 sm:p-6`}>
+        <div className="grid gap-6 xl:grid-cols-12 xl:gap-8">
+          <div className="min-w-0 xl:col-span-5">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+              Trip {valueText(trip?.trip_number)}
             </p>
-            <h2 className="truncate text-2xl font-bold tracking-tight text-[#0b2341]">
-              {isLoading ? "Loading trip…" : dispatchNumber}
-            </h2>
-            <p className="mt-1 text-xs text-slate-500">
-              Trip {valueText(trip?.trip_number)} · Date {dateText(trip?.loading_date)}
-            </p>
-
-            <div className="mt-4 rounded-2xl bg-gradient-to-b from-[#f2f6fa] to-[#e6f0f9] p-4">
-              <div className="flex items-end justify-between gap-4">
-                <div>
-                  <p className="text-3xl font-bold leading-none tabular-nums text-[#0b2341]">
-                    {placeholder ?? `${doneStops}/${stops.length}`}
-                  </p>
-                  <p className="mt-1 text-[11px] text-slate-500">Stops completed</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-3xl font-bold leading-none tabular-nums text-[#2678b9]">
-                    {placeholder ?? `${progress}%`}
-                  </p>
-                  <p className="mt-1 text-[11px] text-slate-500">Progress</p>
-                </div>
-              </div>
-              <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/80">
-                <div
-                  className="h-full rounded-full bg-[#ffd43b] transition-all duration-500"
-                  style={{ width: `${progress}%` }}
-                />
-              </div>
+            <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-2">
+              <h1 className="min-w-0 truncate text-2xl font-bold tracking-tight text-[#0b2341]">{dispatchNumber}</h1>
+              <StatusPill status={trip?.status} fallback="Loading" />
             </div>
 
             <ul className="mt-5 space-y-3 text-sm">
@@ -1009,120 +986,141 @@ export default function TripDetailView({
                 <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-[#2678b9]" />
                 <span className="min-w-0">
                   <span className="block text-[11px] text-slate-400">To</span>
-                  <span className="break-words text-slate-700">{destinationText}</span>
+                  <span className="line-clamp-2 break-words text-slate-700">{destinationText}</span>
                 </span>
               </li>
             </ul>
 
-            {Boolean(trip?.remarks) && (
-              <p className={`${surface.inner} mt-4 px-4 py-3 text-xs text-slate-600`}>
-                {String(trip?.remarks)}
-              </p>
-            )}
-          </section>
-
-          <div className="grid grid-cols-2 gap-4">
-            <MiniStat label="Items" value={placeholder ?? String(lineItemCount)} />
-            <MiniStat label="Quantity" value={placeholder ?? formatNumber(totalQty)} />
-            <MiniStat label="Total CBM" value={placeholder ?? formatNumber(totalCbm)} />
-            <MiniStat label="Events" value={placeholder ?? String(orderedEvents.length)} />
+            <div className="mt-5">
+              <div className="mb-1.5 flex items-baseline justify-between gap-3 text-xs">
+                <span className="font-medium text-slate-600">
+                  {placeholder ?? `${doneStops} of ${stops.length} stops completed`}
+                </span>
+                <span className="font-bold tabular-nums text-[#0b2341]">{placeholder ?? `${progress}%`}</span>
+              </div>
+              <div className="h-2 overflow-hidden rounded-full bg-[#e6f0f9]">
+                <div
+                  className="h-full rounded-full bg-[#ffd43b] transition-all duration-500"
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
+            </div>
           </div>
+
+          <dl className="grid min-w-0 grid-cols-2 gap-3 sm:grid-cols-4 xl:col-span-7 xl:grid-rows-2">
+            {detailFacts.map(({ label, value, sub }) => (
+              <div key={label} className="min-w-0 rounded-2xl bg-[#f2f6fa] px-4 py-3">
+                <dt className="text-[11px] font-medium text-slate-500">{label}</dt>
+                <dd className="mt-1 truncate text-sm font-semibold text-[#0b2341]" title={value}>{value}</dd>
+                {sub && <p className="mt-0.5 truncate text-[11px] text-slate-400" title={sub}>{sub}</p>}
+              </div>
+            ))}
+            {cargoFacts.map(({ label, value }) => (
+              <div key={label} className="min-w-0 rounded-2xl border border-slate-200/80 px-4 py-3">
+                <dt className="text-[11px] font-medium text-slate-500">{label}</dt>
+                <dd className="mt-1 text-xl font-bold leading-none tabular-nums text-[#0b2341]">{value}</dd>
+              </div>
+            ))}
+          </dl>
         </div>
 
-        {/* Vehicle */}
-        <div className="min-w-0 xl:col-span-5">
-          <VehicleCard
-            plate={plate}
-            status={trip?.status}
-            cargoRows={cargoRows}
-            selectedItem={selectedCargoItem}
-            onSelectItem={setSelectedCargoItem}
-            truckCapacityCbm={detail?.truckCapacityCbm ?? null}
-            totalCbm={totalCbm}
-            driverName={driverName}
-            company={getBookingValue(reportRows, "trucking_company")}
-          />
-        </div>
+        {Boolean(trip?.remarks) && (
+          <p className={`${surface.inner} mt-5 px-4 py-3 text-xs text-slate-600`}>
+            {String(trip?.remarks)}
+          </p>
+        )}
+      </section>
 
-        {/* Stops */}
-        <section className={`${surface.card} flex min-w-0 flex-col p-5 xl:col-span-3`}>
-          <CardHeader
-            icon={<ListChecks />}
-            title="Stops"
-            right={
-              <span className="rounded-full bg-[#0b2341] px-2 py-0.5 text-[10px] font-semibold tabular-nums text-white">
-                {stops.length}
-              </span>
-            }
-          />
-          {stops.length === 0 ? (
-            <p className="py-10 text-center text-sm text-slate-500">
-              {placeholder ?? "No stops recorded for this trip."}
-            </p>
-          ) : (
-            <ul className="mt-4 max-h-[560px] space-y-2.5 overflow-y-auto pr-1">
-              {stops.map((stop, index) => {
-                const key = stopKey(stop, index);
-                const match = rowsForStop(String(stop.id ?? ""))[0] ?? {};
-                return (
-                  <li
-                    key={String(stop.id ?? stop.trip_stop_id ?? `${tripId}-${index}`)}
-                    className="rounded-2xl border border-slate-100 p-3"
-                  >
-                    <div className="flex items-start gap-3">
-                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#e6f0f9] text-[11px] font-bold text-[#0b2341]">
-                        {key}
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-semibold text-[#0b2341]">
-                          {valueText(match.store_name, valueText(stop.store_id, "Store not recorded"))}
-                        </p>
-                        <p className="truncate text-[11px] text-slate-500">
-                          {valueText(match.customer_name, valueText(stop.customer_id, "Customer not recorded"))}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="mt-2.5 flex items-center justify-between gap-2">
-                      <span className="flex min-w-0 items-center gap-1.5 text-[11px] text-slate-500">
-                        <Clock aria-hidden="true" className="h-3 w-3 shrink-0" />
-                        <span className="truncate">
-                          {stop.arrival_time ? dateText(stop.arrival_time, true) : "No arrival yet"}
-                        </span>
-                      </span>
-                      <StatusPill status={stop.delivery_status ?? match.delivery_status} fallback="Pending" />
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </section>
-      </div>
-
-      {/* Row 2: photos | map | tracking */}
-      <div className="grid grid-cols-1 items-stretch gap-4 xl:grid-cols-12">
-        <div className="min-w-0 xl:col-span-4">
-          <TripGallery key={tripId} plate={plate} tripId={tripId} accessToken={accessToken} />
-        </div>
-
-        <div className="min-w-0 xl:col-span-5">
+      {/* Where is it now: live map | stops + activity */}
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
+        <div className="min-w-0 xl:col-span-8">
           <LiveTripMap tracks={mapTrack} locationIds={mapLocationIds} tripLocationRoutes={mapLocationRoutes} focusTripId={tripId} eventLoadError={false} height={440} fillHeight />
         </div>
 
-        <section className={`${surface.card} flex min-w-0 flex-col p-5 xl:col-span-3`}>
-          <CardHeader
-            icon={<History />}
-            title="Trip tracking"
-            right={
-              <span className="rounded-full bg-[#e6f0f9] px-2.5 py-1 text-[11px] font-semibold tabular-nums text-[#1d5f94]">
-                {orderedEvents.length} events
-              </span>
-            }
-          />
-          {timelineEvents.length === 0 ? (
+        <section className={`${surface.card} relative min-w-0 xl:col-span-4`}>
+          <div className="flex max-h-[520px] min-h-[320px] flex-col p-5 xl:absolute xl:inset-0 xl:max-h-none">
+          <div role="tablist" aria-label="Stops and activity" className="flex shrink-0 items-center gap-1 rounded-full bg-[#eef3f8] p-1">
+            {sideTabs.map(({ key, label, count, Icon }) => {
+              const isActive = sidePanel === key;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  role="tab"
+                  aria-selected={isActive}
+                  onClick={() => setSidePanel(key)}
+                  className={`inline-flex flex-1 items-center justify-center gap-2 rounded-full px-3 py-2 text-xs font-semibold transition-colors ${
+                    isActive
+                      ? "bg-white text-[#0b2341] shadow-[0_2px_8px_-2px_rgba(11,35,65,0.2)]"
+                      : "text-slate-500 hover:text-[#0b2341]"
+                  }`}
+                >
+                  <Icon aria-hidden="true" className="h-3.5 w-3.5" />
+                  {label}
+                  <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums ${isActive ? "bg-[#0b2341] text-white" : "bg-white text-slate-500"}`}>
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {sidePanel === "stops" ? (
+            stops.length === 0 ? (
+              <p className="py-10 text-center text-sm text-slate-500">
+                {placeholder ?? "No stops recorded for this trip."}
+              </p>
+            ) : (
+              <ul role="tabpanel" className="mt-3 min-h-0 flex-1 divide-y divide-slate-100 overflow-y-auto pr-1">
+                {stops.map((stop, index) => {
+                  const key = stopKey(stop, index);
+                  const match = rowsForStop(String(stop.id ?? ""))[0] ?? {};
+                  const done = stopIsDone(stop);
+                  const isNext = index === nextStopIndex;
+                  return (
+                    <li key={String(stop.id ?? stop.trip_stop_id ?? `${tripId}-${index}`)} className="flex items-start gap-3 py-3">
+                      <span
+                        className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${
+                          done
+                            ? "bg-emerald-500 text-white"
+                            : isNext
+                              ? "bg-[#ffd43b] text-[#0b2341]"
+                              : "bg-[#e6f0f9] text-[#0b2341]"
+                        }`}
+                      >
+                        {done ? <Check aria-hidden="true" className="h-3.5 w-3.5" /> : key}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="truncate text-sm font-semibold text-[#0b2341]">
+                            {valueText(match.store_name, valueText(stop.store_id, "Store not recorded"))}
+                          </p>
+                          {isNext && (
+                            <span className="shrink-0 rounded-full bg-[#fff6d1] px-2 py-0.5 text-[10px] font-bold text-[#8a6a00]">Next</span>
+                          )}
+                        </div>
+                        <p className="truncate text-[11px] text-slate-500">
+                          {valueText(match.customer_name, valueText(stop.customer_id, "Customer not recorded"))}
+                        </p>
+                        <div className="mt-2 flex items-center justify-between gap-2">
+                          <span className="flex min-w-0 items-center gap-1.5 text-[11px] text-slate-500">
+                            <Clock aria-hidden="true" className="h-3 w-3 shrink-0" />
+                            <span className="truncate">
+                              {stop.arrival_time ? dateText(stop.arrival_time, true) : "No arrival yet"}
+                            </span>
+                          </span>
+                          <StatusPill status={stop.delivery_status ?? match.delivery_status} fallback="Pending" />
+                        </div>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )
+          ) : timelineEvents.length === 0 ? (
             <p className="py-10 text-center text-sm text-slate-500">No events recorded.</p>
           ) : (
-            <ol className="relative ml-2 mt-5 max-h-[440px] flex-1 overflow-y-auto border-l-2 border-[#ffd43b]/70 pl-5 pr-1">
+            <ol role="tabpanel" className="relative ml-2 mt-5 min-h-0 flex-1 overflow-y-auto border-l-2 border-[#ffd43b]/70 pl-5 pr-1">
               {timelineEvents.map((event, index) => (
                 <li key={event.id} className="relative mb-5 last:mb-0">
                   <span
@@ -1141,54 +1139,52 @@ export default function TripDetailView({
               ))}
             </ol>
           )}
+          </div>
         </section>
+      </div>
+
+      {/* Load & photos: reference detail, below the live picture */}
+      <div className="grid grid-cols-1 items-stretch gap-4 xl:grid-cols-12">
+        <div className="min-w-0 xl:col-span-7">
+          <VehicleCard
+            plate={plate}
+            status={trip?.status}
+            cargoRows={cargoRows}
+            selectedItem={selectedCargoItem}
+            onSelectItem={setSelectedCargoItem}
+            truckCapacityCbm={detail?.truckCapacityCbm ?? null}
+            totalCbm={totalCbm}
+          />
+        </div>
+        <div className="min-w-0 xl:col-span-5">
+          <TripGallery key={tripId} plate={plate} tripId={tripId} accessToken={accessToken} />
+        </div>
       </div>
 
       {/* Operational report history is loaded through the authenticated,
           trip-scoped API so each stop remains independently identified. */}
       <section className={`${surface.card} min-w-0 p-5`}>
-        <CardHeader icon={<Clock />} title="Loading, unloading, backload & offload" />
-        {detail?.sectionErrors.some((message) => message.startsWith("Operational reports:")) && (
-          <p role="status" className="mt-3 rounded-xl bg-amber-50 px-4 py-3 text-xs text-amber-800">
-            {detail.sectionErrors.find((message) => message.startsWith("Operational reports:"))}
-          </p>
-        )}
-        <div className="mt-4 grid gap-4 lg:grid-cols-2">
-          <article className="rounded-xl border border-slate-100 p-4">
-            <h3 className="font-semibold text-[#0b2341]">Loading timeline · trip level</h3>
-            {detail?.operations.loading.length ? detail.operations.loading.map((report) => (
-              <dl key={report.id} className="mt-3 grid gap-x-4 gap-y-2 text-xs sm:grid-cols-3">
-                <TimestampDetail label="Warehouse arrival" value={report.warehouse_arrival_at} />
-                <TimestampDetail label="Loading started" value={report.loading_start_at} />
-                <TimestampDetail label="Loading finished" value={report.loading_finished_at} />
-              </dl>
-            )) : <p className="mt-2 text-sm text-slate-500">No loading timeline has been recorded.</p>}
-          </article>
-          <article className="rounded-xl border border-slate-100 p-4">
-            <h3 className="font-semibold text-[#0b2341]">Unloading timelines · per stop</h3>
-            <div className="mt-3 space-y-3">
-              {stops.length === 0 ? <p className="text-sm text-slate-500">No stops are recorded.</p> : stops.map((stop, index) => {
-                const timeline = detail?.operations.stops.find((item) => item.id === String(stop.id ?? ""));
-                const sequence = stop.stop_sequence ?? index + 1;
-                return <div key={String(stop.id ?? sequence)} className="rounded-lg bg-slate-50 p-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-xs font-semibold text-[#0b2341]">Stop {String(sequence)} · {valueText(rowsForStop(String(stop.id ?? ""))[0]?.store_name, "Store not recorded")}</p>
-                    <StatusPill status={timeline?.delivery_status ?? stop.delivery_status} fallback="Pending" />
-                  </div>
-                  <dl className="mt-2 grid gap-x-4 gap-y-2 text-xs sm:grid-cols-3">
-                    <TimestampDetail label="Store arrival" value={timeline?.arrival_time} />
-                    <TimestampDetail label="Unloading started" value={timeline?.start_unloading_time} />
-                    <TimestampDetail label="Unloading finished" value={timeline?.finish_unloading_time} />
-                  </dl>
-                  {typeof timeline?.remarks === "string" && timeline.remarks && <p className="mt-2 text-xs text-slate-600">{timeline.remarks}</p>}
-                </div>;
-              })}
-            </div>
-          </article>
-          <ScopeHistory title="Backload records" records={detail?.operations.backloads ?? []} />
-          <ScopeHistory title="Offload records" records={detail?.operations.offloads ?? []} />
-        </div>
-        <p className="mt-3 text-[11px] text-slate-500">Reporter, submission status, receipt metadata, and report audit details are not available from the established report API contract.</p>
+        <OperationsTimeline
+          tripId={tripId}
+          loading={detail?.operations.loading ?? []}
+          stops={stops.map((stop, index) => {
+            const stopId = String(stop.id ?? "");
+            const timeline = detail?.operations.stops.find((item) => item.id === stopId);
+            return {
+              id: stopId || String(index),
+              label: `Stop ${String(stop.stop_sequence ?? index + 1)}`,
+              storeName: valueText(rowsForStop(stopId)[0]?.store_name, "Store not recorded"),
+              arrival: timeline?.arrival_time,
+              start: timeline?.start_unloading_time,
+              finish: timeline?.finish_unloading_time,
+              remarks: typeof timeline?.remarks === "string" && timeline.remarks ? timeline.remarks : null,
+            };
+          })}
+          backloads={detail?.operations.backloads ?? []}
+          offloads={detail?.operations.offloads ?? []}
+          stopLabel={(stopId) => stopLabels[stopId] ?? null}
+          error={detail?.sectionErrors.find((message) => message.startsWith("Operational reports:")) ?? null}
+        />
       </section>
 
       {/* Products */}
@@ -1320,6 +1316,9 @@ export default function TripDetailView({
         </footer>
       </section>
 
+      {/* Delivery receipts (OCR text for admin review) */}
+      <ReceiptReviewCard tripId={tripId} accessToken={accessToken} stopLabels={stopLabels} refreshKey={retry + receiptTick} />
+
       {accessToken && photoProduct && (
         <ProductPhotoManager
           token={accessToken}
@@ -1396,21 +1395,4 @@ export default function TripDetailView({
       )}
     </div>
   );
-}
-
-function TimestampDetail({ label, value }: { label: string; value: unknown }) {
-  return <div className="min-w-0"><dt className="text-[10px] font-medium uppercase tracking-wide text-slate-400">{label}</dt><dd className="mt-0.5 break-words text-xs font-medium text-slate-700">{dateText(value, true)}</dd></div>;
-}
-
-function ScopeHistory({ title, records }: { title: string; records: ScopeReport[] }) {
-  return <article className="rounded-xl border border-slate-100 p-4">
-    <h3 className="font-semibold text-[#0b2341]">{title}</h3>
-    {records.length === 0 ? <p className="mt-2 text-sm text-slate-500">No records.</p> : <ul className="mt-3 space-y-2">
-      {records.map((record) => <li key={record.id} className="rounded-lg bg-slate-50 p-3 text-xs">
-        <p className="font-medium text-slate-700">{record.trip_stop_id ? `Stop record · ${record.trip_stop_id.slice(0, 8)}` : "Whole-trip record"}</p>
-        <p className="mt-1">Reason: {record.reason || "Not recorded"} · Boxes: {record.number_of_boxes ?? "Not recorded"}</p>
-        {record.comments && <p className="mt-1 whitespace-pre-wrap text-slate-600">{record.comments}</p>}
-      </li>)}
-    </ul>}
-  </article>;
 }

@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { listReceipts, saveReceiptOcr } from "../controllers/trip-receipt.controller.js";
 import express from "express";
 import { authMiddleware } from "../middleware/auth.middleware.js";
 import { requireRole } from "../middleware/role.middleware.js";
@@ -35,6 +36,8 @@ import {
 } from "../controllers/trip.controller.js";
 
 const router = Router();
+router.get("/:id/receipts", authMiddleware, requireRole("ADMIN", "STAFF"), listReceipts);
+router.patch("/:id/receipts/:receiptId/ocr", authMiddleware, requireRole("ADMIN", "STAFF"), saveReceiptOcr);
 router.patch("/:id/transaction-archive", authMiddleware, requireRole("ADMIN", "STAFF"), archiveTransaction);
 router.patch("/:id/stops/:stopId/transmittal-reference", authMiddleware, requireRole("ADMIN", "STAFF"), saveTransactionReference);
 

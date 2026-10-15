@@ -21,6 +21,7 @@ import {
 import logo from "../../assets/logo.png";
 import ConfirmDialog from "../../components/ui/ConfirmDialog";
 import SlideToConfirm from "../../components/ui/SlideToConfirm";
+import { recognizeReceipt, type OcrResult } from "../../services/ocr.service";
 import { useToast } from "../../components/ui/Toast";
 import { useAuth } from "../../context/AuthContext";
 import OperationsReportsView from "../../components/admin/OperationsReportsView";
@@ -30,6 +31,7 @@ import {
 } from "../../services/operations-report.service";
 import {
   fetchMyAssignedTrips,
+  saveDriverReceiptText,
   saveDriverTripUpdate,
   uploadDriverPod,
   type DriverAssignedStop,
@@ -211,6 +213,11 @@ export default function DriverPortal() {
   const [podFile, setPodFile] = useState<File | null>(null);
   const [podPreview, setPodPreview] = useState<string | null>(null);
   const podPreviewUrl = useRef<string | null>(null);
+  /* The receipt text is read on this phone while the driver types the DR number. */
+  const [ocrStatus, setOcrStatus] = useState<"idle" | "scanning" | "done" | "failed">("idle");
+  const [ocrProgress, setOcrProgress] = useState(0);
+  const ocrRun = useRef(0);
+  const ocrPromise = useRef<Promise<OcrResult | null> | null>(null);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [logoutLoading, setLogoutLoading] = useState(false);
 
@@ -243,6 +250,10 @@ export default function DriverPortal() {
     : null;
 
   const resetReceiptDraft = () => {
+    ocrRun.current += 1;
+    ocrPromise.current = null;
+    setOcrStatus("idle");
+    setOcrProgress(0);
     setPodFile(null);
     setPodPreview(null);
     if (podPreviewUrl.current) {
@@ -564,13 +575,41 @@ export default function DriverPortal() {
     podPreviewUrl.current = URL.createObjectURL(file);
     setPodPreview(podPreviewUrl.current);
     setPodFile(file);
+    startOcr(file);
+  };
+
+  /* Runs in the background. A failure never blocks saving; dispatch can still read the photo. */
+  const startOcr = (file: File) => {
+    const run = (ocrRun.current += 1);
+    setOcrStatus("scanning");
+    setOcrProgress(0);
+    ocrPromise.current = recognizeReceipt(file, (fraction) => {
+      if (ocrRun.current === run) setOcrProgress(fraction);
+    }).then(
+      (result) => {
+        if (ocrRun.current === run) setOcrStatus(result.text ? "done" : "failed");
+        return result.text ? result : null;
+      },
+      () => {
+        if (ocrRun.current === run) setOcrStatus("failed");
+        return null;
+      },
+    );
   };
 
   const saveReceipt = async () => {
     if (!selectedTrip || !selectedStop || !accessToken || !drNumber.trim() || !podFile || busy) return;
     setPodUploading(true);
     try {
+      const pending = ocrPromise.current;
       const receipt = await uploadDriverPod(accessToken, selectedTrip.id, selectedStop.id, podFile, drNumber);
+      /* Hand the text to dispatch as soon as it is ready (usually already is). Best effort:
+         if it fails, the admin screen falls back to reading the photo itself. */
+      const tripId = selectedTrip.id;
+      const stopId = selectedStop.id;
+      void pending?.then((result) =>
+        result ? saveDriverReceiptText(accessToken, tripId, stopId, { receipt_id: receipt.receipt_id, ocr_text: result.text, ocr_confidence: result.confidence }) : undefined,
+      ).catch(() => undefined);
       setAssignedTrips((trips) =>
         trips.map((trip) =>
           trip.id === selectedTrip.id
@@ -768,41 +807,6 @@ export default function DriverPortal() {
               </p>
             )}
 
-            {/* Delivery receipt */}
-            {stepIdx >= 2 && (
-              <div className="space-y-3 rounded-xl bg-slate-50 p-3">
-                <p className="text-sm font-semibold">Delivery receipt</p>
-                <label className="block text-xs font-medium text-slate-600">
-                  DR number
-                  <input
-                    value={drNumber}
-                    maxLength={100}
-                    disabled={busy}
-                    onChange={(event) => setDrNumber(event.target.value)}
-                    autoComplete="off"
-                    placeholder="Enter DR number"
-                    className="mt-1.5 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-normal text-[#0b2341] focus:border-[#2678b9] focus:outline-none focus:ring-2 focus:ring-blue-100"
-                  />
-                </label>
-                <div className="flex gap-2">
-                  <label htmlFor="pod-photo" className="inline-flex h-11 min-w-0 flex-1 cursor-pointer items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50">
-                    {podPreview ? <img src={podPreview} alt="" className="h-6 w-6 rounded object-cover" /> : <Camera aria-hidden="true" className="h-4 w-4" />}
-                    <span className="truncate">{podFile?.name || "Take receipt photo"}</span>
-                    <input id="pod-photo" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" className="sr-only" onChange={selectPodPhoto} disabled={busy} />
-                  </label>
-                  <button
-                    type="button"
-                    disabled={!drNumber.trim() || !podFile || busy}
-                    onClick={() => void saveReceipt()}
-                    className="inline-flex h-11 shrink-0 items-center gap-2 rounded-lg bg-emerald-700 px-4 text-sm font-bold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-slate-300"
-                  >
-                    <PackageCheck aria-hidden="true" className="h-4 w-4" />
-                    {podUploading ? "Saving…" : "Save"}
-                  </button>
-                </div>
-              </div>
-            )}
-
             {/* Products */}
             <details className="group">
               <summary className="flex cursor-pointer list-none items-center justify-between text-sm font-semibold [&::-webkit-details-marker]:hidden">
@@ -814,6 +818,80 @@ export default function DriverPortal() {
           </div>
         )}
       </li>
+    );
+  };
+
+  const renderReceiptCard = (trip: DriverAssignedTrip, stop: DriverAssignedStop) => {
+    const stepIdx = getStepIndex(trip, stop);
+    const saved = stepIdx === deliverySteps.length - 1 && Boolean(stop.dr_number);
+    return (
+      <section aria-labelledby="receipt-title" className={`${cardClass} p-4`}>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h3 id="receipt-title" className="font-bold">Delivery receipt</h3>
+            <p className="mt-0.5 truncate text-xs text-slate-500">For {stop.store_name || "this stop"}</p>
+          </div>
+          {saved && <StatusPill tone="green">Saved</StatusPill>}
+        </div>
+
+        <label
+          htmlFor="pod-photo"
+          className={`mt-4 flex aspect-[4/3] cursor-pointer flex-col items-center justify-center gap-2 overflow-hidden rounded-2xl border-2 border-dashed text-center transition ${podPreview ? "border-transparent bg-slate-100" : "border-slate-300 bg-slate-50 hover:border-[#2678b9] hover:bg-[#e6f0f9]/40"} ${busy ? "pointer-events-none opacity-60" : ""}`}
+        >
+          {podPreview ? (
+            <img src={podPreview} alt="Preview of the receipt photo" className="h-full w-full object-contain" />
+          ) : (
+            <>
+              <Camera aria-hidden="true" className="h-8 w-8 text-[#2678b9]" />
+              <span className="text-sm font-semibold">Take a photo of the signed receipt</span>
+              <span className="px-6 text-xs text-slate-500">Lay it flat and make sure all the text is sharp.</span>
+            </>
+          )}
+          <input id="pod-photo" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" className="sr-only" onChange={selectPodPhoto} disabled={busy} />
+        </label>
+        {podPreview && (
+          <label htmlFor="pod-photo" className="mt-2 block cursor-pointer text-center text-xs font-semibold text-[#2678b9]">Retake photo</label>
+        )}
+        {podPreview && ocrStatus !== "idle" && (
+          <div role="status" aria-live="polite" className="mt-3 rounded-xl bg-slate-50 px-3 py-2.5 text-xs text-slate-600">
+            {ocrStatus === "scanning" && (
+              <>
+                <p className="font-semibold text-[#0b2341]">Reading the receipt… {Math.round(ocrProgress * 100)}%</p>
+                <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-slate-200">
+                  <div className="h-full rounded-full bg-[#2678b9] transition-all" style={{ width: `${Math.round(ocrProgress * 100)}%` }} />
+                </div>
+                <p className="mt-1.5">You can keep typing the DR number.</p>
+              </>
+            )}
+            {ocrStatus === "done" && <p className="font-semibold text-emerald-700">Receipt text read. It will be sent to dispatch with your photo.</p>}
+            {ocrStatus === "failed" && <p>Couldn’t read the text. That’s okay, dispatch will check the photo.</p>}
+          </div>
+        )}
+
+        <label className="mt-4 block text-xs font-medium text-slate-600">
+          DR number
+          <input
+            value={drNumber}
+            maxLength={100}
+            disabled={busy}
+            onChange={(event) => setDrNumber(event.target.value)}
+            autoComplete="off"
+            placeholder="Enter DR number"
+            className="mt-1.5 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-normal text-[#0b2341] focus:border-[#2678b9] focus:outline-none focus:ring-2 focus:ring-blue-100"
+          />
+        </label>
+
+        <button
+          type="button"
+          disabled={!drNumber.trim() || !podFile || busy}
+          onClick={() => void saveReceipt()}
+          className="mt-4 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-emerald-700 px-4 text-sm font-bold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+        >
+          <PackageCheck aria-hidden="true" className="h-4 w-4" />
+          {podUploading ? "Saving receipt…" : saved ? "Replace receipt" : "Save receipt"}
+        </button>
+        <p className="mt-2 text-center text-xs text-slate-500">Dispatch reads the text from your photo and checks it.</p>
+      </section>
     );
   };
 
@@ -909,6 +987,8 @@ export default function DriverPortal() {
           <p className="rounded-2xl bg-amber-50 p-4 text-sm text-amber-900">No delivery stops recorded. Contact dispatch.</p>
         )}
       </section>
+
+      {selectedStop && getStepIndex(trip, selectedStop) >= 2 && renderReceiptCard(trip, selectedStop)}
     </>
   );
 

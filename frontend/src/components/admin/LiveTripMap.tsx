@@ -12,6 +12,7 @@ import {
 import L from "leaflet";
 import { RefreshCw } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
+import { usePingingTrips } from "./live-trip-pings";
 import { fetchSavedMapLocations, type SavedMapLocation } from "../../services/master-data.service";
 import type { TripEvent, TripRecord } from "../../services/trip.service";
 
@@ -286,8 +287,12 @@ function NavyMapTheme() {
           0% { box-shadow: 0 3px 8px rgba(0, 0, 0, 0.45), 0 0 0 0 rgba(245, 158, 11, 0.7); }
           70%, 100% { box-shadow: 0 3px 8px rgba(0, 0, 0, 0.45), 0 0 0 9px rgba(245, 158, 11, 0); }
         }
+        .truck-ping { position: absolute; inset: -4px; z-index: 0; border: 3px solid #ffd43b; border-radius: 9999px; pointer-events: none; animation: truck-ping 1.5s ease-out infinite; }
+        .truck-ping--late { animation-delay: 0.75s; }
+        @keyframes truck-ping { 0% { transform: scale(0.8); opacity: 0.95; } 100% { transform: scale(2.6); opacity: 0; } }
         @media (prefers-reduced-motion: reduce) {
           .truck-badge, .truck-badge--alert { animation: none; }
+          .truck-ping { animation: none; opacity: 0.8; transform: scale(1.5); }
         }
       `}</style>
     </>
@@ -370,7 +375,7 @@ function truckBadge(kind: TruckKind): string {
   return `<span class="truck-badge${badge.pulse ? " truck-badge--alert" : ""}" role="img" aria-label="${badge.label}" style="background:${badge.bg}"><svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${badge.icon}</svg></span>`;
 }
 
-function truckIcon(status: unknown) {
+function truckIcon(status: unknown, ping = false) {
   const kind = truckKind(status);
   /* "cancelled" and "error" have no dedicated marker colour in the global CSS,
      so they reuse the closest existing one and rely on the badge for meaning. */
@@ -379,7 +384,7 @@ function truckIcon(status: unknown) {
   const muted = kind === "cancelled" ? ' style="filter:grayscale(1);opacity:.85"' : "";
   return L.divIcon({
     className: "",
-    html: `<div class="truck-marker-wrap" style="position:relative;width:32px;height:32px"><div class="truck-marker truck-marker--${markerClass}" role="img" aria-label="Truck position"${muted}><span class="truck-marker-emoji truck-emoji-right">🚚</span></div>${truckBadge(kind)}</div>`,
+    html: `<div class="truck-marker-wrap" style="position:relative;width:32px;height:32px">${ping ? '<span class="truck-ping" aria-hidden="true"></span><span class="truck-ping truck-ping--late" aria-hidden="true"></span>' : ""}<div class="truck-marker truck-marker--${markerClass}" role="img" aria-label="Truck position"${muted}><span class="truck-marker-emoji truck-emoji-right">🚚</span></div>${truckBadge(kind)}</div>`,
     iconSize: [32, 32],
     iconAnchor: [16, 16],
   });
@@ -423,7 +428,7 @@ function tripEndpointIcon(kind: SavedMapLocation["kind"]) {
    pin, with one chip per item stacked in a row above it. */
 
 type MapItemKind = "truck" | "warehouse" | "store" | "store-stop";
-type MapItem = { label: string; kind: MapItemKind; status?: unknown };
+type MapItem = { label: string; kind: MapItemKind; status?: unknown; tripId?: string };
 type OverlapGroup = { key: string; point: [number, number]; items: MapItem[] };
 
 const ITEM_EMOJI: Record<MapItemKind, string> = {
@@ -447,7 +452,7 @@ const CLUSTER_PIN_H = 37;
 const CLUSTER_MAX_CHIPS = 4;
 const CLUSTER_HEIGHT = CLUSTER_CHIP + CLUSTER_PILL_PAD * 2 + 1 + CLUSTER_PIN_H;
 
-function clusterIcon(items: MapItem[]) {
+function clusterIcon(items: MapItem[], ping = false) {
   const overflow = items.length > CLUSTER_MAX_CHIPS;
   const shown = overflow ? items.slice(0, CLUSTER_MAX_CHIPS - 1) : items;
   const chips = shown.map((item) => {
@@ -469,7 +474,7 @@ function clusterIcon(items: MapItem[]) {
   const pin = `<svg viewBox="0 0 24 32" width="${CLUSTER_PIN_W}" height="${CLUSTER_PIN_H}" aria-hidden="true"><path d="M12 31.2C12 31.2 1.6 19.2 1.6 12A10.4 10.4 0 0 1 22.4 12c0 7.2-10.4 19.2-10.4 19.2z" fill="${PIN_BLUE}" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/><circle cx="12" cy="12" r="6.4" fill="#fff"/><text x="12" y="15.4" text-anchor="middle" font-size="9.5" font-weight="800" fill="${PIN_BLUE}" font-family="system-ui,sans-serif">${items.length}</text></svg>`;
   return L.divIcon({
     className: "",
-    html: `<div class="map-cluster" role="img" aria-label="${items.length} locations at this point" style="width:${width}px"><div class="map-cluster-chips">${chips.join("")}</div>${pin}</div>`,
+    html: `<div class="map-cluster" role="img" aria-label="${items.length} locations at this point" style="width:${width}px">${ping ? '<span class="truck-ping" aria-hidden="true"></span>' : ""}<div class="map-cluster-chips">${chips.join("")}</div>${pin}</div>`,
     iconSize: [width, CLUSTER_HEIGHT],
     iconAnchor: [width / 2, CLUSTER_HEIGHT],
     tooltipAnchor: [0, -CLUSTER_HEIGHT + 4],
@@ -495,6 +500,8 @@ export default function LiveTripMap({
   fillHeight?: boolean;
 }) {
   const { accessToken } = useAuth();
+  /* Trucks that just sent an update pulse on the map for a few seconds. */
+  const pingingTrips = usePingingTrips();
   const [locations, setLocations] = useState<SavedMapLocation[]>([]);
   const [locationsError, setLocationsError] = useState("");
   const [locationsLoading, setLocationsLoading] = useState(false);
@@ -622,6 +629,7 @@ export default function LiveTripMap({
       const dispatch = String(track.trip.dispatch_number ?? track.trip.id ?? "Trip");
       add(latest.point, {
         kind: "truck",
+        tripId: String(track.trip.id ?? ""),
         status: track.trip.status,
         label: `Truck · ${dispatch} · ${describeTruck(track.trip.status, latest.event, destinationNamesByTrip.get(String(track.trip.id ?? "")) ?? [])}`,
       });
@@ -841,7 +849,7 @@ export default function LiveTripMap({
                 {!truckIsMerged && (
                   <AnimatedTruckMarker
                     position={latest.point}
-                    icon={truckIcon(track.trip.status)}
+                    icon={truckIcon(track.trip.status, pingingTrips.has(String(track.trip.id ?? "")))}
                   >
                     <Tooltip direction="top" offset={[0, -24]}>
                       {`${dispatch} · ${statusLine}`}
@@ -869,7 +877,7 @@ export default function LiveTripMap({
             <Marker
               key={`overlap-${group.key}`}
               position={group.point}
-              icon={clusterIcon(group.items)}
+              icon={clusterIcon(group.items, group.items.some((item) => item.tripId && pingingTrips.has(item.tripId)))}
               zIndexOffset={2000}
             >
               <Tooltip direction="top" offset={[0, 0]}>

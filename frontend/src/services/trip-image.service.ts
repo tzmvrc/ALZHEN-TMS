@@ -9,6 +9,11 @@ export type TripImage = {
   created_at: string;
   updated_at: string;
   signed_url: string;
+  /* Text read from a receipt photo, or the admin's corrected version. */
+  ocr_text?: string | null;
+  ocr_confidence?: number | null;
+  reviewed_at?: string | null;
+  reviewed_by?: string | null;
 };
 
 const apiBaseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:5000/api";
@@ -76,3 +81,22 @@ export const deleteTripImage = (
     invalidateTripImagesCache(tripId);
     return result;
   });
+
+export async function saveTripImageText(
+  token: string,
+  tripId: string,
+  imageId: string,
+  payload: { ocr_text: string; ocr_confidence?: number | null; reviewed: boolean },
+) {
+  const result = await imageRequest<TripImage>(
+    `/trips/${encodeURIComponent(tripId)}/images/${encodeURIComponent(imageId)}/ocr`,
+    token,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    },
+  );
+  invalidateTripImagesCache(tripId);
+  return result;
+}

@@ -7,6 +7,12 @@ export function invalidateTripListCache() {
   invalidateApiCache("/trips?");
 }
 
+/* Drops every cached response for one trip (details, stops, line items, events, photos).
+   Call it when a realtime update says something changed, so the next read is fresh. */
+export function invalidateTripCache(tripId: string) {
+  invalidateApiCache(`/trips/${encodeURIComponent(tripId)}`);
+}
+
 export function invalidateTripEventsCache(tripId: string) {
   invalidateApiCache(`/trips/${encodeURIComponent(tripId)}/events`);
 }

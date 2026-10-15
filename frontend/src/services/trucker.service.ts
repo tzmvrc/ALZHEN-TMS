@@ -1,4 +1,4 @@
-import { apiGet, apiGetCached, apiPost, apiUpload, type ApiResponse } from "./api.service";
+import { apiGet, apiGetCached, apiPatch, apiPost, apiUpload, type ApiResponse } from "./api.service";
 
 export type TruckerListItem = {
   id: string;
@@ -120,6 +120,7 @@ export type DriverAssignedStop = {
 };
 
 export type SavedDriverReceipt = {
+  receipt_id: string;
   trip_id: string;
   trip_stop_id: string;
   driver_id: string;
@@ -249,4 +250,22 @@ export async function uploadDriverPod(
     throw new Error(response.message ?? "Unable to upload delivery receipt.");
   }
   return response.data;
+}
+
+/* The text the driver's phone read from the receipt photo. Sent right after the photo is
+   saved so dispatch finds it ready to check instead of scanning the image again. */
+export async function saveDriverReceiptText(
+  token: string,
+  tripId: string,
+  stopId: string,
+  payload: { receipt_id: string; ocr_text: string; ocr_confidence: number | null },
+): Promise<void> {
+  const response = await apiPatch<ApiResponse<{ trip_stop_id: string }>>(
+    `/truckers/me/trips/${encodeURIComponent(tripId)}/stops/${encodeURIComponent(stopId)}/pod/ocr`,
+    payload,
+    token,
+  );
+  if (!response.success) {
+    throw new Error(response.message ?? "Unable to save receipt text.");
+  }
 }
