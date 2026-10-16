@@ -13,7 +13,7 @@ export default function ReportsWorkspace(props: Props) {
   const tabOptions = [
     { value: "reports", label: reportLabel },
     { value: "transmittal", label: "Transmittal Tracker" },
-    { value: "operations", label: "Loading / Unloading · Backload · Offload" },
+    { value: "operations", label: "Offload Reports" },
   ] as const;
   const tabs = (
     <SlidingSegmentedControl

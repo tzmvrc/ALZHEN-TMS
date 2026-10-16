@@ -12,6 +12,8 @@ import {
 } from "../../services/operations-report.service";
 import { buildOperationsTripChoices, findOperationsTripChoice } from "../../services/operations-trip-selection";
 import ReportDropdownEditor from "./ReportDropdownEditor";
+import OffloadDrSelector from "./OffloadDrSelector";
+import { offloadTransactionChoice, type OffloadTransaction } from "../../services/offload-dr-selection";
 import { MAX_OFFLOAD_IMAGES, selectReportImages, validateReportImage } from "../../services/report-image-selection";
 
 const inputClass = "min-h-10 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-[#2678b9] focus:outline-none focus:ring-2 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500";
@@ -41,6 +43,7 @@ export default function OperationsEventSubmissionForm({ token, tripOptions, trip
   const [quantity, setQuantity] = useState("");
   const [totalCbm, setTotalCbm] = useState("");
   const [tripId, setTripId] = useState("");
+  const [drTransaction, setDrTransaction] = useState<OffloadTransaction | null>(null);
   const [eventType, setEventType] = useState<"BACKLOAD" | "OFFLOAD">("OFFLOAD");
   const [reason, setReason] = useState("");
   const [numberOfBoxes, setNumberOfBoxes] = useState("");
@@ -52,7 +55,7 @@ export default function OperationsEventSubmissionForm({ token, tripOptions, trip
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
   const submitGuard = useRef(false);
-  const choices = useMemo(() => buildOperationsTripChoices(tripOptions), [tripOptions]);
+  const choices = useMemo(() => eventType === "OFFLOAD" ? drTransaction ? [offloadTransactionChoice(drTransaction)] : [] : buildOperationsTripChoices(tripOptions), [tripOptions, eventType, drTransaction]);
   const selectedChoice = findOperationsTripChoice(choices, tripId);
   const selectedTrip = selectedChoice?.trip ?? null;
   const submitting = busy || Boolean(pendingUpload);
@@ -107,7 +110,7 @@ export default function OperationsEventSubmissionForm({ token, tripOptions, trip
     const choice = findOperationsTripChoice(choices, tripId);
     const trip = choice?.trip;
     if (!trip || !choice?.selectable) {
-      setError("Select a trip with a valid dispatch number.");
+      setError(eventType === "OFFLOAD" ? "Select an eligible transaction by DR Number." : "Select a trip with a valid dispatch number.");
       return;
     }
     if (choice.stopId && !trip.stops.some((stop) => stop.id === choice.stopId)) {
@@ -202,7 +205,7 @@ export default function OperationsEventSubmissionForm({ token, tripOptions, trip
     <header className="flex items-center justify-between gap-3 border-b border-slate-100 bg-white px-6 py-5 sm:px-8">
       <div>
         <h2 id="operations-add-report-title" className="text-base font-semibold text-slate-800">Add {eventType === "OFFLOAD" ? "Offload" : "Backload"} report</h2>
-        <p className="mt-0.5 text-xs text-slate-400">Choose an existing trip and enter the report details.</p>
+        <p className="mt-0.5 text-xs text-slate-400">{eventType === "OFFLOAD" ? "Choose a delivery by DR Number and enter the report details." : "Choose an existing trip and enter the report details."}</p>
       </div>
       {onCancel && <button type="button" onClick={onCancel} disabled={submitting} aria-label="Close" className="rounded-full p-2 text-slate-400 transition hover:bg-slate-50 hover:text-slate-600 disabled:opacity-50"><X className="h-4 w-4" /></button>}
     </header>
@@ -210,15 +213,16 @@ export default function OperationsEventSubmissionForm({ token, tripOptions, trip
     <div className="flex-1 space-y-6 overflow-y-auto bg-white px-6 py-6 sm:px-8">
       <section className="space-y-4" aria-labelledby="operations-trip-information-title">
         <div>
-          <h3 id="operations-trip-information-title" className="text-sm font-medium text-slate-700">Trip Information</h3>
+          <h3 id="operations-trip-information-title" className="text-sm font-medium text-slate-700">Transaction</h3>
           <p className="mt-0.5 text-xs text-slate-400">Trip and assignment details are read-only and come from existing TMS records.</p>
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
-          <div className="text-xs font-semibold text-slate-600 sm:col-span-2">Dispatch Number <span className="text-rose-600">*</span>
+          {eventType === "OFFLOAD" ? <div className="text-xs font-semibold text-slate-600 sm:col-span-2">DR Number <span className="text-rose-600">*</span><div className="mt-1"><OffloadDrSelector token={token} value={drTransaction} disabled={submitting} onSelect={(row) => { setDrTransaction(row); setTripId(row.id); setQuantity(row.quantity == null ? "" : String(row.quantity)); setTotalCbm(row.total_cbm == null ? "" : String(row.total_cbm)); setError(""); }} /></div></div> : <div className="text-xs font-semibold text-slate-600 sm:col-span-2">Dispatch Number <span className="text-rose-600">*</span>
             <div className="mt-1"><ReportDropdownEditor label="Dispatch Number" value={tripId} displayValue={selectedChoice?.label ?? ""} options={choices.filter((choice) => choice.selectable).map((choice) => ({ value: choice.id, label: choice.label }))} autoOpen={false} popoverZIndex={2200} showStoredValue={false} loading={tripsLoading} error={tripsError ?? undefined} disabled={submitting || tripsLoading || Boolean(tripsError)} onSelect={(id) => { setTripId(id); const values = selectedTransactionValues(findOperationsTripChoice(choices, id)); setQuantity(values.quantity); setTotalCbm(values.totalCbm); setError(""); }} /></div>
             <span className={`mt-1 block font-normal ${tripsError ? "text-rose-700" : "text-slate-400"}`} role={tripsError ? "alert" : undefined}>{tripListMessage}</span>
-          </div>
-          <ReadOnlyField label="Dispatch Number" value={selectedChoice?.dispatchNumber || "Select a dispatch"} />
+          </div>}
+          <ReadOnlyField label="Dispatch Number" value={selectedChoice?.dispatchNumber || "Not recorded"} />
+          {eventType === "OFFLOAD" && <><ReadOnlyField label="Warehouse" value={drTransaction?.warehouse || "Not recorded"} /><ReadOnlyField label="Delivery Destination" value={drTransaction?.destination || "Not recorded"} /></>}
           <ReadOnlyField label="Driver" value={selectedTrip?.driver_name || "Unassigned"} />
           <ReadOnlyField label="Plate Number" value={selectedTrip?.plate_number || "Not assigned"} />
           <ReadOnlyField label="Route" value={selectedTrip?.route || "Route unavailable"} className="sm:col-span-2" />
@@ -232,7 +236,7 @@ export default function OperationsEventSubmissionForm({ token, tripOptions, trip
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="text-xs font-semibold text-slate-600">Event Type
-            <select className={`${inputClass} mt-1`} value={eventType} onChange={(event) => setEventType(event.target.value as "BACKLOAD" | "OFFLOAD")} disabled={submitting}>
+            <select className={`${inputClass} mt-1`} value={eventType} onChange={(event) => { setEventType(event.target.value as "BACKLOAD" | "OFFLOAD"); setTripId(""); setDrTransaction(null); setQuantity(""); setTotalCbm(""); }} disabled={submitting}>
               <option value="OFFLOAD">Offload</option><option value="BACKLOAD">Backload</option>
             </select>
           </label>
@@ -248,7 +252,7 @@ export default function OperationsEventSubmissionForm({ token, tripOptions, trip
           <label className="text-xs font-semibold text-slate-600 sm:col-span-2">Reason <span className="text-rose-600">*</span>
             <textarea className={`${inputClass} mt-1`} rows={3} required maxLength={2000} value={reason} onChange={(event) => setReason(event.target.value)} disabled={submitting} />
           </label>
-          <label className="text-xs font-semibold text-slate-600 sm:col-span-2">Comments
+          <label className="text-xs font-semibold text-slate-600 sm:col-span-2">Remarks
             <textarea className={`${inputClass} mt-1`} rows={2} value={comments} onChange={(event) => setComments(event.target.value)} disabled={submitting} />
           </label>
           <label className="text-xs font-semibold text-slate-600 sm:col-span-2">Supporting images
@@ -274,7 +278,7 @@ export default function OperationsEventSubmissionForm({ token, tripOptions, trip
       {onCancel && <button type="button" onClick={onCancel} disabled={submitting} className={cancelClass}>Cancel</button>}
       {pendingUpload
         ? <button className={buttonClass} type="button" onClick={() => void retryReceiptUpload()} disabled={busy}>{busy ? "Uploading…" : "Retry receipt upload"}</button>
-        : <button className={buttonClass} type="submit" disabled={submitting || !selectedChoice?.selectable || tripsLoading || Boolean(tripsError) || !reason.trim() || files.length > maximumImages}>{busy ? "Saving…" : "Add Report"}</button>}
+        : <button className={buttonClass} type="submit" disabled={submitting || !selectedChoice?.selectable || (eventType === "BACKLOAD" && (tripsLoading || Boolean(tripsError))) || !reason.trim() || files.length > maximumImages}>{busy ? "Saving…" : "Add Report"}</button>}
     </footer>
   </form>;
 }

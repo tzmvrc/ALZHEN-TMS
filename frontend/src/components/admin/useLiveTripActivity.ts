@@ -119,7 +119,9 @@ export function useLiveTripActivity() {
   useEffect(() => {
     if (!accessToken) return;
     return subscribeToAdminRealtime((event) => {
-      if (event.kind === "resume" || event.kind === "recovered") return;
+      // Metadata signals deliberately contain no business row payload. Detailed
+      // activity messages require an authorized row-level source; do not invent them.
+      if (event.kind !== "change") return;
       const payload = event.payload as typeof event.payload & Record<string, unknown>;
       const table = String(payload.table);
       const next = payload.new as Record<string, unknown> | null | undefined;

@@ -1,4 +1,4 @@
-import { apiDelete, apiGetCached, apiPatch, apiPost, apiPostFile, apiPut, invalidateApiCache, type ApiResponse } from "./api.service";
+import { apiDelete, apiGetCached, apiPatch, apiPost, apiPostFile, apiPut, getCachedApiResponse, invalidateApiCache, type ApiResponse } from "./api.service";
 import { updateTripAssignmentRecord, updateTripLineItemRecord, updateTripRecord, updateTripStopRecord, updateTripUnscopedLineItemRecord } from "./trip.service";
 import { invalidateReportPageCache } from "./report.service";
 
@@ -33,29 +33,35 @@ const unwrap = <T,>(promise: Promise<ApiResponse<T>>): Promise<T> => promise.the
 });
 
 export const fetchOperationsOverview = (token: string) => unwrap(apiGetCached<ApiResponse<OperationsReportData>>(`${ROOT}/overview`, token, 30_000));
+export const getCachedOperations = (token: string, assigned = false) => getCachedApiResponse<ApiResponse<OperationsReportData>>(`${ROOT}/${assigned ? "assigned" : "overview"}`, token, 5 * 60_000)?.data ?? null;
+export const preloadOperationsOverview = (token: string) => unwrap(apiGetCached<ApiResponse<OperationsReportData>>(`${ROOT}/overview`, token, 30_000, `${ROOT}/overview?preload=true`));
 export const fetchAssignedOperations = (token: string) => unwrap(apiGetCached<ApiResponse<OperationsReportData>>(`${ROOT}/assigned`, token, 15_000));
 export const fetchTripOperations = (token: string, tripId: string) => unwrap(apiGetCached<ApiResponse<OperationsReportData>>(`${ROOT}/trips/${encodeURIComponent(tripId)}`, token, 30_000));
 
-function invalidateOperations() {
-  invalidateReportPageCache();
+function invalidateOperations(tripFieldsChanged = false) {
   invalidateApiCache(`${ROOT}/`);
-  invalidateApiCache("/trips");
-  invalidateApiCache("/reports/");
+  invalidateApiCache("/reports/dispatch?");
+  invalidateReportPageCache("dispatch");
+  if (tripFieldsChanged) {
+    invalidateReportPageCache();
+    invalidateApiCache("/trips");
+    invalidateApiCache("/reports/");
+  }
 }
 
 export function invalidateOperationsReportsCache() {
-  invalidateOperations();
+  invalidateApiCache(`${ROOT}/`);
 }
 
 export async function saveLoadingReport(token: string, tripId: string, values: Partial<Pick<LoadingReport, "warehouse_arrival_at" | "loading_start_at" | "loading_finished_at">>) {
   const response = await unwrap(apiPut<ApiResponse<LoadingReport>>(`${ROOT}/loading/${encodeURIComponent(tripId)}`, values, token));
-  invalidateOperations();
+  invalidateOperations(true);
   return response;
 }
 
 export async function saveUnloadingReport(token: string, tripId: string, stopId: string, values: Partial<Pick<OperationsStop, "arrival_time" | "start_unloading_time" | "finish_unloading_time">>) {
   const response = await unwrap(apiPut<ApiResponse<{ report: UnloadingReport; stop: OperationsStop }>>(`${ROOT}/unloading/${encodeURIComponent(tripId)}/stops/${encodeURIComponent(stopId)}`, values, token));
-  invalidateOperations();
+  invalidateOperations(true);
   return response;
 }
 
@@ -81,7 +87,7 @@ export async function updateOffloadItem(token: string, report: ScopeReport, item
   return response;
 }
 
-export async function submitOperationsEvent(token: string, values: { dispatch_number: string; event_type: "BACKLOAD" | "OFFLOAD"; remarks: string }) {
+export async function submitOperationsEvent(token: string, values: { dispatch_number: string; event_type: "BACKLOAD"; remarks: string } | { trip_id: string; trip_stop_id: string; event_type: "OFFLOAD"; remarks: string }) {
   const response = await unwrap(apiPost<ApiResponse<{ event_type: "BACKLOAD" | "OFFLOAD"; dispatch_number: string | null; report: ScopeReport }>>(`${ROOT}/events`, values, token));
   invalidateOperations();
   return response;
@@ -94,9 +100,15 @@ export async function updateOperationsEventType(token: string, sourceType: Opera
 }
 
 export async function deleteOperationsReport(token: string, sourceType: OperationsSourceType, recordId: string) {
-  const response = await unwrap(apiDelete<ApiResponse<{ source_type: OperationsSourceType; record_id: string }>>(`/reports/operations/reports/${sourceType.toLowerCase()}/${encodeURIComponent(recordId)}`, token));
+  const response = await unwrap(apiDelete<ApiResponse<{ source_type: OperationsSourceType; record_id: string; cleanup_pending?: boolean; operation_id?: string }>>(`/reports/operations/reports/${sourceType.toLowerCase()}/${encodeURIComponent(recordId)}`, token));
   invalidateOperations();
   return response;
+}
+export type OffloadCleanupJob = { id: string; offload_id: string; state: "PENDING_STORAGE"; attempts: number };
+export const fetchPendingOffloadCleanup = (token: string) => unwrap(apiGetCached<ApiResponse<OffloadCleanupJob[]>>(`${ROOT}/offload-cleanup`, token, 5_000));
+export async function retryOffloadImageCleanup(token: string, operationId: string) {
+  const result = await unwrap(apiPost<ApiResponse<{ cleanup_pending: boolean }>>(`${ROOT}/offload-cleanup/${encodeURIComponent(operationId)}/retry`, {}, token));
+  invalidateOperations(); return result;
 }
 
 export async function uploadOperationsReceipt(token: string, eventType: "BACKLOAD" | "OFFLOAD", recordId: string, file: File) {

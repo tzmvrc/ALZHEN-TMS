@@ -310,7 +310,14 @@ test("loading retry keeps one trip row and stop saves remain isolated", async ()
   const originalRpc = supabaseAdmin.rpc;
   let generatedId = 0;
   const generatedUuid = () => `f23e4567-e89b-42d3-a456-${String(++generatedId).padStart(12, "0")}`;
-  (supabaseAdmin as any).rpc = async (name: string, input: { p_report: Record<string, unknown>; p_item: Record<string, unknown> }) => {
+  (supabaseAdmin as any).rpc = async (name: string, input: { p_report: Record<string, unknown>; p_item: Record<string, unknown>; p_offload_id?: string }) => {
+    if (name === "delete_offload_with_cleanup_v1") {
+      const parent = tables.offloads.find((row) => row.id === input.p_offload_id);
+      if (!parent) return { data: null, error: { code: "P0002" } };
+      if (tables.operations_report_conversions.some((row) => row.source_id === parent.id || row.target_id === parent.id)) return { data: null, error: { code: "55000", message: "This report is protected by conversion history." } };
+      tables.offloads = tables.offloads.filter((row) => row.id !== parent.id);
+      return { data: { id: generatedUuid(), offload_id: parent.id, trip_id: parent.trip_id, trip_stop_id: parent.trip_stop_id, state: "COMPLETE", storage_paths: [], attempts: 0 }, error: null };
+    }
     assert.equal(name, "create_offload_with_item_v1");
     const report = { id: generatedUuid(), event_type: "Offload", ...input.p_report };
     tables.offloads.push(report);
@@ -427,8 +434,10 @@ test("loading retry keeps one trip row and stop saves remain isolated", async ()
       backloads: tables.backloads as any, offloads: [], routes: new Map(), vehicles: new Map(),
     }).find((row) => row.trip_stop_id === stop1)!;
     assert.deepEqual(refreshedRow.event_type_records, [{ id: backloadPhysicalId, source_type: "BACKLOAD", event_type: "Offload" }], "a subsequent overview projection retains the saved type on the same physical report ID");
+    await assert.rejects(serviceTrucker.submitOperationsEvent(trucker, { dispatch_number: "DP-1", event_type: "OFFLOAD", remarks: "Wrong item was received" }), /DR Number/);
+    tables.trip_stops[0].dr_number = "DR-1";
     const submittedOffload = await serviceTrucker.submitOperationsEvent(trucker, {
-      dispatch_number: "DP-1", event_type: "OFFLOAD", remarks: "Wrong item was received",
+      trip_id: tripA, trip_stop_id: stop1, event_type: "OFFLOAD", remarks: "Wrong item was received",
     });
     assert.equal(submittedOffload.report.trip_id, tripA);
     assert.equal(tables.offloads.length, 1, "OFFLOAD persists to the existing offloads table");
@@ -476,6 +485,7 @@ test("loading retry keeps one trip row and stop saves remain isolated", async ()
     assert.equal(deletedOffload.record_id, submittedOffload.report.id);
     assert.equal(tables.offloads.some((row) => row.id === submittedOffload.report.id), false);
     assert.equal(tables.offloads.some((row) => row.id === offloadSiblingId), true, "deletion is scoped to the exact source record, not its sibling stop");
+    tables.trip_stops.find((stop) => stop.id === stop2)!.dr_number = "DR-2";
     const scopedOffload = await service.createOffload(trucker, { trip_id: tripA, trip_stop_id: stop2, reason: "Selected trip and stop", number_of_boxes: 0, comments: "Own report data" });
     assert.equal(scopedOffload.trip_id, tripA);
     assert.equal(scopedOffload.trip_stop_id, stop2);
@@ -491,14 +501,13 @@ test("loading retry keeps one trip row and stop saves remain isolated", async ()
     await assert.rejects(service.uploadOperationsReceipt(admin, "OFFLOAD", String(scopedOffload.id), image, "image/png", "sixth.png"), /up to 5 images/);
     assert.equal(uploadedPaths.length, beforeSixthUpload, "a rejected sixth image does not create a storage object");
     assert.equal(tables.report_receipts.filter((row) => row.offload_id === scopedOffload.id).length, 5);
-    const wholeTripOffload = await service.createOffload(admin, { trip_id: tripA, trip_stop_id: null, reason: "Whole trip", number_of_boxes: null, comments: null });
-    assert.equal(wholeTripOffload.trip_stop_id, null, "selecting a trip never infers its first stop");
+    await assert.rejects(service.createOffload(admin, { trip_id: tripA, trip_stop_id: null, reason: "Whole trip", number_of_boxes: null, comments: null }), /DR Number/, "new Offloads require an exact DR transaction; existing trip-level reports are untouched");
     const reportCount = tables.offloads.length;
     await assert.rejects(service.createOffload(trucker, { trip_id: otherTrip, trip_stop_id: null, reason: "Unauthorized trip" }), /not actively assigned/);
     await assert.rejects(service.createOffload(admin, { trip_id: tripA, trip_stop_id: otherStop, reason: "Wrong stop" }), /does not belong/);
     assert.equal(tables.offloads.length, reportCount, "invalid scope creates no report");
     await assert.rejects(serviceTrucker.submitOperationsEvent(trucker, {
-      dispatch_number: " DP-2 ", event_type: "OFFLOAD", remarks: "Unauthorized trip",
+      trip_id: otherTrip, trip_stop_id: otherStop, event_type: "OFFLOAD", remarks: "Unauthorized trip",
     }), /actively assigned/);
     await assert.rejects(serviceTrucker.submitOperationsEvent(trucker, {
       dispatch_number: "NO-SUCH-DISPATCH", event_type: "BACKLOAD", remarks: "Unknown trip",
@@ -506,7 +515,7 @@ test("loading retry keeps one trip row and stop saves remain isolated", async ()
     tables.trips.push({ id: "a23e4567-e89b-42d3-a456-426614174001", dispatch_number: "DP-1", status: "IN_PROGRESS" });
     await assert.rejects(serviceTrucker.submitOperationsEvent(trucker, {
       dispatch_number: "DP-1", event_type: "OFFLOAD", remarks: "Ambiguous dispatch",
-    }), /matches multiple trips/);
+    }), /DR Number/);
     tables.trips.pop();
     const updatesBeforeUnauthorizedWrites = updateCount;
     await assert.rejects(serviceTrucker.saveLoadingReport(trucker, otherTrip, { loading_start_at: "2026-10-13T09:00:00Z" }), /actively assigned/);

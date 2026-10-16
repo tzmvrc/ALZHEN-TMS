@@ -517,7 +517,7 @@ export function assertStopBelongsToTrip(requestTripId: string, stop: { id: strin
 }
 
 type EventTrip = { id: string; trip_number: string | number | null; dispatch_number: string | null; loading_date?: string | null; estimated_delivery_date?: string | null; remarks?: string | null };
-type EventStop = { id: string; trip_id: string; stop_sequence: number | null; dispatch_number?: string | null; arrival_time?: string | null; start_unloading_time?: string | null; finish_unloading_time?: string | null; delivery_status?: string | null; remarks?: string | null };
+type EventStop = { id: string; trip_id: string; stop_sequence: number | null; dispatch_number?: string | null; dr_number?: string | null; arrival_time?: string | null; start_unloading_time?: string | null; finish_unloading_time?: string | null; delivery_status?: string | null; remarks?: string | null };
 type EventLineItem = OperationsLineItem & { remarks?: string | null };
 type EventLoading = { id: string; trip_id: string; event_type?: OperationsEventType | null; warehouse_arrival_at: string | null; loading_start_at: string | null; loading_finished_at: string | null };
 type EventUnloading = { id: string; trip_id: string; trip_stop_id: string; event_type?: OperationsEventType | null };
@@ -656,7 +656,7 @@ export function buildOperationsEventRows(input: {
         : linesByTrip.get(args.trip.id) ?? [];
       row.line_items = lines;
       row.dr_number = args.sourceType === "OFFLOAD"
-        ? distinctDrNumbers(args.cargo.items ?? [])
+        ? validStop?.dr_number?.trim() || distinctDrNumbers(args.cargo.items ?? [])
         : distinctDrNumbers(lines);
       if (args.stopId && !validStop) row.scope_label = "Stop reference unavailable";
     }

@@ -9,6 +9,9 @@ import { fetchTruckerDetail, fetchTruckers, type TruckerListItem } from "../../.
 import UserManagementModal from "../../../components/admin/UserManagementModal";
 import { fetchManagedUsers, type ManagedUser } from "../../../services/user-management.service";
 import { subscribeToAdminRealtime } from "../../../services/realtime.service";
+import { useDeferredRealtimeRefresh } from "../../../components/admin/useDeferredRealtimeRefresh";
+
+import { useManagementTableColumns } from "../../../components/admin/useManagementTableColumns";
 
 const PAGE_SIZE = 12;
 const userCategoryOptions = [
@@ -44,7 +47,7 @@ export default function TruckersView() {
   const [rows, setRows] = useState<TruckerListItem[]>([]);
   const [profiles, setProfiles] = useState<AdminStaffProfile[]>([]);
   const [totalPages, setTotalPages] = useState(1);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [refreshVersion, setRefreshVersion] = useState(0);
   const [actionsOpen, setActionsOpen] = useState(false);
@@ -55,14 +58,21 @@ export default function TruckersView() {
   const [userModalOpen, setUserModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<ManagedUser | null>(null);
   const [notice, setNotice] = useState("");
+  const tableColumns = useMemo(() => (category === "staff" ? ["User", "Email", "Role", "Actions"] : ["User", "Contact", "Assigned truck", "Current trip", "Delivery status", "Actions"]).map((title) => ({ key: title.toLowerCase().replaceAll(" ", "-"), title, width: title === "User" ? 280 : title === "Actions" ? 110 : 200 })), [category]);
+  const { attachViewport, viewportProps, tableStyle, controls: columnControls, hiddenControl, colgroup, headerProps, headerControls } = useManagementTableColumns({ table: `users:${category}`, token: accessToken, profileId: profile?.id, columns: tableColumns, enabled: ["ADMIN", "STAFF"].includes(profile?.role ?? "") });
+  const realtimeGate = useDeferredRealtimeRefresh(() => setRefreshVersion((version) => version + 1), userModalOpen);
 
   useEffect(() => subscribeToAdminRealtime((event) => {
-    if (event.kind === "resume") return;
+    if (event.kind === "batch") {
+      if (event.tables.some((table) => ["profiles", "drivers", "trips", "trip_stops", "trip_truck_assignments"].includes(table))) realtimeGate.request();
+      return;
+    }
+    if (event.kind === "resume") { realtimeGate.request(); return; }
     const table = event.kind === "recovered" ? event.table : event.payload.table;
     if (["profiles", "drivers", "trips", "trip_stops", "trip_truck_assignments"].includes(table)) {
-      setRefreshVersion((version) => version + 1);
+      realtimeGate.request();
     }
-  }), []);
+  }), [realtimeGate]);
 
   useEffect(() => {
     if (!accessToken || profile?.role !== "ADMIN") return;
@@ -214,6 +224,7 @@ export default function TruckersView() {
               <Search aria-hidden="true" className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input value={search} onChange={(event) => { setPage(1); setSearch(event.target.value); }} placeholder={category === "staff" ? "Search admin or staff" : "Search truckers"} className={tableUi.search} />
             </label>
+            {columnControls}
             <div className="relative">
               <button type="button" aria-label="User list options" aria-haspopup="menu" aria-expanded={actionsOpen} onClick={() => setActionsOpen((current) => !current)} className={tableUi.iconBtn} title="User list options"><MoreHorizontal aria-hidden="true" className="h-5 w-5" /></button>
               {actionsOpen && <div role="menu" className="absolute right-0 top-11 z-30 min-w-44 rounded-2xl border border-slate-100 bg-white p-1 shadow-[0_16px_40px_-12px_rgba(11,35,65,0.2)]"><button type="button" role="menuitem" onClick={refreshList} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"><RefreshCw aria-hidden="true" className="h-4 w-4" />Refresh list</button></div>}
@@ -228,16 +239,17 @@ export default function TruckersView() {
         </div>
       </div>
 
+      {error && (category==="staff" ? profiles.length>0 : rows.length>0) && <div role="alert" className="flex items-center justify-between rounded-lg bg-rose-50 px-4 py-3 text-sm text-rose-700"><span>{error}</span><button type="button" onClick={refreshList} className="underline">Retry</button></div>}
       <div className={tableUi.shell}>
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-left">
+        <div ref={attachViewport} {...viewportProps} className="overflow-x-auto">
+          <table style={tableStyle} className="min-w-full text-left">{colgroup}
             <thead className={tableUi.thead}>
-              <tr>{category === "staff" ? <><th className={tableUi.th}>User</th><th className={tableUi.th}>Email</th><th className={tableUi.th}>Role</th><th className={tableUi.th}>Actions</th></> : <><th className={tableUi.th}>User</th><th className={tableUi.th}>Contact</th><th className={tableUi.th}>Assigned truck</th><th className={tableUi.th}>Current trip</th><th className={tableUi.th}>Delivery status</th><th className={tableUi.th}>Actions</th></>}</tr>
+              <tr>{tableColumns.map((column) => <th key={column.key} {...headerProps(column.key)} className={tableUi.th}>{column.title}{headerControls(column)}</th>)}</tr>
             </thead>
             <tbody>
-              {loading ? Array.from({ length: 5 }).map((_, index) => (
-                <tr key={`skeleton-${index}`} className={tableUi.row}><td className="px-4 py-3"><div className="h-10 w-10 animate-pulse rounded-full bg-slate-200" /></td><td className="px-4 py-3"><div className="h-4 w-32 animate-pulse rounded bg-slate-200" /></td><td className="px-4 py-3"><div className="h-4 w-24 animate-pulse rounded bg-slate-200" /></td><td className="px-4 py-3"><div className="h-4 w-28 animate-pulse rounded bg-slate-200" /></td><td className="px-4 py-3"><div className="h-4 w-20 animate-pulse rounded bg-slate-200" /></td></tr>
-              )) : error ? (
+              {loading && !(category==="staff" ? profiles.length : rows.length) ? Array.from({ length: 5 }).map((_, index) => (
+                <tr key={`skeleton-${index}`} className={tableUi.row}>{tableColumns.map((column) => <td key={column.key} className="px-4 py-3"><div className="h-4 w-3/4 animate-pulse rounded bg-slate-200" /></td>)}</tr>
+              )) : error && !(category==="staff" ? profiles.length : rows.length) ? (
                 <tr><td colSpan={category === "staff" ? 4 : 6} role="alert" className="px-4 py-12 text-center text-sm text-rose-700">{error}</td></tr>
               ) : category === "staff" ? visibleProfiles.length === 0 ? (
                 <tr><td colSpan={4} className="px-4 py-16 text-center text-sm text-slate-400">No admin or staff users found.</td></tr>
@@ -260,6 +272,7 @@ export default function TruckersView() {
             </tbody>
           </table>
         </div>
+        {hiddenControl}
       </div>
 
       {selectedId && (detail || detailLoading) ? <TruckerDetailDrawer trucker={detail} loading={detailLoading} onClose={() => setSelectedId(null)} /> : null}

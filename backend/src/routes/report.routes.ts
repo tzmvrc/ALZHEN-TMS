@@ -22,6 +22,9 @@ const router = Router();
 // accounts inside the service using the authenticated profile/session.
 router.get("/operations/overview", authMiddleware, operationsReportController.getOverview);
 router.get("/operations/reporters", authMiddleware, requireRole("ADMIN", "STAFF"), operationsReportController.getReporters);
+router.get("/operations/offload-transactions", authMiddleware, operationsReportController.getOffloadTransactions);
+router.get("/operations/offload-cleanup", authMiddleware, requireRole("ADMIN", "STAFF"), operationsReportController.getPendingCleanup);
+router.post("/operations/offload-cleanup/:operationId/retry", authMiddleware, requireRole("ADMIN", "STAFF"), operationsReportController.retryCleanup);
 router.get("/operations/assigned", authMiddleware, operationsReportController.getAssigned);
 router.get("/operations/trips/:tripId", authMiddleware, operationsReportController.getTripDetails);
 router.put("/operations/loading/:tripId", authMiddleware, operationsReportController.saveLoading);
@@ -42,6 +45,7 @@ router.post(
 );
 router.get("/operations/:eventType/:recordId/receipts", authMiddleware, operationsReportController.listReceipts);
 
+router.get("/transmittal-tracker/page", authMiddleware, requireRole("ADMIN", "STAFF"), transmittalTrackerController.getTrackerPage);
 router.get(
   "/transmittal-tracker",
   authMiddleware,

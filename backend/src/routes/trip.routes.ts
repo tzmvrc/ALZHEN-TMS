@@ -3,7 +3,7 @@ import { listReceipts, saveReceiptOcr } from "../controllers/trip-receipt.contro
 import express from "express";
 import { authMiddleware } from "../middleware/auth.middleware.js";
 import { requireRole } from "../middleware/role.middleware.js";
-import { archiveTransaction, saveTransactionReference } from "../controllers/transaction.controller.js";
+import { removeTransaction, pendingTransactionCleanup, retryTransactionImages, saveTransactionReference, transactionChanges } from "../controllers/transaction.controller.js";
 import {
   listImages,
   removeImage,
@@ -19,9 +19,7 @@ import {
   createTrip,
   createTripLineItem,
   createTripStop,
-  deleteTrip,
   deleteTripLineItem,
-  deleteTripStop,
   getTrip,
   getTripByDispatch,
   getTripHistory,
@@ -38,7 +36,10 @@ import {
 const router = Router();
 router.get("/:id/receipts", authMiddleware, requireRole("ADMIN", "STAFF"), listReceipts);
 router.patch("/:id/receipts/:receiptId/ocr", authMiddleware, requireRole("ADMIN", "STAFF"), saveReceiptOcr);
-router.patch("/:id/transaction-archive", authMiddleware, requireRole("ADMIN", "STAFF"), archiveTransaction);
+router.get("/transaction-changes", authMiddleware, requireRole("ADMIN", "STAFF"), transactionChanges);
+router.get("/transaction-cleanup", authMiddleware, requireRole("ADMIN", "STAFF"), pendingTransactionCleanup);
+router.post("/transaction-cleanup/:operationId/retry", authMiddleware, requireRole("ADMIN", "STAFF"), retryTransactionImages);
+router.patch("/:id/transaction-archive", authMiddleware, requireRole("ADMIN", "STAFF"), (_req, res) => { res.status(410).json({ success: false, message: "Transaction archiving has been retired. Use permanent deletion with confirmation." }); });
 router.patch("/:id/stops/:stopId/transmittal-reference", authMiddleware, requireRole("ADMIN", "STAFF"), saveTransactionReference);
 
 router.get(
@@ -103,7 +104,7 @@ router.delete(
   "/:id",
   authMiddleware,
   requireRole("ADMIN", "STAFF"),
-  deleteTrip,
+  removeTransaction,
 );
 router.get("/:id", authMiddleware, requireRole("ADMIN", "STAFF"), getTrip);
 router.get(
@@ -128,7 +129,7 @@ router.delete(
   "/:id/stops/:stopId",
   authMiddleware,
   requireRole("ADMIN", "STAFF"),
-  deleteTripStop,
+  removeTransaction,
 );
 router.get(
   "/:id/line-items",

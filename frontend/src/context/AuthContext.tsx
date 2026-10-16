@@ -21,6 +21,7 @@ import {
 } from "../services/api.service";
 import { cancelAdminPreload, preloadAdminPageData } from "../services/admin-preload.service";
 import { clearReportPageCache } from "../services/report.service";
+import { clearSharedWidths } from "../services/shared-table-widths";
 import { useToast } from "../components/ui/Toast";
 
 export type AuthProfile = {
@@ -104,6 +105,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     clearAppSessionId();
     clearApiCache();
     clearReportPageCache();
+    clearSharedWidths();
     setUser(null);
     setProfile(null);
     setAccessToken(null);
@@ -221,6 +223,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         ) {
           clearApiCache();
           clearReportPageCache();
+          clearSharedWidths();
         }
         cacheOwnerRef.current = response.data.profile.id;
         cacheTokenRef.current = session.access_token;
@@ -332,6 +335,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         clearApiCache();
         clearReportPageCache();
+        clearSharedWidths();
         cacheOwnerRef.current = response.data.profile.id;
         cacheTokenRef.current = response.data.session.access_token;
         await preloadAdminPageData(response.data.session.access_token, profileRole);

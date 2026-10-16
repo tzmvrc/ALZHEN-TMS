@@ -62,7 +62,7 @@ test("actual Offload service creates exact stop snapshots atomically and validat
   const { supabaseAdmin } = await import("../src/config/supabase.js");
   const service = await import("../src/services/operations-report.service.js");
   const trip = { id: id(10), status: "IN_PROGRESS", archived_at: null };
-  const stops = [1, 2, 3].map((n) => ({ id: id(20 + n), trip_id: trip.id, quantity: n, total_cbm: n / 10, archived_at: null as string | null }));
+  const stops = [1, 2, 3].map((n) => ({ id: id(20 + n), trip_id: trip.id, dr_number: `DR-${n}`, quantity: n, total_cbm: n / 10, archived_at: null as string | null }));
   const reports: Record<string, any>[] = [{ id: id(50), trip_id: trip.id, trip_stop_id: stops[1].id, created_by: actor.profileId, reason: "Legacy", comments: "Old" }];
   const tables: Record<string, any[]> = { trips: [trip], trip_stops: stops, offloads: reports, profiles: [{ id: actor.profileId, role: "ADMIN" }, { id: id(2), role: "TRUCKER" }, { id: id(3), role: "OTHER" }], operations_report_conversions: [] };
   const original = supabaseAdmin.from, originalRpc = supabaseAdmin.rpc;
@@ -92,6 +92,10 @@ test("actual Offload service creates exact stop snapshots atomically and validat
     assert.equal(writes[1].p_report.reported_by, id(2));
     assert.deepEqual(stops.map((stop) => stop.quantity), [1, 2, 3]);
     const count = writes.length;
+    stops[1].dr_number = " ";
+    await assert.rejects(service.createOffload(actor, values), /DR Number/);
+    assert.equal(writes.length, count, "missing DR never reaches the create RPC");
+    stops[1].dr_number = "DR-2";
     for (const extra of [{ trip_stop_id: id(999) }, { reported_by: id(3) }, { quantity: -1 }]) await assert.rejects(service.createOffload(actor, { ...values, ...extra }));
     stops[1].archived_at = "2026-10-15T00:00:00Z";
     await assert.rejects(service.createOffload(actor, values), /archived/);

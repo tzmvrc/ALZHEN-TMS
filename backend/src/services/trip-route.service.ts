@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "../config/supabase.js";
+import { consumeReportReadRows, reportReadPageSize } from "./report-read-budget.js";
 import { buildTripRoutes, type RouteNamedRecord, type RouteStop, type RouteTrip } from "./trip-route.logic.js";
 
 const ID_BATCH_SIZE = 100;
@@ -6,19 +7,21 @@ const PAGE_SIZE = 1000;
 
 async function readByIds<T>(table: string, select: string, column: string, ids: string[]): Promise<T[]> {
   const rows: T[] = [];
+  const pageSize = reportReadPageSize(PAGE_SIZE);
   for (let index = 0; index < ids.length; index += ID_BATCH_SIZE) {
     const batchIds = ids.slice(index, index + ID_BATCH_SIZE);
-    for (let from = 0; ; from += PAGE_SIZE) {
+    for (let from = 0; ; from += pageSize) {
       const { data, error } = await supabaseAdmin
         .from(table)
         .select(select)
         .in(column, batchIds)
         .order("id", { ascending: true })
-        .range(from, from + PAGE_SIZE - 1);
+        .range(from, from + pageSize - 1);
       if (error) throw error;
       const page = (data ?? []) as T[];
+      consumeReportReadRows(table, page.length);
       rows.push(...page);
-      if (page.length < PAGE_SIZE) break;
+      if (page.length < pageSize) break;
     }
   }
   return rows;

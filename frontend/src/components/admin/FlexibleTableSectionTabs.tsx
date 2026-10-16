@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Link2Off, LoaderCircle, Table2 } from "lucide-react";
 import FlexibleTablesView from "../../pages/Admin/views/FlexibleTablesView";
+import { subscribeToAdminRealtime } from "../../services/realtime.service";
+import { useDeferredRealtimeRefresh } from "./useDeferredRealtimeRefresh";
 import {
   disconnectFlexibleTableFromSection,
   listSectionFlexibleTables,
@@ -26,18 +28,23 @@ export default function FlexibleTableSectionTabs({ sectionKey, sectionLabel, acc
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
-  const reload = useCallback(async () => {
+  const reload = useCallback(async (quiet = false) => {
     if (!accessToken) { setConnected([]); setLoading(false); return; }
-    setLoading(true);
+    if (!quiet) setLoading(true);
     setError("");
     try {
       const rows = await listSectionFlexibleTables(accessToken, sectionKey);
       setConnected(rows);
-      setActiveTableId((current) => current && rows.some((table) => table.id === current) ? current : null);
+      if (!quiet) setActiveTableId((current) => current && rows.some((table) => table.id === current) ? current : null);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Unable to load connected tables.");
-    } finally { setLoading(false); }
+    } finally { if (!quiet) setLoading(false); }
   }, [accessToken, sectionKey]);
+  const realtimeGate = useDeferredRealtimeRefresh(() => reload(true), busy);
+  useEffect(() => subscribeToAdminRealtime((event) => {
+    const tables = event.kind === "batch" ? event.tables : event.kind === "change" ? [event.payload.table] : event.kind === "recovered" ? [event.table] : [];
+    if (event.kind === "resume" || tables.some((table) => ["flex_tables", "flex_table_permissions", "profiles"].includes(table))) realtimeGate.request();
+  }), [realtimeGate]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => { void reload(); }, 0);

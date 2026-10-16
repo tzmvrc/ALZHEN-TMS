@@ -4,7 +4,9 @@ import { imageMime } from "../models/clientwebsite.validation.js";
 import { ApiError } from "../utils/api-response.js";
 import { getTripRoutes } from "./trip-route.service.js";
 import { splitOffloadDetails } from "./offload-details.logic.js";
+import { deleteOffloadPermanently } from "./offload-deletion.service.js";
 import { buildIlikeOrFilter } from "../utils/postgrest-search.js";
+import { consumeReportReadRows, reportReadPageSize } from "./report-read-budget.js";
 import {
   assertReportRole,
   assertReportSourceNotConverted as assertReportSourceNotConvertedInLedger,
@@ -69,13 +71,14 @@ function throwDb(error: { message?: string; code?: string } | null, operation: s
 
 async function readPaged<T>(table: string, columns: string, apply?: (query: any) => any): Promise<T[]> {
   const result: T[] = [];
-  const pageSize = 1000;
+  const pageSize = reportReadPageSize(1000);
   for (let from = 0; ; from += pageSize) {
     let query = supabaseAdmin.from(table).select(columns).order("id", { ascending: true }).range(from, from + pageSize - 1);
     if (apply) query = apply(query);
     const { data, error } = await query;
     if (error) throwDb(error, "read");
     const page = (data ?? []) as T[];
+    consumeReportReadRows(table, page.length);
     result.push(...page);
     if (page.length < pageSize) return result;
   }
@@ -457,7 +460,14 @@ function parseReceiptEventType(value: string): OperationsReceiptType {
  * exact stop dispatch is rejected rather than guessed. */
 export async function submitOperationsEvent(actor: ReportActor, input: unknown) {
   assertReportRole(actor);
+  if (input && typeof input === "object" && !Array.isArray(input) && String((input as Record<string, unknown>).event_type).trim().toUpperCase() === "OFFLOAD") {
+    const body = input as Record<string, unknown>;
+    if (!body.trip_id || !body.trip_stop_id) throw new ApiError("Select a delivery transaction by DR Number; dispatch-only Offload submission is no longer supported.", 400, "OFFLOAD_DR_REQUIRED");
+    const report = await createOffload(actor, { trip_id: body.trip_id, trip_stop_id: body.trip_stop_id, reason: body.remarks });
+    return { event_type: "OFFLOAD" as const, dispatch_number: null, report };
+  }
   const submission = validateOperationsEventSubmission(input);
+  if (submission.eventType === "OFFLOAD") throw new ApiError("Select a delivery transaction by DR Number.", 400, "OFFLOAD_DR_REQUIRED");
   const { data: stopMatches, error: stopLookupError } = await supabaseAdmin
     .from("trip_stops")
     .select("*")
@@ -491,10 +501,6 @@ export async function submitOperationsEvent(actor: ReportActor, input: unknown) 
 
   const target = EVENT_REPORT_TABLE[submission.eventType];
   await assertNewReportTransactionActive(await getTrip(actor, trip.id), stopId);
-  if (submission.eventType === "OFFLOAD") {
-    const report = await createOffload(actor, { trip_id: trip.id, trip_stop_id: stopId, reason: submission.remarks });
-    return { event_type: submission.eventType, dispatch_number: submission.dispatchNumber, report };
-  }
   const now = new Date().toISOString();
   const { data, error } = await supabaseAdmin.from(target.table).insert({
     trip_id: trip.id,
@@ -548,6 +554,7 @@ export async function updateOperationsEventType(actor: ReportActor, sourceTypeVa
 export async function deleteOperationsReport(actor: ReportActor, sourceTypeValue: unknown, recordIdValue: unknown) {
   assertOperationsManagementRole(actor);
   const identity = validateOperationsReportSourceIdentity(sourceTypeValue, recordIdValue);
+  if (identity.source_type === "OFFLOAD") return deleteOffloadPermanently(actor, identity.record_id);
   const target = EVENT_REPORT_TABLE[identity.source_type];
   const { data: report, error: readError } = await (supabaseAdmin.from(target.table) as any)
     .select("id, trip_id, trip_stop_id").eq("id", identity.record_id).maybeSingle();
@@ -569,12 +576,14 @@ export async function deleteOperationsReport(actor: ReportActor, sourceTypeValue
   }
   if (receiptResult.error) throwDb(receiptResult.error, "check report receipts");
   if ((receiptResult.count ?? 0) > 0) {
-    throw new ApiError("This report has receipt images. Remove or retain those receipts before deleting the report.", 409, "REPORT_RECEIPTS_PROTECTED");
+    throw new ApiError("This report cannot be deleted because its receipt images must be retained. Open View Details to review the attachments. No report or image was deleted.", 409, "REPORT_RECEIPTS_PROTECTED");
   }
 
   let query = (supabaseAdmin.from(target.table) as any).delete().eq("id", identity.record_id).eq("trip_id", trip.id);
   if (identity.source_type !== "LOADING") query = stopId ? query.eq("trip_stop_id", stopId) : query.is("trip_stop_id", null);
   const { data, error } = await query.select("id").maybeSingle();
+  if (error?.code === "23503") throw new ApiError("Linked records now protect this report from deletion. Refresh and review View Details. No report or image was deleted.", 409, "REPORT_DEPENDENCIES_PROTECTED");
+  if (error && /converted|conversion history|immutable/i.test(error.message ?? "")) throw new ApiError("This historical report is protected and cannot be deleted. No report or image was deleted.", 409, "REPORT_CONVERSION_HISTORY_PROTECTED");
   if (error) throwDb(error, "delete operational report");
   if (!data) throw new ApiError("The report changed before it could be deleted. Reload and retry.", 409, "REPORT_DELETE_CONFLICT");
   return { source_type: identity.source_type, record_id: identity.record_id, trip_id: trip.id, trip_stop_id: stopId };
@@ -723,10 +732,13 @@ export async function createOffload(actor: ReportActor, input: unknown) {
   const quantity = body.quantity, totalCbm = body.total_cbm;
   delete body.quantity; delete body.total_cbm;
   const parsed = validateBackloadOffloadInput(body, true, true);
-  const trip = await validateReportScope(actor, parsed.tripId!, parsed.stopId);
-  await assertNewReportTransactionActive(trip, parsed.stopId);
+  const trip = await getTrip(actor, parsed.tripId!);
+  await assertActorTripAccess(actor, trip);
+  if (!parsed.stopId) throw new ApiError("Select an eligible delivery transaction by DR Number.", 400, "OFFLOAD_DR_REQUIRED");
+  const stop = await getOwnedStop(trip.id, parsed.stopId) as Stop & { dr_number?: string | null; quantity?: number | null; total_cbm?: number | null; archived_at?: string | null };
+  if (trip.archived_at || stop.archived_at) throw new ApiError("This transaction is archived and cannot receive new reports.", 409, "TRANSACTION_ARCHIVED");
+  if (!stop.dr_number?.trim()) throw new ApiError("The selected transaction no longer has a DR Number. Select another transaction.", 409, "OFFLOAD_DR_REQUIRED");
   await assertEligibleReporter(metadata.reported_by);
-  const stop = parsed.stopId ? await getOwnedStop(trip.id, parsed.stopId) as Stop & { quantity?: number | null; total_cbm?: number | null } : null;
   const item = validateOperationsOffloadItemUpdate({ id: randomUUID(), trip_line_item_id: null,
     quantity: quantity === undefined ? stop?.quantity ?? null : quantity,
     total_cbm: totalCbm === undefined ? stop?.total_cbm ?? null : totalCbm });
@@ -736,6 +748,33 @@ export async function createOffload(actor: ReportActor, input: unknown) {
   });
   if (error) throwDb(error, "create offload");
   return data;
+}
+
+export async function searchOffloadTransactions(actor: ReportActor, search: string, page = 1) {
+  assertReportRole(actor);
+  if (!Number.isSafeInteger(page) || page < 1 || page > 10000 || search.length > 200) throw new ApiError("Invalid transaction search or page.", 400, "INVALID_LOOKUP_QUERY");
+  let query = supabaseAdmin.from("v_dispatch_monitoring")
+    .select("_trip_id,_trip_stop_id,dispatch_number,transaction_dr_number,transaction_quantity,transaction_total_cbm,warehouse_name,store_name,customer_name,driver_name,plate_number")
+    .is("transaction_archived_at", null).not("transaction_dr_number", "is", null).neq("transaction_dr_number", "")
+    .order("transaction_dr_number").order("_trip_id").order("_trip_stop_id")
+    .range((page - 1) * 50, page * 50);
+  if (actor.role.toUpperCase() === "TRUCKER") {
+    const ids = await getDriverTripIds(actor.profileId);
+    if (!ids.length) return { rows: [], hasMore: false, page };
+    query = query.in("_trip_id", ids);
+  }
+  const filter = buildIlikeOrFilter(["transaction_dr_number", "warehouse_name", "store_name", "customer_name"], search);
+  if (filter) query = query.or(filter);
+  const { data, error } = await query;
+  if (error) throwDb(error, "read DR transactions");
+  return { rows: (data ?? []).slice(0, 50).filter((row) => row.transaction_dr_number?.trim() && row._trip_stop_id).map((row) => ({
+    id: row._trip_stop_id, trip_id: row._trip_id, trip_stop_id: row._trip_stop_id,
+    dr_number: row.transaction_dr_number, dispatch_number: row.dispatch_number,
+    warehouse: row.warehouse_name, destination: row.store_name || row.customer_name || null,
+    driver_name: row.driver_name, plate_number: row.plate_number,
+    quantity: row.transaction_quantity, total_cbm: row.transaction_total_cbm,
+    route: [row.warehouse_name, row.store_name || row.customer_name].filter(Boolean).join(" → "),
+  })), hasMore: (data?.length ?? 0) > 50, page };
 }
 
 async function assertEligibleReporter(id: unknown) {

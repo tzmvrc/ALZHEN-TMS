@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 import { ApiError, sendError, sendSuccess } from "../utils/api-response.js";
 import { setTransactionArchive, updateTransactionReference } from "../services/transaction.service.js";
+import { deleteTransaction, listTransactionCleanup, retryTransactionCleanup, transactionDeletionVersion } from "../services/transaction-deletion.service.js";
 
 const param = (req: Request, key: string) => Array.isArray(req.params[key]) ? req.params[key][0] : req.params[key];
 async function respond(req: Request, res: Response, archive: boolean) {
@@ -21,3 +22,20 @@ async function respond(req: Request, res: Response, archive: boolean) {
 }
 export const archiveTransaction = (req: Request, res: Response) => respond(req, res, true);
 export const saveTransactionReference = (req: Request, res: Response) => respond(req, res, false);
+
+async function deletionResponse(req: Request, res: Response, mode: "delete" | "pending" | "retry" | "version") {
+  try {
+    if (!req.appSession) throw new ApiError("Authentication required.", 401, "AUTHENTICATION_REQUIRED");
+    const actor = { id: req.appSession.profileId, role: req.appSession.role };
+    const data = mode === "version" ? await transactionDeletionVersion(actor) : mode === "pending" ? await listTransactionCleanup(actor) : mode === "retry" ? await retryTransactionCleanup(actor, param(req, "operationId"))
+      : await deleteTransaction(actor, param(req, "id"), param(req, "stopId"));
+    return sendSuccess(res, 200, "Transaction deletion outcome retrieved", data);
+  } catch (error) {
+    if (error instanceof ApiError) return sendError(res, error.statusCode, error.message, error.code);
+    return sendError(res, 503, "Transaction deletion could not be confirmed. Retry the same transaction.", "TRANSACTION_DELETE_UNCONFIRMED");
+  }
+}
+export const removeTransaction = (req: Request, res: Response) => deletionResponse(req, res, "delete");
+export const pendingTransactionCleanup = (req: Request, res: Response) => deletionResponse(req, res, "pending");
+export const retryTransactionImages = (req: Request, res: Response) => deletionResponse(req, res, "retry");
+export const transactionChanges = (req: Request, res: Response) => deletionResponse(req, res, "version");

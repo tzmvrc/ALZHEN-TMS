@@ -306,19 +306,27 @@ export function StatusBadge({ value }: { value: unknown }) {
 export function TableSkeleton({
   columns,
   rows = 5,
+  columnWidths,
+  showToolbar = false,
+  toolbarActions,
 }: {
   columns: number;
   rows?: number;
+  columnWidths?: readonly number[];
+  showToolbar?: boolean;
+  toolbarActions?: ReactNode;
 }) {
   return (
-    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+    <div role="status" aria-label="Loading report table" aria-busy="true" className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+      {showToolbar && <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 p-3"><div aria-hidden="true" className="h-8 w-44 animate-pulse rounded bg-slate-100" /><div className="flex items-center gap-2"><div aria-hidden="true" className="h-10 w-48 animate-pulse rounded-lg bg-slate-100" /><div aria-hidden="true" className="h-8 w-20 animate-pulse rounded bg-slate-100" />{toolbarActions}</div></div>}
       <div className="overflow-x-auto">
-        <table className="min-w-full text-left text-sm">
+        <table aria-hidden="true" className="min-w-full table-fixed border-separate border-spacing-0 text-left text-sm" style={columnWidths ? { width: columnWidths.reduce((sum, width) => sum + width, 0) } : undefined}>
+          {columnWidths && <colgroup>{columnWidths.map((width, index) => <col key={index} style={{ width }} />)}</colgroup>}
           <thead className="bg-slate-50 text-[11px] uppercase tracking-[0.12em] text-slate-500">
             <tr>
               {Array.from({ length: columns }).map((_, columnIndex) => (
-                <th key={`header-${columnIndex}`} className="px-4 py-3">
-                  <div className="h-3 w-16 animate-pulse rounded bg-slate-200" />
+                <th key={`header-${columnIndex}`} className="border-b border-r border-slate-200 px-3 py-3">
+                  <div className="h-3 w-16 max-w-full animate-pulse rounded bg-slate-200" />
                 </th>
               ))}
             </tr>
@@ -329,9 +337,9 @@ export function TableSkeleton({
                 {Array.from({ length: columns }).map((__, columnIndex) => (
                   <td
                     key={`cell-${rowIndex}-${columnIndex}`}
-                    className="px-4 py-3">
+                    className="border-b border-r border-slate-100 px-3 py-3">
                     <div
-                      className={`h-4 animate-pulse rounded bg-slate-200 ${
+                      className={`h-4 max-w-full animate-pulse rounded bg-slate-200 ${
                         columnIndex % 3 === 0
                           ? "w-24"
                           : columnIndex % 3 === 1

@@ -1,8 +1,11 @@
+import { fetchMasterData } from "./master-data.service";
 import { fetchDropdownOptions } from "./dropdown-option.service";
 import { searchRelationshipOptions } from "./lookup.service";
 import { REPORTS, fetchReportPage, getInitialReportPageOptions, type ReportKey } from "./report.service";
 import { fetchTrips } from "./trip.service";
 import { runBackgroundPreload } from "./background-preload";
+import { preloadOperationsOverview } from "./operations-report.service";
+import { preloadTransmittalTracker } from "./transmittal-tracker.service";
 
 let preloadGeneration = 0;
 let preloadToken: string | null = null;
@@ -29,8 +32,8 @@ export async function preloadAdminPageData(token: string, role: string): Promise
   const page = (reportKey: ReportKey) =>
     fetchReportPage(reportKey, token, getInitialReportPageOptions(reportKey));
   const tasks: Array<() => Promise<unknown>> = [
-    ...shared,
     () => page("combined"),
+    ...shared,
     () => fetchReportPage("dispatch-monitoring", token, {
       ...getInitialReportPageOptions("dispatch-monitoring"), filters: { active_transactions: "true", archive_scope: "active" },
     }),
@@ -41,6 +44,9 @@ export async function preloadAdminPageData(token: string, role: string): Promise
     // token, page size, default sort, and filters so navigation consumes these
     // exact cached requests; later pages and filtered searches stay on-demand.
     ...(Object.keys(REPORTS) as ReportKey[]).filter((key) => key !== "combined").map((key) => () => page(key)),
+    () => preloadOperationsOverview(token),
+    () => preloadTransmittalTracker(token),
+    ...(["warehouses","trucks","stores"] as const).map(resource=>()=>fetchMasterData(token,resource,"",1)),
   ];
 
   // A preload failure is intentionally isolated from login and page navigation.

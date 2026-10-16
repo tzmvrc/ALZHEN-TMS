@@ -1,5 +1,9 @@
+import { TableSkeleton, SkeletonBlock } from "../../../components/admin/DashboardPrimitives";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowLeft, ArrowDown, ArrowUp, Archive, Columns3, Eye, EyeOff, LoaderCircle, Plus, Settings2, Table2, Trash2, Users, X } from "lucide-react";
+import { useManagementTableColumns } from "../../../components/admin/useManagementTableColumns";
+import { subscribeToAdminRealtime } from "../../../services/realtime.service";
+import { useDeferredRealtimeRefresh } from "../../../components/admin/useDeferredRealtimeRefresh";
+import { ArrowLeft, ArrowDown, ArrowUp, Archive, Columns3, Eye, EyeOff, Plus, Settings2, Table2, Trash2, Users, X } from "lucide-react";
 import {
   archiveFlexColumn,
   archiveFlexibleTable,
@@ -64,6 +68,7 @@ export default function FlexibleTablesView({ accessToken, role, embeddedTableId,
   const [search, setSearch] = useState("");
   const [newName, setNewName] = useState("");
   const [showHidden, setShowHidden] = useState(false);
+  const [revealedColumns, setRevealedColumns] = useState<Record<string, string[]>>({});
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [columnEditor, setColumnEditor] = useState<FlexColumn | "new" | null>(null);
   const [columnForm, setColumnForm] = useState({ name: "", value_type: "TEXT" as FlexValueType, input_mode: "TEXT" as FlexInputMode });
@@ -76,13 +81,13 @@ export default function FlexibleTablesView({ accessToken, role, embeddedTableId,
   const [permissionSubject, setPermissionSubject] = useState("ROLE:STAFF");
   const [permissionFlags, setPermissionFlags] = useState({ can_view: true, can_edit: false, can_manage: false });
 
-  const loadTables = useCallback(async () => {
+  const loadTables = useCallback(async (quiet = false) => {
     if (!accessToken) return;
-    setLoading(true);
+    if (!quiet) setLoading(true);
     setError("");
     try { setTables(await listFlexibleTables(accessToken)); }
     catch (cause) { setError(messageOf(cause, "Unable to load flexible tables.")); }
-    finally { setLoading(false); }
+    finally { if (!quiet) setLoading(false); }
   }, [accessToken]);
 
   const loadTable = useCallback(async (id: string, quiet = false) => {
@@ -93,6 +98,14 @@ export default function FlexibleTablesView({ accessToken, role, embeddedTableId,
     catch (cause) { setError(messageOf(cause, "Unable to load this table.")); if (!quiet) setTableData(null); }
     finally { if (!quiet) setLoading(false); }
   }, [accessToken]);
+  const realtimeGate = useDeferredRealtimeRefresh(async () => {
+    if (selectedTableId) await loadTable(selectedTableId, true);
+    await loadTables(true);
+  }, Boolean(saving || Object.keys(drafts).length || columnEditor || optionsColumn || permissionsOpen));
+  useEffect(() => subscribeToAdminRealtime((event) => {
+    const tables = event.kind === "batch" ? event.tables : event.kind === "change" ? [event.payload.table] : event.kind === "recovered" ? [event.table] : [];
+    if (event.kind === "resume" || tables.some((table) => table.startsWith("flex_") || ["trips", "trip_stops", "trip_line_items", "trip_truck_assignments", "billings", "store_calls", "profiles"].includes(table))) realtimeGate.request();
+  }), [realtimeGate]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -143,7 +156,11 @@ export default function FlexibleTablesView({ accessToken, role, embeddedTableId,
     await run(() => renameFlexibleTable(accessToken!, tableData.table.id, name, tableData.table.version), "Table renamed.");
   };
 
-  const visibleColumns = useMemo(() => (tableData?.columns ?? []).filter((column) => showHidden || !column.is_hidden), [tableData, showHidden]);
+  const visibleColumns = useMemo(() => (tableData?.columns ?? []).filter((column) => showHidden || !column.is_hidden || (revealedColumns[tableData?.table.id ?? ""] ?? []).includes(column.id)), [tableData, showHidden, revealedColumns]);
+  const layoutColumns = useMemo(() => (tableData?.columns ?? []).map((column) => ({ key: column.id, title: column.name, width: 220 })), [tableData]);
+  const { attachViewport, viewportProps, tableStyle, controls: columnControls, hiddenControl, colgroup, headerProps, headerControls } = useManagementTableColumns({ table: `flex:${tableData?.table.id ?? "none"}`, token: accessToken, columns: layoutColumns, enabled: Boolean(tableData) && ["ADMIN", "STAFF"].includes(role), leadingColumns: 1, trailingWidth: tableData?.access.canEdit ? 88 : 0, omitsHiddenCells: true,
+    hiddenKeys: (tableData?.columns ?? []).filter((column) => !visibleColumns.some((visible) => visible.id === column.id)).map((column) => column.id),
+    onReveal: (key) => { if (tableData) setRevealedColumns((current) => ({ ...current, [tableData.table.id]: [...(current[tableData.table.id] ?? []), key] })); }, onRestoreAll: () => setShowHidden(true) });
   const filteredRows = useMemo(() => {
     const needle = search.trim().toLowerCase();
     if (!needle) return tableData?.rows ?? [];
@@ -155,8 +172,10 @@ export default function FlexibleTablesView({ accessToken, role, embeddedTableId,
     if (column.value_type === "NUMBER") value = raw === "" ? null : Number(raw);
     if (column.value_type === "BOOLEAN") value = raw === "true";
     if (raw === "" && column.value_type !== "BOOLEAN") value = null;
-    if (value === existing?.value || (value === null && existing?.value === null)) return;
     const key = `${row.id}:${column.id}`;
+    if (value === existing?.value || (value === null && existing?.value === null)) {
+      setDrafts((current) => { const next = { ...current }; delete next[key]; return next; }); return;
+    }
     setSaving(true); setError(""); setNotice("");
     try {
       const saved = await saveFlexCell(accessToken!, tableData!.table.id, row.id, column.id, value, existing?.version ?? 0);
@@ -170,12 +189,12 @@ export default function FlexibleTablesView({ accessToken, role, embeddedTableId,
         }),
       } : current);
       setNotice("Cell saved.");
+      setDrafts((current) => { const next = { ...current }; delete next[key]; return next; });
     } catch (cause) {
       const text = messageOf(cause, "Unable to save cell."); setError(text);
       if (/changed since|created by another editor/i.test(text) && selectedTableId) await loadTable(selectedTableId, true);
     } finally {
       setSaving(false);
-      setDrafts((current) => { const next = { ...current }; delete next[key]; return next; });
     }
   };
 
@@ -321,25 +340,25 @@ export default function FlexibleTablesView({ accessToken, role, embeddedTableId,
       {notice && <div role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{notice}</div>}
 
       {!tableData && embeddedTableId ? (
-        loading ? <div role="status" className={`${panel} flex items-center gap-2 p-8 text-sm text-slate-500`}><LoaderCircle className="h-4 w-4 animate-spin" />Loading connected table…</div> : <div role="alert" className={`${panel} p-6 text-sm text-rose-700`}>{error || "This table is no longer available to your account."}</div>
+        loading ? <TableSkeleton columns={5} rows={5} showToolbar /> : <div role="alert" className={`${panel} p-6 text-sm text-rose-700`}>{error || "This table is no longer available to your account."}</div>
       ) : !tableData ? (
         <div className={`${panel} p-4 sm:p-5`}>
           <div className="flex flex-wrap items-end gap-3">
             <label className="min-w-[220px] flex-1 text-xs font-semibold text-slate-600">Create a custom table<input className={inputClass} value={newName} maxLength={100} placeholder="e.g. Weekly planning" onChange={(event) => setNewName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void createTable(); }} /></label>
             <button type="button" className="inline-flex items-center gap-2 rounded-lg bg-[#0b2341] px-4 py-2.5 text-xs font-semibold text-white hover:bg-[#173b62] disabled:opacity-50" disabled={saving || !newName.trim()} onClick={() => void createTable()}><Plus className="h-4 w-4" />Create table</button>
           </div>
-          {loading ? <div className="flex items-center gap-2 py-12 text-sm text-slate-500"><LoaderCircle className="h-4 w-4 animate-spin" />Loading tables…</div> : tables.length ? <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{tables.map((table) => <button type="button" key={table.id} onClick={() => void loadTable(table.id)} className="rounded-xl border border-slate-200 p-4 text-left transition hover:border-[#2678b9]/40 hover:bg-slate-50"><span className="flex items-center gap-2 text-sm font-semibold text-[#0b2341]"><Table2 className="h-4 w-4 text-[#2678b9]" />{table.name}</span><span className="mt-2 block text-[11px] text-slate-500">Updated {new Date(table.updated_at).toLocaleString()}</span><span className="mt-3 block text-[11px] font-medium text-slate-500">{table.access?.is_owner ? "Owner" : table.access?.can_manage ? "Can manage" : table.access?.can_edit ? "Can edit" : "View only"}</span></button>)}</div> : <div className="mt-5 rounded-xl border border-dashed border-slate-200 py-12 text-center text-sm text-slate-500">No tables are shared with you yet. Create one or ask a table owner for access.</div>}
+          {loading && !tables.length ? <div role="status" aria-label="Loading flexible tables" className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{[0,1,2].map(key=><SkeletonBlock key={key} className="h-36 rounded-xl" />)}</div> : tables.length ? <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{tables.map((table) => <button type="button" key={table.id} onClick={() => void loadTable(table.id)} className="rounded-xl border border-slate-200 p-4 text-left transition hover:border-[#2678b9]/40 hover:bg-slate-50"><span className="flex items-center gap-2 text-sm font-semibold text-[#0b2341]"><Table2 className="h-4 w-4 text-[#2678b9]" />{table.name}</span><span className="mt-2 block text-[11px] text-slate-500">Updated {new Date(table.updated_at).toLocaleString()}</span><span className="mt-3 block text-[11px] font-medium text-slate-500">{table.access?.is_owner ? "Owner" : table.access?.can_manage ? "Can manage" : table.access?.can_edit ? "Can edit" : "View only"}</span></button>)}</div> : <div className="mt-5 rounded-xl border border-dashed border-slate-200 py-12 text-center text-sm text-slate-500">No tables are shared with you yet. Create one or ask a table owner for access.</div>}
         </div>
-      ) : loading ? <div className={`${panel} flex items-center gap-2 p-8 text-sm text-slate-500`}><LoaderCircle className="h-4 w-4 animate-spin" />Loading table…</div> : (
+      ) : loading ? <TableSkeleton columns={(tableData?.columns.length??4)+1} rows={5} showToolbar /> : (
         <div className={`${panel} overflow-hidden`}>
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 p-3 sm:px-4">
             <div className="min-w-0"><h2 className="truncate font-semibold text-[#0b2341]">{tableData.table.name}</h2><p className="text-[11px] text-slate-500">{tableData.rows.length} rows · {tableData.columns.length} columns</p></div>
-            <div className="flex flex-wrap items-center gap-2"><label className="sr-only" htmlFor="flex-search">Search rows</label><input id="flex-search" className="w-40 rounded-lg border border-slate-200 px-3 py-2 text-xs sm:w-56" value={search} placeholder="Filter rows…" onChange={(event) => setSearch(event.target.value)} /><button type="button" onClick={() => setShowHidden((shown) => !shown)} className={buttonClass}>{showHidden ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}{showHidden ? "Hide hidden" : "Show hidden"}</button><button type="button" className={buttonClass} onClick={() => void addRow()} disabled={!tableData.access.canEdit || saving}><Plus className="h-4 w-4" />Add row</button><button type="button" className={buttonClass} onClick={() => openColumn("new")} disabled={!tableData.access.canManage || saving}><Columns3 className="h-4 w-4" />Add column</button></div>
+            <div className="flex flex-wrap items-center gap-2">{columnControls}<label className="sr-only" htmlFor="flex-search">Search rows</label><input id="flex-search" className="w-40 rounded-lg border border-slate-200 px-3 py-2 text-xs sm:w-56" value={search} placeholder="Filter rows…" onChange={(event) => setSearch(event.target.value)} /><button type="button" onClick={() => setShowHidden((shown) => !shown)} className={buttonClass}>{showHidden ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}{showHidden ? "Hide hidden" : "Show hidden"}</button><button type="button" className={buttonClass} onClick={() => void addRow()} disabled={!tableData.access.canEdit || saving}><Plus className="h-4 w-4" />Add row</button><button type="button" className={buttonClass} onClick={() => openColumn("new")} disabled={!tableData.access.canManage || saving}><Columns3 className="h-4 w-4" />Add column</button></div>
           </div>
           {saving && <div className="h-0.5 w-full overflow-hidden bg-slate-100"><div className="h-full w-1/3 animate-pulse bg-[#2678b9]" /></div>}
-          <div className="max-h-[68vh] overflow-auto">
-            <table className="min-w-full border-separate border-spacing-0 text-left text-xs">
-              <thead className="sticky top-0 z-20 bg-slate-50"><tr><th className="sticky left-0 z-30 min-w-24 border-b border-r border-slate-200 bg-slate-50 px-2 py-2 text-[10px] font-bold uppercase text-slate-500">Row</th>{visibleColumns.map((column, index) => <th key={column.id} className={`min-w-44 border-b border-r border-slate-200 px-2 py-2 align-top ${column.is_hidden ? "bg-amber-50" : "bg-slate-50"}`}><div className="flex items-center gap-1"><span className="min-w-0 flex-1 truncate font-semibold text-slate-700" title={column.name}>{column.name}</span>{tableData.access.canManage && <span className="flex shrink-0 items-center gap-0.5"><button type="button" title="Move column left" disabled={index === 0 || saving} onClick={() => shiftColumn(column, -1)} className="rounded p-1 text-slate-400 hover:bg-slate-200 disabled:opacity-30"><ArrowUp className="h-3 w-3" /></button><button type="button" title="Move column right" disabled={index === visibleColumns.length - 1 || saving} onClick={() => shiftColumn(column, 1)} className="rounded p-1 text-slate-400 hover:bg-slate-200 disabled:opacity-30"><ArrowDown className="h-3 w-3" /></button><button type="button" title="Configure column" onClick={() => openColumn(column)} className="rounded p-1 text-slate-400 hover:bg-slate-200"><Settings2 className="h-3.5 w-3.5" /></button></span>}</div><div className="mt-1 text-[9px] font-medium uppercase tracking-wide text-slate-400">{column.input_mode === "DROPDOWN" ? "Dropdown" : column.value_type}</div></th>)}{tableData.access.canEdit && <th className="min-w-12 border-b border-slate-200 bg-slate-50" />}</tr></thead>
+          <div ref={attachViewport} {...viewportProps} className="max-h-[68vh] overflow-auto">
+            <table style={tableStyle} className="min-w-full border-separate border-spacing-0 text-left text-xs">{colgroup}
+              <thead className="sticky top-0 z-20 bg-slate-50"><tr><th className="sticky left-0 z-30 min-w-24 border-b border-r border-slate-200 bg-slate-50 px-2 py-2 text-[10px] font-bold uppercase text-slate-500">Row</th>{visibleColumns.map((column, index) => <th key={column.id} {...headerProps(column.id)} className={`min-w-44 border-b border-r border-slate-200 px-2 py-2 align-top ${column.is_hidden ? "bg-amber-50" : "bg-slate-50"}`}><div className="flex items-center gap-1"><span className="min-w-0 flex-1 truncate font-semibold text-slate-700" title={column.name}>{column.name}</span>{tableData.access.canManage && <span className="flex shrink-0 items-center gap-0.5"><button type="button" title="Move column left" disabled={index === 0 || saving} onClick={() => shiftColumn(column, -1)} className="rounded p-1 text-slate-400 hover:bg-slate-200 disabled:opacity-30"><ArrowUp className="h-3 w-3" /></button><button type="button" title="Move column right" disabled={index === visibleColumns.length - 1 || saving} onClick={() => shiftColumn(column, 1)} className="rounded p-1 text-slate-400 hover:bg-slate-200 disabled:opacity-30"><ArrowDown className="h-3 w-3" /></button><button type="button" title="Configure column" onClick={() => openColumn(column)} className="rounded p-1 text-slate-400 hover:bg-slate-200"><Settings2 className="h-3.5 w-3.5" /></button></span>}</div><div className="mt-1 text-[9px] font-medium uppercase tracking-wide text-slate-400">{column.input_mode === "DROPDOWN" ? "Dropdown" : column.value_type}</div>{headerControls({ key: column.id, title: column.name })}</th>)}{tableData.access.canEdit && <th className="min-w-12 border-b border-slate-200 bg-slate-50" />}</tr></thead>
               <tbody>{filteredRows.map((row, rowIndex) => <tr key={row.id} className="group hover:bg-blue-50/30"><th className="sticky left-0 z-10 border-b border-r border-slate-100 bg-white px-2 py-1 text-[10px] font-medium text-slate-400 group-hover:bg-blue-50/30">{rowIndex + 1}</th>{visibleColumns.map((column) => {
                 const cell = cellFor(row, column.id);
                 const key = `${row.id}:${column.id}`;
@@ -351,6 +370,7 @@ export default function FlexibleTablesView({ accessToken, role, embeddedTableId,
             </table>
             {!filteredRows.length && <div className="p-8 text-center text-sm text-slate-500">{search ? "No rows match this filter." : "No custom rows yet. Add a row to get started."}</div>}
           </div>
+          {hiddenControl}
           {tableData.access.canManage && <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 bg-slate-50/70 px-3 py-2"><span className="mr-1 text-[10px] font-semibold uppercase text-slate-400">Columns</span>{tableData.columns.map((column) => <div key={column.id} className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1"><span className="max-w-32 truncate text-[10px] text-slate-600">{column.name}</span><button type="button" title={column.is_hidden ? "Show column" : "Hide column"} onClick={() => void toggleColumnHidden(column)} className="text-slate-400 hover:text-slate-700">{column.is_hidden ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}</button><button type="button" title="Configure column" onClick={() => openColumn(column)} className="text-slate-400 hover:text-slate-700"><Settings2 className="h-3 w-3" /></button><button type="button" title="Archive column" onClick={() => void archiveColumnAction(column)} className="text-rose-400 hover:text-rose-700"><Archive className="h-3 w-3" /></button></div>)}</div>}
         </div>
       )}

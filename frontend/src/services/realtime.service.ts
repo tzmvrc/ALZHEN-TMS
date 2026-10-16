@@ -1,12 +1,14 @@
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabase";
-import { invalidateApiCache } from "./api.service";
+import { apiGet, invalidateApiCache, type ApiResponse } from "./api.service";
 import {
   invalidateReportPageCache,
   REPORTS,
   type ReportKey,
 } from "./report.service";
 import { TRANSMITTAL_TRACKER_ENDPOINT } from "./transmittal-tracker.service";
+import { createTransactionChangeMonitor } from "./transaction-change-monitor";
+import { ADMIN_CHANGE_TOPICS, createAdminChangeFeed, type ChangeSignal } from "./admin-change-feed";
 
 export type RealtimePayload = {
   eventType: string;
@@ -121,6 +123,7 @@ export const ADMIN_REALTIME_TABLES = [...new Set([
 ])];
 
 export type AdminRealtimeEvent =
+  | { kind: "batch"; tables: readonly string[] }
   | { kind: "change"; payload: RealtimePayload }
   | { kind: "recovered"; table: string }
   | { kind: "resume" };
@@ -141,6 +144,16 @@ function emitAdminRealtime(event: AdminRealtimeEvent) {
 }
 
 function invalidateForTable(table: string, payload?: RealtimePayload) {
+  if (["trips", "trip_stops", "trip_line_items", "trip_truck_assignments", "drivers", "trucks", "customers", "customer_stores", "warehouses", "products", "trucking_companies", "trip_types", "profiles", "tms_route_options"].includes(table)) invalidateApiCache("/lookups/");
+  if (["tms_dropdown_options", "flex_dropdown_options"].includes(table)) invalidateApiCache("/dropdown-options");
+  if (table.startsWith("flex_")) invalidateApiCache("/flexible-tables");
+  if (["pod_records", "pod_drive_files", "driver_trip_updates", "flex_cell_mentions", "flex_table_permissions", "flex_dropdown_options"].includes(table)) invalidateApiCache(TRANSMITTAL_TRACKER_ENDPOINT);
+  if (["transaction_deletion_jobs", "offload_deletion_jobs"].includes(table)) {
+    invalidateApiCache("/trips"); invalidateApiCache("/reports"); invalidateReportPageCache();
+  }
+  if (["incidents", "incident_reasons", "demurrages", "pod_records", "pod_drive_files", "backload_items", "driver_trip_updates", "tms_route_options"].includes(table)) invalidateApiCache("/reports/operations/");
+  if (table === "admin_notifications") invalidateApiCache("/notifications");
+  if (ADMIN_CHANGE_TOPICS.includes(table as typeof ADMIN_CHANGE_TOPICS[number])) invalidateApiCache("/dashboard");
   if (["loading_reports", "unloading_reports", "backloads", "offloads", "offload_items", "report_receipts", "operations_report_conversions", "trip_stops", "trips", "trip_truck_assignments", "drivers", "trucks", "profiles", "warehouses", "customers", "customer_stores"].includes(table)) {
     invalidateApiCache("/reports/operations/");
   }
@@ -162,6 +175,9 @@ function invalidateForTable(table: string, payload?: RealtimePayload) {
     if (!payload) invalidateApiCache("/trips");
     else for (const id of ids) invalidateApiCache(`/trips/${encodeURIComponent(id)}`);
   }
+  // Signals intentionally contain no trip IDs. Clear child-resource caches too.
+  if (!payload && ["trip_stops", "trip_line_items", "trip_truck_assignments", "trip_events", "trip_images", "loading_reports", "unloading_reports", "backloads", "offloads", "billings"].includes(table)) invalidateApiCache("/trips/");
+
   // Active trip lists depend on whether their delivery stops are archived.
   if (table === "trip_stops") invalidateApiCache("/trips?");
   if (["trips", "trip_events", "trip_stops", "store_calls", "customer_stores", "warehouses"].includes(table)) {
@@ -188,7 +204,7 @@ function invalidateForTable(table: string, payload?: RealtimePayload) {
     invalidateApiCache("/truckers");
   }
   if (table === "documents") invalidateApiCache("/documents");
-  if (["trucks", "truck_images", "warehouses", "customer_stores", "store_contacts", "products"].includes(table)) {
+  if (["trucks", "truck_images", "warehouses", "customer_stores", "store_contacts", "products", "drivers", "customers", "trucking_companies", "trip_types", "incident_reasons", "rate_cards", "store_exceptions"].includes(table)) {
     invalidateApiCache("/master-data/");
   }
 }
@@ -210,27 +226,73 @@ export function startAdminRealtime(
   adminRealtimeSession = sessionKey;
   if (!sessionKey) return () => {};
 
+  let active = true, healthy = false, connectionVersion = 0, reconnectAttempt = 0;
+  let signalChannel: RealtimeChannel | null = null;
+  let reconnectTimer: number | undefined;
+  const feed = createAdminChangeFeed({
+    changed: (tables) => {
+      if (!active || adminRealtimeSession !== sessionKey) return;
+      tables.forEach((table) => invalidateForTable(table));
+      emitAdminRealtime({ kind: "batch", tables });
+      if (tables.includes("admin_notifications")) channels.get("admin_notifications")?.listeners.forEach((recovered) => recovered());
+    },
+    snapshot: async () => {
+      const response = await apiGet<ApiResponse<ChangeSignal[]>>("/realtime/changes", token!);
+      if (!response.success || !response.data) throw new Error("Change signals unavailable");
+      return response.data;
+    },
+    schedule: (callback, delay) => setTimeout(callback, delay), cancel: clearTimeout,
+  });
+  const connect = async () => {
+    const version = ++connectionVersion;
+    const previous = signalChannel; signalChannel = null;
+    if (previous) await supabase.removeChannel(previous);
+    if (!active || version !== connectionVersion) return;
+    await supabase.realtime.setAuth(token!);
+    if (!active || version !== connectionVersion) return;
+    signalChannel = supabase.channel(`admin-change-signals:${profileId}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "admin_change_signals" }, (payload) => {
+        if (active && version === connectionVersion) feed.push(payload.new as ChangeSignal);
+      }).subscribe((status) => {
+        if (!active || version !== connectionVersion) return;
+        if (status === "SUBSCRIBED") { healthy = true; reconnectAttempt = 0; window.clearTimeout(reconnectTimer); reconnectTimer = undefined; void feed.reconcile(); }
+        if (["CHANNEL_ERROR", "TIMED_OUT", "CLOSED"].includes(status)) {
+          healthy = false;
+          if (reconnectTimer === undefined) reconnectTimer = window.setTimeout(() => {
+            reconnectTimer = undefined; void connect().catch(() => { healthy = false; });
+          }, Math.min(30_000, 1_000 * 2 ** reconnectAttempt++));
+        }
+      });
+  };
+  void connect().catch(() => { healthy = false; });
+  void feed.reconcile();
+  const signalRecoveryTimer = window.setInterval(() => {
+    if (document.visibilityState !== "visible") return;
+    void feed.reconcile();
+    if (!healthy && reconnectTimer === undefined) void connect().catch(() => { healthy = false; });
+  }, 60_000);
+
+  // Retain the previous deletion-only recovery when the signal transport is down.
+  const transactionChanges = createTransactionChangeMonitor(token!, () => {
+    invalidateApiCache("/trips");
+    invalidateApiCache("/reports");
+    invalidateReportPageCache();
+    emitAdminRealtime({ kind: "resume" });
+  });
+  const transactionTimer = window.setInterval(() => { if (!healthy && document.visibilityState === "visible") void transactionChanges.check(); }, 15_000);
+
   const onVisible = () => {
+    if (document.visibilityState === "visible") void feed.reconcile();
     if (document.visibilityState === "visible") emitAdminRealtime({ kind: "resume" });
   };
   document.addEventListener("visibilitychange", onVisible);
-  const unsubscribers = ADMIN_REALTIME_TABLES.map((table) =>
-    subscribeToTable(
-      table,
-      (payload) => {
-        invalidateForTable(table, payload);
-        emitAdminRealtime({ kind: "change", payload });
-      },
-      () => {
-        invalidateForTable(table);
-        emitAdminRealtime({ kind: "recovered", table });
-      },
-    ),
-  );
-
   const cleanup = () => {
+    active = false; healthy = false; connectionVersion++;
+    feed.stop(); window.clearInterval(signalRecoveryTimer); window.clearTimeout(reconnectTimer);
+    if (signalChannel) void supabase.removeChannel(signalChannel);
+    transactionChanges.stop();
+    window.clearInterval(transactionTimer);
     document.removeEventListener("visibilitychange", onVisible);
-    unsubscribers.forEach((unsubscribe) => unsubscribe());
   };
   stopAdminRealtime = cleanup;
   return () => {
@@ -270,8 +332,7 @@ function removeChannelAndReconcile(table: string, entry: Entry) {
 }
 
 function createTableChannel(table: string, entry: Entry): RealtimeChannel {
-  let channel: RealtimeChannel;
-  channel = supabase
+  const channel = supabase
     .channel(`report:${table}`)
     .on(
       "postgres_changes",

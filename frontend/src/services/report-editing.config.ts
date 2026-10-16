@@ -580,9 +580,8 @@ export function getReportEditDefinition(
     if (fields[columnKey]) return columnKey === "transmittal_ref" && row?.transmittal_ref_conflict ? null : fields[columnKey];
   }
   if (row && ["dispatch_number", "transaction_number"].includes(columnKey)) {
-    // A trip's dispatch number belongs to the parent trip, not an individual stop.
+    // Stop rows display their own saved identifiers in the live report views.
     if (row.trip_stop_id || row._trip_stop_id) {
-      if (columnKey === "dispatch_number") return tripScalars.dispatch_number;
       return stopScalars[columnKey];
     }
     return tripScalars[columnKey] ?? null;

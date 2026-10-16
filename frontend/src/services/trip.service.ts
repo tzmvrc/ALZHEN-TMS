@@ -1,4 +1,4 @@
-import { apiGetCached, apiPatch, apiPost, invalidateApiCache, type ApiResponse } from "./api.service";
+import { apiDelete, apiGet, apiGetCached, apiPatch, apiPost, invalidateApiCache, type ApiResponse } from "./api.service";
 import { invalidateReportPageCache } from "./report.service";
 
 export function invalidateTripListCache() {
@@ -35,6 +35,26 @@ export async function archiveTransaction(token: string, tripId: string, stopId: 
   const response = await apiPatch<ApiResponse<Record<string, unknown>>>(`/trips/${encodeURIComponent(tripId)}/transaction-archive`, { trip_stop_id: stopId, archived }, token);
   if (!response.success || !response.data) throw new Error(response.message ?? "Unable to archive transaction.");
   invalidateTripRelatedCache();
+  return response.data;
+}
+
+export type TransactionDeletion = { operation_id: string; transaction_id: string; trip_id: string; trip_stop_id: string | null; cleanup_pending: boolean };
+export type TransactionCleanup = { id: string; transaction_id: string; trip_id: string; trip_stop_id: string | null };
+export async function deleteTransaction(token: string, tripId: string, stopId: string | null) {
+  const path = `/trips/${encodeURIComponent(tripId)}${stopId ? `/stops/${encodeURIComponent(stopId)}` : ""}`;
+  const response = await apiDelete<ApiResponse<TransactionDeletion>>(path, token);
+  if (!response.success || !response.data) throw new Error(response.message ?? "Deletion could not be confirmed. Retry the same transaction.");
+  invalidateTripRelatedCache();
+  return response.data;
+}
+export async function fetchTransactionCleanup(token: string) {
+  const response = await apiGet<ApiResponse<TransactionCleanup[]>>("/trips/transaction-cleanup", token);
+  if (!response.success || !response.data) throw new Error(response.message ?? "Unable to load pending cleanup.");
+  return response.data;
+}
+export async function retryTransactionCleanup(token: string, id: string) {
+  const response = await apiPost<ApiResponse<TransactionDeletion>>(`/trips/transaction-cleanup/${encodeURIComponent(id)}/retry`, {}, token);
+  if (!response.success || !response.data) throw new Error(response.message ?? "Image cleanup could not be confirmed.");
   return response.data;
 }
 

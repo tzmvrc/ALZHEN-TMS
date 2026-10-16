@@ -1,3 +1,4 @@
+import { useDeferredRealtimeRefresh } from "../../../components/admin/useDeferredRealtimeRefresh";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   ArrowLeft,
@@ -230,12 +231,12 @@ function TripGallery({
   }, [accessToken, imageRefreshVersion, tripId]);
 
   useEffect(() => subscribeToAdminRealtime((event) => {
-    /* Cached photo lists live for 45s, so drop the cache before re-reading or the
-       new photo would not show up until it expired. */
     const refresh = () => {
       invalidateTripImagesCache(tripId);
+
       setImageRefreshVersion((version) => version + 1);
     };
+    if (event.kind === "batch") { if (event.tables.includes("trip_images")) refresh(); return; }
     if (event.kind === "resume") {
       refresh();
       return;
@@ -653,12 +654,19 @@ export default function TripDetailView({
   const [productPhotoOverrides, setProductPhotoOverrides] = useState<Record<string, string | null>>({});
   const [sidePanel, setSidePanel] = useState<"stops" | "activity">("stops");
   const requestKey = `${accessToken ?? "no-session"}:${tripId}:${retry}`;
-  const realtimeRefreshTimer = useRef<number | null>(null);
+  const realtimeGate = useDeferredRealtimeRefresh(() => { invalidateTripCache(tripId); setRetry((value) => value + 1); }, Boolean(selectedCargoItem || photoProduct || viewProduct));
 
   useEffect(() => subscribeToAdminRealtime((event) => {
+    if (event.kind === "batch") {
+      if (event.tables.some((table) => (RECEIPT_TABLES as readonly string[]).includes(table))) setReceiptTick((value) => value + 1);
+      if (event.tables.some((table) => ["trips", "trip_stops", "trip_line_items", "trip_events", "trip_truck_assignments", "billings", "loading_reports", "unloading_reports", "backloads", "offloads", "customers", "customer_stores", "warehouses", "drivers", "trucks", "trucking_companies"].includes(table))) {
+        realtimeGate.request();
+      }
+      return;
+    }
     if (event.kind === "resume") {
-      invalidateTripCache(tripId);
-      setRetry((value) => value + 1);
+      realtimeGate.request();
+
       return;
     }
     const tripTables = ["trips", "trip_stops", "trip_line_items", "trip_events", "trip_truck_assignments", "billings", "loading_reports", "unloading_reports", "backloads", "offloads"];
@@ -678,19 +686,9 @@ export default function TripDetailView({
         : [next?.trip_id, old?.trip_id].find((value) => typeof value === "string");
       if (relatedId !== tripId) return;
     }
-    /* Events, stops and details are cached (45s for events). Without this the refresh below
-       would hand back the old data and truck updates would look like they lag. */
-    invalidateTripCache(tripId);
-    if (realtimeRefreshTimer.current !== null) window.clearTimeout(realtimeRefreshTimer.current);
-    realtimeRefreshTimer.current = window.setTimeout(() => {
-      realtimeRefreshTimer.current = null;
-      setRetry((value) => value + 1);
-    }, 250);
-  }), [tripId]);
+    realtimeGate.request();
+  }), [tripId, realtimeGate]);
 
-  useEffect(() => () => {
-    if (realtimeRefreshTimer.current !== null) window.clearTimeout(realtimeRefreshTimer.current);
-  }, []);
 
   useEffect(() => {
     if (!accessToken) {

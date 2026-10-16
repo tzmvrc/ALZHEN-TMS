@@ -533,6 +533,11 @@ export default function OverviewView({
       );
     };
     const unsubscribe = subscribeToAdminRealtime((event) => {
+      if (event.kind === "batch") {
+        if (!event.tables.some((table) => ["trips", "trip_stops", "warehouses", "customer_stores", "trip_truck_assignments", "trip_events", "trip_images"].includes(table))) return;
+        if (active) scheduleReload(); else inactiveChanges.current = true;
+        return;
+      }
       if (event.kind === "resume") {
         if (active && inactiveChanges.current) {
           inactiveChanges.current = false;

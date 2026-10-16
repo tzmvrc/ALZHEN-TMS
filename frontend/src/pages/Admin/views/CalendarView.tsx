@@ -32,6 +32,10 @@ export default function CalendarView() {
   }, [accessToken, from, until, refreshVersion]);
 
   useEffect(() => subscribeToAdminRealtime((event) => {
+    if (event.kind === "batch") {
+      if (event.tables.some((table) => ["trips", "trip_events", "trip_stops", "store_calls", "customer_stores", "warehouses"].includes(table))) setRefreshVersion((version) => version + 1);
+      return;
+    }
     if (event.kind === "resume") {
       setRefreshVersion((version) => version + 1);
       return;
@@ -40,11 +44,6 @@ export default function CalendarView() {
     if (["trips", "trip_events", "trip_stops", "store_calls", "customer_stores", "warehouses"].includes(table ?? "")) {
       setRefreshVersion((version) => version + 1);
     }
-  }), []);
-
-  useEffect(() => subscribeToAdminRealtime((event) => {
-    const table = event.kind === "change" ? event.payload.table : event.kind === "recovered" ? event.table : null;
-    if (table === "trips" || table === "trip_events") setRefreshVersion((version) => version + 1);
   }), []);
 
   useEffect(() => {

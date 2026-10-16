@@ -105,6 +105,10 @@ export default function OverviewCalendarCard({
   }, [accessToken, from, until, refreshVersion]);
 
   useEffect(() => subscribeToAdminRealtime((event) => {
+    if (event.kind === "batch") {
+      if (event.tables.some((table) => ["trips", "trip_events", "trip_stops", "store_calls", "customer_stores", "warehouses"].includes(table))) setRefreshVersion((version) => version + 1);
+      return;
+    }
     if (event.kind === "resume") {
       setRefreshVersion((version) => version + 1);
       return;

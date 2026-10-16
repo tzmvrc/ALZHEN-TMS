@@ -6,11 +6,13 @@ export type ApiResponse<T> = {
 
 export class ApiError extends Error {
   readonly status: number;
+  readonly code?: string;
 
-  constructor(message: string, status: number) {
+  constructor(message: string, status: number, code?: string) {
     super(message);
     this.name = "ApiError";
     this.status = status;
+    this.code = code;
   }
 }
 
@@ -213,6 +215,7 @@ async function request<T>(
       throw new ApiError(
         "Something went wrong. Please try again later.",
         response.status,
+        payload?.error?.code,
       );
     }
 
@@ -226,6 +229,12 @@ const responseCache = new Map<string, { expiresAt: number; value: unknown }>();
 const cachedRequests = new Map<string, Promise<unknown>>();
 const cacheRevisions = new Map<string, number>();
 let cacheSessionGeneration = 0;
+
+/** Synchronous navigation reads use the same token-scoped cache as requests. */
+export function getCachedApiResponse<T>(endpoint: string, token?: string, staleForMs = 0): T | null {
+  const entry = responseCache.get(`${token ?? "anon"}:${endpoint}`);
+  return entry && entry.expiresAt + staleForMs > Date.now() ? entry.value as T : null;
+}
 
 export function invalidateApiCache(prefix?: string) {
   const keys = new Set([...responseCache.keys(), ...cachedRequests.keys()]);
@@ -257,6 +266,7 @@ export async function apiGetCached<T>(
   endpoint: string,
   token?: string,
   ttlMs = 5 * 60 * 1000,
+  requestEndpoint = endpoint,
 ): Promise<T> {
   const cacheKey = `${token ?? "anon"}:${endpoint}`;
   const now = Date.now();
@@ -271,12 +281,12 @@ export async function apiGetCached<T>(
 
   const requestRevision = cacheRevisions.get(cacheKey) ?? 0;
   const requestSession = cacheSessionGeneration;
-  const requestPromise = request<T>(endpoint, { method: "GET" }, token)
+  const requestPromise = request<T>(requestEndpoint, { method: "GET" }, token)
     .then((value) => {
       if (requestSession !== cacheSessionGeneration) throw new Error("The session changed while loading data.");
       // Invalidation removes a pending request from the shared map. A response
       // from before an edit must not be returned to a mounted page either.
-      if (requestRevision !== (cacheRevisions.get(cacheKey) ?? 0)) return apiGetCached<T>(endpoint, token, ttlMs);
+      if (requestRevision !== (cacheRevisions.get(cacheKey) ?? 0)) return apiGetCached<T>(endpoint, token, ttlMs, requestEndpoint);
       if (requestRevision === (cacheRevisions.get(cacheKey) ?? 0)) {
         responseCache.set(cacheKey, { expiresAt: Date.now() + ttlMs, value });
       }

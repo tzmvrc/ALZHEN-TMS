@@ -1,4 +1,6 @@
 import express from "express";
+import tableLayoutRoutes from "./routes/table-layout.routes.js";
+import realtimeRoutes from "./routes/realtime.routes.js";
 import cors from "cors";
 import dotenv from "dotenv";
 import healthRoutes from "./routes/health.js";
@@ -31,6 +33,8 @@ app.use("/api", healthRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/reports", reportRoutes);
+app.use("/api/table-layouts", tableLayoutRoutes);
+app.use("/api/realtime", realtimeRoutes);
 app.use("/api/lookups", lookupRoutes);
 app.use("/api/trips", tripRoutes);
 app.use("/api/truckers", truckerRoutes);

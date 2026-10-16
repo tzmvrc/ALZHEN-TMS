@@ -1,12 +1,16 @@
+import { TableSkeleton } from "../../../components/admin/DashboardPrimitives";
+import { useManagementTableColumns } from "../../../components/admin/useManagementTableColumns";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Plus, Search, RefreshCw, Image, Images, LoaderCircle } from "lucide-react";
 import { useAuth } from "../../../context/AuthContext";
 import { tableUi } from "../../../components/admin/dashboardStyles";
-import { apiGet, type ApiResponse } from "../../../services/api.service";
-import { fetchMasterData, saveMasterData, searchWarehouseLocations, type LocationSearchResult, type MasterDataKey, type MasterDataRow } from "../../../services/master-data.service";
+import { apiGetCached, invalidateApiCache, type ApiResponse } from "../../../services/api.service";
+import { fetchMasterData, getCachedMasterData, saveMasterData, searchWarehouseLocations, type LocationSearchResult, type MasterDataKey, type MasterDataRow } from "../../../services/master-data.service";
 import DatabaseExplorerView from "./DatabaseExplorerView";
 import TruckImageManager from "../../../components/admin/TruckImageManager";
 import ProductPhotoManager from "../../../components/admin/ProductPhotoManager";
+import { subscribeToAdminRealtime } from "../../../services/realtime.service";
+import { useDeferredRealtimeRefresh } from "../../../components/admin/useDeferredRealtimeRefresh";
 
 type Field = { key: string; label: string; kind?: "textarea" | "number" | "boolean" | "relation" | "select"; required?: boolean; source?: string; options?: string[] };
 type ActiveCell = { rowId: string; field: string; value: string };
@@ -57,14 +61,16 @@ function LocationSearch({ accessToken, onSelect }: { accessToken: string | null;
 
 export default function MasterDataView() {
   const { accessToken, profile } = useAuth();
+  const initialCache=accessToken?getCachedMasterData(accessToken,"warehouses"):null;
   const [section, setSection] = useState<MasterDataKey | "pictures" | "explorer">("warehouses");
-  const [rows, setRows] = useState<MasterDataRow[]>([]);
+  const [loadedRows, setRows] = useState<MasterDataRow[]>(initialCache?.rows??[]);
+  const [rowScope,setRowScope]=useState(initialCache?`${accessToken}:warehouses`:"");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [totalRows, setTotalRows] = useState(0);
+  const [totalPages, setTotalPages] = useState(initialCache?.pagination.totalPages??1);
+  const [totalRows, setTotalRows] = useState(initialCache?.pagination.total??0);
   const [revision, setRevision] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!initialCache);
   const [error, setError] = useState("");
   const [editing, setEditing] = useState<MasterDataRow | null>(null);
   const [form, setForm] = useState<Record<string, string | boolean>>({});
@@ -78,28 +84,36 @@ export default function MasterDataView() {
   const cellSaves = useRef(new Set<string>());
   const config = resources.find((item) => item.key === section);
   const listConfig = config ?? (section === "pictures" ? resources.find((item) => item.key === "trucks") : undefined);
+  const rows = rowScope===`${accessToken}:${listConfig?.key}` ? loadedRows : [];
+  const realtimeGate = useDeferredRealtimeRefresh(() => setRevision((value) => value + 1), Boolean(activeCell || editing || Object.keys(form).length || saving || imagesTruck || photoProduct));
+  useEffect(() => subscribeToAdminRealtime((event) => {
+    const tables = event.kind === "batch" ? event.tables : event.kind === "change" ? [event.payload.table] : event.kind === "recovered" ? [event.table] : [];
+    if (event.kind === "resume" || tables.some((table) => ["trucks", "truck_images", "warehouses", "customer_stores", "customers", "store_contacts", "products", "trucking_companies"].includes(table))) realtimeGate.request();
+  }), [realtimeGate]);
 
   useEffect(() => {
     if (!accessToken) return;
     let active = true;
     void Promise.all(["customers", "trucking-companies", "stores"].map(async (resource) => {
-      const response = await apiGet<ApiResponse<Array<Record<string, unknown>>>>(`/lookups/${resource}?limit=500`, accessToken);
+      const response = await apiGetCached<ApiResponse<Array<Record<string, unknown>>>>(`/lookups/${resource}?limit=500`, accessToken,60_000);
       if (!response.success || !response.data) return [resource, []] as const;
       return [resource, response.data.map((row) => ({ id: String(row.id), label: [row.code, row.name].filter(Boolean).join(" · ") || String(row.id) }))] as const;
     })).then((values) => { if (active) setRelations(Object.fromEntries(values)); }).catch(() => { if (active) setRelations({}); });
     return () => { active = false; };
-  }, [accessToken]);
+  }, [accessToken, revision]);
 
   useEffect(() => {
     if (!accessToken || !listConfig) return;
     let active = true;
-    void fetchMasterData(accessToken, listConfig.key, search, page).then((result) => { if (active) { setRows(result.rows); setTotalPages(result.pagination.totalPages); setTotalRows(result.pagination.total); setError(""); } })
+    void fetchMasterData(accessToken, listConfig.key, search, page).then((result) => { if (active) { setRows(result.rows); setRowScope(`${accessToken}:${listConfig.key}`); setTotalPages(result.pagination.totalPages); setTotalRows(result.pagination.total); setError(""); } })
       .catch((cause) => { if (active) setError(cause instanceof Error ? cause.message : "Unable to load master data."); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [accessToken, listConfig, page, revision, search]);
 
   const columns = useMemo(() => config ? config.fields.map((field) => field.key) : [], [config]);
+  const tableColumns = useMemo(() => section === "pictures" ? ["Plate number", "Trucking company", "Truck type", "Pictures"].map((title) => ({ key: title.toLowerCase().replaceAll(" ", "-"), title })) : [...(config?.fields ?? []).map((field) => ({ key: field.key, title: field.label })), { key: "actions", title: "Actions", width: 110 }], [section, config]);
+  const { attachViewport, viewportProps, tableStyle, controls: columnControls, hiddenControl, colgroup, headerProps, headerControls } = useManagementTableColumns({ table: `master:${section}`, token: accessToken, profileId: profile?.id, columns: tableColumns, enabled: section !== "explorer" && ["ADMIN", "STAFF"].includes(profile?.role ?? "") });
   const openForm = (row?: MasterDataRow) => {
     setEditing(row ?? null); setFormError("");
     setForm(Object.fromEntries((config?.fields ?? []).map((field) => {
@@ -120,7 +134,7 @@ export default function MasterDataView() {
         payload[field.key] = field.kind === "boolean" ? Boolean(value) : value === "" ? null : field.kind === "number" ? Number(value) : value;
       }
       await saveMasterData(accessToken, config.key, payload, editing?.id);
-      setEditing(null); setRevision((value) => value + 1);
+      setEditing(null); setForm({}); setRevision((value) => value + 1);
     } catch (cause) { setFormError(cause instanceof Error ? cause.message : "Unable to save this record."); }
     finally { setSaving(false); }
   };
@@ -187,18 +201,21 @@ export default function MasterDataView() {
       </div>
       <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2">
         <label className="relative min-w-[200px] flex-1 sm:flex-none sm:w-72"><Search aria-hidden="true" className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input className={tableUi.search} value={search} onChange={(event) => { setLoading(true); setPage(1); setSearch(event.target.value); }} placeholder="Search records" aria-label="Search master data" /></label>
+        {section !== "explorer" && columnControls}
         {config && <button type="button" onClick={() => openForm()} className="inline-flex h-10 items-center gap-2 rounded-full bg-[#ffd43b] px-4 text-sm font-semibold text-[#0b2341] hover:bg-[#f2c200]"><Plus className="h-4 w-4" />Add {config.label.slice(0, -1)}</button>}
-        <button type="button" onClick={() => { setLoading(true); setRevision((value) => value + 1); }} className={tableUi.iconBtn} aria-label="Refresh master data" title="Refresh"><RefreshCw className="h-4 w-4" /></button>
+        <button type="button" onClick={() => { invalidateApiCache(`/master-data/${listConfig?.key}`); invalidateApiCache("/lookups/"); setLoading(true); setRevision((value) => value + 1); }} className={tableUi.iconBtn} aria-label="Refresh master data" title="Refresh"><RefreshCw className="h-4 w-4" /></button>
       </div>
     </header>
+    {error && <div role="alert" className="flex items-center justify-between rounded-lg bg-rose-50 px-4 py-3 text-sm text-rose-700"><span>{error}</span><button type="button" onClick={()=>setRevision(value=>value+1)} className="underline">Retry</button></div>}
     <section className={`${tableUi.shell} overflow-hidden`}>
-    <nav aria-label="Master data sections" className="flex flex-wrap gap-2 border-b border-slate-100 px-4 py-3">{[...resources.map((item) => [item.key, item.label] as const), ["pictures", "Truck pictures"] as const, ...(profile?.role === "ADMIN" ? [["explorer", "Database explorer"] as const] : [])].map(([key, label]) => <button key={key} type="button" aria-pressed={section === key} onClick={() => { setLoading(true); setPage(1); setActiveCell(null); setCellSaveState(null); setSection(key as typeof section); setSearch(""); }} className={`rounded-full px-3 py-2 text-xs font-medium ${section === key ? "bg-[#e6f0f9] text-[#0b2341]" : "text-slate-500 hover:bg-slate-50"}`}>{label}</button>)}</nav>
-    {section === "explorer" ? <div className="p-4"><DatabaseExplorerView /></div> : section === "pictures" ? <div className="overflow-x-auto"><div className="border-b border-slate-100 px-4 py-3 text-sm text-slate-500">Choose a truck to view and manage its private pictures.</div>{error ? <div role="alert" className="p-10 text-center text-sm text-rose-700">{error}</div> : <table className="min-w-full text-left"><thead className={tableUi.thead}><tr>{["Plate number", "Trucking company", "Truck type", "Pictures"].map((label) => <th key={label} className={tableUi.th}>{label}</th>)}</tr></thead><tbody>{loading ? <tr><td colSpan={4} className={tableUi.empty}>Loading trucks…</td></tr> : rows.length === 0 ? <tr><td colSpan={4} className={tableUi.empty}>No trucks found.</td></tr> : rows.map((row) => <tr key={row.id} className={tableUi.row}><td className={tableUi.td}>{cell(row.plate_number)}</td><td className={tableUi.td}>{cell((row.trucking_companies as Record<string, unknown> | null)?.name)}</td><td className={tableUi.td}>{cell(row.truck_type)}</td><td className={tableUi.td}><button type="button" onClick={() => setImagesTruck(row)} className="inline-flex h-8 items-center gap-2 rounded-full border border-slate-200 px-3 text-xs font-medium text-[#0b2341] hover:bg-slate-50"><Images className="h-4 w-4" />Manage pictures</button></td></tr>)}</tbody></table>}{!error && <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 px-4 py-3 text-xs text-slate-500"><span>{totalRows.toLocaleString()} trucks · Page {page} of {totalPages}</span><div className="flex gap-2"><button type="button" disabled={loading || page <= 1} onClick={() => { setLoading(true); setPage((value) => value - 1); }} className={tableUi.pageBtn}>Previous</button><button type="button" disabled={loading || page >= totalPages} onClick={() => { setLoading(true); setPage((value) => value + 1); }} className={tableUi.pageBtn}>Next</button></div></footer>}</div> : <div className="overflow-x-auto">
-      {error ? <div role="alert" className="p-10 text-center text-sm text-rose-700">{error}</div> : <table className="min-w-full text-left"><thead className={tableUi.thead}><tr>{[...(config?.fields ?? []).map((field) => field.label), ""].map((label) => <th key={label} className={tableUi.th}>{label}</th>)}</tr></thead><tbody>
-        {loading ? <tr><td colSpan={(config?.fields.length ?? 0) + 1} className={tableUi.empty}>Loading master data…</td></tr> : rows.length === 0 ? <tr><td colSpan={(config?.fields.length ?? 0) + 1} className={tableUi.empty}>No records found.</td></tr> : rows.map((row) => <tr key={row.id} className={tableUi.row}>{columns.map((column) => renderCell(row, column))}<td className={tableUi.td}><div className="flex items-center gap-1">{config?.key === "trucks" && <button type="button" aria-label={`Manage pictures for ${String(row.plate_number ?? "truck")}`} title="Manage truck pictures" onClick={() => setImagesTruck(row)} className={tableUi.iconBtn}><Image className="h-4 w-4" /></button>}{config?.key === "products" && <button type="button" aria-label={`Manage photo for ${String(row.name ?? "product")}`} title="Manage product photo" onClick={() => setPhotoProduct(row)} className={tableUi.iconBtn}><Image className="h-4 w-4" /></button>}</div></td></tr>)}
+    <nav aria-label="Master data sections" className="flex flex-wrap gap-2 border-b border-slate-100 px-4 py-3">{[...resources.map((item) => [item.key, item.label] as const), ["pictures", "Truck pictures"] as const, ...(profile?.role === "ADMIN" ? [["explorer", "Database explorer"] as const] : [])].map(([key, label]) => <button key={key} type="button" aria-pressed={section === key} onClick={() => { setLoading(true); setPage(1); setActiveCell(null); setCellSaveState(null); setError(""); setSection(key as typeof section); setSearch(""); }} className={`rounded-full px-3 py-2 text-xs font-medium ${section === key ? "bg-[#e6f0f9] text-[#0b2341]" : "text-slate-500 hover:bg-slate-50"}`}>{label}</button>)}</nav>
+    {section === "explorer" ? <div className="p-4"><DatabaseExplorerView /></div> : loading && !rows.length && !error ? <TableSkeleton columns={tableColumns.length} rows={5} /> : section === "pictures" ? <div ref={attachViewport} {...viewportProps} className="overflow-x-auto"><div className="border-b border-slate-100 px-4 py-3 text-sm text-slate-500">Choose a truck to view and manage its private pictures.</div>{error && !rows.length ? null : <table style={tableStyle} className="min-w-full text-left">{colgroup}<thead className={tableUi.thead}><tr>{tableColumns.map((column) => <th key={column.key} {...headerProps(column.key)} className={tableUi.th}>{column.title}{headerControls(column)}</th>)}</tr></thead><tbody>{rows.length === 0 ? <tr><td colSpan={4} className={tableUi.empty}>No trucks found.</td></tr> : rows.map((row) => <tr key={row.id} className={tableUi.row}><td className={tableUi.td}>{cell(row.plate_number)}</td><td className={tableUi.td}>{cell((row.trucking_companies as Record<string, unknown> | null)?.name)}</td><td className={tableUi.td}>{cell(row.truck_type)}</td><td className={tableUi.td}><button type="button" onClick={() => setImagesTruck(row)} className="inline-flex h-8 items-center gap-2 rounded-full border border-slate-200 px-3 text-xs font-medium text-[#0b2341] hover:bg-slate-50"><Images className="h-4 w-4" />Manage pictures</button></td></tr>)}</tbody></table>}{(!error || rows.length>0) && <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 px-4 py-3 text-xs text-slate-500"><span>{totalRows.toLocaleString()} trucks · Page {page} of {totalPages}</span><div className="flex gap-2"><button type="button" disabled={loading || page <= 1} onClick={() => { setLoading(true); setPage((value) => value - 1); }} className={tableUi.pageBtn}>Previous</button><button type="button" disabled={loading || page >= totalPages} onClick={() => { setLoading(true); setPage((value) => value + 1); }} className={tableUi.pageBtn}>Next</button></div></footer>}</div> : <div ref={attachViewport} {...viewportProps} className="overflow-x-auto">
+      {error && !rows.length ? null : <table style={tableStyle} className="min-w-full text-left">{colgroup}<thead className={tableUi.thead}><tr>{tableColumns.map((column) => <th key={column.key} {...headerProps(column.key)} className={tableUi.th}>{column.title}{headerControls(column)}</th>)}</tr></thead><tbody>
+        {rows.length === 0 ? <tr><td colSpan={(config?.fields.length ?? 0) + 1} className={tableUi.empty}>No records found.</td></tr> : rows.map((row) => <tr key={row.id} className={tableUi.row}>{columns.map((column) => renderCell(row, column))}<td className={tableUi.td}><div className="flex items-center gap-1">{config?.key === "trucks" && <button type="button" aria-label={`Manage pictures for ${String(row.plate_number ?? "truck")}`} title="Manage truck pictures" onClick={() => setImagesTruck(row)} className={tableUi.iconBtn}><Image className="h-4 w-4" /></button>}{config?.key === "products" && <button type="button" aria-label={`Manage photo for ${String(row.name ?? "product")}`} title="Manage product photo" onClick={() => setPhotoProduct(row)} className={tableUi.iconBtn}><Image className="h-4 w-4" /></button>}</div></td></tr>)}
       </tbody></table>}
-      {config && !error && <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 px-4 py-3 text-xs text-slate-500"><span>{totalRows.toLocaleString()} records · Page {page} of {totalPages}</span><div className="flex gap-2"><button type="button" disabled={loading || page <= 1} onClick={() => { setLoading(true); setPage((value) => value - 1); }} className={tableUi.pageBtn}>Previous</button><button type="button" disabled={loading || page >= totalPages} onClick={() => { setLoading(true); setPage((value) => value + 1); }} className={tableUi.pageBtn}>Next</button></div></footer>}
+      {config && (!error || rows.length>0) && <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 px-4 py-3 text-xs text-slate-500"><span>{totalRows.toLocaleString()} records · Page {page} of {totalPages}</span><div className="flex gap-2"><button type="button" disabled={loading || page <= 1} onClick={() => { setLoading(true); setPage((value) => value - 1); }} className={tableUi.pageBtn}>Previous</button><button type="button" disabled={loading || page >= totalPages} onClick={() => { setLoading(true); setPage((value) => value + 1); }} className={tableUi.pageBtn}>Next</button></div></footer>}
     </div>}
+    {section !== "explorer" && hiddenControl}
     </section>
     {config && editing !== undefined && (editing || Object.keys(form).length > 0) && <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-slate-900/20 p-4 backdrop-blur-[2px]" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) { setForm({}); setEditing(null); } }}><form onSubmit={(event) => void submit(event)} role="dialog" aria-modal="true" aria-labelledby="master-data-title" className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-5 shadow-xl"><h3 id="master-data-title" className="text-lg font-semibold text-[#0b2341]">{editing ? "Edit" : "Add"} {config.label.slice(0, -1)}</h3>{(config.key === "warehouses" || config.key === "stores") && <LocationSearch accessToken={accessToken} onSelect={selectRecordLocation} />}<div className="mt-4 grid gap-3 sm:grid-cols-2">{config.fields.map((field) => <label key={field.key} className={`space-y-1 text-xs font-medium text-slate-600 ${field.kind === "textarea" ? "sm:col-span-2" : ""}`}>{field.label}{field.kind === "boolean" ? <input type="checkbox" checked={Boolean(form[field.key])} onChange={(event) => setForm((current) => ({ ...current, [field.key]: event.target.checked }))} className="ml-2" /> : field.kind === "relation" ? <select required={field.required} value={String(form[field.key] ?? "")} onChange={(event) => setForm((current) => ({ ...current, [field.key]: event.target.value }))} className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm"><option value="">Choose {field.label.toLowerCase()}</option>{(relations[field.source ?? ""] ?? []).map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select> : field.kind === "select" ? <select required={field.required} value={String(form[field.key] ?? "")} onChange={(event) => setForm((current) => ({ ...current, [field.key]: event.target.value }))} className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm"><option value="">Choose {field.label.toLowerCase()}</option>{(field.options ?? []).map((option) => <option key={option} value={option}>{option}</option>)}</select> : field.kind === "textarea" ? <textarea required={field.required} value={String(form[field.key] ?? "")} onChange={(event) => setForm((current) => ({ ...current, [field.key]: event.target.value }))} className="min-h-24 w-full rounded-lg border border-slate-200 p-2 text-sm" /> : <input required={field.required} type={field.kind === "number" ? "number" : "text"} step={field.key === "latitude" || field.key === "longitude" ? "any" : undefined} value={String(form[field.key] ?? "")} onChange={(event) => setForm((current) => ({ ...current, [field.key]: event.target.value }))} className="h-10 w-full rounded-lg border border-slate-200 px-3 text-sm" />}</label>)}</div>{formError && <p role="alert" className="mt-3 text-sm text-rose-700">{formError}</p>}<div className="mt-5 flex justify-end gap-2"><button type="button" disabled={saving} onClick={() => { setForm({}); setEditing(null); }} className="rounded-full border border-slate-200 px-4 py-2 text-sm">Cancel</button><button disabled={saving} className="rounded-full bg-[#ffd43b] px-4 py-2 text-sm font-semibold text-[#0b2341] disabled:opacity-50">{saving ? "Saving…" : "Save"}</button></div></form></div>}
     {accessToken && imagesTruck && <TruckImageManager token={accessToken} truckId={imagesTruck.id} truckLabel={String(imagesTruck.plate_number ?? "Truck")} onClose={() => setImagesTruck(null)} />}

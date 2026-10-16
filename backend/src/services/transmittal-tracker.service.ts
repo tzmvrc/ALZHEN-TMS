@@ -1,5 +1,7 @@
+import { parseTrackerPageQuery, trackerPageRequest } from "./tracker-pagination.js";
 import { randomUUID } from "node:crypto";
 import { supabaseAdmin } from "../config/supabase.js";
+import { consumeReportReadRows, reportReadPageSize } from "./report-read-budget.js";
 import { ApiError } from "../utils/api-response.js";
 import type { FlexActor } from "../types/flexible-table.types.js";
 import { assertFlexAccess, calculateFlexAccess } from "./flexible-table.authorization.js";
@@ -170,14 +172,16 @@ async function getTrackerAccess(actor: FlexActor, level: "view" | "edit") {
 
 async function readPaged<T>(tableName: string, select: string, configure?: (builder: any) => any): Promise<T[]> {
   const rows: T[] = [];
-  for (let from = 0; ; from += BATCH_SIZE) {
+  const pageSize = reportReadPageSize(BATCH_SIZE);
+  for (let from = 0; ; from += pageSize) {
     let builder = supabaseAdmin.from(tableName).select(select);
     if (configure) builder = configure(builder);
-    const { data, error } = await builder.range(from, from + BATCH_SIZE - 1);
+    const { data, error } = await builder.range(from, from + pageSize - 1);
     if (error) failDb(`${tableName} source query`, error);
     const batch = (data ?? []) as T[];
+    consumeReportReadRows(tableName, batch.length);
     rows.push(...batch);
-    if (batch.length < BATCH_SIZE) break;
+    if (batch.length < pageSize) break;
   }
   return rows;
 }
@@ -191,10 +195,10 @@ async function readByIds<T>(tableName: string, select: string, column: string, i
   return rows;
 }
 
-async function readSourceData() {
+async function readSourceData(stopIdsInput?: string[]) {
   // Stops define tracker cardinality. Every enrichment collection is fetched
   // separately and grouped in logic, avoiding line-item/assignment cross joins.
-  const stops = await readPaged<TransmittalStopRecord>("trip_stops", "id, trip_id, stop_sequence, customer_id, store_id, delivery_status, finish_unloading_time, dr_number, dr_version, quantity, total_cbm, updated_at", (query) => query.order("trip_id", { ascending: true }).order("stop_sequence", { ascending: true }).order("id", { ascending: true }));
+  const stops = stopIdsInput?.length === 0 ? [] : await readPaged<TransmittalStopRecord>("trip_stops", "id, trip_id, stop_sequence, customer_id, store_id, delivery_status, finish_unloading_time, dr_number, dr_version, quantity, total_cbm, updated_at", (query) => (stopIdsInput ? query.in("id",stopIdsInput) : query).order("trip_id", { ascending: true }).order("stop_sequence", { ascending: true }).order("id", { ascending: true }));
   const tripIds = [...new Set(stops.map((stop) => stop.trip_id).filter(Boolean))];
   const storeIds = [...new Set(stops.map((stop) => stop.store_id).filter((id): id is string => Boolean(id)))];
   const customerIds = [...new Set(stops.map((stop) => stop.customer_id).filter((id): id is string => Boolean(id)))];
@@ -235,10 +239,22 @@ async function readSourceRowsAndCells(tableId: string, stopIds: string[]) {
   return { rows, cells };
 }
 
-export async function getTracker(actor: FlexActor, searchInput: unknown, requestId?: string) {
+export async function getTracker(actor: FlexActor, searchInput: unknown, requestId?: string, pageInput?: Record<string,unknown>) {
   const { table, access } = await getTrackerAccess(actor, "view");
+  const pageOptions = pageInput ? parseTrackerPageQuery(pageInput) : undefined;
+  let pageIds: string[] | undefined, total = 0;
+  if (pageOptions) {
+    const result = await trackerPageRequest(supabaseAdmin,pageOptions);
+    if (result.error) {
+      if (result.error.code==="PGRST103") throw new ApiError("This page no longer exists. Select Previous or refresh the tracker.",409,"TRACKER_PAGE_OUT_OF_RANGE");
+      if (["42P01","PGRST205"].includes(result.error.code)) throw new ApiError("Tracker pagination migration is pending approval/application.",503,"TRACKER_PAGINATION_NOT_READY");
+      failDb("page query",result.error);
+    }
+    const selectedIds: string[]=(result.data ?? []).map((row: {trip_stop_id:string})=>row.trip_stop_id); pageIds=selectedIds; total=result.count ?? 0;
+    if(new Set(selectedIds).size!==selectedIds.length) throw new ApiError("Tracker page returned duplicate transaction identities.",409,"TRACKER_PAGE_IDENTITY_CONFLICT");
+  }
   const [source, columnResult] = await Promise.all([
-    readSourceData(),
+    readSourceData(pageIds),
     supabaseAdmin.from("flex_columns").select(COLUMN_FIELDS).eq("table_id", table.id).eq("is_archived", false),
   ]);
   if (columnResult.error) failDb("column load", columnResult.error);
@@ -270,9 +286,11 @@ export async function getTracker(actor: FlexActor, searchInput: unknown, request
     cellsByStop.set(parent.source_entity_id, record);
   }
   const eligible = { ...source, stops: source.stops.filter((stop) => isTransmittalEligible(stop, rowByStop.has(stop.id))) };
-  const rows = filterTransmittalTrackerRows(buildTransmittalTrackerRows(eligible, cellsByStop), searchInput === undefined ? "" : String(searchInput));
+  const built = buildTransmittalTrackerRows(eligible, cellsByStop);
+  const byId = new Map(built.map(row=>[row.trip_stop_id,row]));
+  const rows = pageIds ? pageIds.flatMap(id=>byId.has(id)?[byId.get(id)!]:[]) : filterTransmittalTrackerRows(built,searchInput === undefined ? "" : String(searchInput));
   const requestIdValue = requestId && requestId.length <= 100 ? requestId : undefined;
-  return { table_id: table.id, access, columns, rows, request_id: requestIdValue };
+  return { table_id: table.id, access, columns, rows, request_id: requestIdValue, ...(pageOptions ? {pagination:{page:pageOptions.page,limit:pageOptions.limit,total,totalPages:Math.max(1,Math.ceil(total/pageOptions.limit))}} : {}) };
 }
 
 async function getOrCreateSourceRow(table: DbRecord, actorId: string, stopId: string, requestId?: string) {

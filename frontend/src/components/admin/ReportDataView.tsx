@@ -1,5 +1,9 @@
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ClipboardEvent as ReactClipboardEvent, type CSSProperties, type FormEvent, type MouseEvent, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
+import { useSharedTableWidths } from "./useSharedTableWidths";
+import ColumnFinder from "./ColumnFinder";
+import HiddenColumnsControl from "./HiddenColumnsControl";
+import TransactionCleanupNotice from "./TransactionCleanupNotice";
 import {
   Building2,
   CalendarDays,
@@ -20,7 +24,6 @@ import {
   X,
   Download,
   GripVertical,
-  EyeOff,
   EllipsisVertical,
 } from "lucide-react";
 import type ExcelJS from "exceljs";
@@ -71,7 +74,7 @@ import {
   updateTripRecord,
   updateTripStopRecord,
   saveTransactionReference,
-  archiveTransaction,
+  deleteTransaction,
 } from "../../services/trip.service";
 import SearchableRelationshipEditor from "./SearchableRelationshipEditor";
 import {
@@ -398,15 +401,13 @@ const ReportSelectionToolbar = memo(function ReportSelectionToolbar({
   rows,
   columns,
   onEdit,
-  onArchive,
-  archiveHistory,
+  onDeleteTransaction,
 }: {
   reportKey: ReportKey;
   rows: ReportRow[];
   columns: ReportColumn[];
   onEdit: () => void;
-  onArchive?: (row: ReportRow) => void;
-  archiveHistory?: boolean;
+  onDeleteTransaction?: (row: ReportRow) => void;
 }) {
   useSyncExternalStore(reportSelection.subscribe, reportSelection.revision, reportSelection.revision);
   const keys = reportSelection.getKeys(reportKey);
@@ -414,7 +415,7 @@ const ReportSelectionToolbar = memo(function ReportSelectionToolbar({
   const row = rows.find((candidate) => getReportRowKey(reportKey, candidate) === keys[0]);
   const hasEditableFields = Boolean(row && columns.some((column) => getEditableCellTarget(row, column.key, reportKey)));
   const canEdit = keys.length === 1 && Boolean(row) && hasEditableFields;
-  return <><ReportRowActionButton action="edit" disabled={!canEdit} onClick={onEdit} />{onArchive && <ReportRowActionButton action={archiveHistory ? "restore" : "delete"} disabled={keys.length !== 1 || !row} label={archiveHistory ? "Restore selected transaction" : "Archive selected transaction"} onClick={() => { if (row) onArchive(row); }} />}</>;
+  return <><ReportRowActionButton action="edit" disabled={!canEdit} onClick={onEdit} />{onDeleteTransaction && <ReportRowActionButton action="delete" disabled={keys.length !== 1 || !row} label="Permanently delete selected transaction" onClick={() => { if (row) onDeleteTransaction(row); }} />}</>;
 });
 
 function rowText(row: ReportRow, ...keys: string[]): string {
@@ -986,8 +987,10 @@ export default function ReportDataView({
   }, []);
   const [viewMode, setViewMode] = useState<"visual" | "table">("table");
   const [columns, setColumns] = useState<ReportColumn[]>([]);
+  const sharedWidths = useSharedTableWidths(transactionView ? "trips" : `report:${reportKey}`, accessToken, ["ADMIN", "STAFF"].includes(profile?.role ?? ""));
+  const saveSharedColumnWidth = sharedWidths.save;
   const columnLayoutStorageKey = `alzhen:report-column-layout:${profile?.id ?? "user"}:${reportKey}`;
-  const [columnLayout, setColumnLayout] = useState<ReportColumnLayout>(() =>
+  const [localColumnLayout, setColumnLayout] = useState<ReportColumnLayout>(() =>
     typeof window === "undefined" ? { order: [], hidden: [] } : readReportColumnLayout(`alzhen:report-column-layout:${profile?.id ?? "user"}:${initialReport}`),
   );
   const cellFormatStorageKey = `alzhen:report-cell-format:${profile?.id ?? "user"}:${reportKey}`;
@@ -997,6 +1000,7 @@ export default function ReportDataView({
   const [cellSelection, setCellSelection] = useState<CellSelection | null>(null);
   const [draggedColumnKey, setDraggedColumnKey] = useState<string | null>(null);
   const [columnResize, setColumnResize] = useState<{ key: string; startX: number; startWidth: number } | null>(null);
+  const columnLayout = useMemo(() => ({ ...localColumnLayout, widths: columnResize ? localColumnLayout.widths : { ...(sharedWidths.loaded ? {} : localColumnLayout.widths), ...sharedWidths.widths } }), [localColumnLayout, columnResize, sharedWidths.widths, sharedWidths.loaded]);
   const [fillGesture, setFillGesture] = useState<FillGesture | null>(null);
   const fillGestureRef = useRef<FillGesture | null>(null);
   const [rows, setRows] = useState<ReportRow[]>([]);
@@ -1011,14 +1015,17 @@ export default function ReportDataView({
     if (!columnResize) return;
     const previousUserSelect = document.body.style.userSelect;
     document.body.style.userSelect = "none";
+    let latestWidth = columnResize.startWidth;
     const move = (event: PointerEvent) => {
       const width = Math.max(100, Math.min(800, columnResize.startWidth + event.clientX - columnResize.startX));
+      latestWidth = width;
       setColumnLayout((current) => {
         const next = { ...current, widths: { ...(current.widths ?? {}), [columnResize.key]: width } };
         return next;
       });
     };
     const finish = () => {
+      if (latestWidth !== columnResize.startWidth) void saveSharedColumnWidth(columnResize.key, latestWidth);
       setColumnLayout((current) => {
         try { window.localStorage.setItem(columnLayoutStorageKey, JSON.stringify(current)); } catch { /* Widths remain usable for this session. */ }
         return current;
@@ -1034,7 +1041,7 @@ export default function ReportDataView({
       window.removeEventListener("pointerup", finish);
       window.removeEventListener("pointercancel", finish);
     };
-  }, [columnLayoutStorageKey, columnResize]);
+  }, [columnLayoutStorageKey, columnResize, saveSharedColumnWidth]);
   useEffect(() => {
     if (!openColumnMenu && !editingColumnColor) return;
     const closeOnEscape = (event: KeyboardEvent) => {
@@ -1058,11 +1065,10 @@ export default function ReportDataView({
   useEffect(() => {
     if (transactionView && editModalOpen) tripEditHeading.current?.focus();
   }, [transactionView, editModalOpen, tripEditStep]);
-  const [archiveHistory, setArchiveHistory] = useState(false);
-  const [archiveTarget, setArchiveTarget] = useState<ReportRow | null>(null);
-  const [archiveBusy, setArchiveBusy] = useState(false);
-  const [archiveError, setArchiveError] = useState("");
-  const archiveRequest = useRef(false);
+  const [deleteTarget, setDeleteTarget] = useState<ReportRow | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+  const deleteRequest = useRef(false);
   const [pagination, setPagination] = useState<Pagination | null>(null);
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
@@ -1070,7 +1076,7 @@ export default function ReportDataView({
   const [appliedFilters, setAppliedFilters] = useState<Record<string, string>>(
     {},
   );
-  const queryFilters = useMemo(() => transactionView ? { ...appliedFilters, active_transactions: "true", archive_scope: archiveHistory ? "archived" : "active" } : ongoingOnly ? { ...appliedFilters, ongoing_only: "true" } : appliedFilters, [appliedFilters, ongoingOnly, transactionView, archiveHistory]);
+  const queryFilters = useMemo(() => transactionView ? { ...appliedFilters, active_transactions: "true", archive_scope: "active" } : ongoingOnly ? { ...appliedFilters, ongoing_only: "true" } : appliedFilters, [appliedFilters, ongoingOnly, transactionView]);
   const [filtersExpanded, setFiltersExpanded] = useState(false);
   const [sortBy, setSortBy] = useState(getSortableFields(initialReport)[0]);
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
@@ -1250,6 +1256,9 @@ export default function ReportDataView({
   const handledNotificationTarget = useRef<string | null>(null);
   const inFlightReportQueries = useRef(new Map<string, number>());
   const realtimeRefreshDirty = useRef(false);
+  const dropdownRefreshPending = useRef(false);
+  const activeReportEdit = useRef(false);
+  activeReportEdit.current = Boolean(editingCell || editModalOpen);
   const realtimeRefreshQueuedFor = useRef<string | null>(null);
   const realtimeRefreshTimer = useRef<number | null>(null);
   const realtimeRefreshMaxTimer = useRef<number | null>(null);
@@ -1348,6 +1357,7 @@ export default function ReportDataView({
     }
     const targetSnapshot = snapshotKeyRef.current;
     if (
+      activeReportEdit.current ||
       cellSaveInFlight.current ||
       (inFlightReportQueries.current.get(targetSnapshot) ?? 0) > 0 ||
       realtimeRefreshQueuedFor.current === targetSnapshot
@@ -1356,6 +1366,7 @@ export default function ReportDataView({
       return;
     }
     realtimeRefreshQueuedFor.current = targetSnapshot;
+    if (dropdownRefreshPending.current) { dropdownRefreshPending.current = false; void reloadDropdownOptions().catch(() => {}); }
     invalidateReportData(reportKeyRef.current);
     setRetryVersion((version) => version + 1);
   };
@@ -1370,6 +1381,12 @@ export default function ReportDataView({
   };
   const scheduleRealtimeRefreshRef = useRef(scheduleRealtimeRefresh);
   scheduleRealtimeRefreshRef.current = scheduleRealtimeRefresh;
+  useEffect(() => {
+    if (!editingCell && !editModalOpen && realtimeRefreshDirty.current) {
+      realtimeRefreshDirty.current = false;
+      scheduleRealtimeRefreshRef.current();
+    }
+  }, [editingCell, editModalOpen]);
 
   useEffect(() => {
     setReportKey(initialReport);
@@ -1471,6 +1488,10 @@ export default function ReportDataView({
           viewIsActive: active,
         });
         if (!active) return;
+        if (activeReportEdit.current && loadedSnapshotKeyRef.current === snapshotKey) {
+          realtimeRefreshDirty.current = true;
+          return;
+        }
         const diagnosticTarget = diagnosticEditTarget.current;
         if (import.meta.env.DEV && diagnosticTarget?.reportKey === reportKey && diagnosticTarget.tripId) {
           const matchingTripRows = result.rows.filter((row) => row.trip_id === diagnosticTarget.tripId);
@@ -1588,6 +1609,11 @@ export default function ReportDataView({
     if (!accessToken) return;
     const reportTables = REPORT_REALTIME_TABLES[reportKey];
     const unsubscribe = subscribeToAdminRealtime((event) => {
+      if (event.kind === "batch") {
+        if (event.tables.includes("tms_dropdown_options")) dropdownRefreshPending.current = true;
+        if (event.tables.some((table) => reportTables.includes(table) || table === "tms_dropdown_options" || table === "transaction_deletion_jobs")) scheduleRealtimeRefreshRef.current();
+        return;
+      }
       if (event.kind === "resume") {
         scheduleRealtimeRefreshRef.current();
       } else if (event.kind === "recovered") {
@@ -2028,18 +2054,18 @@ export default function ReportDataView({
     event.clipboardData.setData("text/plain", text);
   }
 
-  async function confirmTransactionArchive() {
-    if (!archiveTarget || !accessToken || archiveRequest.current) return;
-    if (cellSaveInFlight.current) { setArchiveError("Wait for the current cell save to finish, then retry."); return; }
-    const tripId = archiveTarget.trip_id;
-    const stopId = archiveTarget.trip_stop_id ?? archiveTarget._trip_stop_id;
-    if (typeof tripId !== "string" || (stopId != null && typeof stopId !== "string")) { setArchiveError("This row is missing its transaction identity."); return; }
-    archiveRequest.current = true; setArchiveBusy(true); setArchiveError("");
+  async function confirmTransactionDeletion() {
+    if (!deleteTarget || !accessToken || deleteRequest.current) return;
+    if (cellSaveInFlight.current) { setDeleteError("Wait for the current cell save to finish, then retry."); return; }
+    const tripId = deleteTarget.trip_id;
+    const stopId = deleteTarget.trip_stop_id ?? deleteTarget._trip_stop_id;
+    if (typeof tripId !== "string" || (stopId != null && typeof stopId !== "string")) { setDeleteError("This row is missing its transaction identity."); return; }
+    deleteRequest.current = true; setDeleteBusy(true); setDeleteError("");
     try {
-      await archiveTransaction(accessToken, tripId, typeof stopId === "string" ? stopId : null, !archiveHistory);
-      setArchiveTarget(null); reportSelection.clear(reportKey); setRetryVersion((current) => current + 1);
-    } catch (cause) { setArchiveError(cause instanceof Error ? cause.message : "Unable to save archive status."); }
-    finally { archiveRequest.current = false; setArchiveBusy(false); }
+      await deleteTransaction(accessToken, tripId, typeof stopId === "string" ? stopId : null);
+      setDeleteTarget(null); reportSelection.clear(reportKey); setRetryVersion((current) => current + 1);
+    } catch (cause) { setDeleteError(cause instanceof Error ? cause.message : "Deletion could not be confirmed. Retry this same transaction."); }
+    finally { deleteRequest.current = false; setDeleteBusy(false); }
   }
 
   function openSelectedRowEditor() {
@@ -2777,6 +2803,7 @@ export default function ReportDataView({
 
   return (
     <div className="space-y-4">
+      {sharedWidths.feedback}
       <div className={`${tableUi.toolbar} flex-wrap items-center justify-between gap-3`}>
         {pageTitle && (
           <div className="min-w-0 flex-1 basis-64">
@@ -2785,6 +2812,7 @@ export default function ReportDataView({
           </div>
         )}
         {toolbarLeading}
+        <ColumnFinder columns={columns.filter((column) => !(transactionView && column.key === "warehouse_code")).map((column) => ({ ...column, hidden: hiddenColumnKeys.has(column.key), index: renderedGridColumns.findIndex((item) => item.key === column.key) }))} viewport={tableViewportRef} getHeader={(key) => headerCellRefs.current.get(key)} onReveal={restoreReportColumn} />
         <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2 lg:flex-[1_1_36rem] lg:flex-nowrap">
           <form onSubmit={submitSearch} className="flex min-w-0 w-full gap-2 sm:w-auto">
             <label className="relative min-w-0 flex-1 sm:w-64 lg:flex-none" htmlFor="report-search">
@@ -2821,10 +2849,8 @@ export default function ReportDataView({
             reportKey={reportKey}
             rows={displayedRows}
             columns={columns}
-            archiveHistory={archiveHistory}
-            onArchive={transactionView ? (row) => { setArchiveTarget(row); setArchiveError(""); } : undefined}
+            onDeleteTransaction={transactionView ? (row) => { setDeleteTarget(row); setDeleteError(""); } : undefined}
             onEdit={openSelectedRowEditor} />
-          {transactionView && <button type="button" aria-pressed={archiveHistory} onClick={() => { setArchiveHistory((current) => !current); setPage(1); reportSelection.clear(reportKey); }} className="rounded-full border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50">{archiveHistory ? "Back to active transactions" : "Archived transactions"}</button>}
         </div>
         <div className="flex min-w-0 flex-wrap items-center justify-end gap-2 lg:flex-none">
           {viewMode === "visual" && (
@@ -2981,13 +3007,14 @@ export default function ReportDataView({
         </div>
       )}
 
-      {archiveTarget && <div className="fixed inset-0 z-[2100] flex items-center justify-center bg-slate-900/30 p-4 backdrop-blur-sm">
-        <section role="alertdialog" aria-modal="true" aria-labelledby="transaction-archive-title" aria-describedby="transaction-archive-description" className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
-          <h2 id="transaction-archive-title" className="text-lg font-semibold text-[#0b2341]">{archiveHistory ? "Restore transaction?" : "Archive transaction?"}</h2>
-          <p className="mt-2 text-sm font-semibold text-slate-700">{rowText(archiveTarget, "dispatch_number", "transaction_number", "trip_number")} · {rowText(archiveTarget, "store_name", "customer_name")}</p>
-          <p id="transaction-archive-description" className="mt-3 text-sm text-slate-600">{archiveHistory ? "This transaction will return to the active Trips list." : "This delivery transaction will be hidden from active Trips and new report choices. Its products, Offload reports, POD, receipts and Transmittal history remain stored. Sibling transactions remain active."}</p>
-          {archiveError && <p role="alert" className="mt-3 text-sm text-rose-700">{archiveError}</p>}
-          <footer className="mt-5 flex justify-end gap-2"><button type="button" disabled={archiveBusy} onClick={() => setArchiveTarget(null)} className="rounded-full px-4 py-2 text-sm text-slate-600 disabled:opacity-50">Cancel</button><button type="button" disabled={archiveBusy} onClick={() => void confirmTransactionArchive()} className="rounded-full bg-[#0b2341] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{archiveBusy ? "Saving…" : archiveHistory ? "Restore transaction" : "Archive transaction"}</button></footer>
+      {transactionView && accessToken && <TransactionCleanupNotice key={accessToken} token={accessToken} version={retryVersion} />}
+      {deleteTarget && <div className="fixed inset-0 z-[2100] flex items-center justify-center bg-slate-900/30 p-4 backdrop-blur-sm">
+        <section role="alertdialog" aria-modal="true" aria-labelledby="transaction-delete-title" aria-describedby="transaction-delete-description" className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+          <h2 id="transaction-delete-title" className="text-lg font-semibold text-[#0b2341]">Permanently delete transaction?</h2>
+          <p className="mt-2 text-sm font-semibold text-slate-700">{rowText(deleteTarget, "transaction_dr_number", "dr_number", "dispatch_number", "transaction_number")} · {rowText(deleteTarget, "store_name", "customer_name")}</p>
+          <p id="transaction-delete-description" className="mt-3 text-sm text-slate-600">This permanently deletes this transaction, its exclusively owned reports, items and eligible images. Sibling transactions and shared assignments remain. Protected history or financial records block deletion. Image cleanup may remain pending and can be retried. This cannot be undone.</p>
+          {deleteError && <p role="alert" className="mt-3 text-sm text-rose-700">{deleteError}</p>}
+          <footer className="mt-5 flex justify-end gap-2"><button type="button" disabled={deleteBusy} onClick={() => setDeleteTarget(null)} className="rounded-full px-4 py-2 text-sm text-slate-600 disabled:opacity-50">Cancel</button><button type="button" disabled={deleteBusy} onClick={() => void confirmTransactionDeletion()} className="rounded-full bg-[#0b2341] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{deleteBusy ? "Saving…" : "Permanently delete"}</button></footer>
         </section>
       </div>}
       {editModalOpen && editModalRecord && (
@@ -3204,7 +3231,7 @@ export default function ReportDataView({
                             <EllipsisVertical aria-hidden="true" className="h-4 w-4" />
                           </button>
                         </div>
-                        <span role="separator" aria-label={`Resize ${column.title} column`} aria-orientation="vertical" onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); setColumnResize({ key: column.key, startX: event.clientX, startWidth: headerCellRefs.current.get(column.key)?.getBoundingClientRect().width ?? columnWidth }); }} className="absolute right-0 top-0 z-[60] h-full w-1.5 cursor-col-resize touch-none hover:bg-blue-400/60" />
+                        <span role="separator" aria-label={`Resize ${column.title} column`} aria-orientation="vertical" onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); setColumnLayout((current) => ({ ...current, widths: { ...(sharedWidths.loaded ? {} : current.widths), ...sharedWidths.widths } })); setColumnResize({ key: column.key, startX: event.clientX, startWidth: headerCellRefs.current.get(column.key)?.getBoundingClientRect().width ?? columnWidth }); }} className="absolute right-0 top-0 z-[60] h-full w-1.5 cursor-col-resize touch-none hover:bg-blue-400/60" />
                       </th>
                       );
                     })}
@@ -3549,16 +3576,7 @@ export default function ReportDataView({
               </table>
             )}
           </div>
-          {hiddenColumns.length > 0 && (
-            <div aria-label="Hidden report columns" className="flex flex-wrap items-center gap-2 border-t border-slate-100 bg-slate-50/70 px-4 py-2.5">
-              <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Hidden columns</span>
-              {hiddenColumns.map((column) => (
-                <button key={column.key} type="button" title={`Restore ${column.title} column`} onClick={() => restoreReportColumn(column.key)} className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs text-slate-600 hover:border-blue-300 hover:text-[#0b2341]">
-                  <EyeOff aria-hidden="true" className="h-3 w-3" />{column.title}<span aria-hidden="true" className="text-slate-400">· Restore</span>
-                </button>
-              ))}
-            </div>
-          )}
+          <HiddenColumnsControl columns={hiddenColumns} onRestore={restoreReportColumn} onRestoreAll={() => saveColumnLayout({ ...columnLayout, order: layoutColumnKeys, hidden: [] })} />
           <footer className={tableUi.footer}>
             <span>
               {pagination

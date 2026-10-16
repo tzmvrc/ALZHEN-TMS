@@ -138,7 +138,7 @@ export default function ReceiptReviewCard({
     let timer: number | null = null;
     const unsubscribe = subscribeToAdminRealtime((event) => {
       const tables: readonly string[] = RECEIPT_TABLES;
-      if (event.kind === "recovered" ? !tables.includes(event.table) : event.kind !== "resume" && (
+      if (event.kind === "batch" ? !event.tables.some(table=>tables.includes(table)) : event.kind === "recovered" ? !tables.includes(event.table) : event.kind !== "resume" && (
         !tables.includes(event.payload.table) ||
         ![event.payload.new?.trip_id, event.payload.old?.trip_id].includes(tripId)
       )) return;

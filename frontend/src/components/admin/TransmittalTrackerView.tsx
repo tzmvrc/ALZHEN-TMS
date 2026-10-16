@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, ClipboardEvent as ReactClipboardEvent, MouseEvent } from "react";
-import { ArrowDown, ArrowUp, ArrowUpDown, Download, EllipsisVertical, EyeOff, FileSpreadsheet, GripVertical, LoaderCircle, Printer, Search, X } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, Download, EllipsisVertical, FileSpreadsheet, GripVertical, LoaderCircle, Printer, Search, X } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import companyLogo from "../../assets/logo.png";
 import { ApiError } from "../../services/api.service";
 import { addDropdownOption, editDropdownOption, fetchDropdownOptions, type DropdownOption } from "../../services/dropdown-option.service";
 import { subscribeToAdminRealtime, TRANSMITTAL_TRACKER_REALTIME_TABLES } from "../../services/realtime.service";
-import { fetchTransmittalTracker, initializeTransmittalTracker, invalidateTransmittalTrackerCache, saveTransmittalTrackerCell, type TransmittalTrackerResponse, type TransmittalTrackerRow } from "../../services/transmittal-tracker.service";
+import { useDeferredRealtimeRefresh } from "./useDeferredRealtimeRefresh";
+import { fetchTransmittalTracker, getCachedTransmittalTracker, initializeTransmittalTracker, invalidateTransmittalTrackerCache, saveTransmittalTrackerCell, fetchTrackerExportRows, fetchTrackerPage, TRACKER_PAGINATION_ENABLED, type TrackerPageOptions, type TransmittalTrackerResponse, type TransmittalTrackerRow } from "../../services/transmittal-tracker.service";
 import { projectTrackerExportRows, projectTransmittalSheetRows, reconcileTrackerRows } from "../../services/transmittal-tracker-export.logic";
 import ReportDropdownEditor, { type ReportDropdownChoice } from "./ReportDropdownEditor";
 import SearchableRelationshipEditor from "./SearchableRelationshipEditor";
@@ -21,6 +22,12 @@ import {
 } from "./ReportSpreadsheetShared";
 import { REPORT_GRID_BODY_CELL_CLASS, REPORT_GRID_HEADER_CELL_CLASS, REPORT_GRID_ROW_CLASS, REPORT_GRID_VIEWPORT_CLASS, chooseAutomaticPinSide, expandSpreadsheetRange, parseSpreadsheetClipboard, readReportCellFormats, reportCellFormatKey, reorderColumnKeys, writeReportCellFormats, type ReportCellFormat } from "./ReportSpreadsheetUtils";
 import { tableUi } from "./dashboardStyles";
+import { TableSkeleton } from "./DashboardPrimitives";
+import { useSharedTableWidths } from "./useSharedTableWidths";
+import ColumnFinder from "./ColumnFinder";
+import HiddenColumnsControl from "./HiddenColumnsControl";
+
+const LEGACY_TRACKER_PAGE_OPTIONS = {};
 
 type EditableField = "warehouse_code_override" | "delivered_to_override" | "plate_number_override" | "delivery_receipt_no_override" | "sales_order_no_override" | "transmittal_ref" | "date_created_override" | "tracker_status" | "lbc_waybill_no" | "lbc_shipping_date" | "tracker_remarks" | "loading_date_override" | "delivery_date_override";
 type TrackerColumn = { key: keyof TransmittalTrackerRow; title: string; field: EditableField; editor: "text" | "date" | "dropdown" | "relationship"; relationshipKind?: "warehouses" | "stores" | "trucks"; relationshipValueField?: string; minWidth: number };
@@ -146,17 +153,27 @@ async function loadExcelJs() {
 export default function TransmittalTrackerView() {
   const { accessToken, profile, user } = useAuth();
   const isAdmin = profile?.role === "ADMIN";
-  const [data, setData] = useState<TransmittalTrackerResponse | null>(null);
   const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<{ key: keyof TransmittalTrackerRow; direction: "asc" | "desc" } | null>(null);
+  const [columnFilter, setColumnFilter] = useState<{ key: keyof TransmittalTrackerRow; value: string } | null>(null);
+  const criteriaKey = JSON.stringify([query,sort,columnFilter]);
+  const [navigation,setNavigation]=useState({criteriaKey,page:1,limit:50});
+  if (TRACKER_PAGINATION_ENABLED && navigation.criteriaKey!==criteriaKey) setNavigation({...navigation,criteriaKey,page:1});
+  const page = navigation.criteriaKey===criteriaKey ? navigation.page : 1;
+  const pageOptions = useMemo<TrackerPageOptions>(()=>TRACKER_PAGINATION_ENABLED ? ({page,limit:navigation.limit,search:query,sortBy:sort?.key,sortOrder:sort?.direction,filterBy:columnFilter?.key,filter:columnFilter?.value}) : LEGACY_TRACKER_PAGE_OPTIONS,[page,navigation.limit,query,sort,columnFilter]);
+  const cached = accessToken ? getCachedTransmittalTracker(accessToken,pageOptions) : null;
+  const [dataState, setDataState] = useState<{ token: string | null; value: TransmittalTrackerResponse | null }>(() => ({ token: accessToken, value: cached }));
+  const data = dataState.token === accessToken ? dataState.value : cached;
+  const setData = useCallback((update: TransmittalTrackerResponse | null | ((current: TransmittalTrackerResponse | null) => TransmittalTrackerResponse | null)) => setDataState((current) => ({ token: accessToken, value: typeof update === "function" ? update(current.token === accessToken ? current.value : null) : update })), [accessToken]);
   const columnLayoutKey = `alzhen:report-column-layout:${profile?.id ?? "user"}:transmittal-tracker`;
+  const sharedWidths = useSharedTableWidths("transmittal-tracker", accessToken, ["ADMIN", "STAFF"].includes(profile?.role ?? ""));
+  const saveSharedColumnWidth = sharedWidths.save;
   const [columnLayoutState, setColumnLayoutState] = useState(() => ({ key: columnLayoutKey, value: typeof window === "undefined" ? { order: [], hidden: [], colors: {}, widths: {}, pins: {} } : readColumnLayout(columnLayoutKey) }));
-  const columnLayout = columnLayoutState.key === columnLayoutKey ? columnLayoutState.value : readColumnLayout(columnLayoutKey);
+  const localColumnLayout = useMemo(() => columnLayoutState.key === columnLayoutKey ? columnLayoutState.value : readColumnLayout(columnLayoutKey), [columnLayoutState, columnLayoutKey]);
   const setColumnLayout = (update: TrackerColumnLayout | ((current: TrackerColumnLayout) => TrackerColumnLayout)) => setColumnLayoutState((currentState) => {
     const current = currentState.key === columnLayoutKey ? currentState.value : readColumnLayout(columnLayoutKey);
     return { key: columnLayoutKey, value: typeof update === "function" ? update(current) : update };
   });
-  const [sort, setSort] = useState<{ key: keyof TransmittalTrackerRow; direction: "asc" | "desc" } | null>(null);
-  const [columnFilter, setColumnFilter] = useState<{ key: keyof TransmittalTrackerRow; value: string } | null>(null);
   const [menuColumn, setMenuColumn] = useState<TrackerColumn | null>(null);
   const [menuPosition, setMenuPosition] = useState({ left: 8, top: 8 });
   const [editingColumnColor, setEditingColumnColor] = useState<string | null>(null);
@@ -174,8 +191,11 @@ export default function TransmittalTrackerView() {
   const [dropdownOptions, setDropdownOptions] = useState<DropdownOption[]>([]);
   const [dropdownOptionsError, setDropdownOptionsError] = useState("");
   const [dropdownOptionsLoading, setDropdownOptionsLoading] = useState(true);
+  const [dropdownRefresh, setDropdownRefresh] = useState(0);
+  const dropdownRefreshPending = useRef(false);
   const [reorderSource, setReorderSource] = useState<string | null>(null);
   const [resizeState, setResizeState] = useState<{ key: string; startX: number; startWidth: number } | null>(null);
+  const columnLayout = useMemo(() => ({ ...localColumnLayout, widths: resizeState ? localColumnLayout.widths : { ...(sharedWidths.loaded ? {} : localColumnLayout.widths), ...sharedWidths.widths } }), [localColumnLayout, resizeState, sharedWidths.widths, sharedWidths.loaded]);
   const viewportRef = useRef<HTMLDivElement>(null);
   const headerRefs = useRef(new Map<string, HTMLTableCellElement>());
   const cellRefs = useRef(new Map<string, HTMLTableCellElement>());
@@ -187,7 +207,7 @@ export default function TransmittalTrackerView() {
   const [conflictKeys, setConflictKeys] = useState<Set<string>>(new Set());
   const initializedRef = useRef(false);
   const loadGenerationRef = useRef(0);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!cached);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [exportError, setExportError] = useState("");
@@ -195,6 +215,11 @@ export default function TransmittalTrackerView() {
   const [prepareDialogOpen, setPrepareDialogOpen] = useState(false);
   const [preparingSheet, setPreparingSheet] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [sheetSnapshot,setSheetSnapshot]=useState<{token:string;reference:string;rows:TransmittalTrackerRow[]}|null>(null);
+  const [referenceSearch,setReferenceSearch]=useState("");
+  const [referencePage,setReferencePage]=useState(1);
+  const [referenceLookup,setReferenceLookup]=useState<{token:string;query:string;values:string[];pages:number;error:string}>({token:"",query:"",values:[],pages:1,error:""});
+  const [referenceLoading,setReferenceLoading]=useState(false);
   const prepKey = `alzhen:transmittal-preparation:${profile?.id ?? "user"}`;
   const cellFormatStorageKey = `alzhen:report-cell-format:${profile?.id ?? "user"}:transmittal_tracker`;
   const [cellFormats, setCellFormats] = useState<Record<string, ReportCellFormat>>(() => typeof window === "undefined" ? {} : readReportCellFormats(cellFormatStorageKey));
@@ -209,21 +234,22 @@ export default function TransmittalTrackerView() {
   });
 
   useEffect(() => {
-    if (columnLayoutState.key !== columnLayoutKey) return;
+    if (columnLayoutState.key !== columnLayoutKey || resizeState) return;
     try { window.localStorage.setItem(columnLayoutKey, JSON.stringify(columnLayoutState.value)); } catch { /* Keep the grid usable when browser storage is unavailable. */ }
-  }, [columnLayoutKey, columnLayoutState]);
+  }, [columnLayoutKey, columnLayoutState, resizeState]);
   useEffect(() => {
     if (!resizeState) return;
-    const move = (event: PointerEvent) => setColumnLayoutState((state) => {
+    let latestWidth = resizeState.startWidth;
+    const move = (event: PointerEvent) => { latestWidth = Math.max(80, Math.min(800, resizeState.startWidth + event.clientX - resizeState.startX)); setColumnLayoutState((state) => {
       const current = state.key === columnLayoutKey ? state.value : readColumnLayout(columnLayoutKey);
-      return { key: columnLayoutKey, value: { ...current, widths: { ...current.widths, [resizeState.key]: Math.max(80, Math.min(800, resizeState.startWidth + event.clientX - resizeState.startX)) } } };
-    });
-    const finish = () => setResizeState(null);
+      return { key: columnLayoutKey, value: { ...current, widths: { ...current.widths, [resizeState.key]: latestWidth } } };
+    }); };
+    const finish = () => { if (latestWidth !== resizeState.startWidth) void saveSharedColumnWidth(resizeState.key, latestWidth); setResizeState(null); };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", finish, { once: true });
     window.addEventListener("pointercancel", finish, { once: true });
     return () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", finish); window.removeEventListener("pointercancel", finish); };
-  }, [columnLayoutKey, resizeState]);
+  }, [columnLayoutKey, resizeState, saveSharedColumnWidth]);
   useEffect(() => {
     const pinsState = columnLayout.pins;
     const widthsState = columnLayout.widths;
@@ -263,19 +289,27 @@ export default function TransmittalTrackerView() {
     setCellSelection(null);
   }, [cellFormatStorageKey]);
 
-  const load = useCallback(async (background = false) => {
+  const realtimeLoad = useRef<() => Promise<void>>(async () => {});
+  const realtimeGate = useDeferredRealtimeRefresh(() => realtimeLoad.current(), () => Boolean(editingCellKey || rowEdit || rowEditBusy || busyRef.current.size || Object.keys(draftsRef.current).length || resizeState));
+  const load = useCallback(async (background = false, deferForEditing = false) => {
     if (!accessToken) return;
     const generation = ++loadGenerationRef.current;
     if (!background) setLoading(true);
     setError("");
     try {
-      if (isAdmin && !initializedRef.current) {
-        await initializeTransmittalTracker(accessToken);
-        initializedRef.current = true;
-      }
       if (background) invalidateTransmittalTrackerCache();
-      const result = await fetchTransmittalTracker(accessToken);
+      if (TRACKER_PAGINATION_ENABLED && realtimeGate.blocked()) { realtimeGate.request(); return; }
+      let result: TransmittalTrackerResponse;
+      try { result = await fetchTransmittalTracker(accessToken,pageOptions.search??"",pageOptions); }
+      catch (cause) {
+        // Initialization is a repair action for missing tracker metadata, not a
+        // write/invalidation on every cached navigation.
+        if (!isAdmin || initializedRef.current || !(cause instanceof ApiError) || !["TRANSMITTAL_TRACKER_NOT_INITIALIZED", "TRANSMITTAL_TRACKER_SCHEMA_INCOMPLETE"].includes(cause.code ?? "")) throw cause;
+        await initializeTransmittalTracker(accessToken); initializedRef.current = true;
+        result = await fetchTransmittalTracker(accessToken,pageOptions.search??"",pageOptions);
+      }
       if (generation === loadGenerationRef.current) {
+        if ((deferForEditing || TRACKER_PAGINATION_ENABLED) && realtimeGate.blocked()) { realtimeGate.request(); return; }
         setData((current) => {
           if (!current) return result;
           return {
@@ -289,9 +323,13 @@ export default function TransmittalTrackerView() {
       const message = loadError instanceof Error ? loadError.message : "Unable to load the Transmittal Tracker.";
       setError(message);
     } finally {
-      setLoading(false);
+      if (generation===loadGenerationRef.current) setLoading(false);
     }
-  }, [accessToken, isAdmin]);
+  }, [accessToken, isAdmin, setData, realtimeGate, pageOptions]);
+  useEffect(() => { realtimeLoad.current = () => {
+    if (dropdownRefreshPending.current) { dropdownRefreshPending.current = false; setDropdownRefresh((version) => version + 1); }
+    return load(true, true);
+  }; }, [load]);
 
   useEffect(() => {
     const initialLoad = window.setTimeout(() => { void load(false); }, 0);
@@ -308,16 +346,35 @@ export default function TransmittalTrackerView() {
       if (active) setDropdownOptionsError(optionError instanceof Error ? optionError.message : "Unable to load dropdown options.");
     }).finally(() => { if (active) setDropdownOptionsLoading(false); });
     return () => { active = false; };
-  }, [accessToken]);
+  }, [accessToken, dropdownRefresh]);
   useEffect(() => {
     const unsubscribe = subscribeToAdminRealtime((event) => {
-      if (event.kind === "resume" || event.kind === "recovered" || (event.kind === "change" && (TRANSMITTAL_TRACKER_REALTIME_TABLES as readonly string[]).includes(event.payload.table))) void load(true);
+      if (event.kind === "batch") {
+        if (event.tables.includes("tms_dropdown_options")) dropdownRefreshPending.current = true;
+        if (event.tables.some((table) => (TRANSMITTAL_TRACKER_REALTIME_TABLES as readonly string[]).includes(table) || ["pod_records", "pod_drive_files", "flex_columns", "flex_dropdown_options", "tms_dropdown_options", "transaction_deletion_jobs"].includes(table))) realtimeGate.request();
+        return;
+      }
+      if (event.kind === "resume" || event.kind === "recovered" || (event.kind === "change" && (TRANSMITTAL_TRACKER_REALTIME_TABLES as readonly string[]).includes(event.payload.table))) realtimeGate.request();
     });
     const timer = window.setInterval(() => {
-      if (document.visibilityState === "visible") void load(true);
+      if (document.visibilityState === "visible") realtimeGate.request();
     }, 60_000);
     return () => { unsubscribe(); window.clearInterval(timer); };
-  }, [load]);
+  }, [load, realtimeGate]);
+
+  useEffect(()=>{
+    if(!TRACKER_PAGINATION_ENABLED||!accessToken||!prepareDialogOpen||!referenceSearch.trim())return;
+    let active=true;
+    const timer=window.setTimeout(()=>{
+      setReferenceLoading(true);
+      void fetchTrackerPage(accessToken,{page:referencePage,limit:50,filterBy:"transmittal_ref",filter:referenceSearch,sortBy:"transmittal_ref"}).then(result=>{
+        if(!active)return;
+        const values=result.rows.map(row=>row.transmittal_ref).filter(Boolean);
+        setReferenceLookup(current=>({token:accessToken,query:referenceSearch,values:[...new Set([...(referencePage>1&&current.token===accessToken&&current.query===referenceSearch?current.values:[]),...values])],pages:result.pagination?.totalPages??1,error:""}));
+      }).catch(cause=>{if(active)setReferenceLookup(current=>({...current,token:accessToken,error:cause instanceof Error?cause.message:"Unable to find references."}));}).finally(()=>{if(active)setReferenceLoading(false);});
+    },200);
+    return()=>{active=false;window.clearTimeout(timer);};
+  },[accessToken,prepareDialogOpen,referenceSearch,referencePage]);
 
   const orderedColumns = useMemo(() => {
     const available = new Set<string>(TRACKER_COLUMNS.map((column) => column.key));
@@ -342,8 +399,9 @@ export default function TransmittalTrackerView() {
     return { left, right };
   }, [columnLayout.widths, pinnedLeft, pinnedRight]);
 
-  const filteredRows = useMemo(() => filterTrackerRows(data?.rows ?? [], query, columnFilter, sort), [columnFilter, data?.rows, query, sort]);
-  const selectionDatasetKey = `${profile?.id ?? "anonymous"}:${JSON.stringify((data?.rows ?? []).map((row) => row.trip_stop_id).sort())}`;
+  const filteredRows = useMemo(() => data?.pagination ? data.rows : filterTrackerRows(data?.rows ?? [], query, columnFilter, sort), [columnFilter, data, query, sort]);
+  const selectionDatasetKey = `${TRACKER_PAGINATION_ENABLED ? JSON.stringify(pageOptions) : "legacy"}:${profile?.id ?? "anonymous"}:${JSON.stringify((data?.rows ?? []).map((row) => row.trip_stop_id).sort())}`;
+  if (TRACKER_PAGINATION_ENABLED && selectedRowState.ids.size && selectedRowState.datasetKey!==selectionDatasetKey) setSelectedRowState({datasetKey:selectionDatasetKey,ids:new Set()});
   const selectedRows = selectedRowState.datasetKey === selectionDatasetKey ? selectedRowState.ids : new Set<string>();
   const setSelectedRows = (update: Set<string> | ((current: Set<string>) => Set<string>)) => setSelectedRowState((currentState) => {
     const current = currentState.datasetKey === selectionDatasetKey ? currentState.ids : new Set<string>();
@@ -351,8 +409,8 @@ export default function TransmittalTrackerView() {
     return { datasetKey: selectionDatasetKey, ids: next };
   });
 
-  const references = useMemo(() => [...new Set((data?.rows ?? []).map((row) => row.transmittal_ref).filter(Boolean))].sort((a, b) => a.localeCompare(b)), [data?.rows]);
-  const sheetRows = useMemo(() => (data?.rows ?? []).filter((row) => row.transmittal_ref === selectedReference), [data?.rows, selectedReference]);
+  const references = useMemo(() => [...new Set([...(data?.rows??[]).map(row=>row.transmittal_ref),...(referenceLookup.token===accessToken?referenceLookup.values:[])].filter(Boolean))].sort((a,b)=>a.localeCompare(b)),[data?.rows,referenceLookup,accessToken]);
+  const sheetRows = useMemo(() => ((sheetSnapshot?.token===accessToken&&sheetSnapshot.reference===selectedReference?sheetSnapshot.rows:data?.rows)??[]).filter(row=>row.transmittal_ref===selectedReference),[data?.rows,sheetSnapshot,selectedReference,accessToken]);
   const selectedRange = useMemo(() => {
     if (!cellSelection) return null;
     const rowA = filteredRows.findIndex((row) => row.trip_stop_id === cellSelection.anchorRowId);
@@ -587,7 +645,7 @@ export default function TransmittalTrackerView() {
     try {
       const saved = await saveTransmittalTrackerCell(accessToken, row.trip_stop_id, field, value, draft?.expectedVersion ?? existing?.version ?? 0, resolveLegacyConflict);
       ++loadGenerationRef.current; // Discard any GET that began before this committed write.
-      setData((current) => current ? ({ ...current, rows: current.rows.map((candidate) => {
+      const applySaved = (candidate:TransmittalTrackerRow):TransmittalTrackerRow => {
         if (candidate.trip_stop_id !== row.trip_stop_id) return candidate;
         const currentCell = candidate.cells[field];
         if (currentCell && currentCell.version > saved.cell.version) return candidate;
@@ -609,7 +667,9 @@ export default function TransmittalTrackerView() {
           ...(field === "loading_date_override" ? { loading_date: value } : {}),
           ...(field === "delivery_date_override" ? { date_delivered: value } : {}),
         };
-      }) }) : current);
+      };
+      setData(current=>current?({...current,rows:current.rows.map(applySaved)}):current);
+      setSheetSnapshot(current=>current?.token===accessToken?({...current,rows:current.rows.map(applySaved)}):current);
       const next = { ...draftsRef.current }; delete next[key]; draftsRef.current = next; setDrafts(next);
       setConflictKeys((current) => { const nextConflicts = new Set(current); nextConflicts.delete(key); return nextConflicts; });
       setError("");
@@ -781,6 +841,9 @@ export default function TransmittalTrackerView() {
     setDrafts(next);
     setConflictKeys(new Set());
     void load(true);
+    if(TRACKER_PAGINATION_ENABLED&&sheetOpen&&accessToken&&selectedReference) {
+      void fetchTrackerExportRows(accessToken,{reference:selectedReference}).then(rows=>setSheetSnapshot({token:accessToken,reference:selectedReference,rows})).catch(cause=>setError(cause instanceof Error?cause.message:"Unable to refresh the reference sheet."));
+    }
   };
 
   const legacyConflictCount = (data?.rows ?? []).filter((row) => row.legacy_conflicts.length > 0).length;
@@ -790,7 +853,8 @@ export default function TransmittalTrackerView() {
       return null;
     }
     const isInScope = (key: string) => !scopeStopIds || scopeStopIds.has(key.slice(0, key.indexOf(":")));
-    const scopedRows = (data?.rows ?? []).filter((row) => !scopeStopIds || scopeStopIds.has(row.trip_stop_id));
+    const editableRows=[...(data?.rows??[]),...(scopeStopIds && sheetSnapshot?.token===accessToken?sheetSnapshot.rows:[])];
+    const scopedRows = editableRows.filter((row) => !scopeStopIds || scopeStopIds.has(row.trip_stop_id));
     if (rejectLegacyConflicts && scopedRows.some((row) => row.legacy_conflicts.length > 0)) {
       setExportError("Resolve conflicting legacy POD values in the rows being exported so the output cannot contain an ambiguous tracker value.");
       return null;
@@ -804,7 +868,7 @@ export default function TransmittalTrackerView() {
       if (separator < 0) return [];
       const stopId = key.slice(0, separator);
       const field = key.slice(separator + 1) as EditableField;
-      const row = data?.rows.find((candidate) => candidate.trip_stop_id === stopId);
+      const row = editableRows.find((candidate) => candidate.trip_stop_id === stopId);
       return row && !conflictKeys.has(key) ? [saveCell(row, field, draft.value)] : [];
     });
     const results = await Promise.all([...inFlight, ...draftSaves]);
@@ -815,6 +879,13 @@ export default function TransmittalTrackerView() {
     try {
       // Read the committed projection after the last CAS completes so exports
       // never use stale React state while save reconciliation is rendering.
+      if (TRACKER_PAGINATION_ENABLED) {
+        invalidateTransmittalTrackerCache();
+        const exported = await fetchTrackerExportRows(accessToken,scopeStopIds ? {reference:selectedReference} : {search:query,filterBy:columnFilter?.key,filter:columnFilter?.value});
+        const reconciled = reconcileTrackerRows(exported,editableRows);
+        if(rejectLegacyConflicts && reconciled.some(row=>row.legacy_conflicts.length))throw new Error("Resolve legacy conflicts before exporting.");
+        return reconciled;
+      }
       const refreshed = await fetchTransmittalTracker(accessToken);
       setData((current) => current ? { ...refreshed, rows: reconcileTrackerRows(refreshed.rows, current.rows) } : refreshed);
       return refreshed.rows;
@@ -895,7 +966,7 @@ export default function TransmittalTrackerView() {
 
   const exportSheet = async () => {
     if (!selectedReference) return;
-    const matchingRows = (data?.rows ?? []).filter((row) => row.transmittal_ref === selectedReference);
+    const matchingRows = sheetRows;
     const conflictMessage = sheetConflictMessage(matchingRows);
     if (conflictMessage) {
       setExportError(conflictMessage);
@@ -998,8 +1069,8 @@ export default function TransmittalTrackerView() {
       setExportError("Select a Transmittal Ref# before preparing the sheet.");
       return;
     }
-    const matchingRows = (data?.rows ?? []).filter((row) => row.transmittal_ref === selectedReference);
-    if (matchingRows.length === 0) {
+    const matchingRows = sheetRows;
+    if (matchingRows.length === 0 && !TRACKER_PAGINATION_ENABLED) {
       setExportError("No delivery rows match the selected Transmittal Ref#. Select a reference with at least one delivery row.");
       return;
     }
@@ -1023,6 +1094,7 @@ export default function TransmittalTrackerView() {
         setExportError(refreshedConflict);
         return;
       }
+      if(TRACKER_PAGINATION_ENABLED)setSheetSnapshot({token:accessToken!,reference:selectedReference,rows:committedRows.filter(row=>row.transmittal_ref===selectedReference)});
       setPreparation((current) => ({ ...current, date: localDate(), preparedBy: accountDisplayName || current.preparedBy }));
       setPrepareDialogOpen(false);
       setSheetOpen(true);
@@ -1031,7 +1103,8 @@ export default function TransmittalTrackerView() {
     }
   };
 
-  if (loading && !data) return <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500"><LoaderCircle className="mx-auto mb-2 h-5 w-5 animate-spin" />Loading Transmittal Tracker…</div>;
+  const pageNavigationBlocked = Boolean(editingCellKey || rowEdit || rowEditBusy || busyCells.size || Object.keys(drafts).length || resizeState);
+  if (loading && !data && !error) return <TableSkeleton columns={TRACKER_COLUMNS.length + 1} columnWidths={[44, ...TRACKER_COLUMNS.map(defaultTrackerColumnWidth)]} rows={6} showToolbar />;
   if (error && !data) return <div className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900"><p>{error}</p><button onClick={() => void load(false)} className="mt-3 rounded-lg bg-[#12365a] px-3 py-2 text-white">Retry</button></div>;
 
   const renderSheetEditor = (row: TransmittalTrackerRow, field: EditableField) => {
@@ -1049,6 +1122,8 @@ export default function TransmittalTrackerView() {
   };
 
   return <section className="space-y-3">
+    {sharedWidths.feedback}
+    <ColumnFinder columns={TRACKER_COLUMNS.map((column) => ({ key: column.key, title: column.title, hidden: columnLayout.hidden.includes(column.key), index: renderedColumns.findIndex((item) => item.key === column.key) }))} viewport={viewportRef} getHeader={(key) => headerRefs.current.get(key)} onReveal={restoreColumn} />
     <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-3">
       <div className="relative min-w-64 flex-1 sm:max-w-xl"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search reference, store, plate, receipt, S.O., status, waybill…" className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-3 text-sm text-slate-800 outline-none focus:border-blue-400 focus:bg-white" /></div>
     <div className="flex flex-wrap items-center gap-2"><button disabled={legacyConflictCount > 0} onClick={() => void exportFiltered()} className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#12365a] px-3 text-sm font-medium text-white hover:bg-[#0d2945] disabled:cursor-not-allowed disabled:opacity-50"><Download className="h-4 w-4" />Export filtered</button><button type="button" onClick={openPrepareDialog} className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#12365a] px-3 text-sm font-medium text-[#12365a] hover:bg-blue-50"><FileSpreadsheet className="h-4 w-4" />Prepare Sheet</button></div>
@@ -1066,7 +1141,7 @@ export default function TransmittalTrackerView() {
           const SortIcon = !activeSort ? ArrowUpDown : sort.direction === "asc" ? ArrowUp : ArrowDown;
           return <th key={column.key} ref={(element) => { if (element) headerRefs.current.set(column.key, element); else headerRefs.current.delete(column.key); }} scope="col" onDragOver={(event) => { if (reorderSource) event.preventDefault(); }} onDrop={(event) => { event.preventDefault(); if (reorderSource) reorderColumn(reorderSource, column.key); setReorderSource(null); }} style={{ width, minWidth: width, maxWidth: width, position: "sticky", top: 36, backgroundColor: columnLayout.colors[column.key] ?? "#ffffff", color: columnLayout.colors[column.key] ? colorForeground(columnLayout.colors[column.key]) : undefined, ...(pin ? { left: pin === "left" ? pinOffsets.left[column.key] ?? 0 : undefined, right: pin === "right" ? pinOffsets.right[column.key] ?? 0 : undefined, zIndex: 60 } : { zIndex: 40 }) } as CSSProperties} className={`${REPORT_GRID_HEADER_CELL_CLASS} relative ${pin ? "shadow-sm" : ""}`}>
             <div className="flex min-w-0 items-center justify-between gap-1"><button type="button" draggable title={`Drag to reorder ${column.title}; click to sort`} onDragStart={(event) => { event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/plain", String(column.key)); setReorderSource(column.key); }} onDragEnd={() => setReorderSource(null)} onClick={() => sortColumn(column.key)} className="min-w-0 flex-1 cursor-grab whitespace-normal rounded px-1 py-1 text-left text-[11px] font-semibold uppercase leading-tight tracking-wide text-inherit active:cursor-grabbing">{column.title}{activeSort && <SortIcon aria-hidden="true" className="ml-1 inline h-3 w-3" />}</button><button type="button" title={`Actions for ${column.title}`} aria-label={`Actions for ${column.title}`} aria-haspopup="menu" onClick={(event) => showColumnMenu(event, column)} className="shrink-0 rounded p-1 text-slate-500 hover:bg-slate-200 hover:text-[#0b2341] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"><EllipsisVertical className="h-4 w-4" /></button></div>
-            <span role="separator" aria-label={`Resize ${column.title} column`} aria-orientation="vertical" onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); setResizeState({ key: column.key, startX: event.clientX, startWidth: headerRefs.current.get(column.key)?.getBoundingClientRect().width ?? width }); }} className="absolute right-0 top-0 z-[60] h-full w-1.5 cursor-col-resize touch-none hover:bg-blue-400/60" />
+            <span role="separator" aria-label={`Resize ${column.title} column`} aria-orientation="vertical" onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); setColumnLayout((current) => ({ ...current, widths: { ...(sharedWidths.loaded ? {} : current.widths), ...sharedWidths.widths } })); setResizeState({ key: column.key, startX: event.clientX, startWidth: headerRefs.current.get(column.key)?.getBoundingClientRect().width ?? width }); }} className="absolute right-0 top-0 z-[60] h-full w-1.5 cursor-col-resize touch-none hover:bg-blue-400/60" />
           </th>;
         })}</tr></thead>
         <tbody>{filteredRows.map((row, rowIndex) => <tr key={row.trip_stop_id} className={`group report-data-row ${REPORT_GRID_ROW_CLASS} ${selectedRows.has(row.trip_stop_id) ? "bg-blue-50 [&>td]:!bg-blue-50" : ""}`}><td data-cell-hover-disabled="true" className={`sticky left-0 z-30 w-11 min-w-11 border-r border-slate-100 text-center ${REPORT_GRID_BODY_CELL_CLASS} ${selectedRows.has(row.trip_stop_id) ? "!bg-blue-50" : "bg-white"}`}><input type="checkbox" aria-label={`Select row ${row.delivered_to || row.trip_stop_id}`} checked={selectedRows.has(row.trip_stop_id)} onClick={(event) => event.stopPropagation()} onChange={() => setSelectedRows((current) => { const next = new Set(current); if (next.has(row.trip_stop_id)) next.delete(row.trip_stop_id); else next.add(row.trip_stop_id); return next; })} className="h-4 w-4 rounded border-slate-300 accent-[#2678b9]" /></td>{renderedColumns.map((column, columnIndex) => {
@@ -1090,8 +1165,14 @@ export default function TransmittalTrackerView() {
         })}</tr>)}</tbody>
       </table>
       {!filteredRows.length && <div className="p-8 text-center text-sm text-slate-500">{query || columnFilter?.value ? "No matching transmittal rows." : "No transmittal rows are available."}</div>}
-      {hiddenColumns.length > 0 && <div aria-label="Hidden tracker columns" className="sticky left-0 z-30 flex flex-wrap items-center gap-2 border-t border-slate-100 bg-slate-50/95 px-3 py-2"><span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Hidden columns</span>{hiddenColumns.map((column) => <button key={column.key} type="button" title={`Restore ${column.title} column`} onClick={() => restoreColumn(column.key)} className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs text-slate-600 hover:border-blue-300 hover:text-[#0b2341]"><EyeOff className="h-3 w-3" />{column.title}<span className="text-slate-400">· Restore</span></button>)}</div>}
+      <HiddenColumnsControl columns={hiddenColumns} onRestore={restoreColumn} onRestoreAll={() => saveColumnLayout({ ...columnLayout, hidden: [] })} />
     </div>
+    {TRACKER_PAGINATION_ENABLED && <footer className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600" aria-label="Tracker pagination">
+      <span>{data?.pagination?.total ?? 0} transactions - Page {data?.pagination?.page ?? page} of {data?.pagination?.totalPages ?? 1}. Selection is limited to this page.</span>
+      <div className="flex items-center gap-2"><select aria-label="Tracker rows per page" value={navigation.limit} disabled={loading||pageNavigationBlocked} onChange={event=>setNavigation({criteriaKey,page:1,limit:Number(event.target.value)})} className="h-9 rounded-lg border border-slate-200 bg-white px-2">{[25,50,100].map(size=><option key={size}>{size}</option>)}</select>
+      <button type="button" disabled={loading||pageNavigationBlocked||page<=1} onClick={()=>setNavigation({criteriaKey,page:page-1,limit:navigation.limit})} className={tableUi.pageBtn}>Previous</button>
+      <button type="button" disabled={loading||pageNavigationBlocked||!data?.pagination||page>=data.pagination.totalPages} onClick={()=>setNavigation({criteriaKey,page:page+1,limit:navigation.limit})} className={tableUi.pageBtn}>Next</button></div>
+    </footer>}
     <p className="text-xs text-slate-500">{filteredRows.length} delivery stop{filteredRows.length === 1 ? "" : "s"} shown. Tracker values are stored separately from operational trip, stop, and line-item records. Date created defaults blank because no verified stop-level source date is available.</p>
     {rowEdit && rowEdit.profileId === (profile?.id ?? null) && <div className="fixed inset-0 z-[2100] flex items-center justify-center bg-[#0b2341]/45 p-4 backdrop-blur-sm" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !rowEditBusy) setRowEdit(null); }}><section role="dialog" aria-modal="true" aria-labelledby="tracker-row-edit-title" className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl"><div className="flex items-start justify-between gap-3"><div><h2 id="tracker-row-edit-title" className="text-lg font-semibold text-[#0b2341]">Edit Transmittal Tracker row</h2><p className="mt-1 text-xs text-slate-500">Delivery stop {rowEdit.stopId}. Changes save to this stop only.</p></div><button type="button" disabled={rowEditBusy} onClick={() => setRowEdit(null)} className="rounded px-2 py-1 text-slate-500 hover:bg-slate-100">Close</button></div><div className="mt-4 grid gap-3 sm:grid-cols-2">{TRACKER_COLUMNS.map((column) => {
       const value = rowEdit.values[column.field] ?? "";
@@ -1128,6 +1209,7 @@ export default function TransmittalTrackerView() {
     {prepareDialogOpen && createPortal(<div className="fixed inset-0 z-[2000] flex items-center justify-center bg-slate-900/20 p-3 backdrop-blur-[2px] sm:p-5" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !preparingSheet) setPrepareDialogOpen(false); }}>
       <section role="dialog" aria-modal="true" aria-labelledby="prepare-transmittal-title" className="w-full max-w-md rounded-2xl border border-white/70 bg-white p-5 shadow-[0_30px_90px_-24px_rgba(11,35,65,0.5)]">
         <div className="flex items-start justify-between gap-3"><div><h2 id="prepare-transmittal-title" className="text-base font-semibold text-[#17365d]">Prepare Transmittal Sheet</h2><p className="mt-1 text-sm text-slate-500">Choose the reference whose delivery stops should appear on the sheet.</p></div><button type="button" title="Close preparation dialog" aria-label="Close preparation dialog" disabled={preparingSheet} onClick={() => setPrepareDialogOpen(false)} className="rounded p-1.5 text-slate-500 hover:bg-slate-100 disabled:opacity-50"><X className="h-4 w-4" /></button></div>
+        {TRACKER_PAGINATION_ENABLED && <div className="mt-4 space-y-2"><label className="block text-xs font-semibold text-slate-700">Find a Transmittal Reference<input aria-label="Search all Transmittal References" value={referenceSearch} onChange={event=>{setReferenceSearch(event.target.value);setReferencePage(1);setReferenceLoading(false);setReferenceLookup(current=>({...current,error:""}));}} className="mt-1 h-10 w-full rounded-lg border border-slate-300 px-3 text-sm font-normal" placeholder="Search saved references across all pages" /></label>{referenceLoading&&<p role="status" className="text-xs text-slate-500">Finding references...</p>}{referenceLookup.error&&<p role="alert" className="text-xs text-rose-700">{referenceLookup.error}</p>}{referenceLookup.token===accessToken&&referenceLookup.query===referenceSearch&&referencePage<referenceLookup.pages&&<button type="button" disabled={referenceLoading} onClick={()=>setReferencePage(page=>page+1)} className="text-xs font-semibold text-blue-700 underline">Load more matching references</button>}</div>}
         {references.length === 0 ? <p role="status" className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-4 text-center text-sm text-slate-600">No transmittal references available.</p> : <label className="mt-4 block text-xs font-semibold text-slate-700">Transmittal Ref#<select value={selectedReference} onChange={(event) => { setSelectedReference(event.target.value); setExportError(""); }} className="mt-1.5 h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm font-normal text-slate-800 outline-none focus:border-blue-400"><option value="">Select a reference</option>{references.map((reference) => <option key={reference} value={reference}>{reference}</option>)}</select></label>}
         {exportError && <p role="alert" className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{exportError}</p>}
         <div className="mt-5 flex justify-end gap-2"><button type="button" disabled={preparingSheet} onClick={() => setPrepareDialogOpen(false)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50">Cancel</button><button type="button" disabled={preparingSheet || references.length === 0 || !selectedReference || !references.includes(selectedReference)} onClick={() => void openSheetAfterSave()} className="inline-flex items-center gap-2 rounded-lg bg-[#12365a] px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">{preparingSheet && <LoaderCircle className="h-4 w-4 animate-spin" />}{preparingSheet ? "Preparing…" : "Prepare sheet"}</button></div>

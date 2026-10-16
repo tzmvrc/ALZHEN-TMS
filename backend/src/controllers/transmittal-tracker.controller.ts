@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 import { ApiError, sendError, sendSuccess } from "../utils/api-response.js";
 import * as service from "../services/transmittal-tracker.service.js";
+import { withReportReadBudget } from "../services/report-read-budget.js";
 
 function actor(req: Request) {
   if (!req.profile || !req.user) throw new ApiError("Authentication required.", 401, "AUTHENTICATION_REQUIRED");
@@ -34,7 +35,7 @@ async function respond(res: Response, operation: () => Promise<unknown>, message
 
 export const getTracker = (req: Request, res: Response) => respond(
   res,
-  () => service.getTracker(actor(req), req.query.search, requestId(req)),
+  () => req.query.preload === "true" ? withReportReadBudget(() => service.getTracker(actor(req), req.query.search, requestId(req))) : service.getTracker(actor(req), req.query.search, requestId(req)),
   "Transmittal Tracker retrieved successfully",
 );
 
@@ -49,3 +50,5 @@ export const updateTrackerCell = (req: Request, res: Response) => respond(
   () => service.updateTrackerCell(actor(req), param(req, "stopId"), param(req, "field"), body(req), requestId(req)),
   "Transmittal Tracker value saved successfully",
 );
+
+export const getTrackerPage = (req: Request,res: Response)=>respond(res,()=>service.getTracker(actor(req),undefined,requestId(req),req.query),"Transmittal Tracker page retrieved successfully");
