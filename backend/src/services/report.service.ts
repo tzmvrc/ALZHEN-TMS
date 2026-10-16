@@ -230,13 +230,18 @@ async function attachOperationalRecordIds(rows: Record<string, unknown>[]) {
     }
   }
 
-  const tripIds = [...new Set(rows.map((row) => row.trip_id).filter((id): id is string => typeof id === "string"))];
+  const tripIds = [...new Set(rows
+    .filter((row) => row.trip_stop_id == null && row._trip_stop_id == null)
+    .map((row) => row.trip_id).filter((id): id is string => typeof id === "string"))];
   if (tripIds.length) {
     const { data: trips, error } = await supabaseAdmin.from("trips")
       .select("id, dispatch_number, transaction_number").in("id", tripIds);
     if (error) throw new ApiError("Unable to load saved trip references", 500, "TRIP_REFERENCE_QUERY_FAILED");
     const tripById = new Map((trips ?? []).map((trip) => [String(trip.id), trip]));
     for (const row of rows) {
+      // Stop identifiers are authoritative even when blank. Replacing them with
+      // parent-trip values makes confirmed stop edits appear to revert on refresh.
+      if (row.trip_stop_id != null || row._trip_stop_id != null) continue;
       const trip = tripById.get(String(row.trip_id));
       if (!trip) continue;
       if (typeof trip.dispatch_number === "string") {
@@ -389,6 +394,7 @@ async function attachOperationalRecordIds(rows: Record<string, unknown>[]) {
             .select("id, trip_id, truck_id, driver_id, trucking_company_id")
             .in("trip_id", tripIds)
             .eq("assignment_type", "PRIMARY")
+            .is("unassigned_at", null)
         : { data: [], error: null };
       if (assignmentsError) {
         console.error(

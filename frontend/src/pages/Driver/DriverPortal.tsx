@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type ChangeEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState,useSyncExternalStore, type ChangeEvent, type ReactNode } from "react";
+import {collaborationSnapshot,subscribeCollaboration,subscribeCollaborationEvents,joinCollaborationRoom} from "../../services/collaboration.service";
 import {
   AlertCircle,
   ArrowRight,
@@ -31,6 +32,7 @@ import {
 } from "../../services/operations-report.service";
 import {
   fetchMyAssignedTrips,
+  getCachedAssignedTrips,
   saveDriverReceiptText,
   saveDriverTripUpdate,
   uploadDriverPod,
@@ -190,10 +192,13 @@ function ProductList({ stop }: { stop: DriverAssignedStop }) {
 export default function DriverPortal() {
   const { logout, profile, accessToken } = useAuth();
   const { addToast } = useToast();
-  const [assignedTrips, setAssignedTrips] = useState<DriverAssignedTrip[]>([]);
+  const cachedTrips=accessToken?getCachedAssignedTrips(accessToken):null;
+  const [assignedState,setAssignedState]=useState<{owner:string|undefined;rows:DriverAssignedTrip[]}>(()=>({owner:profile?.id,rows:cachedTrips??[]}));
+  const assignedTrips=assignedState.owner===profile?.id?assignedState.rows:cachedTrips??[];
+  const setAssignedTrips=useCallback((update:DriverAssignedTrip[]|((rows:DriverAssignedTrip[])=>DriverAssignedTrip[]))=>setAssignedState(current=>({owner:profile?.id,rows:typeof update==="function"?update(current.owner===profile?.id?current.rows:[]):update})),[profile?.id]);
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
   const [selectedStopId, setSelectedStopId] = useState<string | null>(null);
-  const [tripsLoading, setTripsLoading] = useState(Boolean(accessToken));
+  const [tripsLoading, setTripsLoading] = useState(Boolean(accessToken&&!cachedTrips));
   const [tripsError, setTripsError] = useState("");
   const [statusSaving, setStatusSaving] = useState(false);
   const [podUploading, setPodUploading] = useState(false);
@@ -201,15 +206,25 @@ export default function DriverPortal() {
   const [portalTab, setPortalTab] = useState<"trips" | "reports">("trips");
   const [drNumber, setDrNumber] = useState("");
   const [reloadCount, setReloadCount] = useState(0);
+  const reloadTrips = useCallback(() => {
+    setTripsError("");
+    setReloadCount((count) => count + 1);
+  }, []);
+  const liveUpdates=useSyncExternalStore(subscribeCollaboration,collaborationSnapshot,collaborationSnapshot);
+  const assignedTripKeys=JSON.stringify(assignedTrips.map(trip=>trip.id).sort());
+  useEffect(()=>{const leaves=(JSON.parse(assignedTripKeys) as string[]).map(id=>joinCollaborationRoom("trip",id));return()=>leaves.forEach(leave=>leave());},[assignedTripKeys,profile?.id]);
   const busy = statusSaving || podUploading;
   const tripsRequestInFlightRef = useRef(false);
+  const pendingTripsRequestRef = useRef<{ token: string; promise: Promise<DriverAssignedTrip[]> } | null>(null);
   const tripsErrorRef = useRef(false);
   const selectionRef = useRef({ tripId: selectedTripId, stopId: selectedStopId });
   const busyRef = useRef(busy);
+  const pendingSocketRefresh=useRef(false);
+  useEffect(()=>{let timer:ReturnType<typeof setTimeout>|undefined;const unsubscribe=subscribeCollaborationEvents(event=>{if(event.kind!=="trucker"&&event.kind!=="connected")return;if(timer)return;timer=setTimeout(()=>{timer=undefined;if(busyRef.current)pendingSocketRefresh.current=true;else reloadTrips();},250);});return()=>{unsubscribe();clearTimeout(timer);};},[reloadTrips]);
   useEffect(() => {
     selectionRef.current = { tripId: selectedTripId, stopId: selectedStopId };
   }, [selectedTripId, selectedStopId]);
-  useEffect(() => { busyRef.current = busy; }, [busy]);
+  useEffect(() => { busyRef.current = busy;if(!busy&&pendingSocketRefresh.current){pendingSocketRefresh.current=false;reloadTrips();} }, [busy,reloadTrips]);
   const [podFile, setPodFile] = useState<File | null>(null);
   const [podPreview, setPodPreview] = useState<string | null>(null);
   const podPreviewUrl = useRef<string | null>(null);
@@ -264,13 +279,17 @@ export default function DriverPortal() {
 
   useEffect(() => {
     if (!accessToken) return;
-    if (tripsRequestInFlightRef.current) return;
+    // Effect replay/token changes must attach a live consumer, rather than skip
+    // the request whose original effect cleanup has already marked it inactive.
+    const pending = pendingTripsRequestRef.current;
+    const request = pending?.token === accessToken
+      ? pending
+      : { token: accessToken, promise: fetchMyAssignedTrips(accessToken,reloadCount>0) };
+    pendingTripsRequestRef.current = request;
     tripsRequestInFlightRef.current = true;
     tripsErrorRef.current = false;
-    setTripsLoading(true);
-    setTripsError("");
     let active = true;
-    void fetchMyAssignedTrips(accessToken)
+    void request.promise
       .then((trips) => {
         if (!active || busyRef.current) return;
         setTripsError("");
@@ -282,7 +301,7 @@ export default function DriverPortal() {
           ?? nextTrip?.stops[0] ?? null;
         setSelectedStopId(firstStop?.id ?? null);
         setCurrentStep(getStepIndex(nextTrip ?? null, firstStop));
-        if (reloadCount === 0 || nextTrip?.id !== selectionRef.current.tripId || firstStop?.id !== selectionRef.current.stopId) {
+        if (nextTrip?.id !== selectionRef.current.tripId || firstStop?.id !== selectionRef.current.stopId) {
           setDrNumber(stopDrNumber(firstStop));
           setPodFile(null);
           setPodPreview(null);
@@ -295,19 +314,22 @@ export default function DriverPortal() {
         }
       })
       .finally(() => {
-        tripsRequestInFlightRef.current = false;
-        setTripsLoading(false);
+        if (pendingTripsRequestRef.current === request) {
+          pendingTripsRequestRef.current = null;
+          tripsRequestInFlightRef.current = false;
+        }
+        if (active) setTripsLoading(false);
       });
     return () => {
       active = false;
     };
-  }, [accessToken, reloadCount]);
+  }, [accessToken, reloadCount,setAssignedTrips]);
 
   useEffect(() => {
     const refresh = () => {
       if (!busyRef.current && !tripsRequestInFlightRef.current && document.visibilityState === "visible") {
         if (tripsErrorRef.current) return;
-        setReloadCount((count) => count + 1);
+        reloadTrips();
       }
     };
     const timer = window.setInterval(refresh, 30_000);
@@ -318,7 +340,7 @@ export default function DriverPortal() {
       window.removeEventListener("focus", refresh);
       document.removeEventListener("visibilitychange", refresh);
     };
-  }, []);
+  }, [reloadTrips]);
 
   useEffect(
     () => () => {
@@ -1029,7 +1051,7 @@ export default function DriverPortal() {
             ))}
           </div>
           {portalTab === "trips" && (
-            <button type="button" disabled={busy || tripsLoading} aria-label="Refresh trips" title="Refresh trips" onClick={() => setReloadCount((count) => count + 1)} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 disabled:opacity-50">
+            <button type="button" disabled={busy || tripsLoading} aria-label="Refresh trips" title="Refresh trips" onClick={reloadTrips} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 disabled:opacity-50">
               <RefreshCw aria-hidden="true" className={`h-4 w-4 ${tripsLoading ? "animate-spin" : ""}`} />
             </button>
           )}
@@ -1041,6 +1063,7 @@ export default function DriverPortal() {
           </section>
         ) : (
           <>
+            <p role="status" className="text-xs text-slate-500">{liveUpdates.connected?"Live updates connected":"Updates reconnecting"}</p>
             {tripsLoading && !selectedTrip && (
               <div role="status" aria-live="polite" className="flex items-center justify-center gap-2 py-10 text-sm font-medium text-slate-500">
                 <LoaderCircle aria-hidden="true" className="h-4 w-4 animate-spin text-[#2678b9]" />
@@ -1051,7 +1074,7 @@ export default function DriverPortal() {
               <div role="alert" className="flex flex-wrap items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-900">
                 <AlertCircle aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0" />
                 <p className="min-w-0 flex-1">{tripsError}</p>
-                <button type="button" disabled={tripsLoading} onClick={() => setReloadCount((count) => count + 1)} className="min-h-9 shrink-0 rounded-lg border border-red-200 bg-white px-3 text-xs font-semibold hover:bg-red-100 disabled:opacity-50">Try again</button>
+                <button type="button" disabled={tripsLoading} onClick={reloadTrips} className="min-h-9 shrink-0 rounded-lg border border-red-200 bg-white px-3 text-xs font-semibold hover:bg-red-100 disabled:opacity-50">Try again</button>
               </div>
             )}
             {!tripsLoading && !tripsError && assignedTrips.length === 0 && (

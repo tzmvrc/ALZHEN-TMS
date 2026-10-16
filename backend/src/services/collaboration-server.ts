@@ -1,0 +1,106 @@
+import type { Server as HttpServer } from "node:http";
+import { Server } from "socket.io";
+import { createAdapter } from "@socket.io/redis-adapter";
+import { createClient } from "redis";
+import { supabaseAdmin } from "../config/supabase.js";
+import { authenticateCollaboration,canJoinTrip,type SocketActor } from "./collaboration-auth.service.js";
+import { COLLAB_TABLES,SOURCE_FIELDS,collaborationColor,management,parseCellTarget,validVersion,type Commit } from "./collaboration.logic.js";
+import { collaborationEvents,setCollaborationVersionsReady } from "./collaboration-events.js";
+import { readCollaborationRecord } from "./collaboration-record.service.js";
+import { isValidUuid } from "../utils/validation.js";
+
+type Options={authenticate?:typeof authenticateCollaboration;canTrip?:typeof canJoinTrip;authorizeCell?:(target:ReturnType<typeof parseCellTarget>)=>Promise<void>;bridge?:boolean;presenceTtl?:number;sessionCheckMs?:number;redisUrl?:string};
+export async function attachCollaborationServer(http:HttpServer,options:Options={}){
+ const origins=(process.env.SOCKET_ORIGINS??"http://localhost:5173,http://127.0.0.1:5173").split(",").map(v=>v.trim());
+ const io=new Server(http,{transports:["websocket"],maxHttpBufferSize:16384,pingInterval:25000,pingTimeout:20000,cors:{origin:origins},allowRequest:(req,done)=>done(null,!req.headers.origin||origins.includes(req.headers.origin))});
+ const redisUrl=options.redisUrl??process.env.SOCKET_REDIS_URL;
+ if(Number(process.env.WEB_CONCURRENCY??1)>1&&!redisUrl)throw Error("Multi-instance collaboration requires SOCKET_REDIS_URL");
+ const pub=redisUrl?createClient({url:redisUrl}):null,sub=pub?.duplicate();
+ if(pub&&sub){pub.on("error",()=>{});sub.on("error",()=>{});await Promise.all([pub.connect(),sub.connect()]);io.adapter(createAdapter(pub,sub));}
+ const auth=options.authenticate??authenticateCollaboration,canTrip=options.canTrip??canJoinTrip,ttl=options.presenceTtl??45000;
+ const seen=new Map<string,number>(),truckerSeen=new Map<string,number>();let bridgeHealthy=false;
+ const emitCommit=(event:Commit)=>{
+  const key=event.eventId+(event.fields.length?":confirmed":":signal");
+  if(seen.has(key))return;
+  seen.set(key,Date.now());if(seen.size>5000)seen.delete(seen.keys().next().value!);
+  io.to("management").emit(event.version===null?"table:invalidated":"cell:committed",event);
+  // Only locally connected authorized trip subscribers receive Trucker signals.
+  // Every instance has the durable DB bridge; Redis relays management/presence.
+  for(const socket of io.of("/").sockets.values()){
+   const actor:SocketActor=socket.data.actor;
+   if(actor.role!=="TRUCKER"||!event.tripId||!socket.rooms.has(`trip:${event.tripId}`))continue;
+   const signalKey=`${socket.id}:${event.eventId}`;
+   if(truckerSeen.has(signalKey))continue;truckerSeen.set(signalKey,Date.now());
+   if(truckerSeen.size>5000)truckerSeen.delete(truckerSeen.keys().next().value!);
+   void canTrip(actor,event.tripId).then(allowed=>{if(!socket.connected)return;if(!allowed)void socket.leave(`trip:${event.tripId}`);socket.emit("trucker:changed",{kind:allowed?"trip":"assignments"});}).catch(()=>{truckerSeen.delete(signalKey);});
+  }
+ };
+ collaborationEvents.on("commit",emitCommit);
+ const attempts=new Map<string,{count:number;since:number}>();
+ io.use(async(socket,next)=>{try{
+  const address=socket.handshake.address,now=Date.now();
+  for(const [key,value] of attempts)if(value.since<now-60000)attempts.delete(key);
+  const budget=attempts.get(address)??{count:0,since:now};
+  if(++budget.count>60||attempts.size>=10000)throw Error("Authentication rate limit");
+  attempts.set(address,budget);
+  socket.data.actor=await auth(socket.handshake.auth.token,socket.handshake.auth.appSession);next();
+ }catch{next(new Error("Authentication or application session is invalid"));}});
+ io.on("connection",socket=>{
+  const actor:SocketActor=socket.data.actor;
+  socket.data.presences={};socket.data.roomCount=0;
+  void socket.join(`user:${actor.id}`);if(management(actor.role))void socket.join("management");
+  socket.emit("bridge:status",{healthy:bridgeHealthy});
+  let budget=0,windowStart=Date.now(),checking=false;
+  const expiry=setTimeout(()=>socket.disconnect(true),Math.max(0,actor.expiresAt-Date.now()));
+  const sessionTimer=setInterval(()=>{if(checking)return;checking=true;void auth(socket.handshake.auth.token,socket.handshake.auth.appSession).then(next=>{if(next.id!==actor.id||next.role!==actor.role)socket.disconnect(true);}).catch(()=>socket.disconnect(true)).finally(()=>{checking=false;});},options.sessionCheckMs??30000);
+  socket.use((_packet,next)=>{if(Date.now()>=actor.expiresAt){socket.disconnect(true);return;}if(Date.now()-windowStart>10000){budget=0;windowStart=Date.now();}if(++budget>50){next(new Error("Collaboration rate limit exceeded"));return;}next();});
+  socket.on("room:join",async(value,ack)=>{try{
+   if(!value||typeof value!=="object"||Object.keys(value).some(k=>!["kind","key"].includes(k))||typeof value.key!=="string")throw Error("Invalid room");
+   let room:string;
+   if(value.kind==="table"&&management(actor.role)&&(COLLAB_TABLES as readonly string[]).includes(value.key))room=`table:${value.key}`;
+   else if(value.kind==="trip"&&isValidUuid(value.key)&&await canTrip(actor,value.key))room=`trip:${value.key}`;
+   else throw Error("Room access denied");
+   if(!socket.connected||Date.now()>=actor.expiresAt)throw Error("Session expired");
+   if(!socket.rooms.has(room)&&socket.data.roomCount>=12)throw Error("Too many rooms");
+   if(!socket.rooms.has(room))socket.data.roomCount++;
+   await socket.join(room);
+   if(value.kind==="table"){const peers=await io.in(room).fetchSockets();socket.emit("presence:snapshot",peers.flatMap(peer=>Object.values(peer.data.presences??{})));}
+   if(typeof ack==="function")ack({ok:true});
+  }catch{if(typeof ack==="function")ack({ok:false,error:"Room unavailable or access denied"});}});
+  const leavePresence=(table:string)=>{if(!socket.data.presences[table])return;delete socket.data.presences[table];io.to(`table:${table}`).emit("cell:presence-leave",{socketId:socket.id,table});};
+  socket.on("room:leave",value=>{if(!value||!["table","trip"].includes(value.kind)||typeof value.key!=="string")return;const room=`${value.kind}:${value.key}`;if(socket.rooms.has(room)){if(value.kind==="table")leavePresence(value.key);socket.data.roomCount--;void socket.leave(room);}});
+  let presenceSerial=0;const validated=new Map<string,number>();
+  socket.on("cell:presence",async(value,ack)=>{const serial=++presenceSerial;try{
+   if(!management(actor.role))throw Error("Not permitted");const target=parseCellTarget(value);
+   if(!socket.rooms.has(`table:${target.table}`))throw Error("Join table first");
+   const key=JSON.stringify([target.source,target.recordId,target.tripId,target.stopId]);
+   if((validated.get(key)??0)<Date.now()-15000){
+    if(options.authorizeCell)await options.authorizeCell(target);
+    else{const record=await readCollaborationRecord(target.source,target.recordId);if(target.tripId&&(target.source==="trips"?record.id:record.trip_id)!==target.tripId)throw Error("Wrong trip");if(target.stopId&&(target.source==="trip_stops"?record.id:record.trip_stop_id)!==target.stopId)throw Error("Wrong stop");}
+    validated.clear();validated.set(key,Date.now());
+   }
+   if(serial!==presenceSerial||!socket.connected)return;
+   const presence={...target,socketId:socket.id,userId:actor.id,name:actor.name,color:collaborationColor(actor.id),expiresAt:Date.now()+ttl};
+   socket.data.presences[target.table]=presence;socket.to(`table:${target.table}`).emit("cell:presence",presence);
+   if(typeof ack==="function")ack({ok:true});
+  }catch{if(typeof ack==="function")ack({ok:false,error:"Cell presence unavailable"});}});
+  socket.on("cell:presence-leave",value=>{presenceSerial++;if(typeof value?.table==="string")leavePresence(value.table);});
+  const sweep=setInterval(()=>{for(const [table,presence] of Object.entries(socket.data.presences) as Array<[string,{expiresAt:number}]>)if(presence.expiresAt<Date.now())leavePresence(table);},Math.min(5000,ttl));
+  socket.on("disconnect",()=>{presenceSerial++;clearTimeout(expiry);clearInterval(sessionTimer);clearInterval(sweep);for(const table of Object.keys(socket.data.presences))leavePresence(table);});
+ });
+ const channel=options.bridge===false?null:supabaseAdmin.channel(`collaboration-server-${process.pid}-${Date.now()}`);
+ if(channel){
+  for(const source of Object.keys(SOURCE_FIELDS))channel.on("postgres_changes",{schema:"public",table:source,event:"*"},payload=>{
+   const record=(payload.eventType==="DELETE"?payload.old:payload.new) as Record<string,unknown>;
+   if(typeof record.id!=="string")return;const version=validVersion(record.collaboration_version);
+   emitCommit({source,recordId:record.id,tripId:source==="trips"?record.id:typeof record.trip_id==="string"?record.trip_id:undefined,stopId:source==="trip_stops"?record.id:typeof record.trip_stop_id==="string"?record.trip_stop_id:undefined,fields:[],actorId:null,version,operation:payload.eventType,eventId:`${source}:${record.id}:${payload.eventType==="DELETE"?"deleted":version??record.updated_at??"changed"}`});
+   if(source==="trip_truck_assignments"&&typeof record.driver_id==="string")void supabaseAdmin.from("drivers").select("profile_id").eq("id",record.driver_id).maybeSingle().then(result=>{if(result.data?.profile_id)io.to(`user:${result.data.profile_id}`).emit("trucker:changed",{kind:"assignments"});});
+  });
+  channel.subscribe(status=>{bridgeHealthy=status==="SUBSCRIBED";io.to("management").emit("bridge:status",{healthy:bridgeHealthy});});
+ }
+ const versionCheck=async()=>{try{const result=await supabaseAdmin.from("trips").select("collaboration_version").limit(1);setCollaborationVersionsReady(!result.error);}catch{setCollaborationVersionsReady(false);}};
+ if(options.bridge!==false)void versionCheck();
+ const versionTimer=options.bridge===false?null:setInterval(()=>void versionCheck(),60000);
+ const seenTimer=setInterval(()=>{for(const cache of [seen,truckerSeen])for(const [key,time] of cache)if(time<Date.now()-120000)cache.delete(key);},60000);
+ return {io,publish:emitCommit,close:async()=>{collaborationEvents.off("commit",emitCommit);if(versionTimer)clearInterval(versionTimer);clearInterval(seenTimer);if(channel)await supabaseAdmin.removeChannel(channel);await new Promise<void>(resolve=>io.close(()=>resolve()));await Promise.all([pub?.quit(),sub?.quit()]);}};
+}

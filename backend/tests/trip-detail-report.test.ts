@@ -10,8 +10,9 @@ test("trip detail enrichment includes stop dispatches and excludes other trips a
   const tripId = "223e4567-e89b-42d3-a456-426614174000";
   const trips = [{ id: tripId, dispatch_number: "CANONICAL-DISPATCH" }];
   const rows = [
-    { _trip_id: tripId, dispatch_number: "STOP-A", product_name: "Refrigerator" },
-    { _trip_id: tripId, dispatch_number: "STOP-B", product_name: "Washer" },
+    { _trip_id: tripId, _trip_stop_id: "stop-a", dispatch_number: "STOP-A", product_name: "Refrigerator" },
+    { _trip_id: tripId, _trip_stop_id: "stop-b", dispatch_number: "STOP-B", product_name: "Washer" },
+    { _trip_id: tripId, dispatch_number: null, product_name: "Trip-only record" },
     { _trip_id: "323e4567-e89b-42d3-a456-426614174000", dispatch_number: "OTHER", product_name: "Unrelated" },
   ];
   const originalFrom = supabaseAdmin.from;
@@ -41,11 +42,14 @@ test("trip detail enrichment includes stop dispatches and excludes other trips a
   try {
     const first = await getReportData("trip-booking", { trip_id: tripId, limit: 1 });
     const second = await getReportData("trip-booking", { trip_id: tripId, limit: 1, page: 2 });
-    assert.equal(first.pagination.total, 2);
-    assert.equal(first.pagination.totalPages, 2);
+    const third = await getReportData("trip-booking", { trip_id: tripId, limit: 1, page: 3 });
+    assert.equal(first.pagination.total, 3);
+    assert.equal(first.pagination.totalPages, 3);
     assert.equal(first.rows[0].product_name, "Refrigerator");
     assert.equal(second.rows[0].product_name, "Washer");
-    assert.ok([...first.rows, ...second.rows].every((row) => row.dispatch_number === "CANONICAL-DISPATCH"));
+    assert.equal(first.rows[0].dispatch_number, "STOP-A");
+    assert.equal(second.rows[0].dispatch_number, "STOP-B");
+    assert.equal(third.rows[0].dispatch_number, "CANONICAL-DISPATCH", "trip-only records retain their authoritative parent identifier");
     assert.ok([...first.rows, ...second.rows].every((row) => row.trip_id === tripId));
     await assert.rejects(getReportData("trip-booking", { trip_id: "invalid" }), /Invalid trip id/);
     await assert.rejects(getReportData("trip-booking", { trip_id: [tripId] }), /Invalid query parameter/);

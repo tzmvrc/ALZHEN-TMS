@@ -100,3 +100,39 @@ stop-scoped changes and deletion visibility. It is not a clone of production and
 cannot establish actual authenticated Supabase Realtime behavior. No production
 writes or Storage deletions were performed by these fixture tests. The application
 now defaults to pagination; `VITE_TRACKER_PAGINATION=false` retains a rollback path.
+
+## Store Calling identity fixture
+
+Only in a NEW disposable PostgreSQL 18 database:
+
+```powershell
+psql -w -h 127.0.0.1 -p 55439 -U fixture -d $fixtureDb -v ON_ERROR_STOP=1 `
+  -f backend/tests/fixtures/store-calling-identity-schema.sql `
+  -f backend/migrations/2026_10_25_proposed_store_call_identity.sql `
+  -f backend/tests/fixtures/store-calling-identity-assertions.sql
+```
+
+The schema fixture recreates the captured prior view and saves its 45-column
+contract. Assertions compare names/order/types and test zero/stale/multiple PRIMARY
+assignments, stop-owned blank identifiers, parent mismatch and sibling isolation.
+Synthetic rows roll back. The approved view-only migration is already applied to
+Supabase as `20261016085344`; do not rerun it there. No grant/RLS changes are included.
+
+## Collaboration versions and browser transport
+
+Use a newly created disposable database on the verified owned PostgreSQL 18
+cluster. Run `collaboration-versions-schema.sql`, the approved
+`2026_10_26_proposed_collaboration_versions.sql`, then
+`collaboration-versions-assertions.sql`. The assertions cover all six sources,
+rollback, forced-version rejection and helper ACLs. Run
+`node backend/tests/fixtures/collaboration-concurrency.cjs <new-fixture-db>` once
+for two concurrent writers; the second writer waits for the first row lock and
+receives version 2. Never point fixtures at Supabase or an existing development DB.
+
+For isolated browser collaboration, start
+`tsx tests/fixtures/collaboration-browser-server.ts` from backend, then run
+`frontend/tests/collaboration.browser.js` through Playwright. The fixture binds
+127.0.0.1:5199, replaces Auth/REST with synthetic identities/in-memory rows, and
+uses actual Socket.IO transport and spreadsheet editors. It never connects to
+production Supabase. It covers presence, retained drafts, conflicts, commit order,
+five-second persistence, reconnect and logout. Stop that fixture process afterward.

@@ -22,6 +22,7 @@ import {
 import { cancelAdminPreload, preloadAdminPageData } from "../services/admin-preload.service";
 import { clearReportPageCache } from "../services/report.service";
 import { clearSharedWidths } from "../services/shared-table-widths";
+import { startCollaboration } from "../services/collaboration.service";
 import { useToast } from "../components/ui/Toast";
 
 export type AuthProfile = {
@@ -87,6 +88,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [sessionExpiresAt, setSessionExpiresAt] = useState<string | null>(null);
   const cacheOwnerRef = useRef<string | null>(null);
+  useEffect(()=>startCollaboration(loading?null:accessToken,profile?.id,profile?.role),[loading,accessToken,profile?.id,profile?.role]);
   const cacheTokenRef = useRef<string | null>(null);
   const retryRefreshTimerRef = useRef<number | undefined>(undefined);
   const refreshSessionRef = useRef<AuthContextValue["refreshSession"] | null>(null);

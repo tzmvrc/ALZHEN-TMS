@@ -51,6 +51,9 @@ import {
   type ReportRow,
 } from "../../services/report.service";
 import { getReportRowIdentity } from "../../services/report-row-identity";
+import { confirmReportCellWrite } from "../../services/report-edit-confirmation";
+import { useSpreadsheetCollaboration } from "./useSpreadsheetCollaboration";
+import { COLLABORATION_SOURCES,collaborationSnapshot,subscribeCollaborationEvents,rememberConfirmedVersion,type CellTarget as CollaborationCell } from "../../services/collaboration.service";
 import type { FlexSectionKey } from "../../services/flexible-table.service";
 import {
   addDropdownOption,
@@ -442,6 +445,13 @@ type EditableCellTarget = ReportEditDefinition & {
   billingId?: string;
   storeCallId?: string;
 };
+
+const collaborationSources:Record<ReportEditDefinition["sourceEntity"],string>={trip:"trips",stop:"trip_stops",lineItem:"trip_line_items",assignment:"trip_truck_assignments",billing:"billings",storeCall:"store_calls"};
+function collaborationCell(table:string,target:EditableCellTarget|null,status:"selected"|"editing"="selected"):CollaborationCell|null {
+ if(!target||target.sourceField==="transmittal_ref")return null;
+ const recordId={trip:target.tripId,stop:target.stopId,lineItem:target.lineItemId,assignment:target.assignmentId,billing:target.billingId,storeCall:target.storeCallId}[target.sourceEntity];
+ return recordId?{table,source:collaborationSources[target.sourceEntity],recordId,tripId:target.tripId,stopId:["stop","lineItem","storeCall"].includes(target.sourceEntity)?target.stopId:undefined,field:target.sourceField,status}:null;
+}
 
 type SavedRowReconciliation = {
   reportKey: ReportKey;
@@ -1265,6 +1275,34 @@ export default function ReportDataView({
   const diagnosticEditTarget = useRef<{ reportKey: ReportKey; tripId?: string; stopId?: string; field: string } | null>(null);
   const successfulSaveVersion = useRef(0);
   const savedRowReconciliations = useRef<SavedRowReconciliation[]>([]);
+  const collaboration=useSpreadsheetCollaboration(transactionView?"trips":reportKey,accessToken,profile?.id,(commit,record)=>{
+    if(!record){scheduleRealtimeRefreshRef.current();return;}
+    const firstMatch=rows.flatMap(row=>columns.map(column=>({row,column,target:getEditableCellTarget(row,column.key,reportKey)}))).find(({target})=>{const cell=collaborationCell(transactionView?"trips":reportKey,target);return cell?.source===commit.source&&cell.recordId===commit.recordId;});
+    const firstTarget=firstMatch?.target;
+    if(firstTarget&&firstMatch){const patch:ReportRow={};for(const column of columns){const target=getReportEditDefinition(reportKey,column.key,firstMatch.row);if(target&&target.sourceEntity===firstTarget.sourceEntity&&target.editor!=="relationship"&&Object.hasOwn(record,target.sourceField))patch[column.key]=record[target.sourceField];}savedRowReconciliations.current.push({reportKey,target:firstTarget,patch,version:++successfulSaveVersion.current});}
+    const patchRows=(current:ReportRow[])=>current.flatMap(row=>{
+      const matching=columns.map(column=>({column,target:getEditableCellTarget(row,column.key,reportKey)})).filter(({target})=>{const cell=collaborationCell(transactionView?"trips":reportKey,target);return cell?.source===commit.source&&cell.recordId===commit.recordId;});
+      if(!matching.length)return [row];
+      if(!record)return [];
+      const patch:ReportRow={};
+      for(const {column,target} of matching)if(target&&target.editor!=="relationship"&&Object.hasOwn(record,target.sourceField))patch[column.key]=record[target.sourceField];
+      return [{...row,...patch}];
+    });
+    setRows(patchRows);
+    if(accessToken)updateCachedReportPages(reportKey,accessToken,bundle=>({...bundle,rows:patchRows(bundle.rows)}));
+    // A source relationship changes derived labels; keep drafts and use the
+    // established deferred page refresh rather than guessing those labels.
+    const relationshipChanged=firstMatch&&columns.some(column=>{const def=getReportEditDefinition(reportKey,column.key,firstMatch.row);return def?.editor==="relationship"&&def.relationship&&collaborationSources[def.sourceEntity]===commit.source&&Object.hasOwn(record,def.sourceField)&&record[def.sourceField]!==firstMatch.row[def.relationship.idField];});
+    const sortTarget=firstMatch?getReportEditDefinition(reportKey,sortBy,firstMatch.row):undefined;
+    const sortChanged=Boolean(sortTarget&&firstMatch&&collaborationSources[sortTarget.sourceEntity]===commit.source&&Object.hasOwn(record,sortTarget.sourceField)&&record[sortTarget.sourceField]!==firstMatch.row[sortBy]);
+    const queryAffected=Boolean(appliedSearch||Object.values(appliedFilters).some(Boolean)||sortChanged);
+    if(!firstMatch||commit.operation==="INSERT"||relationshipChanged||queryAffected){if(activeReportEdit.current)realtimeRefreshDirty.current=true;else scheduleRealtimeRefreshRef.current();}
+  });
+  const selectedCollaborationRow=cellSelection?displayedRows.find(row=>getReportRowKey(reportKey,row)===cellSelection.focusRowKey):null;
+  const localCollaborationTarget=editingCell?{...editingCell.definition,...editingCell}:selectedCollaborationRow&&cellSelection?getEditableCellTarget(selectedCollaborationRow,cellSelection.focusField,reportKey):null;
+  const presenceIdentity=JSON.stringify(collaborationCell(transactionView?"trips":reportKey,localCollaborationTarget,editingCell?"editing":"selected"));
+  const focusCollaboration=collaboration.focus;
+  useEffect(()=>{focusCollaboration(JSON.parse(presenceIdentity));},[presenceIdentity,focusCollaboration,accessToken]);
   snapshotKeyRef.current = snapshotKey;
   reportKeyRef.current = reportKey;
 
@@ -1611,7 +1649,8 @@ export default function ReportDataView({
     const unsubscribe = subscribeToAdminRealtime((event) => {
       if (event.kind === "batch") {
         if (event.tables.includes("tms_dropdown_options")) dropdownRefreshPending.current = true;
-        if (event.tables.some((table) => reportTables.includes(table) || table === "tms_dropdown_options" || table === "transaction_deletion_jobs")) scheduleRealtimeRefreshRef.current();
+        const socket=collaborationSnapshot();
+        if (event.tables.some((table) => !(socket.connected&&socket.bridgeHealthy&&(COLLABORATION_SOURCES as readonly string[]).includes(table))&&(reportTables.includes(table) || table === "tms_dropdown_options" || table === "transaction_deletion_jobs"))) scheduleRealtimeRefreshRef.current();
         return;
       }
       if (event.kind === "resume") {
@@ -1647,11 +1686,13 @@ export default function ReportDataView({
         scheduleRealtimeRefreshRef.current();
       }
     });
+    const stopSocket=subscribeCollaborationEvents(event=>{if(event.kind==="connected")scheduleRealtimeRefreshRef.current();});
     // Keep an active report reconciled if Postgres Changes are unavailable or
     // an event was missed. The shared channels themselves live for the session.
     const recovery = window.setInterval(() => scheduleRealtimeRefreshRef.current(), 60_000);
     return () => {
       unsubscribe();
+      stopSocket();
       window.clearInterval(recovery);
       if (realtimeRefreshTimer.current !== null) {
         window.clearTimeout(realtimeRefreshTimer.current);
@@ -2436,6 +2477,11 @@ export default function ReportDataView({
         throw new Error("This report row is missing its update record ID.");
       }
 
+      const confirmedValue = confirmReportCellWrite(savedRecord, diagnosticTarget, definition.sourceField, {value: nextValue, editor: definition.editor});
+      const savedIdentity=collaborationCell(transactionView?"trips":reportKey,diagnosticTarget);
+      if(savedIdentity&&!rememberConfirmedVersion(savedIdentity.source,savedIdentity.recordId,savedRecord.collaboration_version)){
+        setEditingCell(null);setCellSaveState({rowKey:targetCell.rowKey,field:targetCell.field,status:"warning",message:"Your save completed, but a newer committed edit is already authoritative. Review the latest value."});return true;
+      }
       reportEditDiagnostic("save response", {
         endpoint: reportEditEndpoint(diagnosticTarget),
         sourceEntity: definition.sourceEntity,
@@ -2451,10 +2497,7 @@ export default function ReportDataView({
         ? savedRecord._mention_notification_warning
         : "";
 
-      const confirmedCellValue = !isRelationship &&
-        Object.prototype.hasOwnProperty.call(savedRecord, definition.sourceField)
-        ? savedRecord[definition.sourceField]
-        : nextValue;
+      const confirmedCellValue = confirmedValue;
 
       let savedRowPatch: ReportRow;
       if (isRelationship && definition.relationship) {
@@ -2501,12 +2544,6 @@ export default function ReportDataView({
             : {}),
         };
       } else {
-        const confirmedValue = Object.prototype.hasOwnProperty.call(
-          savedRecord,
-          definition.sourceField,
-        )
-          ? savedRecord[definition.sourceField]
-          : nextValue;
         savedRowPatch = { [targetCell.field]: confirmedValue };
         if (definition.sourceField === "transmittal_ref") savedRowPatch.transmittal_ref_version = savedRecord.transmittal_ref_version;
       }
@@ -2812,6 +2849,8 @@ export default function ReportDataView({
           </div>
         )}
         {toolbarLeading}
+        <span className="text-[10px] text-slate-500" role="status">{collaboration.connected?"Live collaboration":"Collaboration reconnecting"}</span>
+        {collaboration.notice&&<div role="status" className="max-w-md rounded border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-900">{collaboration.notice.text}{collaboration.notice.latest!==undefined&&<span className="block">Latest persisted value: {String(collaboration.notice.latest??"(blank)")}</span>}<button type="button" onClick={collaboration.dismissNotice} className="ml-2 underline">Dismiss</button></div>}
         <ColumnFinder columns={columns.filter((column) => !(transactionView && column.key === "warehouse_code")).map((column) => ({ ...column, hidden: hiddenColumnKeys.has(column.key), index: renderedGridColumns.findIndex((item) => item.key === column.key) }))} viewport={tableViewportRef} getHeader={(key) => headerCellRefs.current.get(key)} onReveal={restoreReportColumn} />
         <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2 lg:flex-[1_1_36rem] lg:flex-nowrap">
           <form onSubmit={submitSearch} className="flex min-w-0 w-full gap-2 sm:w-auto">
@@ -3278,6 +3317,7 @@ export default function ReportDataView({
                               ? dropdownChoicesByField[dropdownField] ?? []
                               : [];
                           const isEditable = Boolean(editableTarget);
+                          const remoteEditors=collaboration.peers(collaborationCell(transactionView?"trips":reportKey,editableTarget));
                           const isRemarksColumn = /remarks|comment|notes/i.test(column.key) || editableTarget?.sourceField === "remarks";
                           const pinSide = pinnedColumnSides[column.key];
                           const columnColor = columnLayout.colors?.[column.key];
@@ -3309,6 +3349,7 @@ export default function ReportDataView({
                                 width: columnWidth,
                                 minWidth: columnWidth,
                                 maxWidth: columnWidth,
+                                ...(remoteEditors.length?{boxShadow:`inset 0 0 0 2px ${remoteEditors[0].color}`} : {}),
                                 ...(isPinned ? { position: "sticky" as const, ...(pinSide === "left" ? { left: leftPinOffsets[column.key] ?? 44 } : { right: rightPinOffsets[column.key] ?? 0 }), zIndex: 20 } : {}),
                                 ...(cellFormat?.bold ? { fontWeight: 700 } : {}),
                                 ...(cellFormat?.color ? { color: cellFormat.color } : {}),
@@ -3337,6 +3378,7 @@ export default function ReportDataView({
                                   ? "text-right tabular-nums"
                                   : "text-left"
                               }`}>
+                              {remoteEditors.length>0&&<span className="pointer-events-none absolute right-1 top-0 z-30 max-w-[90%] truncate rounded-sm bg-white/95 px-1 text-[9px] leading-3" style={{color:remoteEditors[0].color}} title={remoteEditors.map(peer=>`${peer.name} (${peer.status})`).join(", ")}>{remoteEditors[0].name}{remoteEditors[0].status==="editing"?" · editing":""}{remoteEditors.length>1?` +${remoteEditors.length-1}`:""}</span>}
                               {isEditing && editingCell ? (
                                 editingCell.definition.editor ===
                                   "relationship" &&

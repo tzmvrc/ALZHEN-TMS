@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "../config/supabase.js";
+import { collaborationSelect } from "./collaboration-events.js";
 import type {
   AssignmentCompanySummary,
   AssignmentDriverSummary,
@@ -573,9 +574,9 @@ export async function updateTripAssignment(
     .eq("id", assignmentId)
     .eq("trip_id", tripId)
     .select(
-      "id, trip_id, truck_id, driver_id, trucking_company_id, assignment_type, assigned_at, unassigned_at, remarks, created_at, updated_at",
+      collaborationSelect("id, trip_id, truck_id, driver_id, trucking_company_id, assignment_type, assigned_at, unassigned_at, remarks, created_at, updated_at"),
     )
-    .single();
+    .single<TripAssignmentRecord>();
 
   if (error) {
     console.error("Trip assignment update failed:", error);

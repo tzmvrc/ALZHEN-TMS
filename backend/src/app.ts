@@ -1,4 +1,5 @@
 import express from "express";
+import { collaborationResponseMiddleware } from "./services/collaboration-events.js";
 import tableLayoutRoutes from "./routes/table-layout.routes.js";
 import realtimeRoutes from "./routes/realtime.routes.js";
 import cors from "cors";
@@ -28,6 +29,7 @@ const app = express();
 
 app.use(cors());
 app.use(express.json());
+app.use(collaborationResponseMiddleware);
 app.use("/api/website", websiteContentRoutes);
 app.use("/api", healthRoutes);
 app.use("/api/auth", authRoutes);

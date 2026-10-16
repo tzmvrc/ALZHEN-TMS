@@ -1,6 +1,6 @@
 # TMS table overhaul: completed integrity and Offload phase
 
-> Latest resume checkpoint: see **Phase 2B.5 - Tracker pagination and loading checkpoint (2026-10-16)** at
+> Latest resume checkpoint: see **Phase 2B.5 - Critical persistence checkpoint (2026-10-16)** at
 > the end of this document. Earlier sections describe historical checkpoints.
 
 ## Applied database change
@@ -1275,3 +1275,321 @@ Operations pagination remains the next implementation task.
 6. Use approved test accounts for real two-session create/edit/layout/dropdown/
    reconnect/logout tests. Do not delete production records or use unapproved
    Storage objects. Existing durable deletion flows remain regression-tested mocks.
+
+## Phase 2B.5 - Critical persistence checkpoint (2026-10-16)
+
+**Partial implementation of the expanded request, not release acceptance or full
+Phase 2B.5 completion. Prioritize remaining persistence coverage before cosmetics.**
+
+### Confirmed root causes and code fixes
+
+- Initial `git status --short --untracked-files=all`, `git ls-files -u` and
+  `git diff --check` were clean. Existing committed Phase 2B.5 work was preserved.
+- `backend/src/services/report.service.ts` enriched every report row with its
+  parent's dispatch number after reading the correctly stop-scoped v_* view.
+  A successful `trip_stops` write could therefore be followed by an API response
+  containing the old parent dispatch. Null transaction identifiers also inherited
+  parent values. Parent enrichment is now restricted to actual trip-only rows;
+  stop values, including null, remain authoritative. Stop-only pages also skip
+  the unnecessary parent-reference query. No view writes were introduced.
+- Store Calling assignment enrichment now excludes unassigned PRIMARY records.
+- Billing invoice updates returned only `id`. `trip.service.ts` now returns
+  `id, trip_id, invoice_number`, so confirmation uses the saved value rather than
+  a client assumption. Actual service mocks verify both parent filters, canonical
+  response, null invoice clearing and rejection of a different parent before write.
+- `ReportDataView.tsx` previously substituted the submitted draft when a successful
+  response omitted the edited field. It now calls `confirmReportCellWrite` before
+  modifying rows/cache or showing Saved. Confirmation checks physical source ID,
+  applicable trip/stop parents, field presence and the requested value. Numeric
+  serialization and equivalent date/timestamp representations are accepted; null
+  is never treated as zero. Stop DR explicit-empty behavior is preserved. A
+  malformed/mismatched response retains the draft and explains lack of confirmation.
+- Ordinary edits still use protected physical APIs: trips, trip_stops,
+  trip_line_items, trip_truck_assignments, billings and store_calls. Stop/line-item
+  calls keep trip + stop + item IDs; transmittal references retain the existing
+  flex-cell CAS service. No conversion, deletion or receipt behavior was changed.
+- `DriverPortal.tsx` had a separate StrictMode/effect-cleanup race: the first
+  effect's consumer became inactive, while an in-flight boolean caused the next
+  effect to skip attaching a replacement. It now reuses the pending token-scoped
+  promise with a live consumer, ignores obsolete responses and only releases its
+  own request. Refresh/retry loading starts in their event handlers; token refresh
+  no longer resets an unchanged transaction's receipt/DR draft. Existing polling
+  remains a recovery mechanism; Socket.IO/cross-navigation Trucker caching is not
+  implemented by this fix.
+
+### Approved database correction
+
+- User explicitly approved `backend/migrations/2026_10_25_proposed_store_call_identity.sql`.
+  SHA-256 `94D8CDF87973919B0240F95B274A8662070A816D39C850A5E2264298CE62DD59`.
+  Applied exactly once via MCP; Supabase confirmed migration `20261016085344`,
+  `store_call_identity`. Do not rerun it or the already applied Tracker migration.
+- Replaces only `vw_store_calling_tracker`. Stop dispatch/transaction identifiers
+  come from the exact stop (including null); trip-only calls retain parent values.
+  Stop joins verify the parent. Zero/multiple active PRIMARY assignments preserve
+  calls without choosing an arbitrary vehicle or multiplying rows.
+- All 45 existing output names/order/types preserved. Owner and ACL unchanged;
+  zero Store Calling records before/after. No base table, RLS, grant, publication,
+  Storage, conversion history or operational data modification in the migration.
+- Captured original view SQL: `backend/tests/fixtures/store-calling-legacy-view.sql`.
+  After explicit review, restoring that definition is the view-only recovery path.
+- Permission limitation: service_role still lacks SELECT on this legacy view;
+  the API's existing authorized `v_store_calling` fallback remains readable and
+  retains its own correct stop dispatch/assignment logic. Do not casually grant
+  access: legacy `contact_status`/`assigned_to_id` differ from generic API filter
+  names. Review the complete query contract before changing view preference/grants.
+
+### Verification performed
+
+- Backend tests: 113 passed. Frontend tests: 57 passed. Both TypeScript/production
+  builds passed; existing Vite large-chunk warning remains. Targeted ESLint on
+  ReportDataView, DriverPortal and the new confirmation helper passes. Both Git
+  diff checks pass; no unmerged entries. Backend has no configured lint script.
+- Actual service regression uses three synthetic stops under one trip, writes
+  only the exact physical trip_stops row, waits 5.1 seconds and performs fresh
+  reads through all five report services. Proves sibling isolation, zero/null
+  preservation, dropdown persistence and rejected database writes. A separate
+  trip-only fixture verifies that legitimate parent enrichment still works.
+  These are mocked Supabase clients, not production fixture writes.
+- Complete Store Calling SQL executed successfully in NEW disposable PostgreSQL
+  18 database `store_identity_7b82ca56dea3403aadabedbe005aa00f` in the verified owned
+  cluster on port 55439. Recreated captured current view first; compared all 45
+  names/order/types after replacement. Assertions cover three stops, blank IDs,
+  trip-only calls, mismatched parent, stale/secondary/ambiguous assignments and
+  scoped updates. Synthetic data rolled back. Representative schema, not live clone.
+  Owned server stopped after checking data_directory; fixture database retained.
+  Initial start without explicit port failed to bind the default port; retry used
+  explicit owned port 55439. No existing/default PostgreSQL service was changed.
+- Isolated real-component browser tests: `report-edit-persistence.browser.js`
+  verifies Enter, five-second stability, malformed-success rejection, retained
+  draft, Escape and no duplicate Enter/blur write. `trucker-loading.browser.js`
+  verifies StrictMode initial request count 1, failed refresh retaining rows and
+  retry success (3 total requests). Transport/Auth mocked; no production writes.
+- Existing permanent transaction deletion browser fixture rerun passes cancellation,
+  protected history, exact stop identity, sibling preservation and cleanup retry
+  (12 mocked requests). No actual deletion was performed.
+- User manually signed in to an approved Admin test account and explicitly selected
+  the DR 333 test transaction for temporary dispatch edits/restoration. Three
+  temporary edits plus three restorations used protected application APIs only.
+  Original dispatch `This is a test.ere` restored; parent/sibling verified unchanged.
+  Updated timestamps and change-signal revisions naturally reflect those approved
+  tests; no attempts were made to erase their audit footprint.
+- Authenticated live test: HTTP 200 confirmed exact stop ID, value persisted after
+  5.2 seconds, read-only database/view checks agreed, browser reload retained it,
+  blur restoration returned 200. No genuine operational records were selected.
+- Live two-tab test (same approved account, separate clients): commit response
+  2554ms, second tab displayed update 2615ms after confirmation; observed 8 websocket
+  frames including 2 admin_change_signals frames. This is not two different users,
+  not Socket.IO latency and not a production performance benchmark.
+- Live draft test: another tab committed the approved test change while the first
+  had an unsaved draft. Draft survived 5.5 seconds; Escape then revealed committed
+  remote value. Original dispatch restored afterward. No draft text was broadcast.
+
+### Realtime coverage at this checkpoint
+
+Socket.IO server/client, collaborative presence, server commit sequences and conflict
+notifications are **not implemented**. Existing Supabase metadata-signal pipeline
+and protected refetch remain authoritative; no parallel broadcast system added.
+
+| Module | Authoritative source / Supabase signal | Cache and role behavior | Evidence / remaining work |
+| --- | --- | --- | --- |
+| Trips / standard reports | trips, stops, line items, assignments -> admin_change_signals | ADMIN/STAFF report/trip invalidation; active drafts defer refresh; coordinator reconciles on reconnect | Live same-account two-tab dispatch and draft tests; all-field/two-user conflict coverage remains |
+| Operations / Offload | physical report/item/receipt sources -> metadata signals | ADMIN/STAFF overview cache and deferred grid refresh | Prior mocked creation/deletion tests; no live deletion test, unchanged safeguards |
+| Transmittal | stop values + flex cells -> metadata signals | ADMIN/STAFF bounded page cache; CAS and draft gate | Prior pagination/preview/export mocks; real cross-account ref test pending |
+| Trip Details | trips, stops, events, receipt sources -> metadata signals | existing scoped API refetch/deferred cargo dialogs | No new URL routing/cache redesign in this checkpoint |
+| Users / master data | profiles, trucks, drivers, lookups -> metadata signals | ADMIN/STAFF resource caches; modal/edit gates | Existing management fixtures; no new account mutations |
+| Flexible tables / shared widths | flex sources / shared_table_column_widths -> signals | authorized API access; revisioned widths and drag deferral | Prior mocks; company-wide order/format storage remains unfinished |
+| Notifications | admin_notifications -> existing subscription/signal | existing authorized notification API | No new live notification approval workflow tested |
+| Requests / POD | existing document/POD sources | existing protected APIs only | Requests-integrated approval/atomic linked updates not implemented |
+| Trucker portal | assigned-trip APIs; existing timed recovery | restricted TRUCKER endpoints and app session enforcement retained | StrictMode fix browser mock; no authenticated Trucker test yet |
+| Dashboard / location | current trip/event sources | existing admin invalidation | Socket pin-only delivery and hourly road-routing cache pending |
+
+### Files in this continuation
+
+- Backend: `src/services/report.service.ts`, `src/services/trip.service.ts`;
+  existing `tests/trip-detail-report.test.ts`;
+  new `tests/report-edit-persistence.test.ts`.
+- Database/fixtures: approved migration above; new store-calling legacy view,
+  representative schema and assertions SQL; fixture README.
+- Frontend: `components/admin/ReportDataView.tsx`, `pages/Driver/DriverPortal.tsx`;
+  new `services/report-edit-confirmation.ts` and its unit test; new report editing
+  and Trucker loading browser fixtures. This document and browser-generated logs/
+  snapshots are retained. No package, auth policy or dependency changes.
+
+### Exact next resume point for the expanded request
+
+1. Finish comprehensive physical-field audit and authenticated numeric/date/dropdown/
+   nullable saves on approved fixtures only. Dispatch regression is proven; do not
+   extrapolate to every editable cell or claim universal release acceptance.
+2. Design server-authoritative commit versions/conflict notifications with any SQL
+   proposed for approval first. Existing per-resource CAS protections must not be
+   weakened. No generalized last-save-wins/conflict UX has been added yet.
+3. Implement secure Socket.IO alongside existing Supabase signals: reuse full JWT
+   and app-session checks (Manila expiry, Trucker single-device), room authorization,
+   bounded presence events, cleanup and an explicit multi-instance bridge. No draft
+   values in payloads. Test separate Admin/Staff accounts and approved Trucker login.
+4. Then complete URL-based Trip Details/actions/cache and partial-save wizard,
+   OCR + approved AI stage, hourly road routing, Requests POD approval and secure
+   temporary-password flow. Preserve existing OCR and do not activate new paid
+   providers/document transmission without approval.
+5. Finish shared formatting, unified search, remaining table/UI work, Operations
+   pagination, preloading/performance and global Realtime coverage. Each additional
+   live migration requires its own exact proposal and explicit approval.
+6. No commits/pushes, no deletion test against production. Keep existing permanent
+   deletion/storage workflows untouched and rerun their regression fixtures.
+
+## Phase 2B.5-B — Socket.IO / Collaboration Checkpoint (October 16, 2026)
+
+This continues the Critical Persistence checkpoint above. Existing stop ownership,
+Store Calling, Trucker StrictMode loading and permanent deletion/storage work is
+preserved. No merge conflicts, reset, commit or push. This is a tested collaboration
+checkpoint, **not completion of every expanded Phase 2B.5 requirement**.
+
+### Implemented
+
+- Socket.IO attaches to the existing Express HTTP server. Supabase validates JWTs;
+  actual profile role/name and existing midnight/single-device session guards are
+  enforced. Token expiry, periodic revalidation, role/trip/table rooms, packet and
+  connection budgets, heartbeat expiry and disconnect cleanup are implemented.
+- ADMIN/STAFF receive metadata, not draft text. TRUCKER only joins its own user
+  room/current assigned trips and cannot access management record reads or rooms.
+- Successful REST responses emit physical source/ID, field keys, actor and version.
+  A live test found that mounted routers trim `req.path`; the observer now captures
+  `originalUrl` before routing. A focused regression covers the exact failure.
+- Existing six-table Supabase changes bridge metadata across server instances;
+  optional Redis adapter relays interactive presence and confirmed actor metadata.
+  Multi-replica deployment requires shared Redis and explicit WEB_CONCURRENCY.
+- Auth-owned frontend client deduplicates connections/rooms/signals, rejoins on
+  reconnect and cleans up on logout/token changes. Report cells display remote
+  names/colors, advisory selection/editing outlines and conflict notices with the
+  latest persisted value. Active drafts are preserved; Enter/blur/Escape remain.
+- Lower server versions cannot overwrite newer confirmed values. Scalar changes
+  patch matching physical rows/cache pages; structural, relationship, filtered or
+  sorted membership changes defer/coalesce a page refresh. The coarse signal does
+  not cause a duplicate source refresh while the detailed bridge is healthy.
+- Canonical record reads deduplicate overlapping requests. Presence lookup is
+  indexed per cell; unchanged heartbeat payloads do not rerender the grid.
+- Trucker assigned trips use the existing token-scoped API cache, preserve rows
+  during refresh/failure, coalesce assigned-trip signals and defer while saving or
+  uploading. Existing 30-second recovery remains for unpublished dependencies.
+
+### Approved migration applied once
+
+- `20261016094657` / `collaboration_versions`, exact file
+  `backend/migrations/2026_10_26_proposed_collaboration_versions.sql`.
+- SHA-256 `ADD1A74720680D48398665B7D6EA4D281BB6745AEAAC34DF1941E7FE015FD7C6`.
+- User explicitly approved; hash rechecked and dependent builds/tests/browser
+  fixture passed before applying. Supabase returned success. Six bigint columns,
+  six increment triggers, bounds checks and helper ACL verified afterward.
+- Version increments serialize under each physical row lock, not client clocks.
+  Existing rows start at zero. No business field backfill or deletion. Counts
+  unchanged by migration: trips 6, stops 7, items 8, assignments 6, calls 0,
+  billings 0. No RLS/table grants/publications/storage/view changes.
+- Disposable PG18 sequential/rollback/forced-version/ACL tests passed. Two actual
+  fixture connections serialized to final value `second`, version 2. Retained
+  fixture DB: `collaboration_versions_8365932023c74bd6b5181ffd5769ad87`.
+
+### Authenticated and isolated evidence
+
+- User manually signed in two different ADMIN accounts on localhost and 127.0.0.1
+  origins, then a real TRUCKER account. Credentials were not printed or stored in
+  test files. These were two ADMINs, not an ADMIN/STAFF pair.
+- User explicitly approved temporary edits/restoration of DR 333 only. Stop
+  `76883550-70e8-4f64-b69d-f17b2120375b`, trip
+  `185788e0-23c0-48f0-9108-9be1bad783c6` retained physical identity. Live presence,
+  same-cell conflict notice, active draft preservation, later-save-wins, 5.2-second
+  stability and browser refresh passed. Original `This is a test.ere` restored.
+- First live attempt exposed the mounted-router observer bug and restored its
+  temporary edit. Successful follow-up versions 3/4/5 had response times
+  2253/1307/2015 ms (last is restoration), not isolated socket benchmarks.
+- Staff-to-Trucker assigned-stop refresh passed without navigation/full-page
+  reload: 4663 ms from initiating the edit through authorized response arrival.
+  Restored again afterward. Final DR 333 version 7; sibling DR 111 remained
+  `This is a test.`, version 0. Other tested fields stayed unchanged. Audit/version
+  footprints were retained, not erased. No production deletion/upload/status test.
+- Real Trucker JWT accepted; forged ADMIN room request rejected; management GET
+  returned 403. Live logout cleared socket/presence/app-session. No endless loader.
+  Observed assigned-trip reads were 30 seconds apart (normal recovery), not a
+  rapid mount/request loop. POD/driver-update publication gaps mean this fallback
+  has intentionally not been removed.
+- Isolated browser: actual Socket.IO transport + real editors, synthetic Auth and
+  in-memory persistence; presence, conflict, draft, last save, five seconds,
+  reconnect and logout passed with no page errors. Two fixture-only failures were
+  corrected: importing a second Vite timestamped module instance, and reusing an
+  unchanged test value across runs. Neither was a persisted business-data bug.
+- Existing persistence browser fixture passed (two writes, failed canonical
+  confirmation retains draft, sibling rows untouched). Trucker StrictMode fixture
+  passed (one initial read, one failed refresh, one successful retry; rows retained).
+
+### Verification commands and outcomes
+
+- Backend: frontend's installed Node 24 + `--import tsx --test tests/*.test.ts`:
+  **117 passed**; TypeScript `node_modules/typescript/bin/tsc`: passed.
+- Frontend: `TSX_TSCONFIG_PATH=tsconfig.app.json`, Node + backend tsx loader,
+  `--test tests/*.test.ts tests/*.test.tsx`: **59 passed**. Raw strip-types was an
+  unsuitable runner (extensionless imports); rerun with tsx passed. Missing
+  TSX config on an earlier attempt used classic JSX; proper config passed.
+- Frontend TypeScript + Vite build: passed; existing >500 kB chunk warning remains.
+  A locked native dependency initially blocked install/build; completed the lockfile
+  installation after stopping only this repo's Vite process, then restarted Vite.
+- Targeted frontend/backend ESLint: passed for collaboration sources, report grid,
+  Trucker and API/services. AuthContext separately has the **same baseline five
+  errors and one warning**, confirmed with HEAD piped through ESLint; not suppressed.
+- Staged and unstaged `git diff --check`: passed. Final status retained all prior
+  modified/untracked work. No production destructive tests, commit or push.
+  Owned browser fixture process and disposable PG18 cluster stopped after tests;
+  fixture databases retained. Unused isolated login contexts closed. Normal
+  backend/frontend development servers retained. `.env.example` is ignored by the
+  existing repository rules; deployable configuration guidance is also recorded
+  in `docs/collaboration-realtime.md`.
+- Existing mocked preload measurement in the suite: 23 initial requests, max
+  concurrency 4, 167 ms warmup, zero additional cached navigation requests. This
+  synthetic timing is not a production performance claim.
+
+### Realtime coverage matrix
+
+| Module | Authority / event / roles | Draft and recovery | Evidence / remaining |
+| --- | --- | --- | --- |
+| Trips and five standard report grids | six physical sources; cell:committed/table:invalidated; ADMIN/STAFF table presence | row versions, canonical targeted patches, notices, draft-deferred structural refresh; reconnect/recovery | two real ADMINs and synthetic ADMIN/STAFF; dispatch verified, all-field audit remains |
+| Trucker assignments/status | protected assigned-trip API; own trip/user room; trucker:changed | retained cache/drafts, coalesced refresh; existing 30s recovery | real assigned-stop signal, restricted rooms/403/logout; no real status/assignment mutation |
+| Operations/Offload | existing physical sources and secure Supabase signals | previous cache/deferred grid refresh/deletion safeguards | presence/ordered commit extension not implemented yet |
+| Transmittal/flexible cells | existing authoritative flex CAS + change signals | existing draft gates and bounded pages | new Socket presence/format events not yet wired |
+| Shared widths | existing revisioned DB storage/change signals | existing drag deferral/persistence | preserved, no new live width mutation |
+| POD/Requests | existing protected APIs/sources | existing behavior retained | pod_records lacks service_role SELECT and is unpublished; driver_trip_updates also unpublished; approval workflow remains |
+| GPS/dashboard | existing authorized trip_events/milestone route | existing signals/map behavior | lightweight socket pin-only delivery remains |
+| Users/lookups/notifications | existing secure Supabase signals/protected APIs | previous caches/reconnect | not replaced by broad Socket rooms |
+
+### Files in this checkpoint (prior files preserved)
+
+- Backend: `.env.example`, package manifests/locks; `src/app.ts`, `src/server.ts`,
+  `src/routes/realtime.routes.ts`, `src/services/assignment.service.ts`,
+  `src/services/trip.service.ts`; new `collaboration.logic.ts`,
+  `collaboration-auth.service.ts`, `collaboration-events.ts`,
+  `collaboration-record.service.ts`, `collaboration-server.ts`.
+- Frontend: package manifests/lock; `ReportDataView.tsx`, `AuthContext.tsx`,
+  `DriverPortal.tsx`, `api.service.ts`, `trucker.service.ts`; new
+  `services/collaboration.service.ts`, `components/admin/useSpreadsheetCollaboration.tsx`.
+- Tests: new backend `collaboration-{auth,events,record,socket}.test.ts`, version
+  fixture schema/assertions/concurrency script and local browser server; frontend
+  `collaboration.test.ts`, `collaboration.browser.js`. Fixture README updated.
+- SQL: exact approved migration above, unchanged hash. Docs: this progress file
+  and `docs/collaboration-realtime.md`. Existing browser logs/snapshots retained.
+
+### Exact next resume point / blockers
+
+1. Preserve the applied version migration and existing permanent deletion code.
+   Do not rerun it or the earlier Store Calling/Tracker/deletion migrations.
+2. POD notifications require a reviewed least-privilege approach: live catalog
+   confirms `pod_records` lacks service_role SELECT and publication membership;
+   `driver_trip_updates` is unpublished. Do not broaden grants or publications
+   without exact SQL and explicit approval. Requests-integrated approval itself
+   is not yet implemented. GPS pin-only events remain separate work.
+3. Test a real STAFF role, token refresh/revocation, assignment/status changes and
+   actual Redis multi-instance delivery using approved isolated records/accounts.
+   No Redis deployment credential/config was supplied; adapter is implemented but
+   only single-instance transport has been verified.
+4. Extend versioned presence/commit handling to Operations/Tracker/flexible grids
+   without weakening existing CAS. Finish shared formatting synchronization.
+5. Then Trip Details URL/actions/cache, OCR + approved AI stage, hourly road routes,
+   Requests POD approval, secure temporary passwords, Operations pagination and
+   remaining shared UI/performance tasks from the expanded request. Do not claim
+   those independent tasks complete because Socket.IO connects.

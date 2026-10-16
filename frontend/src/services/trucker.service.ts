@@ -1,4 +1,4 @@
-import { apiGet, apiGetCached, apiPatch, apiPost, apiUpload, type ApiResponse } from "./api.service";
+import { apiGetCached, apiPatch, apiPost, apiUpload, getCachedApiResponse,invalidateApiCache,type ApiResponse } from "./api.service";
 
 export type TruckerListItem = {
   id: string;
@@ -135,11 +135,13 @@ export type SavedDriverReceipt = {
 
 export async function fetchMyAssignedTrips(
   token: string,
+    fresh = false,
 ): Promise<DriverAssignedTrip[]> {
-  const response = await apiGet<ApiResponse<DriverAssignedTrip[]>>(
+    if(fresh)invalidateAssignedTrips();
+    const response = await apiGetCached<ApiResponse<DriverAssignedTrip[]>>(
     "/truckers/me/trips",
     token,
-    20_000,
+      30_000, "/truckers/me/trips", 20_000,
   );
 
   if (!response.success || !response.data) {
@@ -148,6 +150,9 @@ export async function fetchMyAssignedTrips(
 
   return response.data;
 }
+
+export const invalidateAssignedTrips=()=>invalidateApiCache("/truckers/me/trips");
+export const getCachedAssignedTrips=(token:string)=>getCachedApiResponse<ApiResponse<DriverAssignedTrip[]>>("/truckers/me/trips",token,5*60_000)?.data??null;
 
 export async function fetchTruckers(token: string, params: {
   search?: string;
@@ -225,6 +230,7 @@ export async function saveDriverTripUpdate(
     throw new Error(response.message ?? "Unable to update trip status.");
   }
 
+  invalidateAssignedTrips();
   return response.data;
 }
 
@@ -249,6 +255,7 @@ export async function uploadDriverPod(
   if (!response.success || !response.data) {
     throw new Error(response.message ?? "Unable to upload delivery receipt.");
   }
+  invalidateAssignedTrips();
   return response.data;
 }
 

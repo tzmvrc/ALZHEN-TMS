@@ -267,6 +267,7 @@ export async function apiGetCached<T>(
   token?: string,
   ttlMs = 5 * 60 * 1000,
   requestEndpoint = endpoint,
+  timeoutMs?: number,
 ): Promise<T> {
   const cacheKey = `${token ?? "anon"}:${endpoint}`;
   const now = Date.now();
@@ -281,12 +282,12 @@ export async function apiGetCached<T>(
 
   const requestRevision = cacheRevisions.get(cacheKey) ?? 0;
   const requestSession = cacheSessionGeneration;
-  const requestPromise = request<T>(requestEndpoint, { method: "GET" }, token)
+  const requestPromise = request<T>(requestEndpoint, { method: "GET" }, token, timeoutMs)
     .then((value) => {
       if (requestSession !== cacheSessionGeneration) throw new Error("The session changed while loading data.");
       // Invalidation removes a pending request from the shared map. A response
       // from before an edit must not be returned to a mounted page either.
-      if (requestRevision !== (cacheRevisions.get(cacheKey) ?? 0)) return apiGetCached<T>(endpoint, token, ttlMs, requestEndpoint);
+      if (requestRevision !== (cacheRevisions.get(cacheKey) ?? 0)) return apiGetCached<T>(endpoint, token, ttlMs, requestEndpoint, timeoutMs);
       if (requestRevision === (cacheRevisions.get(cacheKey) ?? 0)) {
         responseCache.set(cacheKey, { expiresAt: Date.now() + ttlMs, value });
       }

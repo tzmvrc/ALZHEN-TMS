@@ -1,0 +1,34 @@
+// Isolated in-memory transport fixture. Never connects to production Supabase.
+import {createServer} from "node:http";
+process.env.SUPABASE_URL="http://127.0.0.1:54321";
+process.env.SUPABASE_SERVICE_ROLE_KEY="isolated-test";
+process.env.SUPABASE_ANON_KEY="isolated-test";
+async function main(){
+const {attachCollaborationServer}=await import("../../src/services/collaboration-server.js");
+const trip="123e4567-e89b-42d3-a456-000000000010",stop="123e4567-e89b-42d3-a456-000000000012";
+let record={id:stop,trip_id:trip,dispatch_number:"DSP-2",collaboration_version:0};
+const http=createServer(async(req,res)=>{
+ res.setHeader("Access-Control-Allow-Origin","http://localhost:5173");
+ res.setHeader("Content-Type","application/json");
+ if(req.method==="GET"&&req.url==="/record"){res.end(JSON.stringify(record));return;}
+ if(req.method==="POST"&&req.url==="/drop-staff"){
+  for(const socket of service.io.of("/").sockets.values())if(socket.data.actor.id==="fixture-staff")socket.conn.close();
+  res.end(JSON.stringify({ok:true}));return;
+ }
+ if(req.method==="POST"&&req.url==="/commit"){
+  let input="";for await(const part of req){input+=part;if(input.length>1000){res.writeHead(413).end();return;}}
+  const body=JSON.parse(input);if(!["admin","staff"].includes(body.actor)||typeof body.value!=="string"||body.value.length>100){res.writeHead(400).end();return;}
+  record={...record,dispatch_number:body.value,collaboration_version:record.collaboration_version+1};
+  res.end(JSON.stringify(record));
+  service.publish({eventId:`trip_stops:${stop}:${record.collaboration_version}`,source:"trip_stops",recordId:stop,tripId:trip,stopId:stop,fields:["dispatch_number"],version:record.collaboration_version,actorId:`fixture-${body.actor}`});return;
+ }
+ res.writeHead(404).end();
+});
+const service=await attachCollaborationServer(http,{bridge:false,authenticate:async(token,session)=>{
+ if(!["admin","staff"].includes(String(token))||session!=="fixture-session")throw Error("Denied");
+ return {id:`fixture-${token}`,role:token==="admin"?"ADMIN":"STAFF",name:token==="admin"?"Fixture Admin":"Fixture Staff",expiresAt:Date.now()+3600000};
+},canTrip:async()=>true,authorizeCell:async cell=>{if(cell.recordId!==stop||cell.tripId!==trip)throw Error("Wrong fixture record");}});
+http.listen(5199,"127.0.0.1",()=>console.log("Isolated collaboration fixture ready:5199"));
+process.on("SIGTERM",()=>void service.close());
+}
+void main();

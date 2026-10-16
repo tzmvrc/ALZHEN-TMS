@@ -1,0 +1,392 @@
+[    1819ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=fcda5df1:15804
+[   92198ms] [INFO] [report-edit-diagnostic] ReportDataView mounted {mode: development, development: true} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[   92226ms] [INFO] [report-edit-diagnostic] ReportDataView mounted {mode: development, development: true} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[   94926ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 6} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[   94926ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 6} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[   94927ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 6} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[  158741ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 6} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[  198824ms] [INFO] [report-edit-diagnostic] cell selected for editing {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, selected: Object, canonicalIdentity: dispatch-monitoring:trip:185788e0-23c0-48f0-9108-9…b:assignment:655b2af1-046e-43b3-9046-f7ec9a57f88b} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[  214015ms] [INFO] [report-edit-diagnostic] save request {reportKey: dispatch-monitoring, reportEndpoint: /reports/dispatch-monitoring, endpoint: /trips/185788e0-23c0-48f0-9108-9be1bad783c6/stops/76883550-70e8-4f64-b69d-f17b2120375b, canonicalIdentity: dispatch-monitoring:trip:185788e0-23c0-48f0-9108-9…b:assignment:655b2af1-046e-43b3-9046-f7ec9a57f88b, sourceEntity: stop} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[  215417ms] [INFO] [report-edit-diagnostic] save response {endpoint: /trips/185788e0-23c0-48f0-9108-9be1bad783c6/stops/76883550-70e8-4f64-b69d-f17b2120375b, sourceEntity: stop, responseRecordId: 76883550-70e8-4f64-b69d-f17b2120375b, trip_id: 185788e0-23c0-48f0-9108-9be1bad783c6, trip_stop_id: 76883550-70e8-4f64-b69d-f17b2120375b} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[  215418ms] [INFO] [report-edit-diagnostic] optimistic row reconciliation {sourceEntity: stop, editedField: dispatch_number, intendedRecordIds: Object, matchingRowCount: 1, rowsWithSameTripIdBeforeUpdate: Array(2)} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[  220463ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 6} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[  220463ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[  223222ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 6} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[  223222ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[  234969ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=fcda5df1:15804
+[  236703ms] [INFO] [report-edit-diagnostic] ReportDataView mounted {mode: development, development: true} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[  236707ms] [INFO] [report-edit-diagnostic] ReportDataView mounted {mode: development, development: true} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[  238517ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 6} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[  238517ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 6} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[  238517ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 6} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[  239724ms] [INFO] [report-edit-diagnostic] cell selected for editing {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, selected: Object, canonicalIdentity: dispatch-monitoring:trip:185788e0-23c0-48f0-9108-9…b:assignment:655b2af1-046e-43b3-9046-f7ec9a57f88b} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[  241143ms] [INFO] [report-edit-diagnostic] save request {reportKey: dispatch-monitoring, reportEndpoint: /reports/dispatch-monitoring, endpoint: /trips/185788e0-23c0-48f0-9108-9be1bad783c6/stops/76883550-70e8-4f64-b69d-f17b2120375b, canonicalIdentity: dispatch-monitoring:trip:185788e0-23c0-48f0-9108-9…b:assignment:655b2af1-046e-43b3-9046-f7ec9a57f88b, sourceEntity: stop} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[  243528ms] [INFO] [report-edit-diagnostic] save response {endpoint: /trips/185788e0-23c0-48f0-9108-9be1bad783c6/stops/76883550-70e8-4f64-b69d-f17b2120375b, sourceEntity: stop, responseRecordId: 76883550-70e8-4f64-b69d-f17b2120375b, trip_id: 185788e0-23c0-48f0-9108-9be1bad783c6, trip_stop_id: 76883550-70e8-4f64-b69d-f17b2120375b} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[  243528ms] [INFO] [report-edit-diagnostic] optimistic row reconciliation {sourceEntity: stop, editedField: dispatch_number, intendedRecordIds: Object, matchingRowCount: 1, rowsWithSameTripIdBeforeUpdate: Array(2)} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[  247899ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 6} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[  247899ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[  250335ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 6} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[  250335ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[  298524ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 6} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[  298524ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[  358583ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 6} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[  358583ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[  419082ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 6} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[  419082ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[  427739ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 6} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[  427739ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: fresh page cache, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[  431181ms] [INFO] [report-edit-diagnostic] cell selected for editing {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, selected: Object, canonicalIdentity: dispatch-monitoring:trip:185788e0-23c0-48f0-9108-9…b:assignment:655b2af1-046e-43b3-9046-f7ec9a57f88b} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[  433039ms] [INFO] [report-edit-diagnostic] save request {reportKey: dispatch-monitoring, reportEndpoint: /reports/dispatch-monitoring, endpoint: /trips/185788e0-23c0-48f0-9108-9be1bad783c6/stops/76883550-70e8-4f64-b69d-f17b2120375b, canonicalIdentity: dispatch-monitoring:trip:185788e0-23c0-48f0-9108-9…b:assignment:655b2af1-046e-43b3-9046-f7ec9a57f88b, sourceEntity: stop} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[  434364ms] [INFO] [report-edit-diagnostic] save response {endpoint: /trips/185788e0-23c0-48f0-9108-9be1bad783c6/stops/76883550-70e8-4f64-b69d-f17b2120375b, sourceEntity: stop, responseRecordId: 76883550-70e8-4f64-b69d-f17b2120375b, trip_id: 185788e0-23c0-48f0-9108-9be1bad783c6, trip_stop_id: 76883550-70e8-4f64-b69d-f17b2120375b} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[  434365ms] [INFO] [report-edit-diagnostic] optimistic row reconciliation {sourceEntity: stop, editedField: dispatch_number, intendedRecordIds: Object, matchingRowCount: 1, rowsWithSameTripIdBeforeUpdate: Array(2)} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[  438542ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 6} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[  438542ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[  439618ms] [INFO] [report-edit-diagnostic] cell selected for editing {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, selected: Object, canonicalIdentity: dispatch-monitoring:trip:185788e0-23c0-48f0-9108-9…b:assignment:655b2af1-046e-43b3-9046-f7ec9a57f88b} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[  441081ms] [INFO] [report-edit-diagnostic] save request {reportKey: dispatch-monitoring, reportEndpoint: /reports/dispatch-monitoring, endpoint: /trips/185788e0-23c0-48f0-9108-9be1bad783c6/stops/76883550-70e8-4f64-b69d-f17b2120375b, canonicalIdentity: dispatch-monitoring:trip:185788e0-23c0-48f0-9108-9…b:assignment:655b2af1-046e-43b3-9046-f7ec9a57f88b, sourceEntity: stop} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[  442511ms] [INFO] [report-edit-diagnostic] save response {endpoint: /trips/185788e0-23c0-48f0-9108-9be1bad783c6/stops/76883550-70e8-4f64-b69d-f17b2120375b, sourceEntity: stop, responseRecordId: 76883550-70e8-4f64-b69d-f17b2120375b, trip_id: 185788e0-23c0-48f0-9108-9be1bad783c6, trip_stop_id: 76883550-70e8-4f64-b69d-f17b2120375b} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[  442511ms] [INFO] [report-edit-diagnostic] optimistic row reconciliation {sourceEntity: stop, editedField: dispatch_number, intendedRecordIds: Object, matchingRowCount: 1, rowsWithSameTripIdBeforeUpdate: Array(2)} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[  445379ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 6} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[  445379ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[  478486ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 6} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[  478486ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[  538412ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 6} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[  538412ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[  550460ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 6} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[  550461ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: fresh page cache, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[  556930ms] [INFO] [report-edit-diagnostic] cell selected for editing {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, selected: Object, canonicalIdentity: dispatch-monitoring:trip:185788e0-23c0-48f0-9108-9…b:assignment:655b2af1-046e-43b3-9046-f7ec9a57f88b} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[  572764ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 6} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[  572765ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[  579296ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 6} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[  579296ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[  598777ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 6} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[  598777ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[  658963ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 6} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[  658963ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[  718554ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 6} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[  718555ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[  778434ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 6} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[  778435ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[  838135ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 6} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[  838135ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[  898555ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 6} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[  898556ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[  958405ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 6} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[  958405ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[ 1018934ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 6} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[ 1018934ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792140296644:236
+[ 1057585ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 6} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792141398605:236
+[ 1057586ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: fresh page cache, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792141398605:236
+[ 1079138ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 6} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792141398605:236
+[ 1079138ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792141398605:236
+[ 1091581ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 6} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792141432856:236
+[ 1091581ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: fresh page cache, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792141432856:236
+[ 1138560ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 6} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792141432856:236
+[ 1138560ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792141432856:236
+[ 1198468ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 6} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792141432856:236
+[ 1198469ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792141432856:236
+[ 1258170ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 6} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792141432856:236
+[ 1258171ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792141432856:236
+[ 1318950ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 6} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792141432856:236
+[ 1318951ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792141432856:236
+[ 1378831ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 6} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792141432856:236
+[ 1378831ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792141432856:236
+[ 1438094ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 6} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792141432856:236
+[ 1438095ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792141432856:236
+[ 1498092ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 6} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792141432856:236
+[ 1498093ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792141432856:236
+[ 1558148ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 6} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792141432856:236
+[ 1558148ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792141432856:236
+[ 1618310ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 6} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792141432856:236
+[ 1618311ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792141432856:236
+[ 1678098ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 6} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792141432856:236
+[ 1678098ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792141432856:236
+[ 1738188ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 6} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792141432856:236
+[ 1738188ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792141432856:236
+[ 1798121ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 6} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792141432856:236
+[ 1798122ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792141432856:236
+[ 1858058ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 6} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792141432856:236
+[ 1858058ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792141432856:236
+[ 1918528ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 6} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792141432856:236
+[ 1918528ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792141432856:236
+[ 1941573ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=fcda5df1:15804
+[ 2322643ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5000/api/reports/dispatch-monitoring/columns:0
+[ 2322649ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5000/api/reports/dispatch-monitoring?page=1&limit=500&sort_by=loading_date&sort_order=desc&active_transactions=true&archive_scope=active:0
+[ 2322670ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5000/api/trips/29b5b887-aaaf-4b76-9805-0604abd4092e/events:0
+[ 2322671ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5000/api/trips/185788e0-23c0-48f0-9108-9be1bad783c6/events:0
+[ 2322678ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5000/api/trips/a7bc15fe-b171-455f-9d39-08a3285e08e7/events:0
+[ 2322684ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5000/api/trips/a6320035-2278-4a18-ae58-6ab59d68fc19/events:0
+[ 2322685ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5000/api/trips/ed329614-62d0-4d83-afbc-8c578fdb23d1/events:0
+[ 2322685ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5000/api/trips/29b5b887-aaaf-4b76-9805-0604abd4092e/images:0
+[ 2322685ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5000/api/trips/185788e0-23c0-48f0-9108-9be1bad783c6/images:0
+[ 2322686ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5000/api/trips/a7bc15fe-b171-455f-9d39-08a3285e08e7/images:0
+[ 2322686ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5000/api/trips/a6320035-2278-4a18-ae58-6ab59d68fc19/images:0
+[ 2322686ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5000/api/trips/ed329614-62d0-4d83-afbc-8c578fdb23d1/images:0
+[ 2322687ms] [WARNING] Unable to load the saved photo for trip 29b5b887-aaaf-4b76-9805-0604abd4092e: TypeError: Failed to fetch
+    at request (http://localhost:5173/src/services/api.service.ts?t=1792113387971:105:20)
+    at apiGetCached (http://localhost:5173/src/services/api.service.ts?t=1792113387971:179:25)
+    at fetchTripImages (http://localhost:5173/src/services/trip-image.service.ts?t=1792113387971:25:25)
+    at http://localhost:5173/src/pages/Admin/views/OverviewView.tsx?t=1792116282916:479:20
+    at Array.map (<anonymous>)
+    at http://localhost:5173/src/pages/Admin/views/OverviewView.tsx?t=1792116282916:477:43 @ http://localhost:5173/src/pages/Admin/views/OverviewView.tsx?t=1792116282916:498
+[ 2322687ms] [WARNING] Unable to load the saved photo for trip 185788e0-23c0-48f0-9108-9be1bad783c6: TypeError: Failed to fetch
+    at request (http://localhost:5173/src/services/api.service.ts?t=1792113387971:105:20)
+    at apiGetCached (http://localhost:5173/src/services/api.service.ts?t=1792113387971:179:25)
+    at fetchTripImages (http://localhost:5173/src/services/trip-image.service.ts?t=1792113387971:25:25)
+    at http://localhost:5173/src/pages/Admin/views/OverviewView.tsx?t=1792116282916:479:20
+    at Array.map (<anonymous>)
+    at http://localhost:5173/src/pages/Admin/views/OverviewView.tsx?t=1792116282916:477:43 @ http://localhost:5173/src/pages/Admin/views/OverviewView.tsx?t=1792116282916:498
+[ 2322687ms] [WARNING] Unable to load the saved photo for trip a7bc15fe-b171-455f-9d39-08a3285e08e7: TypeError: Failed to fetch
+    at request (http://localhost:5173/src/services/api.service.ts?t=1792113387971:105:20)
+    at apiGetCached (http://localhost:5173/src/services/api.service.ts?t=1792113387971:179:25)
+    at fetchTripImages (http://localhost:5173/src/services/trip-image.service.ts?t=1792113387971:25:25)
+    at http://localhost:5173/src/pages/Admin/views/OverviewView.tsx?t=1792116282916:479:20
+    at Array.map (<anonymous>)
+    at http://localhost:5173/src/pages/Admin/views/OverviewView.tsx?t=1792116282916:477:43 @ http://localhost:5173/src/pages/Admin/views/OverviewView.tsx?t=1792116282916:498
+[ 2322688ms] [WARNING] Unable to load the saved photo for trip a6320035-2278-4a18-ae58-6ab59d68fc19: TypeError: Failed to fetch
+    at request (http://localhost:5173/src/services/api.service.ts?t=1792113387971:105:20)
+    at apiGetCached (http://localhost:5173/src/services/api.service.ts?t=1792113387971:179:25)
+    at fetchTripImages (http://localhost:5173/src/services/trip-image.service.ts?t=1792113387971:25:25)
+    at http://localhost:5173/src/pages/Admin/views/OverviewView.tsx?t=1792116282916:479:20
+    at Array.map (<anonymous>)
+    at http://localhost:5173/src/pages/Admin/views/OverviewView.tsx?t=1792116282916:477:43 @ http://localhost:5173/src/pages/Admin/views/OverviewView.tsx?t=1792116282916:498
+[ 2322688ms] [WARNING] Unable to load the saved photo for trip ed329614-62d0-4d83-afbc-8c578fdb23d1: TypeError: Failed to fetch
+    at request (http://localhost:5173/src/services/api.service.ts?t=1792113387971:105:20)
+    at apiGetCached (http://localhost:5173/src/services/api.service.ts?t=1792113387971:179:25)
+    at fetchTripImages (http://localhost:5173/src/services/trip-image.service.ts?t=1792113387971:25:25)
+    at http://localhost:5173/src/pages/Admin/views/OverviewView.tsx?t=1792116282916:479:20
+    at Array.map (<anonymous>)
+    at http://localhost:5173/src/pages/Admin/views/OverviewView.tsx?t=1792116282916:477:43 @ http://localhost:5173/src/pages/Admin/views/OverviewView.tsx?t=1792116282916:498
+[ 2362882ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5000/api/realtime/changes:0
+[ 2563770ms] Error: useAuth must be used within an AuthProvider
+    at useAuth (http://localhost:5173/src/context/AuthContext.tsx?t=1792116282916:401:9)
+    at AdminRoute (http://localhost:5173/src/components/AdminRoute.tsx?t=1792116282916:8:37)
+    at Object.react_stack_bottom_frame (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=fcda5df1:14142:12)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=fcda5df1:4400:19)
+    at updateFunctionComponent (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=fcda5df1:5775:16)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=fcda5df1:6391:20)
+    at runWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=fcda5df1:944:66)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=fcda5df1:9148:92)
+    at workLoopSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=fcda5df1:9044:37)
+    at renderRootSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=fcda5df1:9028:6)
+[ 2563751ms] [WARNING] %s
+
+%s
+ An error occurred in the <AdminRoute> component. Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries. @ http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=fcda5df1:5450
+[ 2566903ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=02a03937:15804
+[ 2627613ms] Error: useAuth must be used within an AuthProvider
+    at useAuth (http://localhost:5173/src/context/AuthContext.tsx?t=1792142884984:408:9)
+    at AdminRoute (http://localhost:5173/src/components/AdminRoute.tsx?t=1792142884984:8:37)
+    at Object.react_stack_bottom_frame (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=02a03937:14142:12)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=02a03937:4400:19)
+    at updateFunctionComponent (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=02a03937:5775:16)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=02a03937:6391:20)
+    at runWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=02a03937:944:66)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=02a03937:9148:92)
+    at workLoopSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=02a03937:9044:37)
+    at renderRootSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=02a03937:9028:6)
+[ 2627610ms] [WARNING] %s
+
+%s
+ An error occurred in the <AdminRoute> component. Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries. @ http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=02a03937:5450
+[ 2628623ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=02a03937:15804
+[ 2628970ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5000/api/auth/session/bootstrap:0
+[ 2628970ms] [ERROR] Failed to refresh auth session: TypeError: Failed to fetch
+    at request (http://localhost:5173/src/services/api.service.ts?t=1792113387971:105:20)
+    at apiPost (http://localhost:5173/src/services/api.service.ts?t=1792113387971:199:9)
+    at http://localhost:5173/src/context/AuthContext.tsx?t=1792142968931:128:27 @ http://localhost:5173/src/context/AuthContext.tsx?t=1792142968931:157
+[ 2628972ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5000/api/auth/session/bootstrap:0
+[ 2628973ms] [ERROR] Failed to refresh auth session: TypeError: Failed to fetch
+    at request (http://localhost:5173/src/services/api.service.ts?t=1792113387971:105:20)
+    at apiPost (http://localhost:5173/src/services/api.service.ts?t=1792113387971:199:9)
+    at http://localhost:5173/src/context/AuthContext.tsx?t=1792142968931:128:27 @ http://localhost:5173/src/context/AuthContext.tsx?t=1792142968931:157
+[ 2628978ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5000/api/auth/session/bootstrap:0
+[ 2628984ms] [ERROR] Failed to refresh auth session: TypeError: Failed to fetch
+    at request (http://localhost:5173/src/services/api.service.ts?t=1792113387971:105:20)
+    at apiPost (http://localhost:5173/src/services/api.service.ts?t=1792113387971:199:9)
+    at http://localhost:5173/src/context/AuthContext.tsx?t=1792142968931:128:27 @ http://localhost:5173/src/context/AuthContext.tsx?t=1792142968931:157
+[ 2633982ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5000/api/auth/session/bootstrap:0
+[ 2633982ms] [ERROR] Failed to refresh auth session: TypeError: Failed to fetch
+    at request (http://localhost:5173/src/services/api.service.ts?t=1792113387971:105:20)
+    at apiPost (http://localhost:5173/src/services/api.service.ts?t=1792113387971:199:9)
+    at Object.current (http://localhost:5173/src/context/AuthContext.tsx?t=1792142968931:128:27) @ http://localhost:5173/src/context/AuthContext.tsx?t=1792142968931:157
+[ 2680106ms] Error: useAuth must be used within an AuthProvider
+    at useAuth (http://localhost:5173/src/context/AuthContext.tsx?t=1792142968931:408:9)
+    at AdminRoute (http://localhost:5173/src/components/AdminRoute.tsx?t=1792142968931:8:37)
+    at Object.react_stack_bottom_frame (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=02a03937:14142:12)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=02a03937:4400:19)
+    at updateFunctionComponent (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=02a03937:5775:16)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=02a03937:6391:20)
+    at runWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=02a03937:944:66)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=02a03937:9148:92)
+    at workLoopSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=02a03937:9044:37)
+    at renderRootSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=02a03937:9028:6)
+[ 2680104ms] [WARNING] %s
+
+%s
+ An error occurred in the <AdminRoute> component. Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries. @ http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=02a03937:5450
+[ 2680201ms] Error: useAuth must be used within an AuthProvider
+    at useAuth (http://localhost:5173/src/context/AuthContext.tsx?t=1792142968931:408:9)
+    at AdminRoute (http://localhost:5173/src/components/AdminRoute.tsx?t=1792142968931:8:37)
+    at Object.react_stack_bottom_frame (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=02a03937:14142:12)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=02a03937:4400:19)
+    at updateFunctionComponent (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=02a03937:5775:16)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=02a03937:6391:20)
+    at runWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=02a03937:944:66)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=02a03937:9148:92)
+    at workLoopSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=02a03937:9044:37)
+    at renderRootSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=02a03937:9028:6)
+[ 2680173ms] [WARNING] %s
+
+%s
+ An error occurred in the <AdminRoute> component. Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries. @ http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=02a03937:5450
+[ 2680961ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=02a03937:15804
+[ 2735102ms] [ERROR] WebSocket connection to 'ws://localhost:5000/socket.io/?EIO=4&transport=websocket' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/node_modules/.vite/deps/socket__io-client.js?v=02a03937:980
+[ 2736292ms] [ERROR] WebSocket connection to 'ws://localhost:5000/socket.io/?EIO=4&transport=websocket' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/node_modules/.vite/deps/socket__io-client.js?v=02a03937:980
+[ 2753083ms] [ERROR] WebSocket connection to 'ws://localhost:5000/socket.io/?EIO=4&transport=websocket' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/node_modules/.vite/deps/socket__io-client.js?v=02a03937:980
+[ 2755198ms] [ERROR] WebSocket connection to 'ws://localhost:5000/socket.io/?EIO=4&transport=websocket' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/node_modules/.vite/deps/socket__io-client.js?v=02a03937:980
+[ 2955023ms] [LOG] [vite] server connection lost. Polling for restart... @ http://localhost:5173/@vite/client:1082
+[ 3117720ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:14335
+[ 3422031ms] [ERROR] WebSocket connection to 'ws://localhost:5000/socket.io/?EIO=4&transport=websocket' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/node_modules/.vite/deps/socket__io-client.js?v=2b82bbe4:980
+[ 3609321ms] Error: useAuth must be used within an AuthProvider
+    at useAuth (http://localhost:5173/src/context/AuthContext.tsx:408:9)
+    at AdminRoute (http://localhost:5173/src/components/AdminRoute.tsx:8:37)
+    at Object.react_stack_bottom_frame (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:12866:12)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:4213:19)
+    at updateFunctionComponent (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:5569:16)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:6140:20)
+    at runWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:851:66)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:8429:92)
+    at workLoopSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:8325:37)
+    at renderRootSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:8309:6)
+[ 3609321ms] [WARNING] %s
+
+%s
+ An error occurred in the <AdminRoute> component. Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries. @ http://localhost:5173/@vite/client:532
+[ 3609473ms] Error: useAuth must be used within an AuthProvider
+    at useAuth (http://localhost:5173/src/context/AuthContext.tsx:408:9)
+    at AdminRoute (http://localhost:5173/src/components/AdminRoute.tsx:8:37)
+    at Object.react_stack_bottom_frame (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:12866:12)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:4213:19)
+    at updateFunctionComponent (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:5569:16)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:6140:20)
+    at runWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:851:66)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:8429:92)
+    at workLoopSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:8325:37)
+    at renderRootSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:8309:6)
+[ 3609472ms] [WARNING] %s
+
+%s
+ An error occurred in the <AdminRoute> component. Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries. @ http://localhost:5173/@vite/client:532
+[ 3712770ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:14335
+[ 3735172ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:14335
+[ 3797513ms] Error: useAuth must be used within an AuthProvider
+    at useAuth (http://localhost:5173/src/context/AuthContext.tsx?t=1792143950874:408:9)
+    at AdminRoute (http://localhost:5173/src/components/AdminRoute.tsx?t=1792143950874:8:37)
+    at Object.react_stack_bottom_frame (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:12866:12)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:4213:19)
+    at updateFunctionComponent (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:5569:16)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:6140:20)
+    at runWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:851:66)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:8429:92)
+    at workLoopSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:8325:37)
+    at renderRootSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:8309:6)
+[ 3797510ms] [WARNING] %s
+
+%s
+ An error occurred in the <AdminRoute> component. Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries. @ http://localhost:5173/@vite/client:532
+[ 3798395ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:14335
+[ 3798492ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5000/api/auth/session/bootstrap:0
+[ 3798492ms] [ERROR] Failed to refresh auth session: TypeError: Failed to fetch
+    at request (http://localhost:5173/src/services/api.service.ts:105:20)
+    at apiPost (http://localhost:5173/src/services/api.service.ts:199:9)
+    at http://localhost:5173/src/context/AuthContext.tsx?t=1792144139057:128:27 @ http://localhost:5173/@vite/client:532
+[ 3798499ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5000/api/auth/session/bootstrap:0
+[ 3798500ms] [ERROR] Failed to refresh auth session: TypeError: Failed to fetch
+    at request (http://localhost:5173/src/services/api.service.ts:105:20)
+    at apiPost (http://localhost:5173/src/services/api.service.ts:199:9)
+    at http://localhost:5173/src/context/AuthContext.tsx?t=1792144139057:128:27 @ http://localhost:5173/@vite/client:532
+[ 3798500ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5000/api/auth/session/bootstrap:0
+[ 3798501ms] [ERROR] Failed to refresh auth session: TypeError: Failed to fetch
+    at request (http://localhost:5173/src/services/api.service.ts:105:20)
+    at apiPost (http://localhost:5173/src/services/api.service.ts:199:9)
+    at http://localhost:5173/src/context/AuthContext.tsx?t=1792144139057:128:27 @ http://localhost:5173/@vite/client:532
+[ 4276445ms] [INFO] [report-edit-diagnostic] ReportDataView mounted {mode: development, development: true} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792144213107:238
+[ 4276457ms] [INFO] [report-edit-diagnostic] ReportDataView mounted {mode: development, development: true} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792144213107:238
+[ 4277587ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 6} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792144213107:238
+[ 4277587ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 6} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792144213107:238
+[ 4277588ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 6} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792144213107:238
+[ 4312071ms] [INFO] [report-edit-diagnostic] cell selected for editing {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, selected: Object, canonicalIdentity: dispatch-monitoring:trip:185788e0-23c0-48f0-9108-9…b:assignment:655b2af1-046e-43b3-9046-f7ec9a57f88b} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792144213107:238
+[ 4442967ms] [INFO] [report-edit-diagnostic] cell selected for editing {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, selected: Object, canonicalIdentity: dispatch-monitoring:trip:185788e0-23c0-48f0-9108-9…b:assignment:655b2af1-046e-43b3-9046-f7ec9a57f88b} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792144213107:238
+[ 4443897ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 6} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792144213107:238
+[ 4444925ms] [INFO] [report-edit-diagnostic] save request {reportKey: dispatch-monitoring, reportEndpoint: /reports/dispatch-monitoring, endpoint: /trips/185788e0-23c0-48f0-9108-9be1bad783c6/stops/76883550-70e8-4f64-b69d-f17b2120375b, canonicalIdentity: dispatch-monitoring:trip:185788e0-23c0-48f0-9108-9…b:assignment:655b2af1-046e-43b3-9046-f7ec9a57f88b, sourceEntity: stop} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792144213107:238
+[ 4446473ms] [INFO] [report-edit-diagnostic] save response {endpoint: /trips/185788e0-23c0-48f0-9108-9be1bad783c6/stops/76883550-70e8-4f64-b69d-f17b2120375b, sourceEntity: stop, responseRecordId: 76883550-70e8-4f64-b69d-f17b2120375b, trip_id: 185788e0-23c0-48f0-9108-9be1bad783c6, trip_stop_id: 76883550-70e8-4f64-b69d-f17b2120375b} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792144213107:238
+[ 4446474ms] [INFO] [report-edit-diagnostic] optimistic row reconciliation {sourceEntity: stop, editedField: dispatch_number, intendedRecordIds: Object, matchingRowCount: 1, rowsWithSameTripIdBeforeUpdate: Array(2)} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792144213107:238
+[ 4451445ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 6} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792144213107:238
+[ 4451446ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792144213107:238
+[ 4461817ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 6} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792144213107:238
+[ 4461817ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792144213107:238
+[ 4473800ms] [ERROR] WebSocket connection to 'ws://localhost:5000/socket.io/?EIO=4&transport=websocket' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/node_modules/.vite/deps/socket__io-client.js?v=2b82bbe4:980
+[ 4476812ms] [ERROR] WebSocket connection to 'ws://localhost:5000/socket.io/?EIO=4&transport=websocket' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/node_modules/.vite/deps/socket__io-client.js?v=2b82bbe4:980
+[ 4482440ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 6} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792144213107:238
+[ 4482440ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792144213107:238
+[ 4498956ms] [INFO] [report-edit-diagnostic] cell selected for editing {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, selected: Object, canonicalIdentity: dispatch-monitoring:trip:185788e0-23c0-48f0-9108-9…b:assignment:655b2af1-046e-43b3-9046-f7ec9a57f88b} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792144213107:238
+[ 4507451ms] [INFO] [report-edit-diagnostic] save request {reportKey: dispatch-monitoring, reportEndpoint: /reports/dispatch-monitoring, endpoint: /trips/185788e0-23c0-48f0-9108-9be1bad783c6/stops/76883550-70e8-4f64-b69d-f17b2120375b, canonicalIdentity: dispatch-monitoring:trip:185788e0-23c0-48f0-9108-9…b:assignment:655b2af1-046e-43b3-9046-f7ec9a57f88b, sourceEntity: stop} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792144213107:238
+[ 4508688ms] [INFO] [report-edit-diagnostic] save response {endpoint: /trips/185788e0-23c0-48f0-9108-9be1bad783c6/stops/76883550-70e8-4f64-b69d-f17b2120375b, sourceEntity: stop, responseRecordId: 76883550-70e8-4f64-b69d-f17b2120375b, trip_id: 185788e0-23c0-48f0-9108-9be1bad783c6, trip_stop_id: 76883550-70e8-4f64-b69d-f17b2120375b} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792144213107:238
+[ 4508689ms] [INFO] [report-edit-diagnostic] optimistic row reconciliation {sourceEntity: stop, editedField: dispatch_number, intendedRecordIds: Object, matchingRowCount: 1, rowsWithSameTripIdBeforeUpdate: Array(2)} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792144213107:238
+[ 4518145ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 6} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792144213107:238
+[ 4518145ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792144213107:238
+[ 4527327ms] [INFO] [report-edit-diagnostic] cell selected for editing {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, selected: Object, canonicalIdentity: dispatch-monitoring:trip:185788e0-23c0-48f0-9108-9…b:assignment:655b2af1-046e-43b3-9046-f7ec9a57f88b} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792144213107:238
+[ 4528319ms] [INFO] [report-edit-diagnostic] save request {reportKey: dispatch-monitoring, reportEndpoint: /reports/dispatch-monitoring, endpoint: /trips/185788e0-23c0-48f0-9108-9be1bad783c6/stops/76883550-70e8-4f64-b69d-f17b2120375b, canonicalIdentity: dispatch-monitoring:trip:185788e0-23c0-48f0-9108-9…b:assignment:655b2af1-046e-43b3-9046-f7ec9a57f88b, sourceEntity: stop} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792144213107:238
+[ 4529486ms] [INFO] [report-edit-diagnostic] save response {endpoint: /trips/185788e0-23c0-48f0-9108-9be1bad783c6/stops/76883550-70e8-4f64-b69d-f17b2120375b, sourceEntity: stop, responseRecordId: 76883550-70e8-4f64-b69d-f17b2120375b, trip_id: 185788e0-23c0-48f0-9108-9be1bad783c6, trip_stop_id: 76883550-70e8-4f64-b69d-f17b2120375b} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792144213107:238
+[ 4529486ms] [INFO] [report-edit-diagnostic] optimistic row reconciliation {sourceEntity: stop, editedField: dispatch_number, intendedRecordIds: Object, matchingRowCount: 1, rowsWithSameTripIdBeforeUpdate: Array(2)} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792144213107:238
+[ 4578950ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 6} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792144213107:238
+[ 4578950ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792144213107:238
+[ 4637982ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 6} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792144213107:238
+[ 4637982ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792144213107:238
+[ 4697725ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 6} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792144213107:238
+[ 4697725ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792144213107:238
+[ 4736735ms] [INFO] [report-edit-diagnostic] cell selected for editing {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, selected: Object, canonicalIdentity: dispatch-monitoring:trip:185788e0-23c0-48f0-9108-9…b:assignment:655b2af1-046e-43b3-9046-f7ec9a57f88b} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792144213107:238
+[ 4737552ms] [INFO] [report-edit-diagnostic] save request {reportKey: dispatch-monitoring, reportEndpoint: /reports/dispatch-monitoring, endpoint: /trips/185788e0-23c0-48f0-9108-9be1bad783c6/stops/76883550-70e8-4f64-b69d-f17b2120375b, canonicalIdentity: dispatch-monitoring:trip:185788e0-23c0-48f0-9108-9…b:assignment:655b2af1-046e-43b3-9046-f7ec9a57f88b, sourceEntity: stop} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792144213107:238
+[ 4738816ms] [INFO] [report-edit-diagnostic] save response {endpoint: /trips/185788e0-23c0-48f0-9108-9be1bad783c6/stops/76883550-70e8-4f64-b69d-f17b2120375b, sourceEntity: stop, responseRecordId: 76883550-70e8-4f64-b69d-f17b2120375b, trip_id: 185788e0-23c0-48f0-9108-9be1bad783c6, trip_stop_id: 76883550-70e8-4f64-b69d-f17b2120375b} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792144213107:238
+[ 4738817ms] [INFO] [report-edit-diagnostic] optimistic row reconciliation {sourceEntity: stop, editedField: dispatch_number, intendedRecordIds: Object, matchingRowCount: 1, rowsWithSameTripIdBeforeUpdate: Array(2)} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792144213107:238
+[ 4741382ms] [INFO] [report-edit-diagnostic] cell selected for editing {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, selected: Object, canonicalIdentity: dispatch-monitoring:trip:185788e0-23c0-48f0-9108-9…b:assignment:655b2af1-046e-43b3-9046-f7ec9a57f88b} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792144213107:238
+[ 4742387ms] [INFO] [report-edit-diagnostic] save request {reportKey: dispatch-monitoring, reportEndpoint: /reports/dispatch-monitoring, endpoint: /trips/185788e0-23c0-48f0-9108-9be1bad783c6/stops/76883550-70e8-4f64-b69d-f17b2120375b, canonicalIdentity: dispatch-monitoring:trip:185788e0-23c0-48f0-9108-9…b:assignment:655b2af1-046e-43b3-9046-f7ec9a57f88b, sourceEntity: stop} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792144213107:238
+[ 4743391ms] [INFO] [report-edit-diagnostic] save response {endpoint: /trips/185788e0-23c0-48f0-9108-9be1bad783c6/stops/76883550-70e8-4f64-b69d-f17b2120375b, sourceEntity: stop, responseRecordId: 76883550-70e8-4f64-b69d-f17b2120375b, trip_id: 185788e0-23c0-48f0-9108-9be1bad783c6, trip_stop_id: 76883550-70e8-4f64-b69d-f17b2120375b} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792144213107:238
+[ 4743391ms] [INFO] [report-edit-diagnostic] optimistic row reconciliation {sourceEntity: stop, editedField: dispatch_number, intendedRecordIds: Object, matchingRowCount: 1, rowsWithSameTripIdBeforeUpdate: Array(2)} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792144213107:238
+[ 4758005ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 6} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792144213107:238
+[ 4758006ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792144213107:238
+[ 4796882ms] [ERROR] WebSocket connection to 'ws://localhost:5000/socket.io/?EIO=4&transport=websocket' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/node_modules/.vite/deps/socket__io-client.js?v=2b82bbe4:980
+[ 4801867ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 6} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792144213107:238
+[ 4801867ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792144213107:238
+[ 4817684ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 6} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792144213107:238
+[ 4817684ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792144213107:238
+[ 4877820ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 6} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792144213107:238
+[ 4877821ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792144213107:238
+[ 4938010ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 6} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792144213107:238
+[ 4938010ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792144213107:238
+[ 4998153ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 6} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792144213107:238
+[ 4998153ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792144213107:238
+[ 5001282ms] Error: useAuth must be used within an AuthProvider
+    at useAuth (http://localhost:5173/src/context/AuthContext.tsx?t=1792144139057:408:9)
+    at AdminRoute (http://localhost:5173/src/components/AdminRoute.tsx?t=1792144139057:8:37)
+    at Object.react_stack_bottom_frame (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:12866:12)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:4213:19)
+    at updateFunctionComponent (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:5569:16)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:6140:20)
+    at runWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:851:66)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:8429:92)
+    at workLoopSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:8325:37)
+    at renderRootSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:8309:6)
+[ 5001277ms] [WARNING] %s
+
+%s
+ An error occurred in the <AdminRoute> component. Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries. @ http://localhost:5173/@vite/client:532
+[ 5002078ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:14335

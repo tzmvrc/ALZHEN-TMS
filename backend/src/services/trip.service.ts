@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "../config/supabase.js";
+import { collaborationSelect } from "./collaboration-events.js";
 import { normalizeTransactionNumber } from "./transaction-values.logic.js";
 import { assertActiveDropdownOption } from "./dropdown-option.service.js";
 import {
@@ -1816,8 +1817,8 @@ export async function updateTripBillingRecord(
     .update({ invoice_number: value })
     .eq("id", billingId)
     .eq("trip_id", tripId)
-    .select("id")
-    .single();
+    .select(collaborationSelect("id, trip_id, invoice_number"))
+    .single<{id:string;trip_id:string;invoice_number:string|null;collaboration_version?:number}>();
   if (error) {
     console.error("Billing update failed:", { tripId, billingId, error });
     throw new Error("Unable to update billing record");
