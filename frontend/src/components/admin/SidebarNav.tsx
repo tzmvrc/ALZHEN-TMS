@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   Bell,
+  CalendarDays,
   Check,
   ChevronDown,
   HelpCircle,
@@ -296,11 +297,17 @@ export default function SidebarNav({
   userPictureUrl,
   onCollapseChange,
 }: SidebarNavProps) {
-  const items: NavEntry[] = entries ?? [];
+  const allEntries: NavEntry[] = entries ?? [];
+  /* Calendar lives in the top bar now, so it is pulled out of the rail. */
+  const hasCalendar = allEntries.some((entry) => entry.id === "calendar");
+  const items: NavEntry[] = allEntries.filter((entry) => entry.id !== "calendar");
+  const calendarActive = activeId === "calendar";
 
   const profileRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
+  const workspaceRef = useRef<HTMLDivElement>(null);
 
+  const [workspaceOpen, setWorkspaceOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const [failedAvatarUrl, setFailedAvatarUrl] = useState<string | null>(null);
@@ -355,11 +362,13 @@ export default function SidebarNav({
       const target = event.target as Node;
       if (!profileRef.current?.contains(target)) setProfileOpen(false);
       if (!notifRef.current?.contains(target)) setNotifOpen(false);
+      if (!workspaceRef.current?.contains(target)) setWorkspaceOpen(false);
     }
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
         setProfileOpen(false);
         setNotifOpen(false);
+        setWorkspaceOpen(false);
       }
     }
     document.addEventListener("pointerdown", onPointerDown);
@@ -433,23 +442,64 @@ export default function SidebarNav({
       <style>{liquidCss}</style>
 
       {/* Reserves room at the top of the page for the floating top bar. */}
-      <div aria-hidden="true" className="h-[4.5rem]" />
+      <div aria-hidden="true" className="h-[3.75rem]" />
+
+      {/* ───────── Logo: expands into the workspace tabs when clicked ───────── */}
+      <div ref={workspaceRef} className="fixed left-4 top-4 z-[1102]">
+        <div
+          className={`grid h-11 items-center overflow-hidden rounded-full p-1 transition-[grid-template-columns,box-shadow] duration-300 ease-out motion-reduce:transition-none ${pillSurface} ${
+            workspaceOpen ? "grid-cols-[auto_1fr]" : "grid-cols-[auto_0fr]"
+          }`}>
+          <button
+            type="button"
+            onClick={() => setWorkspaceOpen((value) => !value)}
+            aria-expanded={workspaceOpen}
+            aria-label={`Workspace: ${workspace}. ${workspaceOpen ? "Close" : "Switch"} workspace`}
+            title={workspace}
+            className={`flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white ${focusRing}`}>
+            <img src={logo} alt="Alzhen logo" className="h-full w-full rounded-full object-cover" />
+          </button>
+          <div className="min-w-0 overflow-hidden">
+          <div
+            role="group"
+            aria-label="Switch workspace"
+            aria-hidden={!workspaceOpen}
+            className={`flex items-center gap-1 pl-1 pr-1 transition-opacity duration-200 ${
+              workspaceOpen ? "opacity-100 delay-100" : "pointer-events-none opacity-0"
+            }`}>
+            {workspaceOptions.map((option) => {
+              const selected = option === workspace;
+              return (
+                <button
+                  key={option}
+                  type="button"
+                  aria-pressed={selected}
+                  tabIndex={workspaceOpen ? 0 : -1}
+                  title={option}
+                  onClick={() => {
+                    onWorkspaceChange(option);
+                    setWorkspaceOpen(false);
+                  }}
+                  className={`h-8 shrink-0 whitespace-nowrap rounded-full px-4 text-[12px] transition-colors duration-150 ${focusRing} ${
+                    selected
+                      ? "bg-[#0b2341] font-semibold text-white"
+                      : "font-medium text-slate-500 hover:text-slate-900"
+                  }`}>
+                  {workspaceShortLabel[option]}
+                </button>
+              );
+            })}
+          </div>
+          </div>
+        </div>
+      </div>
 
       {/* ───────── Left: logo + slim rail ───────── */}
       <aside
         aria-label="Main navigation"
         className="fixed bottom-4 left-4 top-4 z-[1100] flex w-14 flex-col items-center gap-3">
-        {/* Logo in a white circle */}
-        <div
-          className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-full ${pillSurface}`}>
-          <span className="flex h-9 w-9 items-center justify-center">
-            <img
-              src={logo}
-              alt="Alzhen logo"
-              className="h-full w-full object-contain"
-            />
-          </span>
-        </div>
+        {/* Space held for the logo (rendered separately so it can expand) */}
+        <div aria-hidden="true" className="h-11 w-11 shrink-0" />
 
         {/* Primary navigation: fits its content and sits vertically centred */}
         <div className="flex min-h-0 w-full flex-1 items-center">
@@ -558,33 +608,29 @@ export default function SidebarNav({
       {/* ───────── Top bar: starts beside the rail, one row ───────── */}
       <header
         aria-label="Top bar"
-        className="fixed left-[5.5rem] right-4 top-4 z-[1101] flex h-14 items-center gap-2 sm:gap-3">
-        {/* Workspace switcher (existing control, now a white pill) */}
-        <div
-          role="group"
-          aria-label="Switch workspace"
-          className={`flex h-14 min-w-0 items-center rounded-full p-1.5 ${pillSurface}`}>
-          {workspaceOptions.map((option) => {
-            const selected = option === workspace;
-            return (
-              <button
-                key={option}
-                type="button"
-                aria-pressed={selected}
-                title={option}
-                onClick={() => onWorkspaceChange(option)}
-                className={`h-11 truncate rounded-full px-3.5 text-[13px] transition-colors duration-150 sm:px-5 ${focusRing} ${
-                  selected
-                    ? "bg-[#0b2341] font-semibold text-white"
-                    : "font-medium text-slate-500 hover:text-slate-900"
-                }`}>
-                {workspaceShortLabel[option]}
-              </button>
-            );
-          })}
-        </div>
-
+        className="pointer-events-none fixed left-[5.5rem] right-4 top-4 z-[1101] flex h-11 items-center gap-2 [&>*]:pointer-events-auto">
         <div className="flex-1" />
+
+        {/* Calendar: its own circle, beside notifications */}
+        {hasCalendar && (
+          <button
+            type="button"
+            onClick={() => {
+              setProfileOpen(false);
+              setNotifOpen(false);
+              onNavigate("calendar");
+            }}
+            aria-label="Calendar"
+            aria-current={calendarActive ? "page" : undefined}
+            title="Calendar"
+            className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-colors duration-200 ${pillSurface} ${focusRing} ${
+              calendarActive
+                ? "!border-[#0b2341] !bg-[#0b2341] text-white"
+                : "text-slate-600 hover:text-slate-900"
+            }`}>
+            <CalendarDays className="h-[18px] w-[18px] stroke-[1.6]" />
+          </button>
+        )}
 
         {/* Notifications */}
         {canAccessNotifications && (
@@ -603,12 +649,12 @@ export default function SidebarNav({
                   ? `Notifications, ${notificationCount} unread`
                   : "Notifications"
               }
-              className={`relative flex h-14 w-14 items-center justify-center rounded-full text-slate-600 transition-colors duration-200 hover:text-slate-900 ${pillSurface} ${focusRing} ${
+              className={`relative flex h-11 w-11 items-center justify-center rounded-full text-slate-600 transition-colors duration-200 hover:text-slate-900 ${pillSurface} ${focusRing} ${
                 notifOpen ? "!bg-white text-slate-900" : ""
               }`}>
               <Bell className="h-[18px] w-[18px] stroke-[1.6]" />
               {hasNotifications && (
-                <span className="absolute right-2 top-2 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-semibold leading-none text-white ring-2 ring-white">
+                <span className="absolute -right-0.5 -top-0.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-semibold leading-none text-white ring-2 ring-white">
                   {notificationText}
                 </span>
               )}
@@ -645,18 +691,18 @@ export default function SidebarNav({
             aria-expanded={profileOpen}
             aria-haspopup="menu"
             aria-label="User menu"
-            className={`flex h-14 items-center gap-2.5 rounded-full py-1.5 pl-1.5 pr-1.5 text-left transition-colors duration-200 sm:pr-5 ${pillSurface} ${focusRing} ${
+            className={`flex h-11 items-center gap-2 rounded-full py-1 pl-1 pr-1 text-left transition-colors duration-200 sm:pr-4 ${pillSurface} ${focusRing} ${
               profileOpen ? "!bg-white" : ""
             }`}>
-            <span className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-slate-950 text-[13px] font-semibold text-white">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-slate-950 text-[12px] font-semibold text-white">
               {avatarContent}
             </span>
             <span className="hidden min-w-0 sm:block">
-              <span className="block max-w-[10rem] truncate text-[13px] font-semibold leading-tight text-slate-900">
+              <span className="block max-w-[9rem] truncate text-[12px] font-semibold leading-tight text-slate-900">
                 {userName ?? "Profile"}
               </span>
               {userRole && (
-                <span className="block max-w-[10rem] truncate text-[11px] leading-tight text-slate-500">
+                <span className="block max-w-[9rem] truncate text-[10px] leading-tight text-slate-500">
                   {userRole}
                 </span>
               )}
