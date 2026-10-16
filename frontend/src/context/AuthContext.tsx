@@ -90,6 +90,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const cacheOwnerRef = useRef<string | null>(null);
   useEffect(()=>startCollaboration(loading?null:accessToken,profile?.id,profile?.role),[loading,accessToken,profile?.id,profile?.role]);
   const cacheTokenRef = useRef<string | null>(null);
+  const cacheRoleRef=useRef<string|null>(null);
   const retryRefreshTimerRef = useRef<number | undefined>(undefined);
   const refreshSessionRef = useRef<AuthContextValue["refreshSession"] | null>(null);
   const authSyncLockedRef = useRef(false);
@@ -104,6 +105,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     retryRefreshTimerRef.current = undefined;
     cacheOwnerRef.current = null;
     cacheTokenRef.current = null;
+    cacheRoleRef.current=null;
     clearAppSessionId();
     clearApiCache();
     clearReportPageCache();
@@ -221,7 +223,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         if (
           cacheOwnerRef.current !== response.data.profile.id ||
-          cacheTokenRef.current !== session.access_token
+          cacheTokenRef.current !== session.access_token ||
+          cacheRoleRef.current !== response.data.profile.role
         ) {
           clearApiCache();
           clearReportPageCache();
@@ -229,6 +232,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
         cacheOwnerRef.current = response.data.profile.id;
         cacheTokenRef.current = session.access_token;
+        cacheRoleRef.current=response.data.profile.role;
         await preloadAdminPageData(session.access_token, response.data.profile.role);
 
         sessionExpiredRef.current = false;
@@ -340,6 +344,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         clearSharedWidths();
         cacheOwnerRef.current = response.data.profile.id;
         cacheTokenRef.current = response.data.session.access_token;
+        cacheRoleRef.current=profileRole;
         await preloadAdminPageData(response.data.session.access_token, profileRole);
         sessionExpiredRef.current = false;
         setUser(response.data.authUser);

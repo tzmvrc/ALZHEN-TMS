@@ -17,7 +17,8 @@ export const REPORT_GRID_HEADER_CELL_CLASS = "sticky top-0 z-30 whitespace-nowra
 export const REPORT_GRID_BODY_CELL_CLASS = "border-b border-r border-slate-100 px-4 py-3.5 align-top text-[13px] text-slate-800 last:border-r-0";
 export const REPORT_GRID_ROW_CLASS = "border-b border-slate-100/80 transition-colors last:border-0";
 
-export type ReportCellFormat = { bold?: boolean; color?: string; backgroundColor?: string };
+export type {CellDesign as ReportCellFormat} from "../../services/shared-table-design";
+import type {CellDesign as ReportCellFormat} from "../../services/shared-table-design";
 
 export function reportCellFormatKey(rowKey: string, field: string) {
   return `${rowKey}\u0000${field}`;

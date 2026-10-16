@@ -1,4 +1,5 @@
 import type { RealtimeChannel } from "@supabase/supabase-js";
+import {subscribeCollaborationEvents} from "./collaboration.service";
 import { supabase } from "../lib/supabase";
 import { apiGet, invalidateApiCache, type ApiResponse } from "./api.service";
 import {
@@ -144,6 +145,7 @@ function emitAdminRealtime(event: AdminRealtimeEvent) {
 }
 
 function invalidateForTable(table: string, payload?: RealtimePayload) {
+  if(["profiles","drivers"].includes(table))invalidateApiCache("/users");
   if (["trips", "trip_stops", "trip_line_items", "trip_truck_assignments", "drivers", "trucks", "customers", "customer_stores", "warehouses", "products", "trucking_companies", "trip_types", "profiles", "tms_route_options"].includes(table)) invalidateApiCache("/lookups/");
   if (["tms_dropdown_options", "flex_dropdown_options"].includes(table)) invalidateApiCache("/dropdown-options");
   if (table.startsWith("flex_")) invalidateApiCache("/flexible-tables");
@@ -243,6 +245,7 @@ export function startAdminRealtime(
     },
     schedule: (callback, delay) => setTimeout(callback, delay), cancel: clearTimeout,
   });
+  const stopSocketSignals=subscribeCollaborationEvents(event=>{if(active&&event.kind==="signal")feed.push({topic:event.topic,revision:event.revision});});
   const connect = async () => {
     const version = ++connectionVersion;
     const previous = signalChannel; signalChannel = null;
@@ -288,7 +291,7 @@ export function startAdminRealtime(
   document.addEventListener("visibilitychange", onVisible);
   const cleanup = () => {
     active = false; healthy = false; connectionVersion++;
-    feed.stop(); window.clearInterval(signalRecoveryTimer); window.clearTimeout(reconnectTimer);
+    feed.stop();stopSocketSignals(); window.clearInterval(signalRecoveryTimer); window.clearTimeout(reconnectTimer);
     if (signalChannel) void supabase.removeChannel(signalChannel);
     transactionChanges.stop();
     window.clearInterval(transactionTimer);

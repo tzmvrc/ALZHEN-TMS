@@ -154,22 +154,27 @@ export async function fetchMyAssignedTrips(
 export const invalidateAssignedTrips=()=>invalidateApiCache("/truckers/me/trips");
 export const getCachedAssignedTrips=(token:string)=>getCachedApiResponse<ApiResponse<DriverAssignedTrip[]>>("/truckers/me/trips",token,5*60_000)?.data??null;
 
-export async function fetchTruckers(token: string, params: {
+type TruckerQuery={
   search?: string;
   status?: string;
   assignment?: "all" | "assigned" | "unassigned";
   page?: number;
   limit?: number;
-}) {
+};
+export function truckerListEndpoint(params:TruckerQuery){
   const searchParams = new URLSearchParams();
   if (params.search?.trim()) searchParams.set("search", params.search.trim());
   if (params.status && params.status !== "all") searchParams.set("status", params.status);
   if (params.assignment && params.assignment !== "all") searchParams.set("assignment", params.assignment);
   if (params.page) searchParams.set("page", String(params.page));
   if (params.limit) searchParams.set("limit", String(params.limit));
+  return `/truckers${searchParams.toString() ? `?${searchParams.toString()}` : ""}`;
+}
+export const getCachedTruckers=(token:string,params:TruckerQuery)=>getCachedApiResponse<ApiResponse<{rows:TruckerListItem[];pagination:{totalPages:number}}>>(truckerListEndpoint(params),token,5*60_000)?.data??null;
+export async function fetchTruckers(token: string, params:TruckerQuery) {
 
   const response = await apiGetCached<ApiResponse<{ rows: TruckerListItem[]; pagination: { page: number; limit: number; total: number; totalPages: number } }>>(
-    `/truckers${searchParams.toString() ? `?${searchParams.toString()}` : ""}`,
+    truckerListEndpoint(params),
     token,
   );
 

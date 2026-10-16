@@ -22,6 +22,7 @@ async (page) => {
       else if(url.pathname==='/api/flexible-tables') data=[table];
       await r.fulfill({contentType:'application/json',body:JSON.stringify({success:true,data})});
     });
+    await p.route('**/login',async r=>{const response=await r.fetch();await r.fulfill({response,body:(await response.text()).replace('<script type="module" src="/src/main.tsx"></script>','')});});
     async function mount(view) {
       await p.goto('http://localhost:5173/login');
       await p.evaluate(async view=>{
@@ -37,7 +38,7 @@ async (page) => {
     await p.waitForTimeout(250);if(!writes.some(w=>w.key==='users:staff'&&w.col==='email'&&w.width_px===210)) throw new Error('Users width not saved');
     await root().getByRole('button',{name:'Hide Email column',exact:true}).click();
     if(await root().getByRole('columnheader',{name:/Email/}).isVisible()) throw new Error('Email not hidden');
-    await root().getByRole('combobox',{name:'Find a column'}).fill('Email');await root().getByRole('combobox',{name:'Find a column'}).press('Enter');
+    await root().getByRole('combobox',{name:'Search rows or columns'}).fill('Email');await root().getByRole('option',{name:'Email (reveal hidden column)',exact:true}).click();
     await root().getByRole('columnheader',{name:/Email/}).waitFor();
     const highlight=await root().locator('tbody tr:first-child td:nth-child(2)').evaluate(e=>getComputedStyle(e).boxShadow);if(highlight==='none') throw new Error('Wrong finder index for Users');
     await mount('TruckersView');await root().getByRole('separator',{name:'Resize Email',exact:true}).waitFor();await p.waitForTimeout(250);

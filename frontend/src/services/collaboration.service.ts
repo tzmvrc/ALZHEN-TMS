@@ -5,7 +5,7 @@ export type Presence=CellTarget&{socketId:string;userId:string;name:string;color
 export type Commit={eventId:string;source:string;recordId:string;tripId?:string;stopId?:string;fields:string[];version:number|null;actorId:string|null;operation?:"INSERT"|"UPDATE"|"DELETE"};
 export const COLLABORATION_SOURCES=["trips","trip_stops","trip_line_items","trip_truck_assignments","store_calls","billings"] as const;
 type Snapshot={connected:boolean;bridgeHealthy:boolean;presences:Presence[]};
-type Event={kind:"commit";commit:Commit}|{kind:"trucker"}|{kind:"connected"};
+type Event={kind:"commit";commit:Commit}|{kind:"trucker"}|{kind:"connected"}|{kind:"layout";table:string;column:string;revision:number}|{kind:"signal";topic:string;revision:string};
 let socket:Socket|null=null,owner="",snapshot:Snapshot={connected:false,bridgeHealthy:false,presences:[]};
 let stopCurrent:(()=>void)|null=null;
 const watchers=new Set<()=>void>(),events=new Set<(event:Event)=>void>(),rooms=new Map<string,number>(),cells=new Map<string,CellTarget>(),versions=new Map<string,number>(),seen=new Set<string>();
@@ -30,7 +30,7 @@ function presence(value:Presence){
  snapshot={...snapshot,presences:[...snapshot.presences.filter(p=>`${p.table}:${p.socketId}`!==key),value].slice(-500)};notify();
 }
 export function startCollaboration(token:string|null,profileId:string|undefined,role:string|undefined){
- const next=token&&profileId&&["ADMIN","STAFF","TRUCKER"].includes(role??"")?`${profileId}:${token}`:"";
+ const next=token&&profileId&&["ADMIN","STAFF","TRUCKER"].includes(role??"")?`${profileId}:${role}:${token}`:"";
  if(next===owner)return()=>{};
  stopCurrent?.();stopCurrent=null;socket?.disconnect();socket=null;owner=next;versions.clear();seen.clear();recordRequests.clear();received.clear();
  snapshot={connected:false,bridgeHealthy:false,presences:[]};notify();
@@ -52,6 +52,8 @@ export function startCollaboration(token:string|null,profileId:string|undefined,
   emit({kind:"commit",commit});
  };
  client.on("cell:committed",committed);client.on("table:invalidated",committed);
+ client.on("table:layout-updated",value=>{if(active()&&typeof value?.table==="string"&&typeof value?.column==="string"&&Number.isSafeInteger(value.revision)){const key=`layout:${value.table}:${value.column}:${value.revision}`;if(seen.has(key))return;seen.add(key);if(seen.size>5000)seen.delete(seen.values().next().value!);emit({kind:"layout",table:value.table,column:value.column,revision:value.revision});}});
+ client.on("datasets:invalidated",value=>{if(active()&&typeof value?.topic==="string"&&typeof value?.revision==="string")emit({kind:"signal",topic:value.topic,revision:value.revision});});
  client.on("trucker:changed",()=>{if(active())emit({kind:"trucker"});});
  const heartbeat=setInterval(()=>{if(!active())return;if(document.visibilityState==="visible"&&client.connected)for(const cell of cells.values())client.emit("cell:presence",cell);
   for(const [key,time] of received)if(time<Date.now()-45000)received.delete(key);

@@ -117,3 +117,60 @@ CAS, widths, permanent deletion and storage cleanup are preserved.
 
 Authenticated tests require manual local sign-in and explicit approval for the
 specific temporary test record. Do not rerun live edits automatically.
+
+## Phase 2B.5-C — shared design and durable invalidation (October 16, 2026)
+
+Shared design reuses `shared_table_column_widths.design`; there is no second
+configuration table. Protected GET `/table-layouts/:table/design` and PATCH
+`/table-layouts/:table/design/:column` require ADMIN/STAFF. A patch contains only
+validated appearance settings and an expected revision. Width and design writes
+share the existing revision, so racing changes return 409 rather than overwrite
+each other. Failed optimistic design drafts remain available for retry.
+
+Successful backend layout writes emit `table:layout-updated` to the authorized
+management room, with table/column/revision/event ID only. The existing Supabase
+`admin_change_signals` feed also bridges `datasets:invalidated` into that room.
+Both feed the same frontend topic/revision deduplicator. Neither exposes business
+rows, receipt paths, or private profile fields. Trucker rooms do not receive
+management signals. Existing Redis adapter support is retained; a real
+multi-instance Redis deployment remains unverified.
+
+Report grids apply shared order, visibility, pinning and column colors. Trips and
+standard reports also persist existing cell formatting and the added safe font
+family/size/italic controls. Tracker persists its existing bold/text/background
+controls by stop identity. Operations preserves its existing column controls;
+management grids use shared visibility and widths. Flexible Tables retain their
+existing database-backed column definitions. This does not add font editors to
+every management grid or replace existing flexible-table formatting ownership.
+
+Incoming design snapshots are deferred during editing, modal drafts, resizing,
+reordering and fill gestures where those interactions exist. Unified search is
+marked refresh-safe: Enter can execute a server search while it retains focus,
+without disabling draft protection on business inputs.
+
+Applied exact approved migrations:
+
+- `20261016121840` shared_table_design; source
+  `backend/migrations/2026_10_27_proposed_shared_table_design.sql`, SHA-256
+  `F8F3142EA55DDE8F2AB59CE456EADCFFFFB96D60B73C01D06B7D9E4D39BCA077`.
+- `20261016121852` pod_view_service_read; source
+  `backend/migrations/2026_10_28_proposed_pod_view_service_read.sql`, SHA-256
+  `7168DC7E7D7AE6ABFAD8361F348E8577A1153223FD6F6E157F83C0F51DDFE25D`.
+
+The POD change grants SELECT only on existing owner-security view
+`vw_pod_drive_files` to service_role. The protected backend endpoint was exercised
+with a real Admin session and returned success/zero rows. `pod_records` and
+`pod_drive_files` still have no service-role/browser SELECT grant; their RLS,
+policies and publication membership are unchanged. Existing metadata signals
+cover their administrative invalidation. This does not implement POD approval,
+its linked writes, or Trucker approval notifications.
+
+Two real, different ADMIN accounts verified shared bold formatting, browser
+refresh persistence, and remote font-size changes with an active unsaved draft.
+The draft survived; Escape allowed the queued format to apply. The first measured
+bold propagation was 5824 ms including database/API/refetch work, not isolated
+socket latency. Only DR 333 test-row appearance was changed and restored. Its
+dispatch/DR/quantity and all other business fields were not edited. The test cell
+metadata was removed through the authorized API afterward; revision advanced
+from 3 to 8 and width remained 178. Real STAFF-role format testing, remote
+resize during drag, token-refresh/revocation and real Redis delivery remain.

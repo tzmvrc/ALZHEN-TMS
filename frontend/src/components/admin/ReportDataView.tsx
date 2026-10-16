@@ -1,6 +1,7 @@
-import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ClipboardEvent as ReactClipboardEvent, type CSSProperties, type FormEvent, type MouseEvent, type ReactNode } from "react";
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ClipboardEvent as ReactClipboardEvent, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { useSharedTableWidths } from "./useSharedTableWidths";
+import { useSharedTableDesign } from "./useSharedTableDesign";
 import ColumnFinder from "./ColumnFinder";
 import HiddenColumnsControl from "./HiddenColumnsControl";
 import TransactionCleanupNotice from "./TransactionCleanupNotice";
@@ -13,7 +14,6 @@ import {
   ChevronRight,
   LayoutGrid,
   Package,
-  Search,
   SlidersHorizontal,
   ArrowDown,
   ArrowUp,
@@ -21,7 +21,6 @@ import {
   Table2,
   Truck,
   UserRound,
-  X,
   Download,
   GripVertical,
   EllipsisVertical,
@@ -1004,17 +1003,16 @@ export default function ReportDataView({
     typeof window === "undefined" ? { order: [], hidden: [] } : readReportColumnLayout(`alzhen:report-column-layout:${profile?.id ?? "user"}:${initialReport}`),
   );
   const cellFormatStorageKey = `alzhen:report-cell-format:${profile?.id ?? "user"}:${reportKey}`;
-  const [cellFormats, setCellFormats] = useState<Record<string, ReportCellFormat>>(() =>
+  const [localCellFormats, setCellFormats] = useState<Record<string, ReportCellFormat>>(() =>
     typeof window === "undefined" ? {} : readReportCellFormats(`alzhen:report-cell-format:${profile?.id ?? "user"}:${initialReport}`),
   );
   const [cellSelection, setCellSelection] = useState<CellSelection | null>(null);
   const [draggedColumnKey, setDraggedColumnKey] = useState<string | null>(null);
   const [columnResize, setColumnResize] = useState<{ key: string; startX: number; startWidth: number } | null>(null);
-  const columnLayout = useMemo(() => ({ ...localColumnLayout, widths: columnResize ? localColumnLayout.widths : { ...(sharedWidths.loaded ? {} : localColumnLayout.widths), ...sharedWidths.widths } }), [localColumnLayout, columnResize, sharedWidths.widths, sharedWidths.loaded]);
   const [fillGesture, setFillGesture] = useState<FillGesture | null>(null);
   const fillGestureRef = useRef<FillGesture | null>(null);
   const [rows, setRows] = useState<ReportRow[]>([]);
-  const [pinnedColumnSides, setPinnedColumnSides] = useState<Record<string, "left" | "right">>({});
+  const [localPinnedColumnSides, setPinnedColumnSides] = useState<Record<string, "left" | "right">>({});
   const [leftPinOffsets, setLeftPinOffsets] = useState<Record<string, number>>({});
   const [rightPinOffsets, setRightPinOffsets] = useState<Record<string, number>>({});
   const [pinningNotice, setPinningNotice] = useState("");
@@ -1097,6 +1095,15 @@ export default function ReportDataView({
   } | null>(null);
   const [retryVersion, setRetryVersion] = useState(0);
   const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
+  const sharedDesign=useSharedTableDesign(transactionView?"trips":`report:${reportKey}`,accessToken,["ADMIN","STAFF"].includes(profile?.role??""),Boolean(editingCell||editModalOpen||columnResize||draggedColumnKey||fillGesture));
+  const columnLayout=useMemo(()=>{
+    const design=sharedDesign.columns;
+    const layout=sharedDesign.loaded?{order:columns.map(c=>c.key).sort((a,b)=>(design[a]?.position??1001)-(design[b]?.position??1001)),hidden:Object.keys(design).filter(k=>design[k].hidden),colors:Object.fromEntries(Object.entries(design).filter(([,v])=>v.color).map(([k,v])=>[k,v.color!]))}:localColumnLayout;
+    return {...layout,widths:columnResize?localColumnLayout.widths:{...(sharedWidths.loaded?{}:localColumnLayout.widths),...sharedWidths.widths}};
+  },[sharedDesign.columns,sharedDesign.loaded,columns,localColumnLayout,columnResize,sharedWidths.loaded,sharedWidths.widths]);
+  const pinnedColumnSides=localPinnedColumnSides;
+  useEffect(()=>{let live=true;if(sharedDesign.loaded){const next=Object.fromEntries(Object.entries(sharedDesign.columns).flatMap(([k,v])=>v.pin?[[k,v.pin]]:[])) as Record<string,"left"|"right">;queueMicrotask(()=>{if(live)setPinnedColumnSides(next);});}return()=>{live=false;};},[sharedDesign.columns,sharedDesign.loaded]);
+  const cellFormats=useMemo(()=>sharedDesign.loaded?Object.fromEntries(Object.entries(sharedDesign.columns).flatMap(([column,design])=>Object.entries(design.cells??{}).flatMap(([row,format])=>format?[[reportCellFormatKey(row,column),format]]:[]))):localCellFormats,[sharedDesign.columns,sharedDesign.loaded,localCellFormats]);
   const [dropdownOptions, setDropdownOptions] = useState<DropdownOption[]>([]);
   const activeDropdownOptionsByField = useMemo(() => {
     const grouped: Partial<Record<DropdownField, DropdownOption[]>> = {};
@@ -1707,12 +1714,6 @@ export default function ReportDataView({
     };
   }, [accessToken, reportKey]);
 
-  function submitSearch(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setPage(1);
-    setAppliedSearch(search.trim());
-  }
-
   useEffect(() => {
     const timer = window.setTimeout(() => {
       setPage(1);
@@ -1849,6 +1850,7 @@ export default function ReportDataView({
     }
     setPinningNotice("");
     setPinnedColumnSides(next);
+    void sharedDesign.save(columnKey,{pin:side},getColumnWidth(columnKey));
   }
 
   function toggleColumnPinAutomatically(columnKey: string) {
@@ -1864,12 +1866,21 @@ export default function ReportDataView({
 
   function saveColumnLayout(next: ReportColumnLayout) {
     setColumnLayout(next);
+    const reordered=next.order.join("\u0000")!==layoutColumnKeys.join("\u0000");
+    for(const [position,key] of next.order.entries()){
+      const patch:import("../../services/shared-table-design").ColumnDesign={};
+      if(reordered)patch.position=position;
+      if(next.hidden.includes(key)!==columnLayout.hidden.includes(key))patch.hidden=next.hidden.includes(key);
+      if((next.colors?.[key]??null)!==(columnLayout.colors?.[key]??null))patch.color=next.colors?.[key]??null;
+      if(Object.keys(patch).length)void sharedDesign.save(key,patch,getColumnWidth(key));
+    }
     try {
       localStorage.setItem(columnLayoutStorageKey, JSON.stringify(next));
     } catch {
       // Keep the current session usable when browser storage is unavailable.
     }
   }
+  function getColumnWidth(key:string){const column=columns.find(c=>c.key===key);return columnLayout.widths?.[key]??(column?defaultReportColumnWidth(column):180);}
 
   function setReportColumnColor(columnKey: string, color: string | null) {
     const colors = { ...(columnLayout.colors ?? {}) };
@@ -1917,6 +1928,9 @@ export default function ReportDataView({
     }
     setCellFormats(next);
     writeReportCellFormats(cellFormatStorageKey, next);
+    const grouped:Record<string,Record<string,ReportCellFormat|null>>={};
+    for(const key of selectedFormatCellKeys){const split=key.lastIndexOf("\u0000");if(split<0)continue;const column=key.slice(split+1),row=key.slice(0,split);(grouped[column]??={})[row]=next[key]??null;}
+    for(const [column,cells] of Object.entries(grouped))void sharedDesign.save(column,{cells},getColumnWidth(column));
   }
 
   const selectedFormats = [...selectedFormatCellKeys].map((key) => cellFormats[key] ?? {});
@@ -2849,17 +2863,11 @@ export default function ReportDataView({
           </div>
         )}
         {toolbarLeading}
+        {sharedDesign.feedback}
         <span className="text-[10px] text-slate-500" role="status">{collaboration.connected?"Live collaboration":"Collaboration reconnecting"}</span>
         {collaboration.notice&&<div role="status" className="max-w-md rounded border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-900">{collaboration.notice.text}{collaboration.notice.latest!==undefined&&<span className="block">Latest persisted value: {String(collaboration.notice.latest??"(blank)")}</span>}<button type="button" onClick={collaboration.dismissNotice} className="ml-2 underline">Dismiss</button></div>}
-        <ColumnFinder columns={columns.filter((column) => !(transactionView && column.key === "warehouse_code")).map((column) => ({ ...column, hidden: hiddenColumnKeys.has(column.key), index: renderedGridColumns.findIndex((item) => item.key === column.key) }))} viewport={tableViewportRef} getHeader={(key) => headerCellRefs.current.get(key)} onReveal={restoreReportColumn} />
         <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2 lg:flex-[1_1_36rem] lg:flex-nowrap">
-          <form onSubmit={submitSearch} className="flex min-w-0 w-full gap-2 sm:w-auto">
-            <label className="relative min-w-0 flex-1 sm:w-64 lg:flex-none" htmlFor="report-search">
-              <Search aria-hidden="true" className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <input id="report-search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search report" className={tableUi.search} />
-            </label>
-            {search && <button type="button" aria-label="Clear search" onClick={() => { setSearch(""); setAppliedSearch(""); setPage(1); }} className={tableUi.iconBtn}><X aria-hidden="true" className="h-4 w-4" /></button>}
-          </form>
+          <ColumnFinder key={reportKey} rowSearch={{value:search,placeholder:"Search rows or columns…",onSearch:value=>{setSearch(value);setAppliedSearch(value);setPage(1);}}} columns={columns.filter((column) => !(transactionView && column.key === "warehouse_code")).map((column) => ({ ...column, hidden: hiddenColumnKeys.has(column.key), index: renderedGridColumns.findIndex((item) => item.key === column.key) }))} viewport={tableViewportRef} getHeader={(key) => headerCellRefs.current.get(key)} onReveal={restoreReportColumn} />
           {showReportPicker && (
             <label className="sr-only" htmlFor="report-select">
               Select report
@@ -3166,7 +3174,7 @@ export default function ReportDataView({
         </div>
       ) : (
         <>
-          {viewMode === "table" && <ReportCellFormattingToolbar selectedCellCount={selectedFormatCellKeys.size} selectionIsBold={selectionIsBold} selectedTextColor={selectedTextColor} selectedBackgroundColor={selectedBackgroundColor} onApply={applyCellFormat} />}
+          {viewMode === "table" && <ReportCellFormattingToolbar advanced selectionIsItalic={selectedFormats.length>0&&selectedFormats.every(f=>f.italic)} fontSize={selectedFormats[0]?.fontSize} fontFamily={selectedFormats[0]?.fontFamily} selectedCellCount={selectedFormatCellKeys.size} selectionIsBold={selectionIsBold} selectedTextColor={selectedTextColor} selectedBackgroundColor={selectedBackgroundColor} onApply={applyCellFormat} />}
           <div ref={tableViewportRef} onPaste={(event) => void handleReportPaste(event)} onCopy={handleReportCopy} className={`${viewMode === "table" ? REPORT_GRID_VIEWPORT_CLASS : "relative min-h-48 w-full min-w-0 max-w-full overflow-x-auto overscroll-x-contain"} w-full`}>
             {pinningNotice && <p role="status" className="sticky left-2 z-40 w-fit rounded-md bg-amber-50 px-2.5 py-1.5 text-xs text-amber-900 shadow-sm">{pinningNotice}</p>}
             {viewMode === "visual" ? (
@@ -3353,6 +3361,10 @@ export default function ReportDataView({
                                 ...(isPinned ? { position: "sticky" as const, ...(pinSide === "left" ? { left: leftPinOffsets[column.key] ?? 44 } : { right: rightPinOffsets[column.key] ?? 0 }), zIndex: 20 } : {}),
                                 ...(cellFormat?.bold ? { fontWeight: 700 } : {}),
                                 ...(cellFormat?.color ? { color: cellFormat.color } : {}),
+                                fontStyle:cellFormat?.italic?"italic":undefined,
+                                textDecoration:cellFormat?.underline?"underline":undefined,
+                                fontSize:cellFormat?.fontSize??undefined,
+                                fontFamily:cellFormat?.fontFamily??undefined,
                                 ...(columnColor ? { "--report-column-color": columnColor, color: cellFormat?.color ?? columnForeground(columnColor) } as CSSProperties : {}),
                                 ...(cellFormat?.backgroundColor ? { backgroundColor: cellFormat.backgroundColor } : {}),
                               }}

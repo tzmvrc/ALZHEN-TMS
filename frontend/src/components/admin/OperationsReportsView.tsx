@@ -38,6 +38,8 @@ import OperationsEventSubmissionForm from "./OperationsEventSubmissionForm";
 import TableState from "./TableState";
 import { TableSkeleton } from "./DashboardPrimitives";
 import { useSharedTableWidths } from "./useSharedTableWidths";
+import {useSharedTableDesign} from "./useSharedTableDesign";
+import {designLayout,designChanges} from "../../services/shared-table-design";
 import ColumnFinder from "./ColumnFinder";
 import HiddenColumnsControl from "./HiddenColumnsControl";
 import OffloadCleanupNotice from "./OffloadCleanupNotice";
@@ -497,8 +499,6 @@ export function OperationsEventsTable({ rows, loading, hasLoaded, loadError, tok
   const [draggingWidth, setDraggingWidth] = useState(false);
   const [layoutState, setLayoutState] = useState(() => ({ key: layoutKey, value: readOperationsColumnLayout(layoutKey) }));
   const localLayout = useMemo(() => layoutState.key === layoutKey ? layoutState.value : readOperationsColumnLayout(layoutKey), [layoutState, layoutKey]);
-  const layout = useMemo(() => ({ ...localLayout, widths: draggingWidth ? localLayout.widths : { ...(sharedWidths.loaded ? {} : localLayout.widths), ...sharedWidths.widths } }), [localLayout, draggingWidth, sharedWidths.widths, sharedWidths.loaded]);
-  const setLayout = (update: typeof layout | ((current: typeof layout) => typeof layout)) => setLayoutState((current) => ({ key: layoutKey, value: typeof update === "function" ? update(current.key === layoutKey ? current.value : readOperationsColumnLayout(layoutKey)) : update }));
   const resizeCleanup = useRef<(() => void) | null>(null);
   const resizing = useRef(false);
   const [openColumnMenu, setOpenColumnMenu] = useState<{ key: EventColumnKey; left: number; top: number } | null>(null);
@@ -509,6 +509,9 @@ export function OperationsEventsTable({ rows, loading, hasLoaded, loadError, tok
   const [editingCargoRecord, setEditingCargoRecord] = useState<string | null>(null);
   const [cargoRecordDrafts, setCargoRecordDrafts] = useState<Record<string, ScopeReport>>({});
   const [rowEdit, setRowEdit] = useState<OperationsRowEditDraft | null>(null);
+  const sharedDesign=useSharedTableDesign("operations",token,canManageReports,Boolean(editing||rowEdit||draggingWidth||draggedColumn));
+  const layout=useMemo(()=>({...designLayout(localLayout,OPERATIONS_COLUMNS.map(c=>c.key),sharedDesign.columns,sharedDesign.loaded),widths:draggingWidth?localLayout.widths:{...(sharedWidths.loaded?{}:localLayout.widths),...sharedWidths.widths}}),[localLayout,sharedDesign.columns,sharedDesign.loaded,draggingWidth,sharedWidths.loaded,sharedWidths.widths]);
+  const setLayout=(update:typeof layout|((current:typeof layout)=>typeof layout))=>{const next=typeof update==="function"?update(layout):update;setLayoutState({key:layoutKey,value:next});for(const [key,patch] of Object.entries(designChanges(layout,next)))void sharedDesign.save(key,patch,layout.widths[key]??OPERATIONS_COLUMNS.find(c=>c.key===key)?.width??180);};
   const [rowEditBusy, setRowEditBusy] = useState(false);
   const rowEditSaving = useRef(false);
   const [rowEditError, setRowEditError] = useState<string | null>(null);
@@ -924,13 +927,13 @@ export function OperationsEventsTable({ rows, loading, hasLoaded, loadError, tok
 
   return <section aria-label="Unified operations reports" className="space-y-3">
     {sharedWidths.feedback}
+    {sharedDesign.feedback}
     <OffloadCleanupNotice key={token} token={token} enabled={canManageReports} version={cleanupVersion} />
-    <ColumnFinder columns={OPERATIONS_COLUMNS.map((column) => ({ key: column.key, title: column.label, hidden: layout.hidden.includes(column.key), index: columns.findIndex((item) => item.key === column.key) }))} viewport={viewportRef} getHeader={(key) => viewportRef.current?.querySelector<HTMLElement>(`[data-ops-column="${key}"]`)} onReveal={(key) => setLayout((current) => ({ ...current, hidden: current.hidden.filter((item) => item !== key) }))} />
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div className="flex flex-wrap gap-1" role="group" aria-label="Filter operations reports by type">
         {filters.map((item) => <button key={item} type="button" aria-pressed={filter === item} onClick={() => { setSelectedRows(new Set()); setFilter(item); if (item === "Offload") setExpandedLineItemsRow(null); }} className={"rounded-full px-3 py-1.5 text-xs font-semibold transition " + (filter === item ? "bg-[#0b2341] text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200")}>{item}</button>)}
       </div>
-      <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto"><label className="min-w-0 flex-1 sm:w-72"><span className="sr-only">Search operations reports</span><input className={inputClass} type="search" value={search} onChange={(event) => { setSelectedRows(new Set()); setSearch(event.target.value); }} placeholder="Search trips, plates, DR, route..." /></label>{canManageReports && selectedRows.size > 0 && <>{selectedRows.size === 1 && <ReportRowActionButton action="edit" disabled={selectedTargets?.length !== 1 || rowEditBusy || deleteBusy || Boolean(editing)} onClick={editSelectedRow} />}<ReportRowActionButton action="delete" disabled={!selectedTargets?.length || rowEditBusy || deleteBusy || Boolean(editing)} onClick={() => { setDeleteMessage(null); setDeleteConfirmation(true); }} /></>}{toolbarActions}</div>
+      <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto"><ColumnFinder rowSearch={{value:search,onSearch:value=>{setSelectedRows(new Set());setSearch(value);},placeholder:"Search rows or columns…"}} columns={OPERATIONS_COLUMNS.map(column=>({key:column.key,title:column.label,hidden:layout.hidden.includes(column.key),index:columns.findIndex(item=>item.key===column.key)}))} viewport={viewportRef} getHeader={key=>viewportRef.current?.querySelector<HTMLElement>(`[data-ops-column="${key}"]`)} onReveal={key=>setLayout(current=>({...current,hidden:current.hidden.filter(item=>item!==key)}))} />{canManageReports && selectedRows.size > 0 && <>{selectedRows.size === 1 && <ReportRowActionButton action="edit" disabled={selectedTargets?.length !== 1 || rowEditBusy || deleteBusy || Boolean(editing)} onClick={editSelectedRow} />}<ReportRowActionButton action="delete" disabled={!selectedTargets?.length || rowEditBusy || deleteBusy || Boolean(editing)} onClick={() => { setDeleteMessage(null); setDeleteConfirmation(true); }} /></>}{toolbarActions}</div>
     </div>
     {loading && hasLoaded && <p role="status" className="text-xs text-slate-500">Refreshing reports…</p>}
     {selectedRows.size > 0 && <div className="flex flex-wrap items-center gap-2 rounded-xl border border-[#b7d5ed] bg-[#edf6fd] px-3 py-2 text-sm text-[#155b8d]"><span className="mr-1">{selectedRows.size} row{selectedRows.size === 1 ? "" : "s"} selected</span><button type="button" disabled={deleteBusy} onClick={() => setSelectedRows(new Set())} className="px-2 py-1 text-xs font-medium underline disabled:opacity-50">Clear selection</button></div>}

@@ -8,6 +8,7 @@ function event(socket:Socket,name:string){return new Promise<any>((resolve,rejec
 test("real Socket.IO transport enforces identity/rooms, metadata presence, cleanup and confirmed-event deduplication",async()=>{
  process.env.SUPABASE_URL="http://127.0.0.1:54321";process.env.SUPABASE_SERVICE_ROLE_KEY="isolated-test";process.env.SUPABASE_ANON_KEY="isolated-test";
  const {attachCollaborationServer}=await import("../src/services/collaboration-server.js");
+ const {collaborationEvents}=await import("../src/services/collaboration-events.js");
  const http=createServer((_req,res)=>res.end("fixture"));
  const actors:Record<string,{id:string;role:string;name:string}>={admin:{id:"admin",role:"ADMIN",name:"Fixture Admin"},staff:{id:"staff",role:"STAFF",name:"Fixture Staff"},trucker:{id:"trucker",role:"TRUCKER",name:"Fixture Driver"}};
  const service=await attachCollaborationServer(http,{bridge:false,presenceTtl:150,sessionCheckMs:50,
@@ -38,6 +39,8 @@ test("real Socket.IO transport enforces identity/rooms, metadata presence, clean
   admin.emit("cell:committed",{...metadata,value:"spoofed"});await new Promise(resolve=>setTimeout(resolve,30));assert.equal(commits,0,"clients cannot publish persistence");
   service.publish(metadata);service.publish(metadata);assert.deepEqual(await committed,metadata);await new Promise(resolve=>setTimeout(resolve,50));assert.equal(commits,1);assert.equal(truckerLeaks,0);
   service.publish({...metadata,fields:[],actorId:null});await new Promise(resolve=>setTimeout(resolve,30));assert.equal(truckerRefreshes,1,"overlapping Supabase and confirmed-write signals refresh the assigned Trucker once");
+  let layoutLeaks=0;trucker.on("table:layout-updated",()=>layoutLeaks++);
+  const layout=event(staff,"table:layout-updated");collaborationEvents.emit("layout",{table:"trips",column:"route",revision:2,eventId:"layout-fixture:2"});assert.deepEqual(await layout,{table:"trips",column:"route",revision:2,eventId:"layout-fixture:2"});await new Promise(resolve=>setTimeout(resolve,20));assert.equal(layoutLeaks,0);
   const leaving=event(staff,"cell:presence-leave");await admin.emitWithAck("cell:presence",cell);admin.disconnect();await leaving;
   const revoked=event(staff,"disconnect");actors.staff.role="TRUCKER";await revoked;assert.equal(staff.connected,false);
  }finally{clients.forEach(client=>client.disconnect());await service.close();}

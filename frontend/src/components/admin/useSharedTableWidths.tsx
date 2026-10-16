@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useSyncExternalStore } from "react";
 import { emptyWidths, readSharedWidths, refreshSharedWidths, retrySharedWidths, saveSharedWidth, subscribeSharedWidths } from "../../services/shared-table-widths";
 import { subscribeToAdminRealtime } from "../../services/realtime.service";
+import {subscribeCollaborationEvents} from "../../services/collaboration.service";
 
 const polling = new Map<string, { count: number; stop: () => void }>();
 function startPolling(token: string, table: string) {
@@ -13,8 +14,9 @@ function startPolling(token: string, table: string) {
     const unsubscribe = subscribeToAdminRealtime((event) => {
       if (event.kind === "resume" || (event.kind === "batch" && event.tables.includes("shared_table_column_widths"))) refresh();
     });
+    const stopSocket=subscribeCollaborationEvents(event=>{if(event.kind==="layout"&&event.table===table)refresh();});
     window.addEventListener("focus", refresh);
-    state = { count: 0, stop: () => { unsubscribe(); window.clearInterval(timer); window.removeEventListener("focus", refresh); } };
+    state = { count: 0, stop: () => { unsubscribe();stopSocket(); window.clearInterval(timer); window.removeEventListener("focus", refresh); } };
     polling.set(key, state);
   }
   state.count += 1;

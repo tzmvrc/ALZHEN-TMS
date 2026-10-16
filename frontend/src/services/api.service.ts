@@ -229,6 +229,14 @@ const responseCache = new Map<string, { expiresAt: number; value: unknown }>();
 const cachedRequests = new Map<string, Promise<unknown>>();
 const cacheRevisions = new Map<string, number>();
 let cacheSessionGeneration = 0;
+export const apiCacheGeneration=()=>cacheSessionGeneration;
+/** Composed screen snapshots share logout isolation and API-prefix invalidation. */
+export function cacheApiSnapshot<T>(endpoint:string,token:string,value:T,generation:number){
+  if(generation!==cacheSessionGeneration)return;
+  responseCache.set(`${token}:${endpoint}`,{expiresAt:Date.now()+30_000,value});
+  const snapshots=[...responseCache.keys()].filter(key=>key.endsWith("/screen-snapshot"));
+  for(const key of snapshots.slice(0,-20))responseCache.delete(key);
+}
 
 /** Synchronous navigation reads use the same token-scoped cache as requests. */
 export function getCachedApiResponse<T>(endpoint: string, token?: string, staleForMs = 0): T | null {

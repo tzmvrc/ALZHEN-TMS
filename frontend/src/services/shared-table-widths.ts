@@ -1,4 +1,5 @@
 import { apiGet, apiPatch, type ApiResponse } from "./api.service";
+import {clearSharedDesign} from "./shared-table-design";
 
 export type SharedWidth = { table_key: string; column_key: string; width_px: number; revision: number; updated_at: string; updated_by: string | null };
 export type WidthSnapshot = { widths: Record<string, number>; error: string; saving: boolean; loaded: boolean };
@@ -22,6 +23,7 @@ function publish(state: Entry, error = state.value.error) {
 }
 export const readSharedWidths = (token: string, table: string) => entry(token, table).value;
 export function clearSharedWidths() {
+  clearSharedDesign();
   for (const state of entries.values()) { state.active = false; state.epoch++; state.drafts.clear(); state.listeners.clear(); }
   entries.clear();
 }

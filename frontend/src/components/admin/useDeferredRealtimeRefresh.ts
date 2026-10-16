@@ -8,7 +8,8 @@ export function useDeferredRealtimeRefresh(refresh: () => Promise<unknown> | voi
   }));
   useLayoutEffect(() => {
     gate.configure({ refresh, blocked: () => (typeof editing === "function" ? editing() : editing)
-      || Boolean(document.activeElement?.matches("input:not([type=checkbox]):not([type=button]),textarea,select,[contenteditable=true],[role=combobox]")) });
+      || Boolean(document.activeElement?.matches("input:not([type=checkbox]):not([type=button]),textarea,select,[contenteditable=true],[role=combobox]")
+        && !document.activeElement.hasAttribute("data-realtime-refresh-safe")) });
   }, [gate, refresh, editing]);
   useEffect(() => {
     gate.resume();

@@ -36,6 +36,8 @@ export async function attachCollaborationServer(http:HttpServer,options:Options=
   }
  };
  collaborationEvents.on("commit",emitCommit);
+ const emitLayout=(value:{table:string;column:string;revision:number;eventId:string})=>io.to("management").emit("table:layout-updated",value);
+ collaborationEvents.on("layout",emitLayout);
  const attempts=new Map<string,{count:number;since:number}>();
  io.use(async(socket,next)=>{try{
   const address=socket.handshake.address,now=Date.now();
@@ -90,6 +92,10 @@ export async function attachCollaborationServer(http:HttpServer,options:Options=
  });
  const channel=options.bridge===false?null:supabaseAdmin.channel(`collaboration-server-${process.pid}-${Date.now()}`);
  if(channel){
+  channel.on("postgres_changes",{schema:"public",table:"admin_change_signals",event:"*"},payload=>{
+   const signal=payload.new as Record<string,unknown>;
+   if(typeof signal.topic==="string"&&signal.topic.length<=100&&typeof signal.revision==="string")io.to("management").emit("datasets:invalidated",{topic:signal.topic,revision:signal.revision});
+  });
   for(const source of Object.keys(SOURCE_FIELDS))channel.on("postgres_changes",{schema:"public",table:source,event:"*"},payload=>{
    const record=(payload.eventType==="DELETE"?payload.old:payload.new) as Record<string,unknown>;
    if(typeof record.id!=="string")return;const version=validVersion(record.collaboration_version);
@@ -102,5 +108,5 @@ export async function attachCollaborationServer(http:HttpServer,options:Options=
  if(options.bridge!==false)void versionCheck();
  const versionTimer=options.bridge===false?null:setInterval(()=>void versionCheck(),60000);
  const seenTimer=setInterval(()=>{for(const cache of [seen,truckerSeen])for(const [key,time] of cache)if(time<Date.now()-120000)cache.delete(key);},60000);
- return {io,publish:emitCommit,close:async()=>{collaborationEvents.off("commit",emitCommit);if(versionTimer)clearInterval(versionTimer);clearInterval(seenTimer);if(channel)await supabaseAdmin.removeChannel(channel);await new Promise<void>(resolve=>io.close(()=>resolve()));await Promise.all([pub?.quit(),sub?.quit()]);}};
+ return {io,publish:emitCommit,close:async()=>{collaborationEvents.off("commit",emitCommit);collaborationEvents.off("layout",emitLayout);if(versionTimer)clearInterval(versionTimer);clearInterval(seenTimer);if(channel)await supabaseAdmin.removeChannel(channel);await new Promise<void>(resolve=>io.close(()=>resolve()));await Promise.all([pub?.quit(),sub?.quit()]);}};
 }

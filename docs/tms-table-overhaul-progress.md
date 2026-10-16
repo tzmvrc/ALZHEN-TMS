@@ -1593,3 +1593,166 @@ checkpoint, **not completion of every expanded Phase 2B.5 requirement**.
    Requests POD approval, secure temporary passwords, Operations pagination and
    remaining shared UI/performance tasks from the expanded request. Do not claim
    those independent tasks complete because Socket.IO connects.
+
+## Phase 2B.5-C checkpoint — Shared Design / Cache-First (October 16, 2026)
+
+### Completed implementation
+
+- Extended existing company-wide width storage with per-column JSON appearance
+  metadata, strict styles-only validation, ADMIN/STAFF endpoints and revision CAS.
+  Existing width writes preserve design, and design writes preserve widths.
+  Conflicts retain optimistic drafts with a Retry action; no false save success.
+- Trips/standard reports: shared order, visibility, left/right pins, column colors
+  and physical-row cell formatting, including safe font size/family/italic.
+  Tracker: shared column settings and existing bold/text/background cell styles.
+  Operations: shared existing column settings. Management: shared visibility and
+  existing shared widths. Flexible Tables retain existing DB column settings.
+  Personal legacy browser settings are fallback only and are not silently promoted
+  into company-wide defaults. Unsupported management font controls were not added.
+- Successful layout commits emit metadata through Socket.IO. Existing secure
+  Supabase topic signals bridge all current admin topics into the management room
+  and the same topic/revision deduplicator used by direct signals and recovery.
+  Trucker rooms do not receive management payloads. Existing cell commit/presence,
+  permanent deletion, cleanup, row identity and authorization paths are preserved.
+- Deferred design application preserves active cell/modal drafts, resizing and
+  existing scroll/pinned behavior. Unified search replaces separate row/column
+  inputs in Trips, standard reports, Operations, Tracker and Users. Columns can be
+  found/revealed/highlighted without filtering rows; Rows executes existing search.
+  Tracker and standard report search remain server-side. Operations search still
+  uses its bounded overview; true Operations pagination is unfinished.
+- Fixed an exposed Tracker search issue: the existing generic draft gate treated
+  focused search as an active business editor and blocked Enter-triggered reads.
+  Only the unified search is refresh-safe; cell/modal inputs remain protected.
+- Trip Details now renders a token/trip-scoped composed snapshot immediately and
+  revalidates through existing deduplicated API caches. Failed refreshes retain
+  valid sections and offer retry; 403/404 evicts inaccessible detail. Snapshots
+  are bounded to 20 and discarded on logout/session generation changes.
+  Booking/capacity enrichment reuses existing caches. Users lists/details reuse
+  token-scoped caches; user writes and profile signals invalidate related keys.
+  Same-token role changes also clear authorization-dependent caches.
+
+### Database: approved and applied, not pending
+
+Project reference: `hdmknewarynwpbrhfgai`. Supabase MCP initially required
+reauthentication; no migration was attempted until access was restored. Re-read
+both exact files and rechecked approved hashes before applying each once:
+
+| Applied version | File under backend/migrations | SHA-256 |
+| --- | --- | --- |
+| 20261016121840 | 2026_10_27_proposed_shared_table_design.sql | F8F3142EA55DDE8F2AB59CE456EADCFFFFB96D60B73C01D06B7D9E4D39BCA077 |
+| 20261016121852 | 2026_10_28_proposed_pod_view_service_read.sql | 7168DC7E7D7AE6ABFAD8361F348E8577A1153223FD6F6E157F83C0F51DDFE25D |
+
+Supabase confirmed both successful and migration history contains both versions.
+Before/after schema verification: four layout rows; width/revision digest remained
+`44c512bdc937b51da3cee06c783b2ef2` before browser tests. New design JSONB is NOT NULL,
+default `{}`, object-only and <=262144 bytes. Existing widths/revisions were not
+backfilled or rewritten. Existing RLS, policies, indexes and publications remain.
+POD view SELECT changed false -> true for service_role only. Base POD tables and
+anon/authenticated view grants stayed false. Protected live POD API returned
+success with zero rows. This repairs backend read access, not POD approval.
+
+Both exact migrations passed an owned disposable PostgreSQL 18 fixture database
+`shared_design_2478f32bc9fe4cbdb8beebc9fcf78c7c` on port 55439. Fixture checks covered
+existing width/revision preservation, invalid JSON rejection, rollback and
+service-only view reads without base/browser grants. No existing database reset.
+
+### Realtime coverage audit
+
+| Area | Authority / write API / cache targets | Socket and durable source | Roles / drafts / evidence |
+| --- | --- | --- | --- |
+| Trips and standard reports | trips/stops/items/assignments/store_calls/billings; existing scoped trip/report APIs; /trips, report-page caches | existing versioned cell commits/presence plus topic signals | ADMIN/STAFF; active drafts deferred; prior real persistence and current real formatting tests |
+| Shared report design | shared_table_column_widths; /table-layouts; token/table design+width stores | table:layout-updated + shared_table_column_widths signal | ADMIN/STAFF only; revision CAS and drag/edit deferral; real two-ADMIN bold/font/draft/refresh test |
+| Operations/Offload | loading/unloading/backloads/offloads/items/receipts; operations APIs/cache | metadata topic bridge + existing direct/recovery feed | ADMIN/STAFF; existing draft gate/deletion guards; isolated browser regression; versioned presence extension remains |
+| Transmittal | stop-linked flex cells/POD; Tracker page/cell APIs; paginated Tracker cache | flex/POD topic bridge + existing CAS | ADMIN/STAFF; draft/page gates; isolated server-search, reference export and page selection tests |
+| Users/Trucks/assignments/lookups | profiles/drivers/trucks/assignments; protected management APIs; /users, /truckers, /lookups | corresponding existing topic signals bridged to Socket | authorized management only; existing modal drafts retained; management browser fixture |
+| Dashboard/Trip Details | trip/event/assignment/operational APIs; dashboard and trip snapshot keys | existing trip commits + relevant topic invalidation | Admin/Staff; detail drafts gated; isolated cache/failure/403 test; no new route URL yet |
+| POD/Requests | POD/drive files/driver updates; existing protected views/APIs | existing metadata signals; no direct private-table publication | view read fixed; approval transactions and Trucker approval notifications remain unfinished |
+| Trucker portal | assigned trips/events; assigned-trip/status APIs/cache | existing authorized trip/user events and recovery | own assignments only; prior real role-restriction tests preserved; no new real status/POD writes this checkpoint |
+| Notifications/Flexible Tables | admin_notifications and flex sources; existing protected APIs/caches | existing topic signals now Socket-bridged | existing roles/CAS preserved; no new real notification/flex mutations tested |
+
+Socket reconnect refreshes active design; existing recovery metadata feed handles
+missed durable events. Logout removes listeners and clears session stores. Real
+Redis cross-instance deployment and token-revocation tests are still unverified.
+
+### Test evidence and measurements
+
+- Backend suite: 119 passed; backend TypeScript build passed.
+- Frontend suite: 62 passed, using TSX_TSCONFIG_PATH=tsconfig.app.json and tsx.
+  Frontend TypeScript/Vite build passed; existing >500 kB bundle warning remains.
+- Targeted lint passed for new design/services, report grid, Operations, Users,
+  Trip Details, shared hooks and backend production changes. AuthContext and
+  Tracker retain exactly the HEAD baseline: AuthContext five errors/one warning
+  (mixed exports, effect state, caught-error cause, hook dependency); Tracker two
+  errors (control-character regex and effect state). No broad suppression.
+- Isolated real-browser components + actual Socket.IO: shared bold/font size,
+  refresh persistence, active draft deferral and unified search passed (2 design
+  writes, 0 business writes, 4 report reads). Synthetic roles/in-memory persistence.
+- Operations browser: skeleton, conditional toolbar, edit/cancel, exact-ID delete,
+  protected failure, cleanup retry, filter/selection and resize persistence passed.
+  All deletion requests intercepted; no production reports deleted.
+- Management browser: Users hidden-column finder, width restore, one persistence
+  after master-table drag, flexible hidden reveal passed (5 fixture width writes).
+- Tracker browser: page-scoped selection, modal draft navigation guard, cached
+  previous page (0 extra requests), server search, all 54 reference records across
+  pages and independent reference lookup passed. Synthetic timings: initial 885 ms,
+  cached navigation 785 ms, 6 bounded page requests including sheet operations.
+- Trip Details browser: initial skeleton, fresh cached revisit (0 extra requests),
+  transient failure retention and forbidden-data eviction passed. Seven initial
+  synthetic API reads; map and receipt-review children stubbed. This does not
+  verify map/OCR/receipt network behavior or direct URL routing.
+- Two real different ADMIN accounts: bold propagated in 5824 ms including API/DB
+  and refetch, persisted through refresh. Remote font size did not erase an
+  unsaved draft; Escape applied deferred style. Only the approved DR 333 test
+  stop's appearance changed and was restored through the authorized API. Dispatch
+  remained unchanged, width 178, style cells empty; revision advanced 3 -> 8.
+- Latest mocked preload measurement: 23 initial requests, max concurrency 4,
+  361 ms warmup, 0 added cached-navigation requests. Synthetic, not production
+  latency. Login/whole-application performance has not been benchmarked live.
+- Final isolated persistence browser regression passed: delayed confirmation,
+  sibling isolation, missing canonical value rejected, failed draft retained,
+  Escape cancel (2 intercepted writes). Trucker StrictMode regression passed:
+  1 initial request, retained content on failure, successful retry (3 total).
+  Permanent transaction deletion regression passed: cancel, protected failure,
+  exact stop, sibling survival and cleanup retry (2 intercepted deletion requests).
+  No production deletions were performed.
+- Both Git diff checks passed. Owned disposable PostgreSQL cluster was stopped
+  after checking its exact data_directory; fixture databases retained. Existing
+  development servers and real signed-in test tabs were retained. Browser fixture
+  port 5199 was no longer running after the pause. No commit or push.
+- Fixture failures corrected: obsolete search selectors, isolated login shell
+  navigation, missing Vite preamble, dynamic module identity and expected generic
+  500-error text. No diagnostics were suppressed to make tests pass.
+
+### Files changed in this checkpoint
+
+- Backend: routes/table-layout.routes.ts; services/collaboration-events.ts,
+  collaboration-server.ts; new table-design.logic.ts and table-design.service.ts.
+- Frontend components/admin: ColumnFinder, OperationsReportsView, ReportDataView,
+  ReportSpreadsheetShared, ReportSpreadsheetUtils, TransmittalTrackerView,
+  useDeferredRealtimeRefresh, useManagementTableColumns, useSharedTableWidths;
+  new useSharedTableDesign. Context: AuthContext. Admin views: TripDetailView,
+  TruckersView. Services: api, collaboration, realtime, shared-table-widths,
+  trucker, user-management; new shared-table-design.
+- Tests: backend table-design.test.ts, collaboration-socket.test.ts and local
+  collaboration-browser-server; four SQL fixture files for design/POD checks.
+  Frontend shared-design.test.ts, shared-design.browser.js,
+  trip-detail-cache.browser.js and updated Operations/Tracker/management fixtures.
+- SQL: the two approved exact migration files above. Docs: this progress document
+  and collaboration-realtime.md. Existing browser logs are preserved.
+
+### Exact next resume point
+
+1. Preserve both newly applied migrations; do not repeat them. Finish the remaining
+   full shared-design control coverage: management order/pins/fonts where a safe
+   editor exists, and flexible-table formatting harmonization. No claim that all
+   application formatting features are complete.
+2. Real STAFF-role formatting, remote resize during dragging, reconnect/token
+   revocation, two-instance Redis and cross-session POD/status writes still need
+   approved accounts/fixtures. Prior Trucker role restrictions remain intact.
+3. True Operations server pagination is still pending; existing overview has read
+   budget safeguards. Tracker server pagination and bounded export remain complete.
+4. Next feature phase: Trip Details URL/actions/layout, OCR plus approved AI stage,
+   hourly road routing, Requests-integrated POD approval/notifications, temporary
+   password enforcement and remaining global UI requirements. Prepare exact SQL
+   and obtain fresh approval for any new live database change.
+5. No production business data deletion or test record creation; no commit/push.

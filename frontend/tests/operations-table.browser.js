@@ -27,6 +27,7 @@ async (page) => {
       }
       return route.fulfill({ status: url.pathname.includes("/auth/") ? 401 : 200, contentType: "application/json", body: JSON.stringify({ success: !url.pathname.includes("/auth/"), data: [], message: "Fixture session only" }) });
     });
+    await fixture.route('**/login',async r=>{const response=await r.fetch();await r.fulfill({response,body:(await response.text()).replace('<script type="module" src="/src/main.tsx"></script>','')});});
     await fixture.goto("http://localhost:5173/login");
     await fixture.evaluate(async () => {
       const code = await (await fetch("/src/components/admin/OperationsReportsView.tsx")).text();
@@ -56,15 +57,15 @@ async (page) => {
     const root = fixture.locator("#ops-browser-fixture");
     await root.getByRole("status", { name: "Loading report table" }).waitFor();
     await fixture.evaluate(() => window.__fixtureLoad());
-    const finder = root.getByRole("combobox", { name: "Find a column" });
+    const finder = root.getByRole("combobox", { name: "Search rows or columns" });
     const originalOrder = await root.locator("tbody tr[aria-selected]").evaluateAll((rows) => rows.map((row) => row.textContent));
-    await finder.fill("rou"); await finder.press("Enter");
+    await finder.fill("rou"); await root.getByRole("option", { name: "Route", exact: true }).click();
     await fixture.waitForTimeout(400);
     const highlight = await root.locator('[data-ops-column="route"]').evaluate((cell) => getComputedStyle(cell).boxShadow);
     if (!highlight.includes("inset")) throw new Error("Column Finder did not highlight Route");
     const afterOrder = await root.locator("tbody tr[aria-selected]").evaluateAll((rows) => rows.map((row) => row.textContent));
     if (JSON.stringify(originalOrder) !== JSON.stringify(afterOrder)) throw new Error("Column Finder changed rows");
-    await root.getByRole("button", { name: "Clear column finder" }).click();
+    await root.getByRole("button", { name: "Clear search", exact: true }).click();
     const edit = root.getByRole("button", { name: "Edit selected row", exact: true }), remove = root.getByRole("button", { name: "Delete selected reports", exact: true });
     if (await edit.count() !== 0 || await remove.count() !== 0) throw new Error("Toolbar actions must be hidden without checked rows");
     await root.getByRole("checkbox", { name: "Select row DSP-FIXTURE-1", exact: true }).check();
@@ -78,10 +79,10 @@ async (page) => {
     await root.getByRole("alertdialog").getByText("123e4567-e89b-42d3-a456-000000000001", { exact: false }).waitFor();
     await root.getByRole("alertdialog").getByRole("button", { name: "Cancel", exact: true }).click();
     if (deleted.length) throw new Error("Cancel deleted a report");
-    const search = root.getByRole("searchbox");
-    await search.fill("no-match");
+    const search = finder;
+    await search.fill("no-match"); await search.press("Enter");
     if (await remove.count()) throw new Error("Hidden selection retained actions");
-    await search.fill("");
+    await search.fill(""); await search.press("Enter");
     if (await remove.count()) throw new Error("Old selection resurrected");
     await root.getByRole("checkbox", { name: "Select row DSP-FIXTURE-1", exact: true }).check();
     await fixture.evaluate(() => window.__fixtureRefresh());

@@ -390,3 +390,175 @@ Visit https://react.dev/link/error-boundaries to learn more about error boundari
  An error occurred in the <AdminRoute> component. Consider adding an error boundary to your tree to customize error handling behavior.
 Visit https://react.dev/link/error-boundaries to learn more about error boundaries. @ http://localhost:5173/@vite/client:532
 [ 5002078ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:14335
+[ 6280561ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://localhost:5000/api/realtime/changes:0
+[ 6280822ms] [ERROR] Failed to load resource: the server responded with a status of 403 () @ https://hdmknewarynwpbrhfgai.supabase.co/auth/v1/logout?scope=global:0
+[10106990ms] Error: useAuth must be used within an AuthProvider
+    at useAuth (http://localhost:5173/src/context/AuthContext.tsx?t=1792145339977:408:9)
+    at PublicRoute (http://localhost:5173/src/components/PublicRoute.tsx?t=1792145339977:8:37)
+    at Object.react_stack_bottom_frame (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:12866:12)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:4213:19)
+    at updateFunctionComponent (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:5569:16)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:6140:20)
+    at runWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:851:66)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:8429:92)
+    at workLoopSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:8325:37)
+    at renderRootSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:8309:6)
+[10106993ms] [WARNING] %s
+
+%s
+ An error occurred in the <PublicRoute> component. Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries. @ http://localhost:5173/@vite/client:532
+[10107858ms] Error: useAuth must be used within an AuthProvider
+    at useAuth (http://localhost:5173/src/context/AuthContext.tsx?t=1792145339977:408:9)
+    at PublicRoute (http://localhost:5173/src/components/PublicRoute.tsx?t=1792145339977:8:37)
+    at Object.react_stack_bottom_frame (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:12866:12)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:4213:19)
+    at updateFunctionComponent (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:5569:16)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:6140:20)
+    at runWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:851:66)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:8429:92)
+    at workLoopSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:8325:37)
+    at renderRootSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:8309:6)
+[10107857ms] [WARNING] %s
+
+%s
+ An error occurred in the <PublicRoute> component. Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries. @ http://localhost:5173/@vite/client:532
+[10108008ms] Error: useAuth must be used within an AuthProvider
+    at useAuth (http://localhost:5173/src/context/AuthContext.tsx?t=1792145339977:408:9)
+    at PublicRoute (http://localhost:5173/src/components/PublicRoute.tsx?t=1792145339977:8:37)
+    at Object.react_stack_bottom_frame (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:12866:12)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:4213:19)
+    at updateFunctionComponent (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:5569:16)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:6140:20)
+    at runWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:851:66)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:8429:92)
+    at workLoopSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:8325:37)
+    at renderRootSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:8309:6)
+[10108004ms] [WARNING] %s
+
+%s
+ An error occurred in the <PublicRoute> component. Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries. @ http://localhost:5173/@vite/client:532
+[10109000ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:14335
+[10161757ms] Error: useAuth must be used within an AuthProvider
+    at useAuth (http://localhost:5173/src/context/AuthContext.tsx?t=1792150448239:408:9)
+    at PublicRoute (http://localhost:5173/src/components/PublicRoute.tsx?t=1792150448239:8:37)
+    at Object.react_stack_bottom_frame (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:12866:12)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:4213:19)
+    at updateFunctionComponent (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:5569:16)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:6140:20)
+    at runWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:851:66)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:8429:92)
+    at workLoopSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:8325:37)
+    at renderRootSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:8309:6)
+[10161759ms] [WARNING] %s
+
+%s
+ An error occurred in the <PublicRoute> component. Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries. @ http://localhost:5173/@vite/client:532
+[10165112ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:14335
+[10367779ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:5173/src/components/admin/useManagementTableColumns.tsx?t=1792150709468:0
+[10367786ms] [ERROR] [vite] Failed to reload /src/components/admin/ReportDataView.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[10367801ms] [ERROR] [vite] Failed to reload /src/pages/Admin/views/FlexibleTablesView.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[10367816ms] [ERROR] [vite] Failed to reload /src/pages/Admin/views/MasterDataView.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[10367823ms] [ERROR] [vite] Failed to reload /src/pages/Admin/views/TruckersView.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[10367848ms] [ERROR] [vite] Failed to reload /src/pages/Admin/views/TruckersView.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[10396185ms] [ERROR] [vite] Failed to reload /src/components/admin/ReportDataView.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[10446971ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:5173/src/components/admin/useManagementTableColumns.tsx?t=1792150788028:0
+[10446973ms] [ERROR] [vite] Failed to reload /src/components/admin/ReportsWorkspace.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[10446982ms] [ERROR] [vite] Failed to reload /src/components/admin/FlexibleTableSectionTabs.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[10446983ms] [ERROR] [vite] Failed to reload /src/pages/Admin/views/MasterDataView.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[10446986ms] [ERROR] [vite] Failed to reload /src/pages/Admin/views/ResourceView.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[10446990ms] [ERROR] [vite] Failed to reload /src/pages/Admin/DashboardPage.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[10446991ms] [ERROR] [vite] Failed to reload /src/components/admin/ReportDataView.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[10446992ms] [ERROR] [vite] Failed to reload /src/pages/Admin/views/TruckersView.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[10446992ms] [ERROR] [vite] Failed to reload /src/pages/Admin/views/FlexibleTablesView.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[10447280ms] Error: useAuth must be used within an AuthProvider
+    at useAuth (http://localhost:5173/src/context/AuthContext.tsx?t=1792150503313:408:9)
+    at PublicRoute (http://localhost:5173/src/components/PublicRoute.tsx?t=1792150503313:8:37)
+    at Object.react_stack_bottom_frame (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:12866:12)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:4213:19)
+    at updateFunctionComponent (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:5569:16)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:6140:20)
+    at runWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:851:66)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:8429:92)
+    at workLoopSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:8325:37)
+    at renderRootSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:8309:6)
+[10447282ms] [WARNING] %s
+
+%s
+ An error occurred in the <PublicRoute> component. Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries. @ http://localhost:5173/@vite/client:532
+[10447421ms] [ERROR] [vite] Failed to reload /src/pages/Admin/DashboardPage.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[10448275ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:5173/src/components/admin/useManagementTableColumns.tsx?t=1792150788028:0
+[10460244ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:14335
+[10652616ms] Error: useAuth must be used within an AuthProvider
+    at useAuth (http://localhost:5173/src/context/AuthContext.tsx?t=1792150788028:408:9)
+    at PublicRoute (http://localhost:5173/src/components/PublicRoute.tsx?t=1792150788028:8:37)
+    at Object.react_stack_bottom_frame (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:12866:12)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:4213:19)
+    at updateFunctionComponent (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:5569:16)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:6140:20)
+    at runWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:851:66)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:8429:92)
+    at workLoopSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:8325:37)
+    at renderRootSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:8309:6)
+[10652617ms] [WARNING] %s
+
+%s
+ An error occurred in the <PublicRoute> component. Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries. @ http://localhost:5173/@vite/client:532
+[10653447ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:14335
+[11420451ms] Error: useAuth must be used within an AuthProvider
+    at useAuth (http://localhost:5173/src/context/AuthContext.tsx?t=1792150993740:408:9)
+    at PublicRoute (http://localhost:5173/src/components/PublicRoute.tsx?t=1792150993740:8:37)
+    at Object.react_stack_bottom_frame (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:12866:12)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:4213:19)
+    at updateFunctionComponent (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:5569:16)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:6140:20)
+    at runWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:851:66)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:8429:92)
+    at workLoopSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:8325:37)
+    at renderRootSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:8309:6)
+[11420445ms] [WARNING] %s
+
+%s
+ An error occurred in the <PublicRoute> component. Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries. @ http://localhost:5173/@vite/client:532
+[11422292ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:14335
+[11426900ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:14335
+[12115979ms] Error: useAuth must be used within an AuthProvider
+    at useAuth (http://localhost:5173/src/context/AuthContext.tsx?t=1792151766959:412:9)
+    at PublicRoute (http://localhost:5173/src/components/PublicRoute.tsx?t=1792151766959:8:37)
+    at Object.react_stack_bottom_frame (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:12866:12)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:4213:19)
+    at updateFunctionComponent (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:5569:16)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:6140:20)
+    at runWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:851:66)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:8429:92)
+    at workLoopSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:8325:37)
+    at renderRootSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:8309:6)
+[12115979ms] [WARNING] %s
+
+%s
+ An error occurred in the <PublicRoute> component. Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries. @ http://localhost:5173/@vite/client:532
+[12117417ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:14335
+[12396316ms] Error: useAuth must be used within an AuthProvider
+    at useAuth (http://localhost:5173/src/context/AuthContext.tsx?t=1792152455039:412:9)
+    at AdminRoute (http://localhost:5173/src/components/AdminRoute.tsx?t=1792152455039:8:37)
+    at Object.react_stack_bottom_frame (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:12866:12)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:4213:19)
+    at updateFunctionComponent (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:5569:16)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:6140:20)
+    at runWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:851:66)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:8429:92)
+    at workLoopSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:8325:37)
+    at renderRootSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:8309:6)
+[12396319ms] [WARNING] %s
+
+%s
+ An error occurred in the <AdminRoute> component. Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries. @ http://localhost:5173/@vite/client:532
+[12397616ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=3dbaaa18:14335

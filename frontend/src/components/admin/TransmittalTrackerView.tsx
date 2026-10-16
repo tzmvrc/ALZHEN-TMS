@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, ClipboardEvent as ReactClipboardEvent, MouseEvent } from "react";
-import { ArrowDown, ArrowUp, ArrowUpDown, Download, EllipsisVertical, FileSpreadsheet, GripVertical, LoaderCircle, Printer, Search, X } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, Download, EllipsisVertical, FileSpreadsheet, GripVertical, LoaderCircle, Printer, X } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import companyLogo from "../../assets/logo.png";
 import { ApiError } from "../../services/api.service";
@@ -24,6 +24,8 @@ import { REPORT_GRID_BODY_CELL_CLASS, REPORT_GRID_HEADER_CELL_CLASS, REPORT_GRID
 import { tableUi } from "./dashboardStyles";
 import { TableSkeleton } from "./DashboardPrimitives";
 import { useSharedTableWidths } from "./useSharedTableWidths";
+import {useSharedTableDesign} from "./useSharedTableDesign";
+import {designLayout,designChanges} from "../../services/shared-table-design";
 import ColumnFinder from "./ColumnFinder";
 import HiddenColumnsControl from "./HiddenColumnsControl";
 
@@ -170,10 +172,6 @@ export default function TransmittalTrackerView() {
   const saveSharedColumnWidth = sharedWidths.save;
   const [columnLayoutState, setColumnLayoutState] = useState(() => ({ key: columnLayoutKey, value: typeof window === "undefined" ? { order: [], hidden: [], colors: {}, widths: {}, pins: {} } : readColumnLayout(columnLayoutKey) }));
   const localColumnLayout = useMemo(() => columnLayoutState.key === columnLayoutKey ? columnLayoutState.value : readColumnLayout(columnLayoutKey), [columnLayoutState, columnLayoutKey]);
-  const setColumnLayout = (update: TrackerColumnLayout | ((current: TrackerColumnLayout) => TrackerColumnLayout)) => setColumnLayoutState((currentState) => {
-    const current = currentState.key === columnLayoutKey ? currentState.value : readColumnLayout(columnLayoutKey);
-    return { key: columnLayoutKey, value: typeof update === "function" ? update(current) : update };
-  });
   const [menuColumn, setMenuColumn] = useState<TrackerColumn | null>(null);
   const [menuPosition, setMenuPosition] = useState({ left: 8, top: 8 });
   const [editingColumnColor, setEditingColumnColor] = useState<string | null>(null);
@@ -195,8 +193,12 @@ export default function TransmittalTrackerView() {
   const dropdownRefreshPending = useRef(false);
   const [reorderSource, setReorderSource] = useState<string | null>(null);
   const [resizeState, setResizeState] = useState<{ key: string; startX: number; startWidth: number } | null>(null);
-  const columnLayout = useMemo(() => ({ ...localColumnLayout, widths: resizeState ? localColumnLayout.widths : { ...(sharedWidths.loaded ? {} : localColumnLayout.widths), ...sharedWidths.widths } }), [localColumnLayout, resizeState, sharedWidths.widths, sharedWidths.loaded]);
+  const sharedDesign=useSharedTableDesign("transmittal-tracker",accessToken,["ADMIN","STAFF"].includes(profile?.role??""),Boolean(editingCellKey||rowEdit||resizeState||reorderSource));
+  const {columns:sharedColumns,loaded:designLoaded,save:saveSharedColumnDesign}=sharedDesign;
+  const columnLayout = useMemo(() => ({ ...designLayout(localColumnLayout,TRACKER_COLUMNS.map(c=>c.key),sharedColumns,designLoaded), widths: resizeState ? localColumnLayout.widths : { ...(sharedWidths.loaded ? {} : localColumnLayout.widths), ...sharedWidths.widths } }), [localColumnLayout, resizeState, sharedWidths.widths, sharedWidths.loaded,sharedColumns,designLoaded]);
   const viewportRef = useRef<HTMLDivElement>(null);
+  function designColumnWidth(key:string){const column=TRACKER_COLUMNS.find(c=>c.key===key);return columnLayout.widths[key]??(column?defaultTrackerColumnWidth(column):180);}
+  const setColumnLayout=(update:TrackerColumnLayout|((current:TrackerColumnLayout)=>TrackerColumnLayout))=>{const before={...columnLayout,order:[...columnLayout.order],hidden:[...columnLayout.hidden],colors:{...columnLayout.colors},pins:{...columnLayout.pins},widths:{...columnLayout.widths}};const copy={...before,order:[...before.order],hidden:[...before.hidden],colors:{...before.colors},pins:{...before.pins},widths:{...before.widths}};const next=typeof update==="function"?update(copy):update;setColumnLayoutState({key:columnLayoutKey,value:next});for(const [key,patch] of Object.entries(designChanges(before,next)))void saveSharedColumnDesign(key,patch,designColumnWidth(key));};
   const headerRefs = useRef(new Map<string, HTMLTableCellElement>());
   const cellRefs = useRef(new Map<string, HTMLTableCellElement>());
   const [drafts, setDrafts] = useState<DraftMap>({});
@@ -222,7 +224,8 @@ export default function TransmittalTrackerView() {
   const [referenceLoading,setReferenceLoading]=useState(false);
   const prepKey = `alzhen:transmittal-preparation:${profile?.id ?? "user"}`;
   const cellFormatStorageKey = `alzhen:report-cell-format:${profile?.id ?? "user"}:transmittal_tracker`;
-  const [cellFormats, setCellFormats] = useState<Record<string, ReportCellFormat>>(() => typeof window === "undefined" ? {} : readReportCellFormats(cellFormatStorageKey));
+  const [localCellFormats, setCellFormats] = useState<Record<string, ReportCellFormat>>(() => typeof window === "undefined" ? {} : readReportCellFormats(cellFormatStorageKey));
+  const cellFormats=useMemo(()=>designLoaded?Object.fromEntries(Object.entries(sharedColumns).flatMap(([column,design])=>Object.entries(design.cells??{}).flatMap(([row,format])=>format?[[reportCellFormatKey(row,column),format]]:[]))):localCellFormats,[localCellFormats,designLoaded,sharedColumns]);
   const [preparation, setPreparation] = useState<Preparation>(() => {
     if (typeof window === "undefined") return { date: localDate(), preparedBy: "", checkedBy: "" };
     try {
@@ -254,6 +257,8 @@ export default function TransmittalTrackerView() {
     const pinsState = columnLayout.pins;
     const widthsState = columnLayout.widths;
     const adjustPins = () => {
+      // A narrow local viewport must not rewrite the company-wide pin settings.
+      if(designLoaded)return;
       const viewportWidth = viewportRef.current?.clientWidth ?? window.innerWidth;
       const limit = Math.max(180, viewportWidth - 120);
       let width = Object.keys(pinsState).reduce((total, key) => { const column = TRACKER_COLUMNS.find((item) => item.key === key); return total + (headerRefs.current.get(key)?.getBoundingClientRect().width ?? widthsState[key] ?? (column ? defaultTrackerColumnWidth(column) : 160)); }, 0);
@@ -279,7 +284,7 @@ export default function TransmittalTrackerView() {
     if (viewport) observer?.observe(viewport);
     window.addEventListener("resize", adjustPins);
     return () => { observer?.disconnect(); window.removeEventListener("resize", adjustPins); };
-  }, [columnLayoutKey, columnLayout.pins, columnLayout.widths]);
+  }, [columnLayoutKey, columnLayout.pins, columnLayout.widths,designLoaded]);
 
   useEffect(() => {
     try { window.localStorage.setItem(prepKey, JSON.stringify(preparation)); } catch { /* Browser storage may be disabled. */ }
@@ -436,7 +441,7 @@ export default function TransmittalTrackerView() {
 
   const applyCellFormat = (change: Partial<ReportCellFormat>) => {
     if (!selectedFormatCellKeys.size) return;
-    const next = { ...cellFormats };
+    const next = Object.fromEntries(Object.entries(cellFormats).map(([key,value])=>[key,{...value}]));
     for (const key of selectedFormatCellKeys) {
       const format = { ...next[key], ...change };
       if (format.bold === false) delete format.bold;
@@ -447,6 +452,7 @@ export default function TransmittalTrackerView() {
     }
     setCellFormats(next);
     writeReportCellFormats(cellFormatStorageKey, next);
+    const groups:Record<string,Record<string,ReportCellFormat|null>>={};for(const key of selectedFormatCellKeys){const i=key.lastIndexOf("\u0000"),column=key.slice(i+1),row=key.slice(0,i);if(i>=0)(groups[column]??={})[row]=next[key]??null;}for(const [column,cells] of Object.entries(groups))void saveSharedColumnDesign(column,{cells},designColumnWidth(column));
   };
 
   const userMetadata = user?.user_metadata ?? {};
@@ -1123,9 +1129,9 @@ export default function TransmittalTrackerView() {
 
   return <section className="space-y-3">
     {sharedWidths.feedback}
-    <ColumnFinder columns={TRACKER_COLUMNS.map((column) => ({ key: column.key, title: column.title, hidden: columnLayout.hidden.includes(column.key), index: renderedColumns.findIndex((item) => item.key === column.key) }))} viewport={viewportRef} getHeader={(key) => headerRefs.current.get(key)} onReveal={restoreColumn} />
+    {sharedDesign.feedback}
     <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-3">
-      <div className="relative min-w-64 flex-1 sm:max-w-xl"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search reference, store, plate, receipt, S.O., status, waybill…" className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-3 text-sm text-slate-800 outline-none focus:border-blue-400 focus:bg-white" /></div>
+      <ColumnFinder rowSearch={{value:query,onSearch:setQuery,placeholder:"Search rows or columns…"}} columns={TRACKER_COLUMNS.map(column=>({key:column.key,title:column.title,hidden:columnLayout.hidden.includes(column.key),index:renderedColumns.findIndex(item=>item.key===column.key)}))} viewport={viewportRef} getHeader={key=>headerRefs.current.get(key)} onReveal={restoreColumn} />
     <div className="flex flex-wrap items-center gap-2"><button disabled={legacyConflictCount > 0} onClick={() => void exportFiltered()} className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#12365a] px-3 text-sm font-medium text-white hover:bg-[#0d2945] disabled:cursor-not-allowed disabled:opacity-50"><Download className="h-4 w-4" />Export filtered</button><button type="button" onClick={openPrepareDialog} className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#12365a] px-3 text-sm font-medium text-[#12365a] hover:bg-blue-50"><FileSpreadsheet className="h-4 w-4" />Prepare Sheet</button></div>
     </div>
     {columnFilter && <div className="flex flex-wrap items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600"><span className="font-semibold">Filter {TRACKER_COLUMNS.find((column) => column.key === columnFilter.key)?.title}</span><input autoFocus value={columnFilter.value} onChange={(event) => setColumnFilter({ ...columnFilter, value: event.target.value })} aria-label={`Filter ${TRACKER_COLUMNS.find((column) => column.key === columnFilter.key)?.title}`} className="h-8 min-w-48 rounded border border-slate-300 bg-white px-2 text-xs outline-none focus:border-blue-400" /><button type="button" onClick={() => setColumnFilter(null)} className="rounded px-2 py-1 text-slate-500 hover:bg-white">Clear filter</button></div>}

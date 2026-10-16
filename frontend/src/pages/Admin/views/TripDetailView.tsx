@@ -1,5 +1,5 @@
 import { useDeferredRealtimeRefresh } from "../../../components/admin/useDeferredRealtimeRefresh";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect,useLayoutEffect,useRef, useState, type ReactNode } from "react";
 import {
   ArrowLeft,
   Check,
@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../../context/AuthContext";
-import { ApiError, apiGet, type ApiResponse } from "../../../services/api.service";
+import { ApiError, apiGetCached,getCachedApiResponse,cacheApiSnapshot,apiCacheGeneration,type ApiResponse } from "../../../services/api.service";
 import {
   fetchTripDetail,
   fetchTripEvents,
@@ -641,7 +641,13 @@ export default function TripDetailView({
 }) {
   const { accessToken, refreshSession } = useAuth();
   const navigate = useNavigate();
-  const [detail, setDetail] = useState<DetailState | null>(null);
+  const snapshotEndpoint=`/trips/${encodeURIComponent(tripId)}/screen-snapshot`;
+  const scope=`${accessToken}:${tripId}`;
+  const cachedDetail=accessToken?getCachedApiResponse<DetailState>(snapshotEndpoint,accessToken,5*60_000):null;
+  const [detailState,setDetailState]=useState(()=>({scope,value:cachedDetail}));
+  const detail=detailState.scope===scope?detailState.value:cachedDetail;
+  const previousDetail=useRef({scope,value:detail});
+  useLayoutEffect(()=>{previousDetail.current={scope,value:detail};},[scope,detail]);
   const [loadedKey, setLoadedKey] = useState<string | null>(null);
   const [failure, setFailure] = useState<{ key: string; message: string } | null>(null);
   const [retry, setRetry] = useState(0);
@@ -697,6 +703,7 @@ export default function TripDetailView({
     }
 
     let active = true;
+    const generation=apiCacheGeneration();
     void (async () => {
       try {
         const tripResponse = await fetchTripDetail(accessToken, tripId);
@@ -714,10 +721,11 @@ export default function TripDetailView({
             result.reason.status === 401,
         );
         if (authFailure?.status === "rejected") throw authFailure.reason;
-        const stops = stopsResult.status === "fulfilled" ? stopsResult.value : [];
-        const lineItems = itemsResult.status === "fulfilled" ? itemsResult.value : [];
-        const events = eventsResult.status === "fulfilled" ? eventsResult.value : [];
-        const operations = operationsResult.status === "fulfilled" ? operationsResult.value : {
+        const previous=previousDetail.current.scope===scope?previousDetail.current.value:null;
+        const stops = stopsResult.status === "fulfilled" ? stopsResult.value : previous?.stops??[];
+        const lineItems = itemsResult.status === "fulfilled" ? itemsResult.value : previous?.lineItems??[];
+        const events = eventsResult.status === "fulfilled" ? eventsResult.value : previous?.events??[];
+        const operations = operationsResult.status === "fulfilled" ? operationsResult.value : previous?.operations??{
           trips: [], trip_options: [], stops: [], loading: [], unloading: [], backloads: [], offloads: [], event_rows: [],
         };
         const sectionErrors = childResults.flatMap((result, index) => {
@@ -733,12 +741,12 @@ export default function TripDetailView({
           sort_by: "loading_date",
           sort_order: "desc",
         });
-        let bookingRows: Record<string, unknown>[] = [];
+        let bookingRows: Record<string, unknown>[] = previous?.bookingRows??[];
         let bookingError: string | null = null;
-        let truckCapacityCbm: number | null = null;
+        let truckCapacityCbm: number | null = previous?.truckCapacityCbm??null;
         let truckCapacityError: string | null = null;
         try {
-          const bookingResponse = await apiGet<ApiResponse<BookingPage>>(
+          const bookingResponse = await apiGetCached<ApiResponse<BookingPage>>(
             `/reports/trip-booking?${params.toString()}`,
             accessToken,
           );
@@ -748,7 +756,7 @@ export default function TripDetailView({
           bookingRows = [...bookingResponse.data.rows];
           for (let page = 2; page <= bookingResponse.data.pagination.totalPages; page += 1) {
             params.set("page", String(page));
-            const next = await apiGet<ApiResponse<BookingPage>>(
+            const next = await apiGetCached<ApiResponse<BookingPage>>(
               `/reports/trip-booking?${params.toString()}`, accessToken,
             );
             if (!next.success || !next.data) throw new Error(next.message ?? "Trip report enrichment unavailable.");
@@ -761,7 +769,7 @@ export default function TripDetailView({
         const truckPlate = String(bookingRows.find((row) => row.plate_number)?.plate_number ?? "").trim();
         if (truckPlate) {
           try {
-            const truckResponse = await apiGet<ApiResponse<TruckLookupRow[]>>(
+            const truckResponse = await apiGetCached<ApiResponse<TruckLookupRow[]>>(
               `/lookups/trucks?q=${encodeURIComponent(truckPlate)}`,
               accessToken,
             );
@@ -780,7 +788,7 @@ export default function TripDetailView({
           }
         }
         if (!active) return;
-        setDetail({
+        const nextDetail:DetailState={
           trip: {
             ...tripResponse.trip,
             warehouse_name: tripResponse.warehouse?.name,
@@ -796,9 +804,12 @@ export default function TripDetailView({
           truckCapacityCbm,
           truckCapacityError,
           sectionErrors,
-        });
+        };
+        cacheApiSnapshot(snapshotEndpoint,accessToken,nextDetail,generation);
+        setDetailState({scope,value:nextDetail});
       } catch (cause) {
         if (!active) return;
+        if(cause instanceof ApiError&&[403,404].includes(cause.status)){invalidateTripCache(tripId);setDetailState({scope,value:null});}
         if (cause instanceof ApiError && cause.status === 401) {
           await refreshSession();
           return;
@@ -820,12 +831,12 @@ export default function TripDetailView({
     return () => {
       active = false;
     };
-  }, [accessToken, navigate, refreshSession, requestKey, tripId]);
+  }, [accessToken, navigate, refreshSession, requestKey, tripId,snapshotEndpoint,scope]);
 
   const isLoading = Boolean(accessToken) && loadedKey !== requestKey;
   const error = failure?.key === requestKey ? failure.message : null;
 
-  if (error) {
+  if (error&&!detail) {
     return (
       <div className={`${surface.card} flex min-h-72 flex-col items-center justify-center gap-4 p-8 text-center`}>
         <p role="alert" className="text-sm text-rose-700">{error}</p>
@@ -913,7 +924,7 @@ export default function TripDetailView({
   const lineItemCount = productRows.length;
   const driverName = getBookingValue(reportRows, "driver_name");
   const plate = getBookingValue(reportRows, "plate_number", "No plate recorded");
-  const placeholder = isLoading ? "…" : undefined;
+  const placeholder = isLoading&&!detail ? "…" : undefined;
   const timelineEvents = orderedEvents.slice().reverse();
   const nextStopIndex = stops.findIndex((stop) => !stopIsDone(stop));
   const company = getBookingValue(reportRows, "trucking_company");
@@ -936,6 +947,7 @@ export default function TripDetailView({
 
   return (
     <div className="space-y-4">
+      {error&&detail&&<p role="alert" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">{error} Previous trip data is retained. <button type="button" className="underline" onClick={()=>setRetry(value=>value+1)}>Retry</button></p>}
       {/* Top bar */}
       <header className="flex flex-wrap items-center gap-x-4 gap-y-3">
         <button

@@ -20,6 +20,12 @@ export const collaborationResponseMiddleware:RequestHandler=(req,res,next)=>{
  const requestPath=(req.originalUrl??req.path).split("?")[0];
  const original=res.json.bind(res);
  res.json=(body)=>{
+  const layout=requestPath.match(/^\/api\/table-layouts\/([^/]+)\/(?:design\/)?([^/]+)$/);
+  if(req.method==="PATCH"&&layout&&body?.success&&body.data?.table_key&&req.user){
+   const row=body.data;
+   const event={table:row.table_key,column:row.column_key,revision:row.revision,eventId:`layout:${row.table_key}:${row.column_key}:${row.revision}`};
+   res.once("finish",()=>{if(res.statusCode>=200&&res.statusCode<300)collaborationEvents.emit("layout",event);});
+  }
   if(req.method==="PATCH"&&body?.success&&body.data?.id&&req.user){
    for(const [pattern,source] of paths){const match=requestPath.match(pattern);if(!match||body.data.id!==match[1])continue;
     const record=body.data,version=validVersion(record.collaboration_version);

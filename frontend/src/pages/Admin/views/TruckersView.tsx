@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { MoreHorizontal, RefreshCw, Search, SlidersHorizontal, UserRound, Pencil, Plus, X } from "lucide-react";
+import { MoreHorizontal, RefreshCw, SlidersHorizontal, UserRound, Pencil, Plus, X } from "lucide-react";
 import { useAuth } from "../../../context/AuthContext";
 import { tableUi } from "../../../components/admin/dashboardStyles";
 import SlidingSegmentedControl from "../../../components/admin/SlidingSegmentedControl";
 import TruckerDetailDrawer from "../../../components/admin/TruckerDetailDrawer";
-import { apiGetCached, invalidateApiCache, type ApiResponse } from "../../../services/api.service";
-import { fetchTruckerDetail, fetchTruckers, type TruckerListItem } from "../../../services/trucker.service";
+import { apiGetCached,getCachedApiResponse,invalidateApiCache, type ApiResponse } from "../../../services/api.service";
+import { fetchTruckerDetail, fetchTruckers,getCachedTruckers,type TruckerListItem } from "../../../services/trucker.service";
 import UserManagementModal from "../../../components/admin/UserManagementModal";
 import { fetchManagedUsers, type ManagedUser } from "../../../services/user-management.service";
 import { subscribeToAdminRealtime } from "../../../services/realtime.service";
@@ -44,22 +44,27 @@ export default function TruckersView() {
   const [status, setStatus] = useState("all");
   const [assignment, setAssignment] = useState<"all" | "assigned" | "unassigned">("all");
   const [page, setPage] = useState(1);
-  const [rows, setRows] = useState<TruckerListItem[]>([]);
-  const [profiles, setProfiles] = useState<AdminStaffProfile[]>([]);
-  const [totalPages, setTotalPages] = useState(1);
-  const [loading, setLoading] = useState(true);
+  const cachedTruckers=accessToken?getCachedTruckers(accessToken,{search,status,assignment,page,limit:PAGE_SIZE}):null;
+  const adminCache=accessToken?getCachedApiResponse<ApiResponse<ProfileLookupRow[]>>("/lookups/profiles?role=ADMIN",accessToken,5*60_000):null;
+  const staffCache=accessToken?getCachedApiResponse<ApiResponse<ProfileLookupRow[]>>("/lookups/profiles?role=STAFF",accessToken,5*60_000):null;
+  const cachedProfiles=adminCache?.data&&staffCache?.data?[...adminCache.data,...staffCache.data].filter((p):p is AdminStaffProfile=>(p.role==="ADMIN"||p.role==="STAFF")&&Boolean(p.id)):null;
+  const [rows, setRows] = useState<TruckerListItem[]>(cachedTruckers?.rows??[]);
+  const [profiles, setProfiles] = useState<AdminStaffProfile[]>(cachedProfiles??[]);
+  const [totalPages, setTotalPages] = useState(cachedTruckers?.pagination.totalPages??1);
+  const [loading, setLoading] = useState(!(category==="staff"?cachedProfiles:cachedTruckers));
   const [error, setError] = useState("");
   const [refreshVersion, setRefreshVersion] = useState(0);
   const [actionsOpen, setActionsOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<Awaited<ReturnType<typeof fetchTruckerDetail>> | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
-  const [managedUsers, setManagedUsers] = useState<ManagedUser[]>([]);
+  const [localManagedUsers, setManagedUsers] = useState<ManagedUser[]>(()=>accessToken&&profile?.role==="ADMIN"?getCachedApiResponse<ApiResponse<ManagedUser[]>>("/users",accessToken,5*60_000)?.data??[]:[]);
+  const managedUsers=profile?.role==="ADMIN"?localManagedUsers:[];
   const [userModalOpen, setUserModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<ManagedUser | null>(null);
   const [notice, setNotice] = useState("");
   const tableColumns = useMemo(() => (category === "staff" ? ["User", "Email", "Role", "Actions"] : ["User", "Contact", "Assigned truck", "Current trip", "Delivery status", "Actions"]).map((title) => ({ key: title.toLowerCase().replaceAll(" ", "-"), title, width: title === "User" ? 280 : title === "Actions" ? 110 : 200 })), [category]);
-  const { attachViewport, viewportProps, tableStyle, controls: columnControls, hiddenControl, colgroup, headerProps, headerControls } = useManagementTableColumns({ table: `users:${category}`, token: accessToken, profileId: profile?.id, columns: tableColumns, enabled: ["ADMIN", "STAFF"].includes(profile?.role ?? "") });
+  const { attachViewport, viewportProps, tableStyle, controls: columnControls, hiddenControl, colgroup, headerProps, headerControls } = useManagementTableColumns({ table: `users:${category}`, token: accessToken, profileId: profile?.id, columns: tableColumns, enabled: ["ADMIN", "STAFF"].includes(profile?.role ?? ""),rowSearch:{value:search,onSearch:value=>{setSearch(value);setPage(1);},placeholder:"Search users or columns…"} });
   const realtimeGate = useDeferredRealtimeRefresh(() => setRefreshVersion((version) => version + 1), userModalOpen);
 
   useEffect(() => subscribeToAdminRealtime((event) => {
@@ -85,8 +90,7 @@ export default function TruckersView() {
   useEffect(() => {
     if (!accessToken || category !== "staff") return;
     let active = true;
-    setLoading(true);
-    setError("");
+    queueMicrotask(()=>{if(active){setLoading(true);setError("");}});
     void (async () => {
       try {
         const [adminResponse, staffResponse] = await Promise.all([
@@ -112,8 +116,7 @@ export default function TruckersView() {
   useEffect(() => {
     if (!accessToken || category !== "truckers") return;
     let active = true;
-    setLoading(true);
-    setError("");
+    queueMicrotask(()=>{if(active){setLoading(true);setError("");}});
     void (async () => {
       try {
         const result = await fetchTruckers(accessToken, {
@@ -137,18 +140,18 @@ export default function TruckersView() {
 
   useEffect(() => {
     if (!selectedId || !accessToken || category !== "truckers") {
-      setDetail(null);
+      queueMicrotask(()=>setDetail(null));
       return;
     }
     let active = true;
-    setDetail(null);
-    setDetailLoading(true);
+    const cached=getCachedApiResponse<ApiResponse<Awaited<ReturnType<typeof fetchTruckerDetail>>>>(`/truckers/${encodeURIComponent(selectedId)}`,accessToken,5*60_000)?.data??null;
+    queueMicrotask(()=>{if(active){setDetail(cached);setDetailLoading(!cached);}});
     void (async () => {
       try {
         const nextDetail = await fetchTruckerDetail(accessToken, selectedId);
         if (active) setDetail(nextDetail);
-      } catch {
-        if (active) setDetail(null);
+      } catch (cause) {
+        if (active) setError(cause instanceof Error?cause.message:"Unable to refresh user details. Previous details are retained.");
       } finally {
         if (active) setDetailLoading(false);
       }
@@ -220,10 +223,6 @@ export default function TruckersView() {
             )}
           </div>
           <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
-            <label className="relative min-w-[200px] flex-1 sm:flex-none xl:w-72">
-              <Search aria-hidden="true" className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <input value={search} onChange={(event) => { setPage(1); setSearch(event.target.value); }} placeholder={category === "staff" ? "Search admin or staff" : "Search truckers"} className={tableUi.search} />
-            </label>
             {columnControls}
             <div className="relative">
               <button type="button" aria-label="User list options" aria-haspopup="menu" aria-expanded={actionsOpen} onClick={() => setActionsOpen((current) => !current)} className={tableUi.iconBtn} title="User list options"><MoreHorizontal aria-hidden="true" className="h-5 w-5" /></button>

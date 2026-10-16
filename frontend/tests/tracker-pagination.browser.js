@@ -17,6 +17,7 @@ async(page)=>{
    if(url.pathname==='/api/reports/transmittal-tracker')throw Error('Unbounded Tracker endpoint used');
    await r.fulfill({contentType:'application/json',body:JSON.stringify({success:true,data})});
   });
+  await p.route('**/login',async r=>{const response=await r.fetch();await r.fulfill({response,body:(await response.text()).replace('<script type="module" src="/src/main.tsx"></script>','')});});
   await p.goto('http://localhost:5173/login');const initialStart=Date.now();
   await p.evaluate(async()=>{
    await import('/src/index.css');const code=await(await fetch('/src/components/admin/TransmittalTrackerView.tsx')).text(),main=await(await fetch('/src/main.tsx')).text();
@@ -36,7 +37,7 @@ async(page)=>{
   const navigationStart=Date.now();await nav.getByRole('button',{name:'Previous',exact:true}).click();await root.getByRole('checkbox',{name:'Select row Store 1',exact:true}).waitFor();
   if(await root.getByRole('checkbox',{name:'Select row Store 1',exact:true}).isChecked())throw Error('Old page selection resurrected');const cachedNavigationMs=Date.now()-navigationStart;
   if(calls.filter(c=>c.path.endsWith('/page')).length!==2)throw Error('Cached page navigation duplicated a request');
-  const search=root.getByPlaceholder(/^Search reference/);await search.fill('DR-52');await search.press('Tab');
+  const search=root.getByRole('combobox',{name:'Search rows or columns'});await search.fill('DR-52');await search.press('Enter');
   await root.getByRole('checkbox',{name:'Select row Store 52',exact:true}).waitFor();
   if(await root.locator('tbody tr').count()!==1)throw Error('Search did not use server result');
   await root.getByRole('button',{name:'Prepare Sheet',exact:true}).click();
@@ -57,5 +58,5 @@ async(page)=>{
   await p.getByRole('button',{name:'Close sheet preview',exact:true}).click();
   if(errors.length)throw Error(errors.join('\n'));
   return {mocked:true,productionWrites:0,initialReadyMs,cachedNavigationMs,pageRequests:calls.filter(c=>c.path.endsWith('/page')).length,cachedReturnRequests:0,selectionIsolated:true,serverSearch:true,draftNavigationBlocked:true,referencePreviewRows:54,globalReferenceSearch:true,gridPagePreserved:true,errors};
- }catch(e){throw new Error(e.message+"\nerrors="+JSON.stringify(errors)+"\ncalls="+JSON.stringify(calls));}finally{await context.close();}
+ }catch(e){throw new Error(e.message+"\nerrors="+JSON.stringify(errors)+"\ncalls="+JSON.stringify(calls)+"\nui="+await p.locator('#tracker-fixture').innerText());}finally{await context.close();}
 }
