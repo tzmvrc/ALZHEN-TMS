@@ -6,6 +6,8 @@ import {
   fetchAssignedOperations,
   fetchOperationsReceipts,
   fetchOperationsOverview,
+  OPERATIONS_PAGINATION_ENABLED,
+  type OperationsPageOptions,
   getCachedOperations,
   invalidateOperationsReportsCache,
   saveLoadingReport,
@@ -99,9 +101,12 @@ function pendingOffloadItemId(reportId: string, sourceItemId: string | null) {
 export default function OperationsReportsView({ mode, onOpenTrip }: { mode: Mode; onOpenTrip?: (tripId: string, stopId?: string | null) => void }) {
   const { accessToken, profile } = useAuth();
   const [active, setActive] = useState<Kind>("loading");
-  const cached = accessToken ? getCachedOperations(accessToken, mode === "trucker") : null;
-  const [dataState, setDataState] = useState(() => ({ token: accessToken, mode, value: cached ?? emptyData }));
-  const data = dataState.token === accessToken && dataState.mode === mode ? dataState.value : cached ?? emptyData;
+  const [pageQuery,setPageQuery]=useState<OperationsPageOptions>({page:1,limit:50,search:"",filter:"All",sortBy:"date",sortOrder:"desc"});
+  const pageKey=JSON.stringify(pageQuery);
+  const paged=mode==="management"&&OPERATIONS_PAGINATION_ENABLED;
+  const cached = accessToken ? getCachedOperations(accessToken, mode === "trucker",pageQuery) : null;
+  const [dataState, setDataState] = useState(() => ({ token: accessToken, mode, pageKey, value: cached ?? emptyData }));
+  const data = dataState.token === accessToken && dataState.mode === mode ? (paged&&dataState.pageKey!==pageKey?cached??dataState.value:dataState.value) : cached ?? emptyData;
   const [loading, setLoading] = useState(!cached);
   const [hasLoadedState, setHasLoaded] = useState(Boolean(cached));
   const hasLoaded = dataState.token === accessToken && dataState.mode === mode ? hasLoadedState : Boolean(cached);
@@ -129,10 +134,11 @@ export default function OperationsReportsView({ mode, onOpenTrip }: { mode: Mode
     if (!quiet) setLoading(true);
     setError(null);
     try {
-      const response = mode === "trucker" ? await fetchAssignedOperations(accessToken) : await fetchOperationsOverview(accessToken);
+      const response = mode === "trucker" ? await fetchAssignedOperations(accessToken) : await fetchOperationsOverview(accessToken,pageQuery);
       if (version !== requestVersion.current) return;
       if (deferForEditing && realtimeGate.blocked()) { realtimeGate.request(); return; }
-      setDataState({ token: accessToken, mode, value: response });
+      if(paged&&response.pagination&&Number(pageQuery.page??1)>response.pagination.totalPages){setPageQuery(current=>({...current,page:response.pagination!.totalPages}));return;}
+      setDataState({ token: accessToken, mode, pageKey, value: response });
       setHasLoaded(true);
       setLoadingDrafts((current) => {
         const next = { ...current };
@@ -162,7 +168,7 @@ export default function OperationsReportsView({ mode, onOpenTrip }: { mode: Mode
     } finally {
       if (version === requestVersion.current) setLoading(false);
     }
-  }, [accessToken, mode, realtimeGate]);
+  }, [accessToken, mode, realtimeGate, pageQuery, pageKey, paged]);
   useEffect(() => { realtimeLoad.current = () => { invalidateOperationsReportsCache(); return load(true, false, true); }; }, [load]);
 
   async function openSubmission() {
@@ -176,9 +182,9 @@ export default function OperationsReportsView({ mode, onOpenTrip }: { mode: Mode
   }
 
   useEffect(() => {
-    const timer = window.setTimeout(() => { void load(); }, 0);
+    const timer = window.setTimeout(() => { void load(); }, paged?200:0);
     return () => { window.clearTimeout(timer); requestVersion.current += 1; };
-  }, [load]);
+  }, [load, paged]);
   useEffect(() => {
     if (mode !== "management") return;
     return subscribeToAdminRealtime((event) => {
@@ -260,7 +266,7 @@ export default function OperationsReportsView({ mode, onOpenTrip }: { mode: Mode
     </div>}
     {error && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800"><span>{error}</span><button type="button" className="font-semibold underline" onClick={() => void load(false)} disabled={loading}>Retry loading reports</button></div>}
     {notice && <div role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{notice}</div>}
-    {mode === "management" && <OperationsEventsTable rows={data.event_rows} loading={loading} hasLoaded={hasLoaded} loadError={error} token={accessToken ?? ""} profileId={profile?.id} canManageReports={["ADMIN", "STAFF"].includes(profile?.role ?? "")} onOpenTrip={onOpenTrip} onSaved={() => load(true, true)} toolbarActions={addReportButton} onInteractionCheck={registerGridInteraction} />}
+    {mode === "management" && <OperationsEventsTable rows={data.event_rows} loading={loading} hasLoaded={hasLoaded} loadError={error} token={accessToken ?? ""} profileId={profile?.id} canManageReports={["ADMIN", "STAFF"].includes(profile?.role ?? "")} onOpenTrip={onOpenTrip} onSaved={() => load(true, true)} toolbarActions={addReportButton} serverPage={paged?{query:pageQuery,pagination:data.pagination,pending:loading||(dataState.pageKey!==pageKey&&!cached),onChange:next=>{if(gridInteraction.current()){setNotice("Finish or cancel the active edit before changing pages or filters.");return;}setPageQuery(current=>({...current,...next}));}}:undefined} onInteractionCheck={registerGridInteraction} />}
     {mode === "trucker" && loading ? <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500">Loading assigned trip reports…</div> : null}
     {mode === "trucker" && <details open className={`${cardClass} group`}>
     <div className="space-y-4">
@@ -481,10 +487,18 @@ function readOperationsColumnLayout(storageKey = OPERATIONS_COLUMN_STORAGE_KEY) 
   } catch { return initial; }
 }
 
-export function OperationsEventsTable({ rows, loading, hasLoaded, loadError, token, profileId, canManageReports = false, onOpenTrip, onSaved, toolbarActions, onInteractionCheck }: { rows: OperationsEventRow[]; loading: boolean; hasLoaded: boolean; loadError: string | null; token: string; profileId?: string; canManageReports?: boolean; onOpenTrip?: (tripId: string, stopId?: string | null) => void; onSaved: () => void | Promise<void>; toolbarActions?: ReactNode; onInteractionCheck?: (check: () => boolean) => void }) {
-  const [filter, setFilter] = useState<EventFilter>("All");
-  const [search, setSearch] = useState("");
-  const [sort, setSort] = useState<{ key: EventSortKey; direction: "asc" | "desc" }>({ key: "date", direction: "desc" });
+export function OperationsEventsTable({ rows, loading, hasLoaded, loadError, token, profileId, canManageReports = false, onOpenTrip, onSaved, toolbarActions, onInteractionCheck, serverPage }: { rows: OperationsEventRow[]; loading: boolean; hasLoaded: boolean; loadError: string | null; token: string; profileId?: string; canManageReports?: boolean; onOpenTrip?: (tripId: string, stopId?: string | null) => void; onSaved: () => void | Promise<void>; toolbarActions?: ReactNode; onInteractionCheck?: (check: () => boolean) => void; serverPage?: {query:OperationsPageOptions;pagination:OperationsReportData["pagination"];pending:boolean;onChange:(next:OperationsPageOptions)=>void} }) {
+  const [localFilter, setLocalFilter] = useState<EventFilter>("All");
+  const filter=(serverPage?.query.filter??localFilter) as EventFilter;
+  const setFilter=(value:EventFilter)=>serverPage?serverPage.onChange({filter:value,page:1}):setLocalFilter(value);
+  const [localSearch, setLocalSearch] = useState("");
+  const search=serverPage?.query.search??localSearch;
+  const setSearch=(value:string)=>serverPage?serverPage.onChange({search:value,page:1}):setLocalSearch(value);
+  const [localSort, setLocalSort] = useState<{ key: EventSortKey; direction: "asc" | "desc" }>({ key: "date", direction: "desc" });
+  const hasServerPage=Boolean(serverPage);
+  const serverSortBy=serverPage?.query.sortBy,serverSortOrder=serverPage?.query.sortOrder;
+  const sort=useMemo(()=>hasServerPage?{key:serverSortBy as EventSortKey,direction:serverSortOrder??"desc"}:localSort,[serverSortBy,serverSortOrder,hasServerPage,localSort]);
+  const setSort=(update:typeof sort|((current:typeof sort)=>typeof sort))=>{const next=typeof update==="function"?update(sort):update;if(serverPage)serverPage.onChange({sortBy:next.key,sortOrder:next.direction,page:1});else setLocalSort(next);};
   const [editing, setEditing] = useState<{ rowId: string; field: EditableEventField; value: string; original: string; reporterId?: string } | null>(null);
   const [selectedCell, setSelectedCell] = useState<{ rowId: string; field: string } | null>(null);
   const [detailRow, setDetailRow] = useState<OperationsEventRow | null>(null);
@@ -548,6 +562,7 @@ export function OperationsEventsTable({ rows, loading, hasLoaded, loadError, tok
   [...rightPins].reverse().forEach((column) => { rightOffsets.set(column.key, rightOffset); rightOffset += column.width; });
   const tableWidth = columns.reduce((total, column) => total + column.width, 0);
   const visibleRows = useMemo(() => {
+    if(serverPage)return localRows;
     const query = search.trim().toLowerCase();
     const filtered = localRows.filter((row) => {
       if (filter !== "All" && !row.report_types.includes(filter)) return false;
@@ -563,7 +578,7 @@ export function OperationsEventsTable({ rows, loading, hasLoaded, loadError, tok
         : String(a ?? "").localeCompare(String(b ?? ""), undefined, { numeric: true, sensitivity: "base" });
       return sort.direction === "asc" ? comparison : -comparison;
     });
-  }, [filter, localRows, search, sort]);
+  }, [filter, localRows, search, sort, serverPage]);
   const offloadItemsByRow = useMemo(() => new Map<string, OffloadInlineItem[]>(localRows.map((row) => {
     const editors: OffloadInlineItem[] = row.offload_records.flatMap((record): OffloadInlineItem[] => {
       const report = record as ScopeReport;
@@ -578,8 +593,8 @@ export function OperationsEventsTable({ rows, loading, hasLoaded, loadError, tok
     return [row.id, editors] as const;
   })), [localRows]);
   const sortBy = (key: EventSortKey) => setSort((current) => ({ key, direction: current.key === key && current.direction === "asc" ? "desc" : "asc" }));
-  const selectionDatasetKey = JSON.stringify([filter, search, visibleRows.map((row) => [row.id, row.source_type, row.source_record_id, row.trip_id, row.trip_stop_id]).sort()]);
-  const selectedRows = selectedRowState.datasetKey === selectionDatasetKey ? selectedRowState.ids : new Set<string>();
+  const selectionDatasetKey = JSON.stringify([serverPage?.query.page,serverPage?.query.limit,filter, search, visibleRows.map((row) => [row.id, row.source_type, row.source_record_id, row.trip_id, row.trip_stop_id]).sort()]);
+  const selectedRows = !serverPage?.pending && selectedRowState.datasetKey === selectionDatasetKey ? selectedRowState.ids : new Set<string>();
   const selectedTargets = operationsDeleteTargets(visibleRows, selectedRows);
   const setSelectedRows = (update: Set<string> | ((current: Set<string>) => Set<string>)) => setSelectedRowState((currentState) => {
     const current = currentState.datasetKey === selectionDatasetKey ? currentState.ids : new Set<string>();
@@ -933,7 +948,7 @@ export function OperationsEventsTable({ rows, loading, hasLoaded, loadError, tok
       <div className="flex flex-wrap gap-1" role="group" aria-label="Filter operations reports by type">
         {filters.map((item) => <button key={item} type="button" aria-pressed={filter === item} onClick={() => { setSelectedRows(new Set()); setFilter(item); if (item === "Offload") setExpandedLineItemsRow(null); }} className={"rounded-full px-3 py-1.5 text-xs font-semibold transition " + (filter === item ? "bg-[#0b2341] text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200")}>{item}</button>)}
       </div>
-      <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto"><ColumnFinder rowSearch={{value:search,onSearch:value=>{setSelectedRows(new Set());setSearch(value);},placeholder:"Search rows or columns…"}} columns={OPERATIONS_COLUMNS.map(column=>({key:column.key,title:column.label,hidden:layout.hidden.includes(column.key),index:columns.findIndex(item=>item.key===column.key)}))} viewport={viewportRef} getHeader={key=>viewportRef.current?.querySelector<HTMLElement>(`[data-ops-column="${key}"]`)} onReveal={key=>setLayout(current=>({...current,hidden:current.hidden.filter(item=>item!==key)}))} />{canManageReports && selectedRows.size > 0 && <>{selectedRows.size === 1 && <ReportRowActionButton action="edit" disabled={selectedTargets?.length !== 1 || rowEditBusy || deleteBusy || Boolean(editing)} onClick={editSelectedRow} />}<ReportRowActionButton action="delete" disabled={!selectedTargets?.length || rowEditBusy || deleteBusy || Boolean(editing)} onClick={() => { setDeleteMessage(null); setDeleteConfirmation(true); }} /></>}{toolbarActions}</div>
+      <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto"><ColumnFinder tableKey="operations" rowSearch={{value:search,onSearch:value=>{setSelectedRows(new Set());setSearch(value);},placeholder:"Search rows or columns…"}} columns={OPERATIONS_COLUMNS.map(column=>({key:column.key,title:column.label,hidden:layout.hidden.includes(column.key),index:columns.findIndex(item=>item.key===column.key)}))} viewport={viewportRef} getHeader={key=>viewportRef.current?.querySelector<HTMLElement>(`[data-ops-column="${key}"]`)} onReveal={key=>setLayout(current=>({...current,hidden:current.hidden.filter(item=>item!==key)}))} />{canManageReports && selectedRows.size > 0 && <>{selectedRows.size === 1 && <ReportRowActionButton action="edit" disabled={selectedTargets?.length !== 1 || rowEditBusy || deleteBusy || Boolean(editing)} onClick={editSelectedRow} />}<ReportRowActionButton action="delete" disabled={!selectedTargets?.length || rowEditBusy || deleteBusy || Boolean(editing)} onClick={() => { setDeleteMessage(null); setDeleteConfirmation(true); }} /></>}{toolbarActions}</div>
     </div>
     {loading && hasLoaded && <p role="status" className="text-xs text-slate-500">Refreshing reports…</p>}
     {selectedRows.size > 0 && <div className="flex flex-wrap items-center gap-2 rounded-xl border border-[#b7d5ed] bg-[#edf6fd] px-3 py-2 text-sm text-[#155b8d]"><span className="mr-1">{selectedRows.size} row{selectedRows.size === 1 ? "" : "s"} selected</span><button type="button" disabled={deleteBusy} onClick={() => setSelectedRows(new Set())} className="px-2 py-1 text-xs font-medium underline disabled:opacity-50">Clear selection</button></div>}
@@ -942,7 +957,7 @@ export function OperationsEventsTable({ rows, loading, hasLoaded, loadError, tok
     {visibleRows.length === 0 ? <TableState loading={loading || !hasLoaded} error={loadError ? "Reports could not be loaded. Review the error above and retry." : null} message="No operational report rows available" description={filter === "Offload" && !localRows.some((row) => row.report_types.includes("Offload")) ? "Offload reports will appear here once they are added." : "Try changing the report type or search if you expected to see records."} /> : <div ref={viewportRef} className={REPORT_GRID_VIEWPORT_CLASS}>
       <table className="table-fixed border-separate border-spacing-0" style={{ width: tableWidth + 44, minWidth: tableWidth + 44 }}>
         <colgroup><col style={{ width: 44 }} />{columns.map((column) => <col key={column.key} style={{ width: column.width }} />)}</colgroup>
-        <thead><tr><th scope="col" className={`${REPORT_GRID_HEADER_CELL_CLASS} sticky left-0 z-[70] w-11 min-w-11 text-center`}><input type="checkbox" aria-label="Select all visible operations rows" checked={visibleRows.length > 0 && visibleRows.every((row) => selectedRows.has(row.id))} onChange={(event) => setSelectedRows((current) => { const next = new Set(current); visibleRows.forEach((row) => event.target.checked ? next.add(row.id) : next.delete(row.id)); return next; })} className="h-4 w-4 rounded border-slate-300 accent-[#2678b9]" /></th>{columns.map((column) => {
+        <thead><tr><th scope="col" className={`${REPORT_GRID_HEADER_CELL_CLASS} sticky left-0 z-[70] w-11 min-w-11 text-center`}><input type="checkbox" disabled={serverPage?.pending} aria-label="Select all visible operations rows" checked={visibleRows.length > 0 && visibleRows.every((row) => selectedRows.has(row.id))} onChange={(event) => setSelectedRows((current) => { const next = new Set(current); visibleRows.forEach((row) => event.target.checked ? next.add(row.id) : next.delete(row.id)); return next; })} className="h-4 w-4 rounded border-slate-300 accent-[#2678b9]" /></th>{columns.map((column) => {
           const pinned = layout.pins[column.key];
           return <th key={column.key} data-ops-column={column.key} scope="col" draggable onDragStart={(event) => { setDraggedColumn(column.key); event.dataTransfer.effectAllowed = "move"; }} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); reorderByDrop(column.key); }}
             className={`${REPORT_GRID_HEADER_CELL_CLASS} relative ${pinned ? "z-50" : "z-30"}`} style={cellStyle(column, true)}>
@@ -957,8 +972,8 @@ export function OperationsEventsTable({ rows, loading, hasLoaded, loadError, tok
           {loading && !loadError && localRows.length === 0 && <tr><td colSpan={columns.length + 1} className={REPORT_GRID_BODY_CELL_CLASS + " text-center text-slate-500"}>Loading operations reports…</td></tr>}
           {loadError && visibleRows.length === 0 && <tr><td colSpan={columns.length + 1} className={REPORT_GRID_BODY_CELL_CLASS + " text-center text-rose-700"}>Reports could not be loaded. Review the error above and retry.</td></tr>}
           {!loading && hasLoaded && !loadError && visibleRows.length === 0 && <tr><td colSpan={columns.length + 1} className={REPORT_GRID_BODY_CELL_CLASS + " text-center text-slate-500"}>{filter === "Offload" && !localRows.some((row) => row.report_types.includes("Offload")) ? <div className="mx-auto max-w-md rounded-xl border border-dashed border-slate-200 bg-slate-50 px-6 py-8"><p className="text-sm font-semibold text-[#0b2341]">No offload data or reports yet.</p></div> : localRows.length ? "No reports match this filter." : "No operational report rows are available."}</td></tr>}
-          {visibleRows.map((row) => <Fragment key={row.id}><tr aria-selected={selectedRows.has(row.id)} tabIndex={0} onClick={(event) => { if (!(event.target as HTMLElement).closest("button,input,select,textarea,a,[role=combobox]")) setSelectedRows(new Set([row.id])); }} onKeyDown={(event) => { if (event.target === event.currentTarget && ["Enter", " "].includes(event.key)) { event.preventDefault(); setSelectedRows(new Set([row.id])); } }} className={`report-data-row ${REPORT_GRID_ROW_CLASS} focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500 ${selectedRows.has(row.id) ? "bg-blue-50 [&>td]:!bg-blue-50" : ""}`}>
-            <td data-cell-hover-disabled="true" className={`${REPORT_GRID_BODY_CELL_CLASS} sticky left-0 z-20 w-11 min-w-11 border-r border-slate-100 text-center ${selectedRows.has(row.id) ? "!bg-blue-50" : "bg-white"}`}><input type="checkbox" aria-label={`Select row ${row.dispatch_number || row.trip_number || row.id}`} checked={selectedRows.has(row.id)} onClick={(event) => event.stopPropagation()} onChange={() => toggleRowSelection(row.id)} className="h-4 w-4 rounded border-slate-300 accent-[#2678b9]" /></td>
+          {visibleRows.map((row) => <Fragment key={row.id}><tr aria-selected={selectedRows.has(row.id)} tabIndex={0} onClick={(event) => { if (!serverPage?.pending && !(event.target as HTMLElement).closest("button,input,select,textarea,a,[role=combobox]")) setSelectedRows(new Set([row.id])); }} onKeyDown={(event) => { if (event.target === event.currentTarget && ["Enter", " "].includes(event.key)) { event.preventDefault(); setSelectedRows(new Set([row.id])); } }} className={`report-data-row ${REPORT_GRID_ROW_CLASS} focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500 ${selectedRows.has(row.id) ? "bg-blue-50 [&>td]:!bg-blue-50" : ""}`}>
+            <td data-cell-hover-disabled="true" className={`${REPORT_GRID_BODY_CELL_CLASS} sticky left-0 z-20 w-11 min-w-11 border-r border-slate-100 text-center ${selectedRows.has(row.id) ? "!bg-blue-50" : "bg-white"}`}><input type="checkbox" disabled={serverPage?.pending} aria-label={`Select row ${row.dispatch_number || row.trip_number || row.id}`} checked={selectedRows.has(row.id)} onClick={(event) => event.stopPropagation()} onChange={() => toggleRowSelection(row.id)} className="h-4 w-4 rounded border-slate-300 accent-[#2678b9]" /></td>
             {columns.map((column) => {
               const style = cellStyle(column);
               const className = `${REPORT_GRID_BODY_CELL_CLASS} border-r border-slate-100/70 align-top text-slate-800 ${layout.pins[column.key] ? "bg-white shadow-sm" : ""}`;
@@ -1015,6 +1030,7 @@ export function OperationsEventsTable({ rows, loading, hasLoaded, loadError, tok
         <footer className="flex justify-end gap-2 border-t border-slate-100 px-5 py-4"><button type="button" onClick={() => setDetailRow(null)} className="rounded-full border border-slate-200 px-4 py-2 text-sm text-slate-700">Close</button>{onOpenTrip && <button type="button" onClick={() => { const { trip_id, trip_stop_id } = detailRow; setDetailRow(null); onOpenTrip(trip_id, trip_stop_id); }} className="rounded-full bg-[#ffd43b] px-4 py-2 text-sm font-semibold text-[#0b2341]">Open associated trip</button>}</footer>
       </section>
     </div>}
+    {serverPage&&<footer className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 py-3 text-xs text-slate-600"><span>{serverPage.pagination?.total??0} reports · Page {serverPage.query.page??1} of {serverPage.pagination?.totalPages??1}{serverPage.pending?" · Refreshing…":""} · Selection applies to this page only</span><div className="flex items-center gap-2"><label>Rows <select aria-label="Operations page size" disabled={serverPage.pending||Boolean(editing||rowEdit)} value={serverPage.query.limit??50} onChange={event=>serverPage.onChange({limit:Number(event.target.value),page:1})} className="rounded border border-slate-200 p-1">{[25,50,100].map(size=><option key={size}>{size}</option>)}</select></label><button type="button" disabled={serverPage.pending||Boolean(editing||rowEdit)||Number(serverPage.query.page??1)<=1} onClick={()=>serverPage.onChange({page:Number(serverPage.query.page??1)-1})} className="rounded border px-3 py-1 disabled:opacity-40">Previous</button><button type="button" disabled={serverPage.pending||Boolean(editing||rowEdit)||Number(serverPage.query.page??1)>=(serverPage.pagination?.totalPages??1)} onClick={()=>serverPage.onChange({page:Number(serverPage.query.page??1)+1})} className="rounded border px-3 py-1 disabled:opacity-40">Next</button></div></footer>}
     <HiddenColumnsControl columns={layout.hidden.map((key) => ({ key, title: OPERATIONS_COLUMNS.find((column) => column.key === key)?.label ?? key }))} onRestore={(key) => setLayout((current) => ({ ...current, hidden: current.hidden.filter((item) => item !== key) }))} onRestoreAll={() => setLayout((current) => ({ ...current, hidden: [] }))} />
     {rowEdit && <div className="fixed inset-0 z-[2000] flex items-start justify-center overflow-y-auto bg-slate-900/20 p-3 backdrop-blur-[2px] sm:items-center sm:p-6" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !rowEditBusy) setRowEdit(null); }}>
       <section role="dialog" aria-modal="true" aria-labelledby="operations-row-edit-title" className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-lg ring-1 ring-slate-100">

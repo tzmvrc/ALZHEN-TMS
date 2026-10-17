@@ -8,7 +8,8 @@ export type ReportEditTarget =
   | "lineItem"
   | "assignment"
   | "billing"
-  | "storeCall";
+  | "storeCall"
+  | "loadingReport";
 export type ReportEditor =
   | "text"
   | "number"
@@ -570,6 +571,9 @@ export function getReportEditDefinition(
   columnKey: string,
   row?: Record<string, unknown>,
 ): ReportEditDefinition | null {
+  if (["combined", "dispatch", "dispatch-monitoring"].includes(reportKey) && ["loading_start_at", "loading_finished_at"].includes(columnKey)) {
+    return {label: columnKey === "loading_start_at" ? "Loading Start" : "Loading Finish", sourceEntity: "loadingReport", sourceField: columnKey, editor: "datetime", recordIdField: "loading_report_id"};
+  }
   if (["combined", "dispatch-monitoring"].includes(reportKey)) {
     const fields: Record<string, ReportEditDefinition> = {
       transaction_dr_number: stopField("Transaction DR Number", "dr_number"),

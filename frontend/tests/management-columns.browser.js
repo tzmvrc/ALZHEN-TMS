@@ -22,9 +22,8 @@ async (page) => {
       else if(url.pathname==='/api/flexible-tables') data=[table];
       await r.fulfill({contentType:'application/json',body:JSON.stringify({success:true,data})});
     });
-    await p.route('**/login',async r=>{const response=await r.fetch();await r.fulfill({response,body:(await response.text()).replace('<script type="module" src="/src/main.tsx"></script>','')});});
     async function mount(view) {
-      await p.goto('http://localhost:5173/login');
+      await p.goto('http://localhost:5173/tests/table-fixture.html');
       await p.evaluate(async view=>{
         await import('/src/index.css');const path='/src/pages/Admin/views/'+view+'.tsx',code=await(await fetch(path)).text(),main=await(await fetch('/src/main.tsx')).text();
         const ReactModule=await import(code.match(/from ["']([^"']*\/react\.js[^"']*)["']/)[1]),React=ReactModule.default??ReactModule,DOM=await import(main.match(/from ["']([^"']*react-dom_client\.js[^"']*)["']/)[1]),{default:View}=await import(path);

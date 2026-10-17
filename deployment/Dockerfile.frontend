@@ -1,0 +1,20 @@
+FROM node:24-bookworm-slim AS build
+WORKDIR /app
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+COPY frontend/ ./
+# Public build-time inputs only. Never add service-role, Gemini or Directions keys.
+ARG VITE_SUPABASE_URL
+ARG VITE_SUPABASE_ANON_KEY
+ARG VITE_MAPBOX_ACCESS_TOKEN
+ARG VITE_API_URL
+ARG VITE_SOCKET_URL
+ENV VITE_SUPABASE_URL=$VITE_SUPABASE_URL VITE_SUPABASE_ANON_KEY=$VITE_SUPABASE_ANON_KEY VITE_MAPBOX_ACCESS_TOKEN=$VITE_MAPBOX_ACCESS_TOKEN VITE_API_URL=$VITE_API_URL VITE_SOCKET_URL=$VITE_SOCKET_URL VITE_SOCKET_PATH=/socket.io
+RUN npm run build
+
+FROM caddy:2-alpine
+COPY deployment/Caddyfile.frontend /etc/caddy/Caddyfile
+COPY --from=build /app/dist /srv
+USER 1000:1000
+EXPOSE 8080
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 CMD wget -q -O /dev/null http://127.0.0.1:8080/healthz || exit 1

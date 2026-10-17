@@ -1,0 +1,73 @@
+[    2380ms] [ERROR] WebSocket connection to 'ws://localhost:5173/?token=t7lsvhSOD77_' failed: Error during WebSocket handshake: Unexpected response code: 400 @ http://localhost:5173/@vite/client:871
+[    3337ms] [ERROR] WebSocket connection to 'ws://localhost:5173/?token=t7lsvhSOD77_' failed: Error during WebSocket handshake: Unexpected response code: 400 @ http://localhost:5173/@vite/client:881
+[    3338ms] [ERROR] [vite] failed to connect to websocket.
+your current setup:
+  (browser) localhost:5173/ <--[HTTP]--> localhost:5173/ (server)
+  (browser) localhost:5173/ <--[WebSocket (failing)]--> localhost:5173/ (server)
+Check out your Vite / network configuration and https://vite.dev/config/server-options.html#server-hmr . @ http://localhost:5173/@vite/client:532
+[    3342ms] [ERROR] Failed to send error to Vite server: TypeError: Cannot read properties of undefined (reading 'send')
+    at Object.send (http://localhost:5173/@vite/client:452:7)
+    at Object.send (http://localhost:5173/@vite/client:907:16)
+    at Object.send (http://localhost:5173/@vite/client:311:21)
+    at Object.send (http://localhost:5173/@vite/client:391:30)
+    at sendError (http://localhost:5173/@vite/client:494:19)
+    at sendLog (http://localhost:5173/@vite/client:522:11) @ http://localhost:5173/@vite/client:523
+[    6842ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=9745ed00:14335
+[    9279ms] [ERROR] Invalid hook call. Hooks can only be called inside of the body of a function component. This could happen for one of the following reasons:
+1. You might have mismatching versions of React and the renderer (such as React DOM)
+2. You might be breaking the Rules of Hooks
+3. You might have more than one copy of React in the same app
+See https://react.dev/link/invalid-hook-call for tips about how to debug and fix this problem. @ http://localhost:5173/@vite/client:532
+[    9315ms] [ERROR] Invalid hook call. Hooks can only be called inside of the body of a function component. This could happen for one of the following reasons:
+1. You might have mismatching versions of React and the renderer (such as React DOM)
+2. You might be breaking the Rules of Hooks
+3. You might have more than one copy of React in the same app
+See https://react.dev/link/invalid-hook-call for tips about how to debug and fix this problem. @ http://localhost:5173/@vite/client:532
+[    9330ms] TypeError: Cannot read properties of null (reading 'useContext')
+    at exports.useContext (http://localhost:5173/node_modules/.vite/deps/react.js?v=4e8f8a37:706:22)
+    at useNavigate (http://localhost:5173/node_modules/.vite/deps/react-router-dom.js?v=e5e9a790:4005:37)
+    at DriverLoginPage (http://localhost:5173/src/pages/Driver/LoginPage.tsx:12:19)
+    at Object.react_stack_bottom_frame (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=9745ed00:12866:12)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=9745ed00:4213:19)
+    at updateFunctionComponent (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=9745ed00:5569:16)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=9745ed00:6140:20)
+    at runWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=9745ed00:851:66)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=9745ed00:8429:92)
+    at workLoopSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=9745ed00:8325:37)
+[    9327ms] [WARNING] %s
+
+%s
+ An error occurred in the <DriverLoginPage> component. Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries. @ http://localhost:5173/@vite/client:532
+[    9345ms] [ERROR] Failed to send error to Vite server: TypeError: Cannot read properties of undefined (reading 'send')
+    at Object.send (http://localhost:5173/@vite/client:452:7)
+    at Object.send (http://localhost:5173/@vite/client:907:16)
+    at Object.send (http://localhost:5173/@vite/client:311:21)
+    at Object.send (http://localhost:5173/@vite/client:391:30)
+    at sendError (http://localhost:5173/@vite/client:494:19)
+    at http://localhost:5173/@vite/client:541:11
+    at defaultOnUncaughtError (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=9745ed00:5257:4)
+    at logUncaughtError (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=9745ed00:5287:6)
+    at runWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=9745ed00:851:66)
+    at lane.callback (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=9745ed00:5315:5) @ http://localhost:5173/@vite/client:542
+[    9351ms] [ERROR] Failed to send error to Vite server: TypeError: Cannot read properties of undefined (reading 'send')
+    at Object.send (http://localhost:5173/@vite/client:452:7)
+    at Object.send (http://localhost:5173/@vite/client:907:16)
+    at Object.send (http://localhost:5173/@vite/client:311:21)
+    at Object.send (http://localhost:5173/@vite/client:391:30)
+    at sendError (http://localhost:5173/@vite/client:494:19)
+    at sendLog (http://localhost:5173/@vite/client:522:11) @ http://localhost:5173/@vite/client:523
+[    9356ms] [ERROR] Failed to send error to Vite server: TypeError: Cannot read properties of undefined (reading 'send')
+    at Object.send (http://localhost:5173/@vite/client:452:7)
+    at Object.send (http://localhost:5173/@vite/client:907:16)
+    at Object.send (http://localhost:5173/@vite/client:311:21)
+    at Object.send (http://localhost:5173/@vite/client:391:30)
+    at sendError (http://localhost:5173/@vite/client:494:19)
+    at sendLog (http://localhost:5173/@vite/client:522:11) @ http://localhost:5173/@vite/client:523
+[    9357ms] [ERROR] Failed to send error to Vite server: TypeError: Cannot read properties of undefined (reading 'send')
+    at Object.send (http://localhost:5173/@vite/client:452:7)
+    at Object.send (http://localhost:5173/@vite/client:907:16)
+    at Object.send (http://localhost:5173/@vite/client:311:21)
+    at Object.send (http://localhost:5173/@vite/client:391:30)
+    at sendError (http://localhost:5173/@vite/client:494:19)
+    at sendLog (http://localhost:5173/@vite/client:522:11) @ http://localhost:5173/@vite/client:523

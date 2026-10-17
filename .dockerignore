@@ -1,0 +1,15 @@
+.git
+**/node_modules
+**/dist
+**/.env
+**/.env.*
+!**/.env.example
+.playwright-mcp
+**/*.log
+**/coverage
+**/tests
+docs
+deployment/secrets
+deployment/runtime
+**/*.pem
+**/*.key

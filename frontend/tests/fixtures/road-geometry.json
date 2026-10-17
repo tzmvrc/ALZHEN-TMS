@@ -1,0 +1,43 @@
+{
+  "source": "https://docs.mapbox.com/api/navigation/directions/ (example route steps: Kopenicker Strasse / Engeldamm)",
+  "note": "Decoded precision-5 sample step geometries published by Mapbox. Static documentation example, not a live API response or an ALZHEN delivery route. No generated waypoint-to-waypoint substitute lines.",
+  "type": "LineString",
+  "coordinates": [
+    [
+      13.42658,
+      52.50807
+    ],
+    [
+      13.42669,
+      52.50802
+    ],
+    [
+      13.42758,
+      52.50763
+    ],
+    [
+      13.42775,
+      52.50755
+    ],
+    [
+      13.42768,
+      52.50745
+    ],
+    [
+      13.42757,
+      52.5073
+    ],
+    [
+      13.42747,
+      52.50714
+    ],
+    [
+      13.42744,
+      52.50709
+    ],
+    [
+      13.42729,
+      52.5069
+    ]
+  ]
+}

@@ -3,13 +3,15 @@ import { Server } from "socket.io";
 import { createAdapter } from "@socket.io/redis-adapter";
 import { createClient } from "redis";
 import { supabaseAdmin } from "../config/supabase.js";
+import {trackingEvents} from "./tracking-runtime.service.js";
 import { authenticateCollaboration,canJoinTrip,type SocketActor } from "./collaboration-auth.service.js";
-import { COLLAB_TABLES,SOURCE_FIELDS,collaborationColor,management,parseCellTarget,validVersion,type Commit } from "./collaboration.logic.js";
+import { canViewTable,SOURCE_FIELDS,collaborationColor,management,parseCellTarget,validVersion,type Commit } from "./collaboration.logic.js";
 import { collaborationEvents,setCollaborationVersionsReady } from "./collaboration-events.js";
 import { readCollaborationRecord } from "./collaboration-record.service.js";
 import { isValidUuid } from "../utils/validation.js";
+import {getTableAccess} from "./flexible-table.service.js";
 
-type Options={authenticate?:typeof authenticateCollaboration;canTrip?:typeof canJoinTrip;authorizeCell?:(target:ReturnType<typeof parseCellTarget>)=>Promise<void>;bridge?:boolean;presenceTtl?:number;sessionCheckMs?:number;redisUrl?:string};
+type Options={authenticate?:typeof authenticateCollaboration;canTrip?:typeof canJoinTrip;authorizeCell?:(target:ReturnType<typeof parseCellTarget>)=>Promise<void>;bridge?:boolean;presenceTtl?:number;viewTtl?:number;sessionCheckMs?:number;redisUrl?:string};
 export async function attachCollaborationServer(http:HttpServer,options:Options={}){
  const origins=(process.env.SOCKET_ORIGINS??"http://localhost:5173,http://127.0.0.1:5173").split(",").map(v=>v.trim());
  const io=new Server(http,{transports:["websocket"],maxHttpBufferSize:16384,pingInterval:25000,pingTimeout:20000,cors:{origin:origins},allowRequest:(req,done)=>done(null,!req.headers.origin||origins.includes(req.headers.origin))});
@@ -38,6 +40,12 @@ export async function attachCollaborationServer(http:HttpServer,options:Options=
  collaborationEvents.on("commit",emitCommit);
  const emitLayout=(value:{table:string;column:string;revision:number;eventId:string})=>io.to("management").emit("table:layout-updated",value);
  collaborationEvents.on("layout",emitLayout);
+ const viewers=async(table:string)=>{
+  const room=`table:${table}`,peers=await io.in(room).fetchSockets(),users=new Map<string,{userId:string;name:string;avatarUrl:string|null;color:string}>();
+  for(const peer of peers){const actor=peer.data.actor as SocketActor;if(!actor||!canViewTable(actor.role,table)||!peer.data.tableViews?.[table])continue;users.set(actor.id,{userId:actor.id,name:actor.name,avatarUrl:actor.avatarUrl??null,color:collaborationColor(actor.id)});}
+  io.to(room).emit("table:viewers",{table,users:[...users.values()].sort((a,b)=>a.userId.localeCompare(b.userId))});
+ };
+ const publishViewers=(table:string)=>{void viewers(table).catch(()=>{});};
  const attempts=new Map<string,{count:number;since:number}>();
  io.use(async(socket,next)=>{try{
   const address=socket.handshake.address,now=Date.now();
@@ -49,28 +57,33 @@ export async function attachCollaborationServer(http:HttpServer,options:Options=
  }catch{next(new Error("Authentication or application session is invalid"));}});
  io.on("connection",socket=>{
   const actor:SocketActor=socket.data.actor;
-  socket.data.presences={};socket.data.roomCount=0;
+  socket.data.presences={};socket.data.tableViews={};socket.data.roomCount=0;
   void socket.join(`user:${actor.id}`);if(management(actor.role))void socket.join("management");
   socket.emit("bridge:status",{healthy:bridgeHealthy});
   let budget=0,windowStart=Date.now(),checking=false;
   const expiry=setTimeout(()=>socket.disconnect(true),Math.max(0,actor.expiresAt-Date.now()));
-  const sessionTimer=setInterval(()=>{if(checking)return;checking=true;void auth(socket.handshake.auth.token,socket.handshake.auth.appSession).then(next=>{if(next.id!==actor.id||next.role!==actor.role)socket.disconnect(true);}).catch(()=>socket.disconnect(true)).finally(()=>{checking=false;});},options.sessionCheckMs??30000);
+  const sessionTimer=setInterval(()=>{if(checking)return;checking=true;void auth(socket.handshake.auth.token,socket.handshake.auth.appSession,false).then(next=>{if(next.id!==actor.id||next.role!==actor.role){socket.disconnect(true);return;}
+   for(const table of Object.keys(socket.data.tableViews))if(table.startsWith("flex:"))void getTableAccess(table.slice(5),{id:actor.id,role:actor.role as "ADMIN"|"STAFF"},"view").catch(()=>{if(socket.data.tableViews[table]){delete socket.data.tableViews[table];socket.data.roomCount--;void Promise.resolve(socket.leave(`table:${table}`)).then(()=>publishViewers(table));socket.emit("table:viewers",{table,users:[]});}});}).catch(()=>socket.disconnect(true)).finally(()=>{checking=false;});},options.sessionCheckMs??30000);
   socket.use((_packet,next)=>{if(Date.now()>=actor.expiresAt){socket.disconnect(true);return;}if(Date.now()-windowStart>10000){budget=0;windowStart=Date.now();}if(++budget>50){next(new Error("Collaboration rate limit exceeded"));return;}next();});
   socket.on("room:join",async(value,ack)=>{try{
    if(!value||typeof value!=="object"||Object.keys(value).some(k=>!["kind","key"].includes(k))||typeof value.key!=="string")throw Error("Invalid room");
    let room:string;
-   if(value.kind==="table"&&management(actor.role)&&(COLLAB_TABLES as readonly string[]).includes(value.key))room=`table:${value.key}`;
+   if(value.kind==="table"&&canViewTable(actor.role,value.key)){
+    if(value.key.startsWith("flex:"))await getTableAccess(value.key.slice(5),{id:actor.id,role:actor.role as "ADMIN"|"STAFF"},"view");
+    room=`table:${value.key}`;
+   }
    else if(value.kind==="trip"&&isValidUuid(value.key)&&await canTrip(actor,value.key))room=`trip:${value.key}`;
    else throw Error("Room access denied");
    if(!socket.connected||Date.now()>=actor.expiresAt)throw Error("Session expired");
    if(!socket.rooms.has(room)&&socket.data.roomCount>=12)throw Error("Too many rooms");
    if(!socket.rooms.has(room))socket.data.roomCount++;
    await socket.join(room);
-   if(value.kind==="table"){const peers=await io.in(room).fetchSockets();socket.emit("presence:snapshot",peers.flatMap(peer=>Object.values(peer.data.presences??{})));}
+   if(value.kind==="table"){socket.data.tableViews[value.key]=Date.now();publishViewers(value.key);const peers=await io.in(room).fetchSockets();socket.emit("presence:snapshot",peers.flatMap(peer=>Object.values(peer.data.presences??{})));}
    if(typeof ack==="function")ack({ok:true});
   }catch{if(typeof ack==="function")ack({ok:false,error:"Room unavailable or access denied"});}});
   const leavePresence=(table:string)=>{if(!socket.data.presences[table])return;delete socket.data.presences[table];io.to(`table:${table}`).emit("cell:presence-leave",{socketId:socket.id,table});};
-  socket.on("room:leave",value=>{if(!value||!["table","trip"].includes(value.kind)||typeof value.key!=="string")return;const room=`${value.kind}:${value.key}`;if(socket.rooms.has(room)){if(value.kind==="table")leavePresence(value.key);socket.data.roomCount--;void socket.leave(room);}});
+  socket.on("room:leave",value=>{if(!value||!["table","trip"].includes(value.kind)||typeof value.key!=="string")return;const room=`${value.kind}:${value.key}`;if(socket.rooms.has(room)){if(value.kind==="table"){leavePresence(value.key);delete socket.data.tableViews[value.key];}socket.data.roomCount--;void Promise.resolve(socket.leave(room)).then(()=>{if(value.kind==="table")publishViewers(value.key);});}});
+  socket.on("table:heartbeat",()=>{for(const table of Object.keys(socket.data.tableViews)){socket.data.tableViews[table]=Date.now();publishViewers(table);}});
   let presenceSerial=0;const validated=new Map<string,number>();
   socket.on("cell:presence",async(value,ack)=>{const serial=++presenceSerial;try{
    if(!management(actor.role))throw Error("Not permitted");const target=parseCellTarget(value);
@@ -87,14 +100,25 @@ export async function attachCollaborationServer(http:HttpServer,options:Options=
    if(typeof ack==="function")ack({ok:true});
   }catch{if(typeof ack==="function")ack({ok:false,error:"Cell presence unavailable"});}});
   socket.on("cell:presence-leave",value=>{presenceSerial++;if(typeof value?.table==="string")leavePresence(value.table);});
-  const sweep=setInterval(()=>{for(const [table,presence] of Object.entries(socket.data.presences) as Array<[string,{expiresAt:number}]>)if(presence.expiresAt<Date.now())leavePresence(table);},Math.min(5000,ttl));
-  socket.on("disconnect",()=>{presenceSerial++;clearTimeout(expiry);clearInterval(sessionTimer);clearInterval(sweep);for(const table of Object.keys(socket.data.presences))leavePresence(table);});
+  const sweep=setInterval(()=>{for(const [table,at] of Object.entries(socket.data.tableViews) as Array<[string,number]>)if(at<Date.now()-(options.viewTtl??45000)){delete socket.data.tableViews[table];socket.emit("table:expired",{table});void Promise.resolve(socket.leave(`table:${table}`)).then(()=>publishViewers(table));socket.data.roomCount--;leavePresence(table);}for(const [table,presence] of Object.entries(socket.data.presences) as Array<[string,{expiresAt:number}]>)if(presence.expiresAt<Date.now())leavePresence(table);},Math.min(5000,ttl));
+  socket.on("disconnect",()=>{presenceSerial++;clearTimeout(expiry);clearInterval(sessionTimer);clearInterval(sweep);for(const table of Object.keys(socket.data.presences))leavePresence(table);for(const table of Object.keys(socket.data.tableViews))publishViewers(table);});
  });
+ const emitTracking=(value:{assignmentId:string})=>io.to("management").emit("tracking:changed",value);
+ trackingEvents.on("changed",emitTracking);
  const channel=options.bridge===false?null:supabaseAdmin.channel(`collaboration-server-${process.pid}-${Date.now()}`);
  if(channel){
+  channel.on("postgres_changes",{schema:"public",table:"admin_notifications",event:"*"},payload=>{
+   const notice=payload.new as Record<string,unknown>;
+   if(typeof notice?.id!=="string"||typeof notice.recipient_profile_id!=="string")return;
+   const key=`notice:${notice.id}:${notice.read_at??notice.created_at??"changed"}`;
+   if(seen.has(key))return;seen.set(key,Date.now());
+   // No message, OCR, Storage path or other recipient's data in the socket event.
+   io.to(`user:${notice.recipient_profile_id}`).emit("notification:changed",{id:notice.id,revision:String(notice.read_at??notice.created_at??"changed")});
+  });
   channel.on("postgres_changes",{schema:"public",table:"admin_change_signals",event:"*"},payload=>{
    const signal=payload.new as Record<string,unknown>;
    if(typeof signal.topic==="string"&&signal.topic.length<=100&&typeof signal.revision==="string")io.to("management").emit("datasets:invalidated",{topic:signal.topic,revision:signal.revision});
+   if(["trips","trip_stops","trip_truck_assignments","customer_stores"].includes(String(signal.topic)))trackingEvents.emit("routes");
   });
   for(const source of Object.keys(SOURCE_FIELDS))channel.on("postgres_changes",{schema:"public",table:source,event:"*"},payload=>{
    const record=(payload.eventType==="DELETE"?payload.old:payload.new) as Record<string,unknown>;
@@ -108,5 +132,5 @@ export async function attachCollaborationServer(http:HttpServer,options:Options=
  if(options.bridge!==false)void versionCheck();
  const versionTimer=options.bridge===false?null:setInterval(()=>void versionCheck(),60000);
  const seenTimer=setInterval(()=>{for(const cache of [seen,truckerSeen])for(const [key,time] of cache)if(time<Date.now()-120000)cache.delete(key);},60000);
- return {io,publish:emitCommit,close:async()=>{collaborationEvents.off("commit",emitCommit);collaborationEvents.off("layout",emitLayout);if(versionTimer)clearInterval(versionTimer);clearInterval(seenTimer);if(channel)await supabaseAdmin.removeChannel(channel);await new Promise<void>(resolve=>io.close(()=>resolve()));await Promise.all([pub?.quit(),sub?.quit()]);}};
+ return {io,publish:emitCommit,close:async()=>{trackingEvents.off("changed",emitTracking);collaborationEvents.off("commit",emitCommit);collaborationEvents.off("layout",emitLayout);if(versionTimer)clearInterval(versionTimer);clearInterval(seenTimer);if(channel)await supabaseAdmin.removeChannel(channel);await new Promise<void>(resolve=>io.close(()=>resolve()));await Promise.all([pub?.quit(),sub?.quit()]);}};
 }

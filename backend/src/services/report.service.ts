@@ -530,6 +530,7 @@ async function attachOperationalRecordIds(rows: Record<string, unknown>[]) {
  * useful; fetch distinct page trip IDs in bounded batches to avoid N+1 reads. */
 async function attachLoadingMilestones(rows: Record<string, unknown>[]) {
   for (const row of rows) {
+    row.loading_report_id = null;
     row.warehouse_arrival_at ??= null;
     row.loading_start_at ??= null;
     row.loading_finished_at ??= null;
@@ -544,7 +545,7 @@ async function attachLoadingMilestones(rows: Record<string, unknown>[]) {
     const batch = tripIds.slice(offset, offset + 100);
     const { data, error } = await supabaseAdmin
       .from("loading_reports")
-      .select("trip_id, warehouse_arrival_at, loading_start_at, loading_finished_at")
+      .select("id, trip_id, warehouse_arrival_at, loading_start_at, loading_finished_at")
       .in("trip_id", batch);
     if (error) {
       console.error("Report loading-milestone enrichment failed:", { code: error.code, message: error.message });
@@ -558,6 +559,7 @@ async function attachLoadingMilestones(rows: Record<string, unknown>[]) {
     if (typeof tripId !== "string") continue;
     const report = byTrip.get(tripId);
     if (!report) continue;
+    row.loading_report_id = report.id ?? null;
     row.warehouse_arrival_at = report.warehouse_arrival_at ?? null;
     row.loading_start_at = report.loading_start_at ?? null;
     row.loading_finished_at = report.loading_finished_at ?? null;

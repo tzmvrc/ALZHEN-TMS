@@ -1,0 +1,41 @@
+# Ubuntu host; Debian glibc containers match the native canvas Linux binaries.
+# Pin these image tags to verified digests in the release manifest before rollout.
+FROM node:24-bookworm-slim AS build
+WORKDIR /app
+COPY backend/package.json backend/package-lock.json ./
+RUN npm ci
+COPY backend/tsconfig.json ./
+COPY backend/src ./src
+COPY backend/scripts/copy-pdf-worker.cjs ./scripts/copy-pdf-worker.cjs
+RUN npm run build
+
+FROM node:24-bookworm-slim AS dependencies
+WORKDIR /app
+COPY backend/package.json backend/package-lock.json ./
+RUN npm ci --omit=dev && npm cache clean --force
+
+FROM node:24-bookworm-slim AS backend
+ENV NODE_ENV=production PORT=5000 NODE_OPTIONS=--max-old-space-size=1024
+WORKDIR /app
+COPY --from=dependencies --chown=1000:1000 /app/node_modules ./node_modules
+COPY --from=build --chown=1000:1000 /app/dist ./dist
+COPY deployment/container-healthcheck.cjs ./healthcheck.cjs
+RUN mkdir -p /run/pdf && chown 1000:1000 /run/pdf
+USER 1000:1000
+EXPOSE 5000
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 CMD ["node","healthcheck.cjs","backend"]
+CMD ["node","dist/server.js"]
+
+FROM node:24-bookworm-slim AS pdf-worker
+RUN apt-get update && apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-eng libfontconfig1 fonts-dejavu-core \
+    && rm -rf /var/lib/apt/lists/*
+ENV NODE_ENV=production PDF_WORKER_PROCESS=true PDF_WORKER_SOCKET=/run/pdf/renderer.sock OMP_THREAD_LIMIT=1 NODE_OPTIONS=--max-old-space-size=256
+WORKDIR /app
+COPY --from=dependencies --chown=1000:1000 /app/node_modules ./node_modules
+COPY --from=build --chown=1000:1000 /app/dist ./dist
+COPY deployment/container-healthcheck.cjs ./healthcheck.cjs
+RUN mkdir -p /run/pdf && chown 1000:1000 /run/pdf
+USER 1000:1000
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 CMD ["node","healthcheck.cjs","pdf"]
+COPY deployment/smoke-pdf.cjs ./smoke-pdf.cjs
+CMD ["node","dist/pdf-worker.js"]

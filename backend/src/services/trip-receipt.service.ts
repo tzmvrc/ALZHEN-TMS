@@ -1,6 +1,7 @@
 import { supabaseAdmin } from "../config/supabase.js";
 import { ApiError } from "../utils/api-response.js";
 import { isValidUuid } from "../utils/validation.js";
+import { interpretPodText, matchPodTransaction } from "./pod-interpretation.service.js";
 
 function uuid(value: string) {
   if (!isValidUuid(value)) throw new ApiError("Invalid receipt or trip identifier.", 400, "INVALID_RECEIPT_ID");
@@ -31,8 +32,11 @@ async function signedReceipt(row: Record<string, unknown>) {
   return {
     id: row.id, trip_id: row.trip_id, trip_stop_id: row.trip_stop_id,
     dr_number: row.dr_number, file_name: row.file_name, signed_url: data.signedUrl,
+    mime_type: row.mime_type??(String(row.storage_path).endsWith(".pdf")?"application/pdf":null),
     uploaded_at: row.created_at, ocr_text: row.ocr_text, ocr_confidence: row.ocr_confidence,
     ocr_version: row.ocr_version, reviewed_at: row.reviewed_at, reviewed_by: row.reviewed_by,
+    pod_review_status: row.pod_review_status ?? null, pod_review_version: row.pod_review_version ?? null,
+    pod_reviewed_at: row.pod_reviewed_at ?? null, pod_rejection_reason: row.pod_rejection_reason ?? null,
   };
 }
 
@@ -51,6 +55,45 @@ async function getReceipt(tripId: string, receiptId: string) {
   if (error) fail(error);
   if (!data) throw new ApiError("Delivery receipt not found for this trip.", 404, "RECEIPT_NOT_FOUND");
   return data;
+}
+export async function getSignedTripReceipt(tripId:string,receiptId:string){return signedReceipt(await getReceipt(tripId,receiptId));}
+
+/** Suggestions only: no review, POD, transaction or notification writes. */
+export async function interpretTripReceipt(tripId: string, receiptId: string, actor: {profileId:string;role:string}, input: Record<string, unknown>) {
+  if (!["ADMIN", "STAFF"].includes(actor.role)) throw new ApiError("Only Admin and Staff can request interpretation.", 403, "POD_AI_ACCESS_DENIED");
+  if (input.external_processing_consent !== true) throw new ApiError("Authorize sending this receipt's OCR text to Gemini first.", 400, "POD_AI_CONSENT_REQUIRED");
+  if (!Number.isInteger(input.expected_version) || Number(input.expected_version) < 0) throw new ApiError("Reload the receipt before interpretation.", 400, "INVALID_RECEIPT_REVIEW");
+  const receipt = await getReceipt(tripId, receiptId);
+  if (receipt.ocr_version !== input.expected_version) throw new ApiError("This receipt changed. Reload it before interpretation.", 409, "RECEIPT_CONFLICT");
+  const [trip, stops] = await Promise.all([
+    supabaseAdmin.from("trips").select("id, dispatch_number").eq("id", tripId).maybeSingle(),
+    supabaseAdmin.from("trip_stops").select("id, trip_id, dispatch_number, dr_number, customer_id, store_id").eq("trip_id", tripId).is("archived_at", null).order("id").limit(101),
+  ]);
+  if (trip.error || stops.error) throw new ApiError("Unable to load transaction matching context.", 502, "POD_MATCH_FAILED");
+  if (!trip.data || !receipt.trip_stop_id || !stops.data?.some(stop => stop.id === receipt.trip_stop_id)) throw new ApiError("This receipt has no eligible active transaction. Review its association manually.", 409, "POD_MATCH_REQUIRED");
+  if (stops.data.length > 100) throw new ApiError("Too many transactions for automatic matching. Review this receipt manually.", 409, "POD_MATCH_REQUIRED");
+  const customerIds = [...new Set(stops.data.flatMap(stop => stop.customer_id ? [stop.customer_id] : []))];
+  const storeIds = [...new Set(stops.data.flatMap(stop => stop.store_id ? [stop.store_id] : []))];
+  const [customers, stores] = await Promise.all([
+    customerIds.length ? supabaseAdmin.from("customers").select("id, name").in("id", customerIds) : Promise.resolve({data:[],error:null}),
+    storeIds.length ? supabaseAdmin.from("customer_stores").select("id, name").in("id", storeIds) : Promise.resolve({data:[],error:null}),
+  ]);
+  if (customers.error || stores.error) throw new ApiError("Unable to load transaction matching labels.", 502, "POD_MATCH_FAILED");
+  // Reviewed headers are not original OCR evidence. Never send trip/profile/Storage data.
+  const stored = String(receipt.ocr_text ?? ""), marker = "--- Scanned text ---", at = stored.indexOf(marker);
+  const originalText = at < 0 ? stored : stored.slice(at + marker.length).trim();
+  const interpretation = await interpretPodText(actor.profileId, receiptId, receipt.ocr_version, originalText);
+  const current = await getReceipt(tripId, receiptId);
+  if (current.ocr_version !== receipt.ocr_version || current.trip_stop_id !== receipt.trip_stop_id) throw new ApiError("This receipt changed during interpretation. Reload before reviewing suggestions.", 409, "RECEIPT_CONFLICT");
+  const tripDispatch = trip.data.dispatch_number;
+  const matching = matchPodTransaction(interpretation, stops.data.map(stop => ({
+    trip_id:tripId,trip_stop_id:stop.id,dispatch_number:stop.dispatch_number ?? tripDispatch,
+    dr_number:stop.dr_number,customer_name:customers.data?.find(row=>row.id===stop.customer_id)?.name ?? null,
+    store_name:stores.data?.find(row=>row.id===stop.store_id)?.name ?? null,
+  })));
+  return {receipt_id:receiptId,ocr_version:receipt.ocr_version,model:"gemini-2.5-flash",interpretation,matching,
+    linked_stop_mismatch:matching.suggested !== null && matching.suggested.trip_stop_id !== receipt.trip_stop_id,
+    persisted:false,approved:false};
 }
 
 export async function saveAdminReceiptText(tripId: string, receiptId: string, profileId: string, input: Record<string, unknown>) {

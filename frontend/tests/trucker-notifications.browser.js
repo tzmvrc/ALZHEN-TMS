@@ -1,0 +1,17 @@
+async(page)=>{
+ const context=await page.context().browser().newContext(),p=await context.newPage(),errors=[];let reads=0,writes=0;
+ let items=[{id:'fixture-notice',notification_type:'pod_rejected',message:'Your POD was rejected: upload a clearer document.',created_at:'2026-10-17T01:00:00Z',read_at:null}];
+ p.on('pageerror',error=>errors.push(error.message));
+ try{
+  await p.route('**/src/context/AuthContext.tsx*',route=>route.fulfill({contentType:'text/javascript',body:"export const useAuth=()=>({accessToken:'fixture-trucker'});"}));
+  await p.route('**/src/services/collaboration.service.ts*',route=>route.fulfill({contentType:'text/javascript',body:'const listeners=new Set();window.notificationEvent=()=>listeners.forEach(fn=>fn({kind:"notification"}));export const subscribeCollaborationEvents=fn=>{listeners.add(fn);return()=>listeners.delete(fn)};'}));
+  await p.route('**/api/**',async route=>{const req=route.request(),url=new URL(req.url());if(url.search)throw Error('Client supplied recipient');if(req.method()==='GET'){reads++;return route.fulfill({contentType:'application/json',body:JSON.stringify({success:true,data:{notifications:items,unreadCount:items.filter(item=>!item.read_at).length}})});}if(req.method()!=='PATCH'||!url.pathname.endsWith('/notifications/fixture-notice/read'))throw Error('Unexpected notification write');writes++;items=items.map(item=>({...item,read_at:'2026-10-17T01:01:00Z'}));await route.fulfill({contentType:'application/json',body:JSON.stringify({success:true,data:{id:'fixture-notice',read_at:items[0].read_at}})});});
+  await p.goto('http://localhost:5173/tests/table-fixture.html');
+  await p.evaluate(async()=>{await import('/src/index.css');const code=await(await fetch('/src/components/admin/TruckerNotifications.tsx')).text(),main=await(await fetch('/src/main.tsx')).text(),React=(await import(code.match(/from ["']([^"']*\/react\.js[^"']*)["']/)[1])).default,DOM=await import(main.match(/from ["']([^"']*react-dom_client\.js[^"']*)["']/)[1]),{default:View}=await import('/src/components/admin/TruckerNotifications.tsx');const el=document.createElement('div');document.body.append(el);(DOM.createRoot??DOM.default.createRoot)(el).render(React.createElement(View));});
+  await p.getByLabel('Unread notifications').waitFor();await p.getByRole('button',{name:'POD notifications',exact:true}).click();await p.getByRole('button',{name:/Your POD was rejected/}).waitFor();if(reads!==1)throw Error('Opening notification popover refetched cached data');
+  await p.getByRole('button',{name:/Your POD was rejected/}).click();await p.getByLabel('Unread notifications').waitFor({state:'hidden'});
+  items=[...items,{id:'another-fixture',notification_type:'pod_approved',message:'Your POD was approved.',created_at:'2026-10-17T01:02:00Z',read_at:null}];await p.evaluate(()=>{window.notificationEvent();window.notificationEvent();});await p.getByRole('button',{name:/Your POD was approved/}).waitFor();if(reads!==2||writes!==1)throw Error('Signal burst was not coalesced');
+  await p.keyboard.press('Escape');await p.getByRole('region',{name:'Your notifications'}).waitFor({state:'hidden'});
+  if(errors.length)throw Error(JSON.stringify(errors));return {isolated:true,initialReads:1,cachedOpenAdditionalReads:0,realtimeAdditionalReads:1,signalBurstCoalesced:true,readWrites:writes,escape:true,productionWrites:0,errors};
+ }finally{await context.close();}
+}

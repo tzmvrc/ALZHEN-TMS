@@ -1,5 +1,6 @@
+import {useNavigate,useParams,useSearchParams} from "react-router-dom";
 // src/pages/Admin/DashboardPage.tsx
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback,useEffect, useMemo, useRef, useState } from "react";
 import SidebarNav, {
   type NavEntry,
   type WorkspaceName,
@@ -54,6 +55,7 @@ export interface DashboardPageProps {
 type ClientTab = "website-preview" | "trucks" | "announcements" | "careers";
 
 const normalizeMainSection = (value: string) => {
+  if(value.startsWith("trip-detail:"))return value;
   if (value === "notifications") return "notifications";
   if (["dispatches", "deliveries", "monitoring"].includes(value))
     return "trips";
@@ -105,9 +107,15 @@ export default function DashboardPage({
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [logoutLoading, setLogoutLoading] = useState(false);
-  const [activeId, setActiveId] = useState(() =>
+  const [localActiveId, setLocalActiveId] = useState(() =>
     normalizeMainSection(data.nav.activeId),
   );
+  const route=useParams<{tripId:string}>(),navigate=useNavigate(),[routeQuery]=useSearchParams();
+  const activeId=route.tripId?`trip-detail:${route.tripId}:dispatches${routeQuery.get("stop")?`:stop:${routeQuery.get("stop")}`:""}`:localActiveId;
+  const setActiveId=useCallback((next:string)=>{
+    if(next.startsWith("trip-detail:")){const [,trip,,scope,stop]=next.split(":");navigate(`/trips/${encodeURIComponent(trip)}${scope==="stop"&&stop?`?stop=${encodeURIComponent(stop)}`:""}`);}
+    else {setLocalActiveId(next);if(route.tripId)navigate("/");}
+  },[navigate,route.tripId]);
   const [tripView, setTripView] = useState<
     "dispatches" | "monitoring" | "deliveries"
   >("dispatches");

@@ -6,7 +6,7 @@ import {
   saveDriverTripReceipt,
   updateDriverTripStatus,
 } from "../services/trucker.service.js";
-import { sendError, sendSuccess } from "../utils/api-response.js";
+import { ApiError,sendError, sendSuccess } from "../utils/api-response.js";
 import { TripImageError } from "../services/trip-image.service.js";
 
 export async function listTruckers(req: Request, res: Response) {
@@ -106,6 +106,7 @@ export async function uploadDriverPod(req: Request, res: Response) {
         message: error.message,
       });
     }
+    if(error instanceof ApiError)return sendError(res,error.statusCode,error.message,error.code);
     const message = error instanceof Error ? error.message : "Unable to upload delivery receipt";
     return sendError(res, 500, message, "POD_UPLOAD_FAILED");
   }

@@ -27,9 +27,9 @@ async (page) => {
       }
       return route.fulfill({ status: url.pathname.includes("/auth/") ? 401 : 200, contentType: "application/json", body: JSON.stringify({ success: !url.pathname.includes("/auth/"), data: [], message: "Fixture session only" }) });
     });
-    await fixture.route('**/login',async r=>{const response=await r.fetch();await r.fulfill({response,body:(await response.text()).replace('<script type="module" src="/src/main.tsx"></script>','')});});
-    await fixture.goto("http://localhost:5173/login");
+    await fixture.goto("http://localhost:5173/tests/table-fixture.html");
     await fixture.evaluate(async () => {
+      await import("/src/index.css");
       const code = await (await fetch("/src/components/admin/OperationsReportsView.tsx")).text();
       const main = await (await fetch("/src/main.tsx")).text();
       const reactPath = code.match(/from ["']([^"']*\/react\.js[^"']*)["']/)[1];
@@ -106,9 +106,10 @@ async (page) => {
     await root.getByRole("button", { name: "Retry image cleanup", exact: true }).click();
     await root.getByRole("region", { name: "Pending Offload image cleanup" }).waitFor({ state: "detached" });
     const handle = root.getByRole("separator", { name: "Resize Date", exact: true });
+    await handle.scrollIntoViewIfNeeded();
     const box = await handle.boundingBox();
     await fixture.mouse.move(box.x + box.width / 2, box.y + 10); await fixture.mouse.down(); await fixture.mouse.move(box.x + 80, box.y + 10); await fixture.mouse.up();
-    await fixture.waitForTimeout(100);
+    await fixture.waitForFunction(()=>JSON.parse(localStorage.getItem("alzhen:operations-report-column-layout:v1:isolated-fixture")??"{}").widths?.date>180);
     const width = await fixture.evaluate(() => JSON.parse(localStorage.getItem("alzhen:operations-report-column-layout:v1:isolated-fixture")).widths.date);
     if (!(width > 180)) throw new Error("Resize did not persist");
     await fixture.evaluate(() => window.__fixtureRemount()); await fixture.waitForTimeout(100);

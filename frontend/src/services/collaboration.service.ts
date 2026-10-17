@@ -4,8 +4,9 @@ export type CellTarget={table:string;source:string;recordId:string;tripId?:strin
 export type Presence=CellTarget&{socketId:string;userId:string;name:string;color:string};
 export type Commit={eventId:string;source:string;recordId:string;tripId?:string;stopId?:string;fields:string[];version:number|null;actorId:string|null;operation?:"INSERT"|"UPDATE"|"DELETE"};
 export const COLLABORATION_SOURCES=["trips","trip_stops","trip_line_items","trip_truck_assignments","store_calls","billings"] as const;
-type Snapshot={connected:boolean;bridgeHealthy:boolean;presences:Presence[]};
-type Event={kind:"commit";commit:Commit}|{kind:"trucker"}|{kind:"connected"}|{kind:"layout";table:string;column:string;revision:number}|{kind:"signal";topic:string;revision:string};
+export type TableViewer={userId:string;name:string;avatarUrl:string|null;color:string};
+type Snapshot={connected:boolean;bridgeHealthy:boolean;presences:Presence[];viewers?:Record<string,TableViewer[]>};
+type Event={kind:"commit";commit:Commit}|{kind:"tracking"}|{kind:"trucker"}|{kind:"notification"}|{kind:"connected"}|{kind:"layout";table:string;column:string;revision:number}|{kind:"signal";topic:string;revision:string};
 let socket:Socket|null=null,owner="",snapshot:Snapshot={connected:false,bridgeHealthy:false,presences:[]};
 let stopCurrent:(()=>void)|null=null;
 const watchers=new Set<()=>void>(),events=new Set<(event:Event)=>void>(),rooms=new Map<string,number>(),cells=new Map<string,CellTarget>(),versions=new Map<string,number>(),seen=new Set<string>();
@@ -38,10 +39,13 @@ export function startCollaboration(token:string|null,profileId:string|undefined,
  const endpoint=import.meta.env?.VITE_SOCKET_URL??new URL(import.meta.env?.VITE_API_URL??"http://localhost:5000/api").origin;
  const client=io(endpoint,{transports:["websocket"],path:import.meta.env?.VITE_SOCKET_PATH??"/socket.io",autoConnect:false,reconnectionDelay:1000,reconnectionDelayMax:10000,auth:cb=>cb({token,appSession:getAppSessionHeaders()["X-App-Session"]})});socket=client;
  const active=()=>socket===client&&owner===next;
+ let retryTimer:ReturnType<typeof setTimeout>|undefined;
  client.on("connect",()=>{if(!active())return;snapshot={...snapshot,connected:true};notify();for(const room of rooms.keys()){const [kind,...parts]=room.split(":");client.emit("room:join",{kind,key:parts.join(":")});}for(const cell of cells.values())client.emit("cell:presence",cell);emit({kind:"connected"});});
- client.on("disconnect",()=>{if(!active())return;snapshot={connected:false,bridgeHealthy:false,presences:[]};received.clear();notify();});
+ client.on("disconnect",reason=>{if(!active())return;snapshot={connected:false,bridgeHealthy:false,presences:[]};received.clear();notify();if(reason==="io server disconnect"){clearTimeout(retryTimer);retryTimer=setTimeout(()=>{if(active())client.connect();},1500);}});
  client.on("connect_error",()=>{if(active()){snapshot={...snapshot,connected:false,bridgeHealthy:false};notify();}});
  client.on("bridge:status",value=>{if(active()){snapshot={...snapshot,bridgeHealthy:value?.healthy===true};notify();}});
+ client.on("table:expired",value=>{if(active()&&typeof value?.table==="string"&&rooms.has(`table:${value.table}`))client.emit("room:join",{kind:"table",key:value.table});});
+ client.on("table:viewers",value=>{if(!active()||typeof value?.table!=="string"||!rooms.has(`table:${value.table}`)||!Array.isArray(value.users))return;const users=value.users.filter((u:TableViewer)=>u&&typeof u.userId==="string"&&typeof u.name==="string").slice(0,500);snapshot={...snapshot,viewers:{...snapshot.viewers,[value.table]:users}};notify();});
  client.on("cell:presence",value=>{if(active())presence(value);});
  client.on("presence:snapshot",values=>{if(active()&&Array.isArray(values))values.forEach(presence);});
  client.on("cell:presence-leave",value=>{if(!active())return;received.delete(`${value?.table}:${value?.socketId}`);snapshot={...snapshot,presences:snapshot.presences.filter(p=>p.socketId!==value?.socketId||p.table!==value?.table)};notify();});
@@ -55,14 +59,21 @@ export function startCollaboration(token:string|null,profileId:string|undefined,
  client.on("table:layout-updated",value=>{if(active()&&typeof value?.table==="string"&&typeof value?.column==="string"&&Number.isSafeInteger(value.revision)){const key=`layout:${value.table}:${value.column}:${value.revision}`;if(seen.has(key))return;seen.add(key);if(seen.size>5000)seen.delete(seen.values().next().value!);emit({kind:"layout",table:value.table,column:value.column,revision:value.revision});}});
  client.on("datasets:invalidated",value=>{if(active()&&typeof value?.topic==="string"&&typeof value?.revision==="string")emit({kind:"signal",topic:value.topic,revision:value.revision});});
  client.on("trucker:changed",()=>{if(active())emit({kind:"trucker"});});
- const heartbeat=setInterval(()=>{if(!active())return;if(document.visibilityState==="visible"&&client.connected)for(const cell of cells.values())client.emit("cell:presence",cell);
+ client.on("tracking:changed",()=>{if(active())emit({kind:"tracking"});});
+ client.on("notification:changed",value=>{
+  if(!active()||typeof value?.id!=="string"||typeof value?.revision!=="string"||value.id.length>100||value.revision.length>100)return;
+  const key=`notice:${value.id}:${value.revision}`;if(seen.has(key))return;seen.add(key);
+  if(seen.size>5000)seen.delete(seen.values().next().value!);
+  emit({kind:"notification"});
+ });
+ const heartbeat=setInterval(()=>{if(!active())return;if(client.connected)client.emit("table:heartbeat");if(document.visibilityState==="visible"&&client.connected)for(const cell of cells.values())client.emit("cell:presence",cell);
   for(const [key,time] of received)if(time<Date.now()-45000)received.delete(key);
   const remaining=snapshot.presences.filter(p=>(received.get(`${p.table}:${p.socketId}`)??0)>Date.now()-45000);if(remaining.length!==snapshot.presences.length){snapshot={...snapshot,presences:remaining};notify();}
  },10000);
  client.connect();
- const stop=()=>{clearInterval(heartbeat);if(!active())return;client.disconnect();socket=null;owner="";versions.clear();seen.clear();recordRequests.clear();cells.clear();snapshot={connected:false,bridgeHealthy:false,presences:[]};notify();};stopCurrent=stop;return stop;
+ const stop=()=>{clearInterval(heartbeat);clearTimeout(retryTimer);if(!active())return;client.disconnect();socket=null;owner="";versions.clear();seen.clear();recordRequests.clear();cells.clear();snapshot={connected:false,bridgeHealthy:false,presences:[]};notify();};stopCurrent=stop;return stop;
 }
-export function joinCollaborationRoom(kind:"table"|"trip",key:string){const room=`${kind}:${key}`;rooms.set(room,(rooms.get(room)??0)+1);if(socket?.connected)socket.emit("room:join",{kind,key});return()=>{const remaining=(rooms.get(room)??1)-1;if(remaining>0)rooms.set(room,remaining);else{rooms.delete(room);socket?.emit("room:leave",{kind,key});if(kind==="table")cells.delete(key);}};}
+export function joinCollaborationRoom(kind:"table"|"trip",key:string){const room=`${kind}:${key}`;rooms.set(room,(rooms.get(room)??0)+1);if(socket?.connected)socket.emit("room:join",{kind,key});return()=>{const remaining=(rooms.get(room)??1)-1;if(remaining>0)rooms.set(room,remaining);else{rooms.delete(room);if(kind==="table"){const viewers={...snapshot.viewers};delete viewers[key];snapshot={...snapshot,viewers};notify();}socket?.emit("room:leave",{kind,key});if(kind==="table")cells.delete(key);}};}
 export function focusCollaborationCell(table:string,target:CellTarget|null){
  if(target)cells.set(table,target);else{cells.delete(table);socket?.emit("cell:presence-leave",{table});}
  if(presenceTimer)clearTimeout(presenceTimer);

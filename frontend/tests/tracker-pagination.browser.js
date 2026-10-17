@@ -17,8 +17,7 @@ async(page)=>{
    if(url.pathname==='/api/reports/transmittal-tracker')throw Error('Unbounded Tracker endpoint used');
    await r.fulfill({contentType:'application/json',body:JSON.stringify({success:true,data})});
   });
-  await p.route('**/login',async r=>{const response=await r.fetch();await r.fulfill({response,body:(await response.text()).replace('<script type="module" src="/src/main.tsx"></script>','')});});
-  await p.goto('http://localhost:5173/login');const initialStart=Date.now();
+  await p.goto('http://localhost:5173/tests/table-fixture.html');const initialStart=Date.now();
   await p.evaluate(async()=>{
    await import('/src/index.css');const code=await(await fetch('/src/components/admin/TransmittalTrackerView.tsx')).text(),main=await(await fetch('/src/main.tsx')).text();
    const module=await import(code.match(/from ["']([^"']*\/react\.js[^"']*)["']/)[1]),React=module.default??module,DOM=await import(main.match(/from ["']([^"']*react-dom_client\.js[^"']*)["']/)[1]);

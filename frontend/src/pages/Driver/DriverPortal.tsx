@@ -1,3 +1,6 @@
+import LocationSharing from "../../components/admin/LocationSharing";
+import {pdfIntakeAvailable,prepareDriverPdf} from "../../services/pdf-intake.service";
+import {validatePodUpload} from "../../services/pod-upload-validation";
 import { useCallback, useEffect, useRef, useState,useSyncExternalStore, type ChangeEvent, type ReactNode } from "react";
 import {collaborationSnapshot,subscribeCollaboration,subscribeCollaborationEvents,joinCollaborationRoom} from "../../services/collaboration.service";
 import {
@@ -21,6 +24,7 @@ import {
 } from "lucide-react";
 import logo from "../../assets/logo.png";
 import ConfirmDialog from "../../components/ui/ConfirmDialog";
+import TruckerNotifications from "../../components/admin/TruckerNotifications";
 import SlideToConfirm from "../../components/ui/SlideToConfirm";
 import { recognizeReceipt, type OcrResult } from "../../services/ocr.service";
 import { useToast } from "../../components/ui/Toast";
@@ -231,6 +235,8 @@ export default function DriverPortal() {
   /* The receipt text is read on this phone while the driver types the DR number. */
   const [ocrStatus, setOcrStatus] = useState<"idle" | "scanning" | "done" | "failed">("idle");
   const [ocrProgress, setOcrProgress] = useState(0);
+  const [pdfAvailable,setPdfAvailable]=useState(false);
+  useEffect(()=>{let current=true;if(accessToken)void pdfIntakeAvailable(accessToken).then(value=>{if(current)setPdfAvailable(value);},()=>{});return()=>{current=false;};},[accessToken]);
   const ocrRun = useRef(0);
   const ocrPromise = useRef<Promise<OcrResult | null> | null>(null);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
@@ -578,21 +584,7 @@ export default function DriverPortal() {
   const selectPodPhoto = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0] ?? null;
     if (!file) return;
-    if (file.size > 5 * 1024 * 1024) {
-      addToast({ title: "Choose a photo up to 5 MB", variant: "error" });
-      event.target.value = "";
-      return;
-    }
-    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
-      addToast({
-        title: "Choose a photo",
-        description: "Please select an image of the signed delivery receipt.",
-        variant: "error",
-        duration: 3500,
-      });
-      event.target.value = "";
-      return;
-    }
+    try{validatePodUpload(file,pdfAvailable);}catch(error){addToast({title:"Unable to use receipt",description:error instanceof Error?error.message:"Invalid document",variant:"error"});event.target.value="";return;}
     if (podPreviewUrl.current) URL.revokeObjectURL(podPreviewUrl.current);
     podPreviewUrl.current = URL.createObjectURL(file);
     setPodPreview(podPreviewUrl.current);
@@ -605,9 +597,10 @@ export default function DriverPortal() {
     const run = (ocrRun.current += 1);
     setOcrStatus("scanning");
     setOcrProgress(0);
-    ocrPromise.current = recognizeReceipt(file, (fraction) => {
+    const source=file.type==="application/pdf"&&accessToken&&selectedTrip&&selectedStop?prepareDriverPdf(accessToken,selectedTrip.id,selectedStop.id,file):Promise.resolve(file);
+    ocrPromise.current = source.then(pages=>recognizeReceipt(pages, (fraction) => {
       if (ocrRun.current === run) setOcrProgress(fraction);
-    }).then(
+    })).then(
       (result) => {
         if (ocrRun.current === run) setOcrStatus(result.text ? "done" : "failed");
         return result.text ? result : null;
@@ -641,15 +634,15 @@ export default function DriverPortal() {
                 driver_status: receipt.status,
                 delivery_status: receipt.delivery_status,
                 driver_updated_at: receipt.updated_at,
-                dr_number: drNumber.trim(),
+                dr_number: receipt.receipt_only ? trip.dr_number : drNumber.trim(),
                 pod_image_path: receipt.storage_path,
                 stops: trip.stops.map((stop) => stop.id === selectedStop.id
                   ? {
                       ...stop,
-                      dr_number: drNumber.trim(),
+                      dr_number: receipt.receipt_only ? stop.dr_number : drNumber.trim(),
                       delivery_status: receipt.delivery_status,
-                      finish_unloading_time: receipt.updated_at,
-                      items: stop.items.map((item) => ({ ...item, dr_number: drNumber.trim() })),
+                      finish_unloading_time: receipt.receipt_only ? (receipt.finish_unloading_time === undefined ? stop.finish_unloading_time : receipt.finish_unloading_time) : receipt.finish_unloading_time ?? receipt.updated_at,
+                      items: receipt.receipt_only ? stop.items : stop.items.map((item) => ({ ...item, dr_number: drNumber.trim() })),
                     }
                   : stop),
               }
@@ -659,7 +652,7 @@ export default function DriverPortal() {
       setCurrentStep(deliverySteps.length - 1);
       addToast({
         title: "Delivery receipt saved",
-        description: "The DR number, receipt photo, and delivered status are saved to this trip.",
+        description: receipt.receipt_only ? "A new receipt was submitted for review. Existing delivery times and DR values were preserved." : "The DR number, receipt photo, and delivered status are saved to this trip.",
         variant: "success",
         duration: 4000,
       });
@@ -861,7 +854,7 @@ export default function DriverPortal() {
           className={`mt-4 flex aspect-[4/3] cursor-pointer flex-col items-center justify-center gap-2 overflow-hidden rounded-2xl border-2 border-dashed text-center transition ${podPreview ? "border-transparent bg-slate-100" : "border-slate-300 bg-slate-50 hover:border-[#2678b9] hover:bg-[#e6f0f9]/40"} ${busy ? "pointer-events-none opacity-60" : ""}`}
         >
           {podPreview ? (
-            <img src={podPreview} alt="Preview of the receipt photo" className="h-full w-full object-contain" />
+            podFile?.type==="application/pdf"?<iframe title="PDF receipt preview" sandbox="" src={podPreview} className="h-full w-full"/>:<img src={podPreview} alt="Preview of the receipt photo" className="h-full w-full object-contain" />
           ) : (
             <>
               <Camera aria-hidden="true" className="h-8 w-8 text-[#2678b9]" />
@@ -869,7 +862,7 @@ export default function DriverPortal() {
               <span className="px-6 text-xs text-slate-500">Lay it flat and make sure all the text is sharp.</span>
             </>
           )}
-          <input id="pod-photo" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" className="sr-only" onChange={selectPodPhoto} disabled={busy} />
+          <input id="pod-photo" type="file" accept={pdfAvailable?"image/jpeg,image/png,image/webp,application/pdf":"image/jpeg,image/png,image/webp"} capture="environment" className="sr-only" onChange={selectPodPhoto} disabled={busy} />
         </label>
         {podPreview && (
           <label htmlFor="pod-photo" className="mt-2 block cursor-pointer text-center text-xs font-semibold text-[#2678b9]">Retake photo</label>
@@ -910,7 +903,7 @@ export default function DriverPortal() {
           className="mt-4 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-emerald-700 px-4 text-sm font-bold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-slate-300"
         >
           <PackageCheck aria-hidden="true" className="h-4 w-4" />
-          {podUploading ? "Saving receipt…" : saved ? "Replace receipt" : "Save receipt"}
+          {podUploading ? "Saving receipt…" : saved ? "Submit replacement for review" : "Save receipt"}
         </button>
         <p className="mt-2 text-center text-xs text-slate-500">Dispatch reads the text from your photo and checks it.</p>
       </section>
@@ -1027,9 +1020,9 @@ export default function DriverPortal() {
               <p className="text-xs text-slate-500">Alzhen driver</p>
             </div>
           </div>
-          <button type="button" onClick={() => setShowLogoutConfirm(true)} aria-label="Log out" title="Log out" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50">
+          <div className="flex items-center gap-2"><TruckerNotifications/><button type="button" onClick={() => setShowLogoutConfirm(true)} aria-label="Log out" title="Log out" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50">
             <LogOut aria-hidden="true" className="h-4 w-4" />
-          </button>
+          </button></div>
         </div>
       </header>
 
@@ -1090,6 +1083,7 @@ export default function DriverPortal() {
             {assignedTrips.length > 0 && selectedTrip && (
               <>
                 {tripSwitcher}
+                {accessToken&&<LocationSharing key={selectedTrip.id} token={accessToken} tripId={selectedTrip.id}/>}
                 {tripStarted ? renderLive(selectedTrip) : renderBrief(selectedTrip)}
               </>
             )}

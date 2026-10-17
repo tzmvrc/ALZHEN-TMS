@@ -4,7 +4,6 @@ async(page)=>{
  let fail=0;
  p.on('pageerror',e=>errors.push(e.message));
  try{
-  await p.route('**/login',async r=>{const response=await r.fetch();await r.fulfill({response,body:(await response.text()).replace('<script type="module" src="/src/main.tsx"></script>','')});});
   await p.route('**/src/context/AuthContext.tsx*',r=>r.fulfill({contentType:'text/javascript',body:"const auth={accessToken:'fixture-token',profile:{id:'fixture-admin',role:'ADMIN'},refreshSession:async()=>{}};export const useAuth=()=>auth;export const AuthProvider=({children})=>children;export const getRoleBasedHomePath=()=>'/login';export const getRoleBasedHome=()=>'/login';"}));
   await p.route('**/src/components/admin/LiveTripMap.tsx*',r=>r.fulfill({contentType:'text/javascript',body:'export default function Map(){return null}'}));
   await p.route('**/src/components/admin/ReceiptReviewCard.tsx*',r=>r.fulfill({contentType:'text/javascript',body:'export default function Receipts(){return null}'}));
@@ -20,7 +19,7 @@ async(page)=>{
    else if(path.includes('/reports/operations/'))data={trips:[],trip_options:[],stops:[],loading:[],unloading:[],backloads:[],offloads:[],event_rows:[]};
    await r.fulfill({contentType:'application/json',body:JSON.stringify({success:true,data})});
   });
-  await p.goto('http://localhost:5173/login');
+  await p.goto('http://localhost:5173/tests/table-fixture.html');
   await p.evaluate(async()=>{
    await import('/src/index.css');const code=await(await fetch('/src/pages/Admin/views/TripDetailView.tsx')).text(),main=await(await fetch('/src/main.tsx')).text();
    const react=await import(code.match(/from ["']([^"']*\/react\.js[^"']*)["']/)[1]),React=react.default??react,DOM=await import(main.match(/from ["']([^"']*react-dom_client\.js[^"']*)["']/)[1]),{MemoryRouter}=await import(code.match(/from ["']([^"']*react-router-dom\.js[^"']*)["']/)[1]),{default:View}=await import('/src/pages/Admin/views/TripDetailView.tsx');

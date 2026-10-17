@@ -1,0 +1,15 @@
+[    1166ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:5173/?token=W8r7bxWTkwYo' failed: Error during WebSocket handshake: Unexpected response code: 400 @ http://127.0.0.1:5173/@vite/client:871
+[    1271ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:5173/?token=W8r7bxWTkwYo' failed: Error during WebSocket handshake: Unexpected response code: 400 @ http://127.0.0.1:5173/@vite/client:881
+[    1275ms] [ERROR] [vite] failed to connect to websocket.
+your current setup:
+  (browser) 127.0.0.1:5173/ <--[HTTP]--> 127.0.0.1:5173/ (server)
+  (browser) 127.0.0.1:5173/ <--[WebSocket (failing)]--> 127.0.0.1:5173/ (server)
+Check out your Vite / network configuration and https://vite.dev/config/server-options.html#server-hmr . @ http://127.0.0.1:5173/@vite/client:532
+[    1334ms] [ERROR] Failed to send error to Vite server: TypeError: Cannot read properties of undefined (reading 'send')
+    at Object.send (http://127.0.0.1:5173/@vite/client:452:7)
+    at Object.send (http://127.0.0.1:5173/@vite/client:907:16)
+    at Object.send (http://127.0.0.1:5173/@vite/client:311:21)
+    at Object.send (http://127.0.0.1:5173/@vite/client:391:30)
+    at sendError (http://127.0.0.1:5173/@vite/client:494:19)
+    at sendLog (http://127.0.0.1:5173/@vite/client:522:11) @ http://127.0.0.1:5173/@vite/client:523
+[    5403ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:5173/node_modules/.vite/deps/react-dom_client.js?v=9745ed00:14335

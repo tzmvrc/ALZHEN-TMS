@@ -1,0 +1,22 @@
+[      87ms] [ERROR] WebSocket connection to 'ws://localhost:5173/?token=t7lsvhSOD77_' failed: Error during WebSocket handshake: Unexpected response code: 400 @ http://localhost:5173/@vite/client:871
+[     101ms] [ERROR] WebSocket connection to 'ws://localhost:5173/?token=t7lsvhSOD77_' failed: Error during WebSocket handshake: Unexpected response code: 400 @ http://localhost:5173/@vite/client:881
+[     104ms] [ERROR] [vite] failed to connect to websocket.
+your current setup:
+  (browser) localhost:5173/ <--[HTTP]--> localhost:5173/ (server)
+  (browser) localhost:5173/ <--[WebSocket (failing)]--> localhost:5173/ (server)
+Check out your Vite / network configuration and https://vite.dev/config/server-options.html#server-hmr . @ http://localhost:5173/@vite/client:532
+[     109ms] [ERROR] Failed to send error to Vite server: TypeError: Cannot read properties of undefined (reading 'send')
+    at Object.send (http://localhost:5173/@vite/client:452:7)
+    at Object.send (http://localhost:5173/@vite/client:907:16)
+    at Object.send (http://localhost:5173/@vite/client:311:21)
+    at Object.send (http://localhost:5173/@vite/client:391:30)
+    at sendError (http://localhost:5173/@vite/client:494:19)
+    at sendLog (http://localhost:5173/@vite/client:522:11) @ http://localhost:5173/@vite/client:523
+[     947ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=9745ed00:14335
+[   60803ms] [ERROR] Failed to load resource: the server responded with a status of 403 (Forbidden) @ http://localhost:5000/api/trips/pod-review-capabilities:0
+[   81949ms] [ERROR] Failed to load resource: the server responded with a status of 403 (Forbidden) @ http://localhost:5000/api/trips/00000000-0000-4000-8000-000000000999/receipts:0
+[  263926ms] [ERROR] Failed to load resource: the server responded with a status of 403 (Forbidden) @ http://localhost:5000/api/trips/ed329614-62d0-4d83-afbc-8c578fdb23d1/receipts:0
+[24669216ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://localhost:5000/api/auth/session/heartbeat:0
+[24679069ms] [ERROR] Failed to load resource: net::ERR_NAME_NOT_RESOLVED @ https://hdmknewarynwpbrhfgai.supabase.co/auth/v1/token?grant_type=refresh_token:0
+[24679071ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://localhost:5000/api/truckers/me/trips:0
+[24679075ms] [WARNING] WebSocket connection to 'ws://localhost:5000/socket.io/?EIO=4&transport=websocket' failed: WebSocket is closed before the connection is established. @ http://localhost:5173/node_modules/.vite/deps/socket__io-client.js?v=9745ed00:951

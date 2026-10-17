@@ -22,8 +22,8 @@ const http=createServer(async(req,res)=>{
   const row={table_key:body.table,column_key:body.column,revision:(old?.revision??0)+1,width_px:old?.width_px??body.initial_width_px,design:mergeDesign(old?.design??{},validateDesignPatch(body.patch))};layouts.set(key,row);res.end(JSON.stringify(row));collaborationEvents.emit("layout",{table:row.table_key,column:row.column_key,revision:row.revision,eventId:`layout:${row.table_key}:${row.column_key}:${row.revision}`});return;
  }
  if(req.method==="GET"&&req.url==="/record"){res.end(JSON.stringify(record));return;}
- if(req.method==="POST"&&req.url==="/drop-staff"){
-  for(const socket of service.io.of("/").sockets.values())if(socket.data.actor.id==="fixture-staff")socket.conn.close();
+ if(req.method==="POST"&&(req.url==="/drop-staff"||req.url==="/disconnect-staff")){
+  for(const socket of service.io.of("/").sockets.values())if(socket.data.actor.id==="fixture-staff"){if(req.url==="/disconnect-staff")socket.disconnect(true);else socket.conn.close();}
   res.end(JSON.stringify({ok:true}));return;
  }
  if(req.method==="POST"&&req.url==="/commit"){

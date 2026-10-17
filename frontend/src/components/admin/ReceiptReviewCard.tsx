@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import {savedPdfPages} from "../../services/pdf-intake.service";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   CheckCircle2,
   ChevronDown,
@@ -10,6 +11,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { surface } from "./dashboardStyles";
+import PodDecisionControls from "./PodDecisionControls";
 import { recognizeReceipt } from "../../services/ocr.service";
 import { subscribeToAdminRealtime } from "../../services/realtime.service";
 import { RECEIPT_TABLES } from "../../services/live-activity.service";
@@ -25,6 +27,8 @@ import {
 import {
   fetchTripReceipts,
   saveReceiptText,
+  interpretReceiptText,
+  type ReceiptInterpretation,
   type TripReceipt,
 } from "../../services/receipt.service";
 
@@ -94,6 +98,10 @@ export default function ReceiptReviewCard({
   const [justSaved, setJustSaved] = useState(false);
   const [sessionConfidence, setSessionConfidence] = useState<Record<string, number>>({});
   const [liveTick, setLiveTick] = useState(0);
+  const [interpreting, setInterpreting] = useState(false);
+  const interpretationScope = useMemo(() => ({tripId,signedIn:Boolean(accessToken)}), [accessToken, tripId]);
+  const [interpretation, setInterpretation] = useState<(ReceiptInterpretation & {scope:object}) | null>(null);
+  const [interpretError, setInterpretError] = useState<string | null>(null);
   const attempted = useRef(new Set<string>());
 
   const active = receipts?.find((receipt) => receipt.id === activeId) ?? null;
@@ -160,9 +168,9 @@ export default function ReceiptReviewCard({
     setSaveError(null);
     setJustSaved(false);
     try {
-      const image = await fetch(receipt.signed_url);
-      if (!image.ok) throw new Error("The receipt photo could not be downloaded.");
-      const result = await recognizeReceipt(await image.blob(), setProgress);
+      const image = receipt.mime_type==="application/pdf"?null:await fetch(receipt.signed_url);
+      if (image&&!image.ok) throw new Error("The receipt photo could not be downloaded.");
+      const result = await recognizeReceipt(image?await image.blob():await savedPdfPages(accessToken,tripId,receipt.id), setProgress);
       setWork(snapshotOf(result.text, receipt.dr_number ?? ""));
       setSessionConfidence((current) => ({ ...current, [receipt.id]: result.confidence }));
       if (!result.text) {
@@ -176,7 +184,7 @@ export default function ReceiptReviewCard({
               ocr_text: result.text,
               ocr_confidence: result.confidence,
               reviewed: false,
-              expected_version: 0
+              expected_version: receipt.ocr_version
           }),
         );
       } catch (cause) {
@@ -226,19 +234,19 @@ export default function ReceiptReviewCard({
   }, [active?.ocr_text]);
 
   const selectReceipt = (id: string) => {
-    if (id === activeId || scanning || saving) return;
+    if (id === activeId || scanning || saving || interpreting) return;
     if (dirty && !window.confirm("Discard your unsaved edits to this receipt?")) return;
     setActiveId(id);
   };
 
   const rescan = () => {
-    if (!active || scanning || saving) return;
+    if (!active || scanning || saving || interpreting) return;
     if (dirty && !window.confirm("Scanning again will replace your unsaved edits. Continue?")) return;
     void runOcr(active);
   };
 
   const save = async () => {
-    if (!active || !accessToken || saving || scanning) return;
+    if (!active || !accessToken || saving || scanning || interpreting) return;
     setSaving(true);
     setSaveError(null);
     try {
@@ -247,7 +255,7 @@ export default function ReceiptReviewCard({
             ocr_text: composeSaved(work),
             ocr_confidence: confidence ?? null,
             reviewed: true,
-            expected_version: 0
+            expected_version: active.ocr_version
         }),
       );
       setJustSaved(true);
@@ -256,6 +264,28 @@ export default function ReceiptReviewCard({
     } finally {
       setSaving(false);
     }
+  };
+
+  const interpret = async () => {
+    if (!active || !accessToken || scanning || saving || interpreting) return;
+    setInterpretError(null);
+    if (dirty) { setInterpretError("Save or undo your OCR edits before requesting interpretation."); return; }
+    if (!window.confirm("Send this receipt's saved OCR text to Google Gemini for interpretation? Suggestions require human review and will not approve the POD.")) return;
+    setInterpreting(true);
+    try { setInterpretation({...await interpretReceiptText(accessToken, tripId, active.id, active.ocr_version),scope:interpretationScope}); }
+    catch (error) { setInterpretError(`Unable to interpret with Gemini. ${error instanceof Error ? error.message : "Retry later."} Manual review remains available.`); }
+    finally { setInterpreting(false); }
+  };
+  const currentInterpretation = interpretation?.scope === interpretationScope && interpretation?.receipt_id === active?.id && interpretation?.ocr_version === active?.ocr_version ? interpretation : null;
+  const useSuggestions = () => {
+    if (!currentInterpretation || currentInterpretation.linked_stop_mismatch) return;
+    if (dirty && !window.confirm("Replace the corresponding draft fields with these AI suggestions?")) return;
+    const map = {dr:"dr_number",receiver:"receiver_name",models:"product_information",date:"delivery_date"} as const;
+    setWork(current => ({...current, fields:Object.fromEntries(Object.entries(current.fields).map(([key,value]) => {
+      const suggested=currentInterpretation.interpretation.fields[map[key as keyof typeof map]];
+      return [key, suggested && !suggested.uncertain && typeof suggested.value === "string" ? suggested.value : value];
+    })) as ReceiptFields}));
+    setJustSaved(false);
   };
 
   /* ---- derived ---- */
@@ -272,7 +302,7 @@ export default function ReceiptReviewCard({
   const drSuggestion = detectedDr && squash(detectedDr) !== squash(fields.dr) ? detectedDr : null;
   const drFound = fields.dr && raw ? squash(raw).includes(squash(fields.dr)) : null;
   const hasContent = raw.trim().length > 0 || Object.values(fields).some((value) => value.trim());
-  const canSave = Boolean(active) && hasContent && (dirty || state !== "reviewed") && !scanning && !saving;
+  const canSave = Boolean(active) && hasContent && (dirty || state !== "reviewed") && !scanning && !saving && !interpreting;
 
   return (
     <section aria-labelledby="receipt-card-title" className="min-w-0 space-y-4">
@@ -366,7 +396,7 @@ export default function ReceiptReviewCard({
                   <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Raw scan</p>
                   <div className="relative mt-3 flex aspect-[3/4] max-h-[520px] w-full items-center justify-center overflow-hidden rounded-lg border border-dashed border-slate-300 bg-slate-50">
                     {active.signed_url ? (
-                      <img src={active.signed_url} alt={`Delivery receipt${drNumber ? ` ${drNumber}` : ""}`} className="h-full w-full object-contain" />
+                      active.mime_type==="application/pdf"?<iframe title="Original PDF receipt" sandbox="" src={active.signed_url} className="h-full w-full"/>:(<img src={active.signed_url} alt={`Delivery receipt${drNumber ? ` ${drNumber}` : ""}`} className="h-full w-full object-contain" />)
                     ) : (
                       <div className="flex flex-col items-center gap-2 text-slate-400">
                         <ImageOff aria-hidden="true" className="h-8 w-8" />
@@ -425,7 +455,23 @@ export default function ReceiptReviewCard({
                   </ul>
                   {scanError && <p role="alert" className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700">{scanError}</p>}
                   {saveError && <p role="alert" className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700">{saveError}</p>}
+                  {interpretError && <p role="alert" className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">{interpretError}</p>}
+                  {currentInterpretation && <section aria-label="Gemini suggestions" className="mt-4 space-y-3 rounded-lg border border-blue-200 bg-blue-50/50 p-3 text-xs">
+                    <p className="font-semibold">Gemini suggestions — review required</p>
+                    <p>Suggestions are not saved or approved. Original OCR and transaction values remain unchanged.</p>
+                    <dl className="space-y-2">{Object.entries(currentInterpretation.interpretation.fields).map(([key,field])=><div key={key}>
+                      <dt className="font-semibold capitalize">{key.replaceAll("_"," ")}</dt>
+                      <dd>{field.value ?? "Not found"}{field.uncertain ? " · Needs review" : ""}</dd>
+                      {field.evidence && <dd className="text-slate-500">OCR: {field.evidence}</dd>}
+                    </div>)}</dl>
+                    {currentInterpretation.interpretation.warnings.map((warning,index)=><p key={index}>{warning}</p>)}
+                    <p>{currentInterpretation.matching.ambiguous ? "Transaction match is ambiguous or incomplete. Review the association manually." : `Suggested destination: ${currentInterpretation.matching.suggested?.store_name ?? currentInterpretation.matching.suggested?.customer_name ?? "Review transaction"}`}</p>
+                    {currentInterpretation.matching.suggested?.evidence.map(item=><p key={item}>{item}</p>)}
+                    {currentInterpretation.linked_stop_mismatch && <p role="alert" className="font-semibold text-rose-700">The suggested stop differs from this upload's stop. Do not confirm until its association is reviewed.</p>}
+                    <button type="button" disabled={currentInterpretation.linked_stop_mismatch || scanning || saving} onClick={useSuggestions} className={`${surface.chipGhost} disabled:opacity-50`}>Use suggested fields</button>
+                  </section>}
                   {loadError && <p role="status" className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">{loadError}</p>}
+                  <PodDecisionControls key={active.id} token={accessToken} receipt={active} disabled={dirty||saving||scanning||interpreting} reviewedFields={{dr_number:fields.dr,receiver_name:fields.receiver,product_information:fields.models,delivery_date:fields.date||null}} onSaved={replaceReceipt}/>
 
                   <div className="mt-4 rounded-lg bg-slate-50 p-4 text-xs">
                     <p className="font-semibold text-[#0b2341]">On save</p>
@@ -457,9 +503,12 @@ export default function ReceiptReviewCard({
                   </details>
 
                   <div className="mt-4 flex flex-wrap items-center gap-2">
-                    <button type="button" disabled={scanning || saving || !active.signed_url} onClick={rescan} className={`${surface.chipGhost} disabled:cursor-not-allowed disabled:opacity-50`}>
+                    <button type="button" disabled={scanning || saving || interpreting || !active.signed_url} onClick={rescan} className={`${surface.chipGhost} disabled:cursor-not-allowed disabled:opacity-50`}>
                       <RefreshCw aria-hidden="true" className="mr-1.5 h-3.5 w-3.5" />
                       Scan again
+                    </button>
+                    <button type="button" disabled={scanning || saving || interpreting || !active.ocr_text} onClick={() => void interpret()} className={`${surface.chipGhost} disabled:opacity-50`}>
+                      <Sparkles aria-hidden="true" className="mr-1.5 h-3.5 w-3.5" />{interpreting ? "Interpreting…" : "Interpret with Gemini"}
                     </button>
                     {dirty && (
                       <button type="button" disabled={scanning || saving} onClick={() => setWork(base)} className={`${surface.chipGhost} disabled:opacity-50`}>

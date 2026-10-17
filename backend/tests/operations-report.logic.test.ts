@@ -324,6 +324,7 @@ test("loading retry keeps one trip row and stop saves remain isolated", async ()
     return { data: report, error: null };
   };
   let failNextStopTimestampUpdate = false;
+  let failNextLoadingTimestampUpdate = false;
   let raceNextLoadingInsert = false;
   let updateCount = 0;
   let failNextReportDelete = false;
@@ -366,6 +367,10 @@ test("loading retry keeps one trip row and stop saves remain isolated", async ()
       if (operation === "update") {
         updateCount += 1;
         if (!matching[0]) return { data: null, error: null };
+        if (table === "loading_reports" && failNextLoadingTimestampUpdate) {
+          failNextLoadingTimestampUpdate = false;
+          return { data: null, error: { code: "XX000", message: "simulated loading write failure" } };
+        }
         if (table === "trip_stops" && failNextStopTimestampUpdate) {
           failNextStopTimestampUpdate = false;
           return { data: null, error: { code: "XX000", message: "simulated timestamp write failure" } };
@@ -527,6 +532,26 @@ test("loading retry keeps one trip row and stop saves remain isolated", async ()
     assert.equal(tables.loading_reports.length, 1, "unique trip identity is retried/updated rather than duplicated");
     assert.equal(tables.loading_reports[0].warehouse_arrival_at, "2026-10-13T08:00:00Z");
     assert.equal(tables.loading_reports[0].loading_start_at, "2026-10-13T09:00:00Z");
+    const exactLoadingId = tables.loading_reports[0].id;
+    const stopSnapshot = structuredClone(tables.trip_stops);
+    const canonical = await service.saveLoadingReport(admin, tripA, { loading_start_at: "2026-10-16T15:50:23.250Z" }, exactLoadingId);
+    assert.equal(canonical.id, exactLoadingId);
+    assert.equal(canonical.trip_id, tripA);
+    assert.equal(canonical.loading_start_at, "2026-10-16T15:50:23.250Z");
+    await service.saveLoadingReport(admin, tripA, { loading_finished_at: "2026-10-16T16:35:10Z" }, exactLoadingId);
+    assert.equal(tables.loading_reports[0].loading_start_at, "2026-10-16T15:50:23.250Z");
+    assert.equal(tables.loading_reports[0].loading_finished_at, "2026-10-16T16:35:10Z");
+    await service.saveLoadingReport(admin, tripA, { loading_finished_at: null }, exactLoadingId);
+    assert.equal(tables.loading_reports[0].loading_finished_at, null);
+    failNextLoadingTimestampUpdate = true;
+    await assert.rejects(service.saveLoadingReport(admin, tripA, { loading_start_at: "2026-10-16T11:00:00Z" }, exactLoadingId), /Unable to save loading/);
+    assert.equal(tables.loading_reports[0].loading_start_at, "2026-10-16T15:50:23.250Z");
+    const writesBeforeScopeFailure = updateCount;
+    await assert.rejects(service.saveLoadingReport(admin, otherTrip, { loading_start_at: "2026-10-16T00:00:00Z" }, exactLoadingId), /no longer belongs/);
+    await assert.rejects(service.saveLoadingReport(admin, tripA, { loading_start_at: null }, otherTrip), /no longer belongs/);
+    assert.equal(updateCount, writesBeforeScopeFailure);
+    assert.equal(tables.loading_reports.length, 1, "a cell save must not create a missing report");
+    assert.deepEqual(tables.trip_stops, stopSnapshot, "loading changes never write to unloading stops");
     raceNextLoadingInsert = true;
     await service.saveLoadingReport(admin, otherTrip, { loading_finished_at: "2026-10-13T13:00:00Z" });
     assert.equal(tables.loading_reports.filter((row) => row.trip_id === otherTrip).length, 1, "a concurrent unique-key winner is reread and updated instead of duplicated");

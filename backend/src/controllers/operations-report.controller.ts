@@ -24,6 +24,7 @@ async function respond(res: Response, operation: () => Promise<unknown>, message
   }
 }
 
+export const getPage = (req: Request, res: Response) => respond(res, () => service.getOperationsPage(actor(req), req.query), "Operations page retrieved successfully");
 export const getOverview = (req: Request, res: Response) => respond(res, () => req.query.preload === "true" ? withReportReadBudget(() => service.getOperationsOverview(actor(req))) : service.getOperationsOverview(actor(req)), "Operational reports retrieved successfully");
 export const getReporters = (req: Request, res: Response) => respond(res, () => service.listOperationsReporters(actor(req), typeof req.query.search === "string" ? req.query.search : ""), "Reporters retrieved successfully");
 export const getOffloadTransactions = (req: Request, res: Response) => respond(res, () => service.searchOffloadTransactions(actor(req), typeof req.query.search === "string" ? req.query.search : "", req.query.page === undefined ? 1 : Number(req.query.page)), "DR transactions retrieved successfully");
@@ -31,6 +32,7 @@ export const getPendingCleanup = (req: Request, res: Response) => respond(res, (
 export const retryCleanup = (req: Request, res: Response) => respond(res, () => retryOffloadCleanup(actor(req), param(req, "operationId")), "Image cleanup outcome retrieved");
 export const getAssigned = (req: Request, res: Response) => respond(res, () => service.getAssignedOperations(actor(req)), "Assigned operational reports retrieved successfully");
 export const getTripDetails = (req: Request, res: Response) => respond(res, () => service.getTripOperations(actor(req), param(req, "tripId")), "Trip operational details retrieved successfully");
+export const updateLoading = (req: Request, res: Response) => respond(res, () => service.saveLoadingReport(actor(req), param(req, "tripId"), req.body, param(req, "recordId")), "Loading report updated successfully");
 export const saveLoading = (req: Request, res: Response) => respond(res, () => service.saveLoadingReport(actor(req), param(req, "tripId"), req.body), "Loading report saved successfully");
 export const saveUnloading = (req: Request, res: Response) => respond(res, () => service.saveUnloadingReport(actor(req), param(req, "tripId"), param(req, "stopId"), req.body), "Unloading report saved successfully");
 export const createBackload = (req: Request, res: Response) => respond(res, () => service.createBackload(actor(req), req.body), "Backload created successfully", 201);

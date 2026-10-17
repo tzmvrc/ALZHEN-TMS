@@ -1,3 +1,5 @@
+import { updateLoadingReport } from "../../services/operations-report.service";
+import {isTripTimeField,tripTimeDisplay,manilaDateTime,saveTripTime} from "../../services/trip-time";
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ClipboardEvent as ReactClipboardEvent, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { useSharedTableWidths } from "./useSharedTableWidths";
@@ -148,7 +150,7 @@ function appendReportWorksheet(workbook: ExcelJS.Workbook, reportKey: ReportKey,
     style: column.type === "number" ? { numFmt: "0.###" } : column.type === "date" ? { numFmt: "yyyy-mm-dd hh:mm" } : undefined,
   }));
   worksheet.addRows(rows.map((row) => Object.fromEntries(visibleColumns.map((column) => {
-    const value = row[column.key];
+    const value = isTripTimeField(column.key)?tripTimeDisplay(row[column.key]):row[column.key];
     if (column.type === "date" && typeof value === "string") {
       const parsed = new Date(value);
       return [column.key, Number.isNaN(parsed.getTime()) ? value : parsed];
@@ -198,7 +200,8 @@ function downloadBlob(blob: Blob, filename: string) {
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-function displayValue(value: unknown, type: string): string {
+function displayValue(value: unknown, type: string,field=""): string {
+  if(isTripTimeField(field))return tripTimeDisplay(value);
   if (value === null || value === undefined || value === "") return "";
   const formatDate = (date: Date) => new Intl.DateTimeFormat("en-US", {
     month: "short",
@@ -276,6 +279,8 @@ function summarizeReportEditRow(row: ReportRow, reportKey: ReportKey, field: str
 
 function reportEditEndpoint(target: EditableCellTarget): string {
   switch (target.sourceEntity) {
+    case "loadingReport":
+      return `/reports/operations/loading/${encodeURIComponent(target.tripId ?? "")}/reports/${encodeURIComponent(target.loadingReportId ?? "")}`;
     case "stop":
       return `/trips/${encodeURIComponent(target.tripId ?? "")}/stops/${encodeURIComponent(target.stopId ?? "")}`;
     case "lineItem":
@@ -443,12 +448,15 @@ type EditableCellTarget = ReportEditDefinition & {
   assignmentId?: string;
   billingId?: string;
   storeCallId?: string;
+  loadingReportId?: string;
 };
 
-const collaborationSources:Record<ReportEditDefinition["sourceEntity"],string>={trip:"trips",stop:"trip_stops",lineItem:"trip_line_items",assignment:"trip_truck_assignments",billing:"billings",storeCall:"store_calls"};
+const collaborationSources:Record<ReportEditDefinition["sourceEntity"],string>={trip:"trips",stop:"trip_stops",lineItem:"trip_line_items",assignment:"trip_truck_assignments",billing:"billings",storeCall:"store_calls",loadingReport:"loading_reports"};
 function collaborationCell(table:string,target:EditableCellTarget|null,status:"selected"|"editing"="selected"):CollaborationCell|null {
- if(!target||target.sourceField==="transmittal_ref")return null;
- const recordId={trip:target.tripId,stop:target.stopId,lineItem:target.lineItemId,assignment:target.assignmentId,billing:target.billingId,storeCall:target.storeCallId}[target.sourceEntity];
+ // Loading reports refresh through secure change signals; they have no approved
+ // per-record collaboration version. Do not invent a versioned socket identity.
+ if(!target||target.sourceEntity==="loadingReport"||target.sourceField==="transmittal_ref")return null;
+ const recordId={trip:target.tripId,stop:target.stopId,lineItem:target.lineItemId,assignment:target.assignmentId,billing:target.billingId,storeCall:target.storeCallId,loadingReport:target.loadingReportId}[target.sourceEntity];
  return recordId?{table,source:collaborationSources[target.sourceEntity],recordId,tripId:target.tripId,stopId:["stop","lineItem","storeCall"].includes(target.sourceEntity)?target.stopId:undefined,field:target.sourceField,status}:null;
 }
 
@@ -462,6 +470,7 @@ type SavedRowReconciliation = {
     assignmentId?: string;
     billingId?: string;
     storeCallId?: string;
+    loadingReportId?: string;
   };
   patch: ReportRow;
   version: number;
@@ -479,11 +488,13 @@ type EditingCell = {
   assignmentId?: string;
   billingId?: string;
   storeCallId?: string;
+  loadingReportId?: string;
   relationshipId?: string;
   originalRelationshipId?: string;
   relationshipOption?: RelationshipOption;
   value: string;
   originalValue: string;
+  originalTimestamp?:string;
   mentionProfileIds?: string[];
   mentionEventKey?: string;
   assignmentEventKey?: string;
@@ -537,6 +548,11 @@ function getEditableCellTarget(
   const recordId = row[definition.recordIdField];
   if (typeof recordId !== "string" || !recordId) return null;
   const targetIds: Partial<EditableCellTarget> = {};
+  if (definition.sourceEntity === "loadingReport") {
+    if (typeof row.trip_id !== "string" || !row.trip_id) return null;
+    targetIds.tripId = row.trip_id;
+    targetIds.loadingReportId = recordId;
+  }
   if (definition.sourceEntity === "trip") targetIds.tripId = recordId;
   if (definition.sourceEntity === "stop") {
     if (typeof row.trip_id !== "string" || !row.trip_id) return null;
@@ -574,6 +590,8 @@ function matchesEditedRecord(
   target: SavedRowReconciliation["target"],
 ): boolean {
   switch (target.sourceEntity) {
+    case "loadingReport":
+      return row.loading_report_id === target.loadingReportId && row.trip_id === target.tripId;
     case "trip":
       return row.trip_id === target.tripId;
     case "stop":
@@ -909,7 +927,7 @@ function ReportVisualCards({
                           {titleFor(column.key)}
                         </dt>
                         <dd className="mt-0.5 break-words text-xs text-slate-700">
-                          {displayValue(row[column.key], column.type) ||
+                          {displayValue(row[column.key], column.type,column.key) ||
                             "Not recorded"}
                         </dd>
                       </div>
@@ -1750,7 +1768,7 @@ export default function ReportDataView({
         ? new Date(rawCurrentText)
         : null;
     const currentText =
-      target.editor === "date"
+      isTripTimeField(columnKey)&&rawCurrentText&&manilaDateTime(rawCurrentText)?manilaDateTime(rawCurrentText).slice(11):target.editor === "date"
         ? rawCurrentText.slice(0, 10)
         : target.editor === "datetime" && currentDateTime &&
             !Number.isNaN(currentDateTime.getTime())
@@ -1770,12 +1788,14 @@ export default function ReportDataView({
       assignmentId: target.assignmentId,
       billingId: target.billingId,
       storeCallId: target.storeCallId,
+      loadingReportId: target.loadingReportId,
       relationshipId:
         typeof relationshipId === "string" ? relationshipId : undefined,
       originalRelationshipId:
         typeof relationshipId === "string" ? relationshipId : undefined,
       value: currentText,
       originalValue: currentText,
+      originalTimestamp:rawCurrentText,
       transmittalVersion: Number(row.transmittal_ref_version ?? 0),
       mentionProfileIds: [],
       assignmentEventKey:
@@ -2142,7 +2162,7 @@ export default function ReportDataView({
         cell.assignmentId,
         cell.billingId,
         cell.storeCallId,
-        cell.definition.sourceField,
+        cell.loadingReportId,        cell.definition.sourceField,
       ].join(":");
       if (seen.has(identity)) return [];
       seen.add(identity);
@@ -2303,6 +2323,8 @@ export default function ReportDataView({
         return false;
       }
       nextValue = definition.sourceEntity === "stop" && ["quantity", "total_cbm"].includes(definition.sourceField) ? textValue : parsed;
+    } else if (definition.editor === "datetime" && isTripTimeField(targetCell.field)&&textValue) {
+      try{nextValue=saveTripTime(targetCell.originalTimestamp,textValue);}catch(cause){setCellSaveState({rowKey:targetCell.rowKey,field:targetCell.field,status:"error",message:cause instanceof Error?cause.message:"Invalid time."});return false;}
     } else if (definition.editor === "datetime" && textValue) {
       const parsed = new Date(textValue);
       if (Number.isNaN(parsed.getTime())) {
@@ -2414,6 +2436,7 @@ export default function ReportDataView({
         assignmentId: targetCell.assignmentId,
         billingId: targetCell.billingId,
         storeCallId: targetCell.storeCallId,
+        loadingReportId: targetCell.loadingReportId,
       };
       reportEditDiagnostic("save request", {
         reportKey,
@@ -2431,7 +2454,9 @@ export default function ReportDataView({
           .filter(([key]) => !key.startsWith("_") || key === definition.sourceField)
           .map(([key, value]) => [key, diagnosticCellValue(key, value)])),
       });
-      if (definition.sourceEntity === "storeCall" && targetCell.storeCallId) {
+      if (definition.sourceEntity === "loadingReport" && targetCell.tripId && targetCell.loadingReportId) {
+        savedRecord = await updateLoadingReport(accessToken, targetCell.tripId, targetCell.loadingReportId, updatePayload);
+      } else if (definition.sourceEntity === "storeCall" && targetCell.storeCallId) {
         savedRecord = await updateStoreCallRecord(accessToken, targetCell.storeCallId, {
           ...updatePayload,
         });
@@ -2570,6 +2595,7 @@ export default function ReportDataView({
         assignmentId: targetCell.assignmentId,
         billingId: targetCell.billingId,
         storeCallId: targetCell.storeCallId,
+        loadingReportId: targetCell.loadingReportId,
       };
       const saveVersion = ++successfulSaveVersion.current;
       const reconciliation: SavedRowReconciliation = {
@@ -2864,10 +2890,10 @@ export default function ReportDataView({
         )}
         {toolbarLeading}
         {sharedDesign.feedback}
-        <span className="text-[10px] text-slate-500" role="status">{collaboration.connected?"Live collaboration":"Collaboration reconnecting"}</span>
+
         {collaboration.notice&&<div role="status" className="max-w-md rounded border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-900">{collaboration.notice.text}{collaboration.notice.latest!==undefined&&<span className="block">Latest persisted value: {String(collaboration.notice.latest??"(blank)")}</span>}<button type="button" onClick={collaboration.dismissNotice} className="ml-2 underline">Dismiss</button></div>}
         <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2 lg:flex-[1_1_36rem] lg:flex-nowrap">
-          <ColumnFinder key={reportKey} rowSearch={{value:search,placeholder:"Search rows or columns…",onSearch:value=>{setSearch(value);setAppliedSearch(value);setPage(1);}}} columns={columns.filter((column) => !(transactionView && column.key === "warehouse_code")).map((column) => ({ ...column, hidden: hiddenColumnKeys.has(column.key), index: renderedGridColumns.findIndex((item) => item.key === column.key) }))} viewport={tableViewportRef} getHeader={(key) => headerCellRefs.current.get(key)} onReveal={restoreReportColumn} />
+          <ColumnFinder tableKey={transactionView?"trips":reportKey} key={reportKey} rowSearch={{value:search,placeholder:"Search rows or columns…",onSearch:value=>{setSearch(value);setAppliedSearch(value);setPage(1);}}} columns={columns.filter((column) => !(transactionView && column.key === "warehouse_code")).map((column) => ({ ...column, hidden: hiddenColumnKeys.has(column.key), index: renderedGridColumns.findIndex((item) => item.key === column.key) }))} viewport={tableViewportRef} getHeader={(key) => headerCellRefs.current.get(key)} onReveal={restoreReportColumn} />
           {showReportPicker && (
             <label className="sr-only" htmlFor="report-select">
               Select report
@@ -3122,7 +3148,7 @@ export default function ReportDataView({
                         onCancel={() => undefined} />
                     ) : (
                       <input
-                        type={cell.definition.editor === "number" ? "number" : cell.definition.editor === "date" ? "date" : cell.definition.editor === "datetime" ? "datetime-local" : "text"}
+                        type={cell.definition.editor === "number" ? "number" : cell.definition.editor === "date" ? "date" : cell.definition.editor === "datetime" ? isTripTimeField(cell.field)&&manilaDateTime(cell.originalTimestamp??"")?"time":"datetime-local" : "text"}
                         placeholder={!cell.value ? `Enter ${column.title.toLowerCase()}` : undefined}
                         step={cell.definition.editor === "number" && cell.field === "page_no" ? "1" : "any"}
                         disabled={saving}
@@ -3174,7 +3200,7 @@ export default function ReportDataView({
         </div>
       ) : (
         <>
-          {viewMode === "table" && <ReportCellFormattingToolbar advanced selectionIsItalic={selectedFormats.length>0&&selectedFormats.every(f=>f.italic)} fontSize={selectedFormats[0]?.fontSize} fontFamily={selectedFormats[0]?.fontFamily} selectedCellCount={selectedFormatCellKeys.size} selectionIsBold={selectionIsBold} selectedTextColor={selectedTextColor} selectedBackgroundColor={selectedBackgroundColor} onApply={applyCellFormat} />}
+          {viewMode === "table" && <ReportCellFormattingToolbar advanced selectionIsItalic={selectedFormats.length>0&&selectedFormats.every(f=>f.italic)} selectionIsUnderlined={selectedFormats.length>0&&selectedFormats.every(f=>f.underline)} selectedCellCount={selectedFormatCellKeys.size} selectionIsBold={selectionIsBold} selectedTextColor={selectedTextColor} selectedBackgroundColor={selectedBackgroundColor} onApply={applyCellFormat} />}
           <div ref={tableViewportRef} onPaste={(event) => void handleReportPaste(event)} onCopy={handleReportCopy} className={`${viewMode === "table" ? REPORT_GRID_VIEWPORT_CLASS : "relative min-h-48 w-full min-w-0 max-w-full overflow-x-auto overscroll-x-contain"} w-full`}>
             {pinningNotice && <p role="status" className="sticky left-2 z-40 w-fit rounded-md bg-amber-50 px-2.5 py-1.5 text-xs text-amber-900 shadow-sm">{pinningNotice}</p>}
             {viewMode === "visual" ? (
@@ -3500,7 +3526,7 @@ export default function ReportDataView({
                                   <div className="grid min-w-[150px] gap-1">
                                   <ReportTextCellEditor
                                     value={editingCell.value}
-                                    type={editingCell.definition.editor === "number" ? "number" : editingCell.definition.editor === "date" ? "date" : editingCell.definition.editor === "datetime" ? "datetime-local" : "text"}
+                                    type={editingCell.definition.editor === "number" ? "number" : editingCell.definition.editor === "date" ? "date" : editingCell.definition.editor === "datetime" ? isTripTimeField(editingCell.field)&&manilaDateTime(editingCell.originalTimestamp??"")?"time":"datetime-local" : "text"}
                                     multiline={editingCell.definition.sourceField === "remarks"}
                                     label={`Edit ${column.title}`}
                                     placeholder={!editingCell.value ? `Enter ${column.title.toLowerCase()}` : undefined}
@@ -3562,7 +3588,7 @@ export default function ReportDataView({
                                       className="block truncate"
                                       title={displayValue(
                                         row[column.key],
-                                        column.type,
+                                        column.type,column.key,
                                       )}>
                                       {editableTarget?.editor === "boolean"
                                         ? row[column.key] === true ||
@@ -3571,7 +3597,7 @@ export default function ReportDataView({
                                           : "No"
                                         : displayValue(
                                             row[column.key],
-                                            column.type,
+                                            column.type,column.key,
                                           )}
                                     </span>
                                   )}
@@ -3589,9 +3615,9 @@ export default function ReportDataView({
                                   className="block truncate"
                                   title={displayValue(
                                     row[column.key],
-                                    column.type,
+                                    column.type,column.key,
                                   )}>
-                                  {displayValue(row[column.key], column.type)}
+                                  {displayValue(row[column.key], column.type,column.key)}
                                 </span>
                               )}
                               {isEditing &&

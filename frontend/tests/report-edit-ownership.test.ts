@@ -26,3 +26,16 @@ test("report identifiers target each physical stop after sorting and filtering; 
     assert.equal(getReportEditDefinition(report, "transaction_number", { trip_id: "trip-a", trip_stop_id: null })?.sourceEntity, "trip");
   }
 });
+
+test("loading timestamps resolve exact report identity, while unloading remains stop scoped", () => {
+  for (const report of ["combined", "dispatch-monitoring", "dispatch"] as const) {
+    for (const field of ["loading_start_at", "loading_finished_at"]) {
+      const definition = getReportEditDefinition(report, field)!;
+      assert.equal(definition.sourceEntity, "loadingReport");
+      assert.equal(definition.recordIdField, "loading_report_id");
+      assert.equal(definition.editor, "datetime");
+    }
+  }
+  assert.equal(getReportEditDefinition("combined", "start_unloading_time")?.sourceEntity, "stop");
+  assert.equal(getReportEditDefinition("combined", "finish_unloading_time")?.recordIdField, "trip_stop_id");
+});

@@ -1,5 +1,17 @@
 # Offload deletion PostgreSQL fixture
 
+## Planned-route proposal fixture (October 17 follow-up)
+
+Only a new disposable PostgreSQL18 database in a verified owned loopback cluster:
+tracking-schema.sql → original tracking base/atomic migrations →
+planned-routes-schema.sql → 2026_11_05_proposed_planned_routes.sql →
+planned-routes-check.sql. It checks unchanged remaining cache/RPCs, scope, missing
+coordinates, waypoint rejection, context/expiry/budget and zero GPS rows.
+`planned-routes-concurrency.cjs <planned_route_database> <verified_cluster_directory>`
+uses two local psql connections on port55443 and verifies the exact data directory
+before synthetic operations. One lease wins. Never point fixtures at Supabase;
+never rerun fixture setup on a populated database. See docs/planned-route-approval.md.
+
 Run only against a newly created disposable local PostgreSQL 18 cluster. The
 schema and assertion files create and delete synthetic records. Never point
 these commands at Supabase or an existing development database.
@@ -136,3 +148,34 @@ For isolated browser collaboration, start
 uses actual Socket.IO transport and spreadsheet editors. It never connects to
 production Supabase. It covers presence, retained drafts, conflicts, commit order,
 five-second persistence, reconnect and logout. Stop that fixture process afterward.
+
+
+## POD review activation fixture (review migration only)
+
+Use a NEW disposable PostgreSQL 18 database on the verified owned local cluster,
+127.0.0.1:55439, role fixture. Never run fixture setup/assertions on Supabase.
+Create the fixture auth.uid() stub if absent, then run with ON_ERROR_STOP=1:
+
+1. pod-review.sql (includes original notification table setup).
+2. ../../migrations/2026_10_31_proposed_pod_review.sql (exact approved file).
+3. pod-review-activation-check.sql.
+
+Do not include extraction-history, PDF, tracking or standalone read-grant proposals.
+The new check does not depend on them. It covers replay, conflict, exact stop,
+recipient, rejected/approved downstream stage preservation and notification rollback.
+The older pod-review-check.sql remains the four-proposal local design fixture;
+it is not the approved review-only activation suite. Do not rerun assertions on
+a previously used database. Synthetic activation databases were retained; the
+owned local cluster was stopped after verification.
+
+
+## Tracking/PDF activation fixtures
+
+Use a NEW disposable local database per suite, never Supabase. Verify the owned
+cluster path first. Run psql with ON_ERROR_STOP=1. Tracking: tracking-schema.sql,
+then approved tracking base and atomic migrations, then tracking-check.sql.
+PDF metadata: pdf-receipts-schema.sql, approved PDF migration, pdf-receipts-check.sql.
+The latter checks private bucket/cap, unchanged legacy metadata, per-stop duplicate
+content, sibling-stop independence and MIME/hash constraints. It models bucket
+metadata only, not the Supabase Storage upload engine. Retain these fixture databases
+for diagnosis; do not rerun setup over existing databases or point at live records.

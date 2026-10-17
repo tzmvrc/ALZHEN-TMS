@@ -22,7 +22,7 @@ export type OperationsEventRow = { id: string; source_type: OperationsSourceType
 export type OperationsReceipt = { id: string; file_name: string; mime_type: string; file_size_bytes: number; signed_url: string; received_at: string | null; created_at: string | null };
 export type OperationsReceiptEventType = "LOADING" | "UNLOADING" | "BACKLOAD" | "OFFLOAD";
 export type OperationsReceiptUpload = { id: string; trip_id: string; trip_stop_id: string | null; file_name: string; mime_type: string; file_size_bytes: number; uploaded_by: string; received_at: string | null; created_at: string | null };
-export type OperationsReportData = { trips: OperationsTrip[]; trip_options: OperationsTripOption[]; stops: OperationsStop[]; loading: LoadingReport[]; unloading: UnloadingReport[]; backloads: ScopeReport[]; offloads: ScopeReport[]; event_rows: OperationsEventRow[] };
+export type OperationsReportData = { trips: OperationsTrip[]; trip_options: OperationsTripOption[]; stops: OperationsStop[]; loading: LoadingReport[]; unloading: UnloadingReport[]; backloads: ScopeReport[]; offloads: ScopeReport[]; event_rows: OperationsEventRow[]; pagination?: {page:number;limit:number;total:number;totalPages:number} };
 
 const ROOT = "/reports/operations";
 export type OperationsReporter = { id: string; name: string; role: string };
@@ -32,11 +32,21 @@ const unwrap = <T,>(promise: Promise<ApiResponse<T>>): Promise<T> => promise.the
   return response.data;
 });
 
-export const fetchOperationsOverview = (token: string) => unwrap(apiGetCached<ApiResponse<OperationsReportData>>(`${ROOT}/overview`, token, 30_000));
-export const getCachedOperations = (token: string, assigned = false) => getCachedApiResponse<ApiResponse<OperationsReportData>>(`${ROOT}/${assigned ? "assigned" : "overview"}`, token, 5 * 60_000)?.data ?? null;
-export const preloadOperationsOverview = (token: string) => unwrap(apiGetCached<ApiResponse<OperationsReportData>>(`${ROOT}/overview`, token, 30_000, `${ROOT}/overview?preload=true`));
+// Enable only after approval and application of the Operations page projection.
+// The service-only pagination migration is deployed. Keep an explicit rollback
+// switch while making bounded reads the default for pages and background preload.
+export const OPERATIONS_PAGINATION_ENABLED = import.meta.env ? import.meta.env.VITE_OPERATIONS_PAGINATION !== "false" : false;
+export type OperationsPageOptions = {page?:number;limit?:number;search?:string;filter?:string;sortBy?:string;sortOrder?:"asc"|"desc"};
+export function operationsPageEndpoint(options:OperationsPageOptions={}) {
+  const query=new URLSearchParams({page:String(options.page??1),limit:String(options.limit??50),search:options.search??"",filter:options.filter??"All",sort_by:options.sortBy??"date",sort_order:options.sortOrder??"desc"});
+  return `${ROOT}/page?${query}`;
+}
+export const fetchOperationsPage=(token:string,options:OperationsPageOptions={})=>unwrap(apiGetCached<ApiResponse<OperationsReportData>>(operationsPageEndpoint(options),token,30_000));
+export const fetchOperationsOverview = (token: string,options:OperationsPageOptions={}) => OPERATIONS_PAGINATION_ENABLED ? fetchOperationsPage(token,options) : unwrap(apiGetCached<ApiResponse<OperationsReportData>>(`${ROOT}/overview`, token, 30_000));
+export const getCachedOperations = (token: string, assigned = false,options:OperationsPageOptions={}) => getCachedApiResponse<ApiResponse<OperationsReportData>>(assigned?`${ROOT}/assigned`:OPERATIONS_PAGINATION_ENABLED?operationsPageEndpoint(options):`${ROOT}/overview`, token, 5 * 60_000)?.data ?? null;
+export const preloadOperationsOverview = (token: string) => OPERATIONS_PAGINATION_ENABLED ? fetchOperationsPage(token) : unwrap(apiGetCached<ApiResponse<OperationsReportData>>(`${ROOT}/overview`, token, 30_000, `${ROOT}/overview?preload=true`));
 export const fetchAssignedOperations = (token: string) => unwrap(apiGetCached<ApiResponse<OperationsReportData>>(`${ROOT}/assigned`, token, 15_000));
-export const fetchTripOperations = (token: string, tripId: string) => unwrap(apiGetCached<ApiResponse<OperationsReportData>>(`${ROOT}/trips/${encodeURIComponent(tripId)}`, token, 30_000));
+export const fetchTripOperations = (token: string, tripId: string) => unwrap(apiGetCached<ApiResponse<OperationsReportData>>(`${ROOT}/trips/${encodeURIComponent(tripId)}`, token, 30_000,undefined,20_000));
 
 function invalidateOperations(tripFieldsChanged = false) {
   invalidateApiCache(`${ROOT}/`);
@@ -51,6 +61,13 @@ function invalidateOperations(tripFieldsChanged = false) {
 
 export function invalidateOperationsReportsCache() {
   invalidateApiCache(`${ROOT}/`);
+}
+
+/** Update an existing physical report only; never create one from a report cell. */
+export async function updateLoadingReport(token: string, tripId: string, reportId: string, values: Partial<Pick<LoadingReport, "warehouse_arrival_at" | "loading_start_at" | "loading_finished_at">>) {
+  const response = await unwrap(apiPatch<ApiResponse<LoadingReport>>(`${ROOT}/loading/${encodeURIComponent(tripId)}/reports/${encodeURIComponent(reportId)}`, values, token));
+  invalidateOperations(true);
+  return response;
 }
 
 export async function saveLoadingReport(token: string, tripId: string, values: Partial<Pick<LoadingReport, "warehouse_arrival_at" | "loading_start_at" | "loading_finished_at">>) {

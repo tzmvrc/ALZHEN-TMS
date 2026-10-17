@@ -305,6 +305,8 @@ export default function ResourceView({
     setLocalTripStopId(null);
   }, [id]);
   const openTrip = (tripId: string, stopId?: string | null) => {
+    if(onNavigate){onNavigate(`trip-detail:${tripId}:dispatches${stopId?`:stop:${stopId}`:""}`);return;}
+
     setLocalTripId(tripId);
     setLocalTripStopId(stopId ?? null);
     window.scrollTo({ top: 0 });

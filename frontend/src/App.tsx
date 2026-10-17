@@ -65,6 +65,8 @@ function App() {
         }
       />
 
+      <Route path="/trips/:tripId" element={<AdminRoute><DashboardPage /></AdminRoute>} />
+
       <Route
         path="/login"
         element={

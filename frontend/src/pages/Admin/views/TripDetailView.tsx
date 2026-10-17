@@ -707,6 +707,10 @@ export default function TripDetailView({
     void (async () => {
       try {
         const tripResponse = await fetchTripDetail(accessToken, tripId);
+        if(!active)return;
+        const cached=previousDetail.current.scope===scope?previousDetail.current.value:null;
+        // Render authorized core data without waiting for optional section/report reads.
+        setDetailState({scope,value:{stops:[],lineItems:[],events:[],operations:{trips:[],trip_options:[],stops:[],loading:[],unloading:[],backloads:[],offloads:[],event_rows:[]},bookingRows:[],bookingError:null,truckCapacityCbm:null,truckCapacityError:null,sectionErrors:[],...cached,trip:{...tripResponse.trip,warehouse_name:tripResponse.warehouse?.name,warehouse_code:tripResponse.warehouse?.code,trip_type:tripResponse.trip_type?.name}}});
         const [stopsResult, itemsResult, eventsResult, operationsResult] = await Promise.allSettled([
           fetchTripStops(accessToken, tripId),
           fetchTripLineItems(accessToken, tripId),
@@ -748,7 +752,7 @@ export default function TripDetailView({
         try {
           const bookingResponse = await apiGetCached<ApiResponse<BookingPage>>(
             `/reports/trip-booking?${params.toString()}`,
-            accessToken,
+            accessToken,undefined,undefined,20_000,
           );
           if (!bookingResponse.success || !bookingResponse.data) {
             throw new Error(bookingResponse.message ?? "Trip report enrichment unavailable.");
@@ -757,7 +761,7 @@ export default function TripDetailView({
           for (let page = 2; page <= bookingResponse.data.pagination.totalPages; page += 1) {
             params.set("page", String(page));
             const next = await apiGetCached<ApiResponse<BookingPage>>(
-              `/reports/trip-booking?${params.toString()}`, accessToken,
+              `/reports/trip-booking?${params.toString()}`, accessToken,undefined,undefined,20_000,
             );
             if (!next.success || !next.data) throw new Error(next.message ?? "Trip report enrichment unavailable.");
             bookingRows.push(...next.data.rows);
@@ -947,6 +951,7 @@ export default function TripDetailView({
 
   return (
     <div className="space-y-4">
+      {isLoading&&detail&&<p role="status" className="text-xs text-slate-500">Loading remaining trip details…</p>}
       {error&&detail&&<p role="alert" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">{error} Previous trip data is retained. <button type="button" className="underline" onClick={()=>setRetry(value=>value+1)}>Retry</button></p>}
       {/* Top bar */}
       <header className="flex flex-wrap items-center gap-x-4 gap-y-3">

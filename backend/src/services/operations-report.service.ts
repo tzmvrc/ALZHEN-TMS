@@ -1,3 +1,4 @@
+import { operationsPageRequest, parseOperationsPageQuery } from "./operations-pagination.js";
 import { randomUUID } from "node:crypto";
 import { supabaseAdmin } from "../config/supabase.js";
 import { imageMime } from "../models/clientwebsite.validation.js";
@@ -138,19 +139,20 @@ async function getDriverTripIds(profileId: string) {
   return ids.filter((id) => active.has(id));
 }
 
-async function readReportCollections(tripIds?: string[], activeOnly = false) {
+async function readReportCollections(tripIds?: string[], activeOnly = false, sources?: Record<string, string[]>) {
   if (tripIds && tripIds.length === 0) {
     return { trips: [], stops: [], loading: [], unloading: [], backloads: [], offloads: [], conversions: [] };
   }
   const byTrip = (query: any) => tripIds ? query.in("trip_id", tripIds) : query;
+  const reports = (table: string) => sources && !sources[table]?.length ? Promise.resolve([]) : readPaged<Record<string, unknown>>(table, "*", (q) => sources ? byTrip(q).in("id", sources[table]) : byTrip(q));
   const [trips, stops, loading, unloading, backloads, offloads, conversions] = await Promise.all([
     // `trips` is keyed by `id`; only child/report tables use `trip_id`.
     tripIds ? readPaged<Trip>("trips", OPERATIONAL_TRIP_SELECT, (query) => query.in("id", tripIds)) : readPaged<Trip>("trips", OPERATIONAL_TRIP_SELECT, (q) => q.order("created_at", { ascending: false })),
     tripIds ? readPaged<Stop>("trip_stops", STOP_SELECT, byTrip) : readPaged<Stop>("trip_stops", STOP_SELECT),
-    readPaged<Record<string, unknown>>("loading_reports", "*", byTrip),
-    readPaged<Record<string, unknown>>("unloading_reports", "*", byTrip),
-    readPaged<Record<string, unknown>>("backloads", "*", byTrip),
-    readPaged<Record<string, unknown>>("offloads", "*", byTrip),
+    reports("loading_reports"),
+    reports("unloading_reports"),
+    reports("backloads"),
+    reports("offloads"),
     readPaged<Record<string, unknown>>("operations_report_conversions", "id, source_type, source_id, target_type, target_id, trip_id, trip_stop_id", tripIds ? (q) => q.in("trip_id", tripIds) : undefined),
   ]);
   const tripSet = tripIds ? new Set(tripIds) : null;
@@ -315,6 +317,35 @@ export async function convertOperationsReport(actor: ReportActor, input: unknown
   return data;
 }
 
+/** Query page identities in PostgreSQL, then hydrate only their related trips/reports. */
+export async function getOperationsPage(actor: ReportActor, input: Record<string, unknown>) {
+  assertOperationsManagementRole(actor);
+  const options = parseOperationsPageQuery(input);
+  const { data, error, count } = await operationsPageRequest(supabaseAdmin, options);
+  if (error) {
+    if (["42P01", "PGRST205"].includes(error.code)) throw new ApiError("Operations pagination is not configured. Apply the reviewed pagination proposal before enabling this feature.", 503, "OPERATIONS_PAGE_NOT_CONFIGURED");
+    throwDb(error, "read Operations page");
+  }
+  if (count === null) throw new ApiError("Operations pagination count is unavailable.", 503, "OPERATIONS_PAGE_COUNT_FAILED");
+  const identities = data ?? [];
+  const sources: Record<string, string[]> = {};
+  const tables: Record<string, string> = {LOADING:"loading_reports",UNLOADING:"unloading_reports",BACKLOAD:"backloads",OFFLOAD:"offloads"};
+  for (const row of identities) {
+    if (!Object.hasOwn(tables, row.source_type)) throw new ApiError("Unexpected Operations page identity.", 503, "OPERATIONS_PAGE_IDENTITY_FAILED");
+    (sources[tables[row.source_type]] ??= []).push(row.source_record_id);
+  }
+  const collections = await readReportCollections([...new Set<string>(identities.map(row => row.trip_id))], false, sources);
+  const built = await buildEventRows(collections);
+  const byId = new Map(built.event_rows.map(row => [`${row.source_type}:${row.source_record_id}`, row]));
+  const event_rows = identities.flatMap(identity => {
+    const row = byId.get(`${identity.source_type}:${identity.source_record_id}`);
+    // A concurrent deletion/conversion may remove a selected source. Never replace
+    // it with a sibling or a different physical type; the next refresh reconciles.
+    return row ? [{...row, dr_number:identity.dr_number,quantity:identity.quantity,total_cbm:identity.total_cbm,route:identity.route,date:identity.date,reported_by:identity.reported_by}] : [];
+  });
+  return {...collections,...built,event_rows,pagination:{page:options.page,limit:options.limit,total:count,totalPages:Math.max(1,Math.ceil(count/options.limit))}};
+}
+
 export async function getOperationsOverview(actor: ReportActor) {
   if (actor.role.toUpperCase() !== "ADMIN" && actor.role.toUpperCase() !== "STAFF") throw new ApiError("Access denied.", 403, "REPORT_ACCESS_DENIED");
   const collections = await readReportCollections();
@@ -360,12 +391,16 @@ export async function getTripOperations(actor: ReportActor, tripId: string) {
   return { ...collections, ...await buildEventRows(collections) };
 }
 
-export async function saveLoadingReport(actor: ReportActor, tripId: string, input: unknown) {
+export async function saveLoadingReport(actor: ReportActor, tripId: string, input: unknown, expectedReportId?: string) {
+  const expectedId = expectedReportId === undefined ? undefined : requireReportUuid(expectedReportId, "loading_report_id");
   const trip = await getTrip(actor, tripId);
   await assertActorTripAccess(actor, trip);
   const values = validateLoadingInput(input);
   const { data: current, error: readError } = await supabaseAdmin.from("loading_reports").select(LOADING_SELECT).eq("trip_id", trip.id).maybeSingle();
   if (readError) throwDb(readError, "read loading");
+  if (expectedId && current?.id !== expectedId) {
+    throw new ApiError("This Loading Report no longer belongs to the selected trip. Refresh before editing.", 409, "LOADING_REPORT_SCOPE_CONFLICT");
+  }
   if (current) {
     await assertReportSourceNotConverted("LOADING", current.id);
     const { data, error } = await supabaseAdmin.from("loading_reports").update(values).eq("id", current.id).eq("trip_id", trip.id).select(LOADING_SELECT).maybeSingle();

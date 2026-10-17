@@ -1,11 +1,11 @@
 import { supabaseAdmin,supabaseAuth } from "../config/supabase.js";
 import { assertActiveTruckerSession,assertAdminStaffSession } from "./app-session.service.js";
-export type SocketActor={id:string;role:string;name:string;expiresAt:number};
-export async function authenticateCollaboration(token:unknown,sessionId:unknown):Promise<SocketActor>{
+export type SocketActor={id:string;role:string;name:string;expiresAt:number;avatarUrl?:string|null};
+export async function authenticateCollaboration(token:unknown,sessionId:unknown,includeAvatar=true):Promise<SocketActor>{
  if(typeof token!=="string"||token.length>10000||typeof sessionId!=="string"||sessionId.length>128)throw Error("Authentication required");
  const {data,error}=await supabaseAuth.auth.getUser(token);
  if(error||!data.user)throw Error("Invalid or expired authentication");
- const profile=await supabaseAdmin.from("profiles").select("id,role,first_name,last_name").eq("id",data.user.id).maybeSingle();
+ const profile=await supabaseAdmin.from("profiles").select("id,role,first_name,last_name,profile_picture_path").eq("id",data.user.id).maybeSingle();
  if(profile.error||!profile.data||!["ADMIN","STAFF","TRUCKER"].includes(profile.data.role))throw Error("Account unavailable");
  const role=profile.data.role;
  // Expiry is used only after Supabase has validated the JWT signature/issuer.
@@ -14,7 +14,13 @@ export async function authenticateCollaboration(token:unknown,sessionId:unknown)
  let expiresAt=expiry*1000;
  if(role==="TRUCKER")await assertActiveTruckerSession(data.user.id,sessionId);
  else expiresAt=Math.min(expiresAt,Date.parse((await assertAdminStaffSession(data.user.id,role,sessionId)).expiresAt));
- return {id:data.user.id,role,name:[profile.data.first_name,profile.data.last_name].filter(Boolean).join(" ").slice(0,100)||"Team member",expiresAt};
+ const path=profile.data.profile_picture_path;
+ let avatarUrl:string|null=null;
+ if(includeAvatar&&typeof path==="string"&&path){
+  if(/^https:\/\//i.test(path))avatarUrl=path;
+  else if(!/^https?:/i.test(path)){try{const signed=await supabaseAdmin.storage.from("profile-pictures").createSignedUrl(path,3600);avatarUrl=signed.data?.signedUrl??null;}catch{/* Avatar failure must not prevent authorized access. */}}
+ }
+ return {id:data.user.id,role,name:[profile.data.first_name,profile.data.last_name].filter(Boolean).join(" ").slice(0,100)||"Team member",expiresAt,avatarUrl};
 }
 export async function canJoinTrip(actor:SocketActor,tripId:string){
  const trip=await supabaseAdmin.from("trips").select("id").eq("id",tripId).maybeSingle();

@@ -22,7 +22,7 @@ async(page)=>{
    else if(url.pathname.endsWith('/dispatch-monitoring/columns'))data={columns:[{key:'dispatch_number',title:'Dispatch Number',type:'text'},{key:'remarks',title:'Remarks',type:'text'}]};
    else if(url.pathname.endsWith('/dispatch-monitoring')){counts.reportReads++;data={rows:[{trip_id:trip,trip_stop_id:stop,dispatch_number:'DSP-FIXTURE',remarks:'Fixture remarks'}],pagination:{page:1,limit:50,total:1,totalPages:1}};}
    await r.fulfill({status:200,contentType:'application/json',body:JSON.stringify({success:true,data})});
-  });await p.goto('http://localhost:5173/login');await mount(p,actor);return p;
+  });await p.goto('http://localhost:5173/tests/table-fixture.html');await mount(p,actor);return p;
  };
  const cell=p=>p.locator('#design-fixture td[data-report-column-key=dispatch_number]');
  const style=async(p,property,value)=>p.waitForFunction(({property,value})=>{const cell=document.querySelector('#design-fixture td[data-report-column-key=dispatch_number]');return cell&&getComputedStyle(cell)[property]===value;},{property,value});
@@ -31,12 +31,12 @@ async(page)=>{
   const admin=await make('admin'),staff=await make('staff');await cell(admin).waitFor();await cell(staff).waitFor();await admin.waitForTimeout(400);
   await cell(admin).click();await cell(admin).locator('input').press('Escape');await admin.locator('#design-fixture').getByRole('button',{name:'Bold selected cells',exact:true}).click();await style(staff,'fontWeight','700');
   await cell(staff).click();await cell(staff).locator('input').fill('UNSAVED-DRAFT');
-  await admin.locator('#design-fixture').getByRole('combobox',{name:'Font size',exact:true}).selectOption('16');await admin.waitForTimeout(400);
+  await admin.locator('#design-fixture').getByRole('button',{name:'Italic selected cells',exact:true}).click();await admin.waitForTimeout(400);
   if(await cell(staff).locator('input').inputValue()!=='UNSAVED-DRAFT')throw Error('Appearance event erased draft');
-  await cell(staff).locator('input').press('Escape');await style(staff,'fontSize','16px');
+  await cell(staff).locator('input').press('Escape');await style(staff,'fontStyle','italic');
   const search=admin.locator('#design-fixture').getByRole('combobox',{name:'Search rows or columns',exact:true});const before=counts.reportReads;await search.fill('Remarks');await admin.getByRole('option',{name:'Remarks',exact:true}).click();await admin.waitForTimeout(450);if(counts.reportReads!==before)throw Error('Column search filtered report rows');
   await search.fill('DSP');await search.press('Enter');await admin.waitForTimeout(450);if(counts.reportReads<=before)throw Error('Row search did not query server');
-  await staff.reload();await mount(staff,'staff');await style(staff,'fontWeight','700');await style(staff,'fontSize','16px');
-  if(errors.length)throw Error(errors.join('; '));return {isolated:true,actualSocketTransport:true,roles:['ADMIN','STAFF'],sharedBold:true,sharedFontSize:true,refreshPersistence:true,draftPreserved:true,columnSearchDoesNotFilter:true,rowSearchQueriesServer:true,...counts,errors};
+  await staff.reload();await mount(staff,'staff');await style(staff,'fontWeight','700');await style(staff,'fontStyle','italic');
+  if(errors.length)throw Error(errors.join('; '));return {isolated:true,actualSocketTransport:true,roles:['ADMIN','STAFF'],sharedBold:true,sharedItalic:true,refreshPersistence:true,draftPreserved:true,columnSearchDoesNotFilter:true,rowSearchQueriesServer:true,...counts,errors};
  }finally{await Promise.all(contexts.map(c=>c.close()));}
 }

@@ -174,3 +174,142 @@ dispatch/DR/quantity and all other business fields were not edited. The test cel
 metadata was removed through the authorized API afterward; revision advanced
 from 3 to 8 and width remained 178. Real STAFF-role format testing, remote
 resize during drag, token-refresh/revocation and real Redis delivery remain.
+
+## Phase D viewer rosters (October 17, 2026)
+
+`table:viewers` is separate from cell presence. An authorized `room:join` sends
+a roster of distinct profile IDs with names, signed avatar URLs and colors.
+Redis adapter `fetchSockets` aggregates tabs/instances; no database table is used.
+`table:heartbeat` refreshes membership; a silent socket expires after 45 seconds.
+`table:expired` lets an active client rejoin through authorization. Disconnect and
+`room:leave` update the previous table. Logout clears the frontend roster. A
+server-initiated disconnect gets one delayed reconnect attempt; invalid credentials
+remain rejected. Existing network retry and token-change initialization remain.
+
+Only Admin/Staff may join table rooms. `users:staff` requires ADMIN. Flexible table
+joins/rechecks reuse existing table view permissions. Roster payloads omit email,
+role, expiry, private profile paths and draft values. The existing profile-picture
+bucket signs avatar access; no public bucket/grant/policy was added.
+
+The toolbar control shows three overlapping avatars and +N overflow. The popover
+includes all current viewers, including self. This is advisory presence, not a
+lock or persisted edit. Isolated real-transport/browser tests cover role denial,
+multi-tab deduplication, table isolation, refresh, disconnect/reconnect, forced
+server disconnect and silent expiry. Real two-ADMIN roster/image/fallback was
+observed; real STAFF and multi-instance Redis remain unverified.
+
+
+### Loading milestone invalidation (Phase D.2, October 17, 2026)
+
+Loading Start/Finish now save an existing physical loading_reports record using
+both report and trip IDs. loading_reports is a dependency of Combined/Trips,
+Dispatch Monitoring and Dispatch pages; its existing secure change signal clears
+affected cache entries and queues draft-safe refresh. These timestamps are
+trip-shared (UNIQUE trip_id); unloading remains stop-scoped. No new publication,
+grant, policy or migration was applied. Loading reports have no per-record
+collaboration version, so these new cells do not announce a fabricated versioned
+socket commit/cell-presence identity. Existing table-viewer presence is unchanged.
+An isolated actual-editor browser verified refresh deferral during an unsaved
+draft, followed by the current authoritative response after Escape, five seconds
+and reload. This is not evidence of live two-account timestamp writes.
+
+## Phase D.3 — management design and paged Operations (October 17, 2026)
+
+Users and master-data grids now consume the existing shared column order, color,
+visibility and left/right pin metadata as well as widths. Their cells keep stable
+physical keys when reordered; sticky offsets use current visible pinned widths.
+The common hook defers both design and width snapshots during editors/modals and
+resize drags. Existing per-column CAS errors/retry remain. An isolated real
+Socket.IO Admin/Staff fixture verified remote order/color/visibility/pins, reload,
+draft preservation and deferred remote design during a drag.
+
+Flexible Tables retain their existing definition-owned order/visibility and
+manage authorization. Colors/pins use the same column's versioned settings rather
+than a second layout definition. Existing flex_columns change signals refresh
+authorized peers through the draft-safe gate; shared widths remain in the
+existing company layout service. No font controls, grants or tables were added.
+
+The new Operations page path uses the existing offload/report change signals and
+API cache prefixes; no new Realtime channels/publication changes are needed.
+Its actual-screen isolated fixture verified page-scoped selection, deletion page
+correction, remote data refresh and preservation of an active remarks draft.
+The SQL projection is still proposal-only; enable VITE_OPERATIONS_PAGINATION only
+after explicit approval, application and read-only verification. This does not
+constitute authenticated live pagination or two-account production verification.
+
+
+## Operations pagination activation (October 17, 2026)
+
+Supabase migration `20261017011210` applied the exact approved Operations SQL.
+The page API is now the default for management navigation and preload; explicit
+`VITE_OPERATIONS_PAGINATION=false` provides rollback. Existing report invalidation
+prefixes and draft gates are retained. No publication, socket rooms or RLS
+changes were required. The 102-record actual-screen fixture passed without
+overriding the feature flag, including remote refresh during an active draft.
+This supersedes the proposal-only status above.
+
+POD expansion inspection: trip_images, trip_events and admin_notifications are
+published. pod_records is not directly published but has the existing restricted
+admin_change_signal trigger, as do trip_images and trip_events. Publication
+changes are not assumed necessary. service_role currently lacks base POD SELECT
+and all write privileges; browser access must not be broadened. Approval/
+rejection audit, transactional notification deduplication, PDF intake and GPS
+accuracy/capture ordering still require separate implementation and approved
+schema changes. Existing OCR text review is not POD approval.
+
+
+## POD review preparation and trucker notifications (October 17, 2026)
+
+No Supabase publication, grants or policies were changed. Read-only inspection
+confirmed admin_notifications is already published with authenticated SELECT
+restricted by recipient_profile_id=auth.uid(). Receipt/POD writes already emit
+restricted admin change signals; new audit/extraction/location tables are not
+published by the proposals.
+
+The existing privileged backend channel now consumes notification changes and
+emits only a notice-ID/revision invalidation to the authenticated user:<recipient> room.
+The frontend uses the existing Socket.IO connection and fetches only its own
+protected notification API data. No message, image path or OCR travels in the
+socket signal. Trucker reads/read-status writes now use the same recipient-scoped
+controllers as staff; JWT/app-session role restrictions remain. No client-supplied
+recipient ID is accepted. Duplicate events are deduplicated; reconnect causes
+notification revalidation without reloading assignments/dashboard/routes.
+
+Isolated real Socket.IO verified target recipient delivery, no unrelated recipient
+leak, no sensitive payload and duplicate-event suppression. Browser fixture verified
+1 initial notification read, 0 extra cached-open reads, 1 read for a burst of new
+signals, mark-read and Escape. These are fixture measurements, not live-session
+latency claims. Approval itself remains disabled pending the exact POD review SQL
+approval/application. Its proposed atomic notification insert emits only after
+commit; rollback cannot produce a false successful notification.
+
+Tracking remains architecture/preparation only: the future endpoint must emit
+minimal assignment/revision changes to authorized trip/management rooms, fetch
+coordinates through protected APIs, and keep marker updates separate from road
+geometry. No broad direct location SELECT/publication is proposed.
+
+
+## POD review activation (October 17, 2026)
+
+Supersedes the proposal-only/disabled review status above: exact approved review
+SQL SHA-256 `472F3590BEA5CBA08667729D274C6163BEC742CEF1A93B4E1E25425CFC3C36BF`
+applied as Supabase migration `20261017022906`. Live RPC/audit/defaults/grants and
+unchanged business hashes/private bucket/publications verified read-only. Local
+backend POD_REVIEW_ENABLED=true; rollback false plus restart. Existing receipt
+controls and recipient-only notification transport are reused; no new channel,
+browser grant or Storage setting. Full activation evidence/tests and live acceptance
+limitations are in docs/tms-table-overhaul-progress.md. Controlled tabs are logged
+out; no production decision or notification delivery is claimed. PDF, durable
+extraction and tracking proposals remain unapplied. No Gemini retries.
+
+## Gated tracking transport (October 17, 2026)
+
+The existing coordinator consumes trackingEvents only after confirmed GPS/stop/
+route persistence and sends `tracking:changed` with assignment ID to management.
+No coordinates, credentials, new room or direct browser database grant. Existing
+Redis adapter distributes across replicas. Management consumers use bounded
+token-scoped API reads; 15-second polling recovers missed events. Source context
+changes wake the route worker; API hides obsolete geometry. Cell drafts remain
+independent of marker updates. No new publication or live location event enabled:
+TRACKING_ENABLED remains false, schema/RPC proposals unapplied. See
+tracking-pdf-activation.md for exact approvals, evidence and remaining acceptance.

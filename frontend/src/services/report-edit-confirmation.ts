@@ -8,13 +8,14 @@ type Target = {
   assignmentId?: string;
   billingId?: string;
   storeCallId?: string;
+  loadingReportId?: string;
 };
 
 /** A successful HTTP response alone is not confirmation of this cell's write. */
 export function confirmReportCellWrite(record: Record<string, unknown>, target: Target, field: string, requested?: {value: unknown; editor: ReportEditor}): unknown {
   const id = {
     trip: target.tripId, stop: target.stopId, lineItem: target.lineItemId,
-    assignment: target.assignmentId, billing: target.billingId, storeCall: target.storeCallId,
+    assignment: target.assignmentId, billing: target.billingId, storeCall: target.storeCallId, loadingReport: target.loadingReportId,
   }[target.sourceEntity];
   if (!id || record.id !== id || !Object.hasOwn(record, field) || record[field] === undefined) {
     throw new Error("The server did not confirm this cell's saved record and value. Your draft is retained; refresh to verify before retrying.");

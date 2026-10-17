@@ -1756,3 +1756,1434 @@ Redis cross-instance deployment and token-revocation tests are still unverified.
    password enforcement and remaining global UI requirements. Prepare exact SQL
    and obtain fresh approval for any new live database change.
 5. No production business data deletion or test record creation; no commit/push.
+
+## Phase 2B.5-D.1 checkpoint — Viewer presence, Users and time cells (October 17, 2026)
+
+This is a partial Phase D checkpoint. Operations server pagination and the
+remaining management-table design controls are NOT complete.
+
+### Implemented
+
+- Removed the visible “Live collaboration” status from the report toolbar.
+  Cell presence, persistence confirmation, conflict notices, Socket.IO and durable
+  Supabase invalidation remain. Removed font-family/size selectors; saved font
+  metadata and rendering remain unchanged. Bold, italic, underline and colors
+  remain supported; underline has an explicit toggle in standard report grids.
+- Added the shared `TableViewers` control immediately left of unified search.
+  Trips, standard reports, Operations, Tracker and common management toolbars use
+  it. Three overlapping avatars, initial/image-error fallback, +N, full-name
+  popover, outside click and Escape are supported. The current user is included.
+- Viewer presence is separate from cell selection/conflict state. Existing
+  authenticated Socket.IO rooms carry metadata only: table and user ID, display
+  name, avatar URL and color. No draft text, email, role or profile payload is
+  broadcast. Existing private profile-picture signing is reused at connection
+  authentication, not on every heartbeat/session check.
+- Backend room allowlist enforces Admin/Staff access. Admin/Staff profiles tab
+  remains ADMIN-only; flexible table joins use the existing getTableAccess(view)
+  permission check and are rechecked during session validation. Unknown rooms and
+  Trucker table-room requests are denied. No new database tables/grants/policies.
+- Roster aggregation uses adapter fetchSockets, so multiple tabs for the same
+  profile count once and Redis-backed instances can share membership. Join/leave,
+  disconnect and heartbeats update rosters; silent viewers expire after 45 seconds.
+  Expired active clients rejoin through the same authorization check. Socket.IO
+  transport recovery remains; server-initiated disconnects retry once after 1.5s
+  with the current credentials. Logout cancels that retry. Invalid credentials
+  still fail server authentication; this does not bypass midnight/single-device
+  session policies. Actual multi-instance Redis delivery remains unverified.
+- Users table remounts across account/token/role boundaries, retains token-scoped
+  search/category/status/assignment/page preferences, and displays cached empty
+  results without briefly replacing them with skeleton rows. Existing cached
+  lists/details and mutation/Realtime invalidation are reused. Refresh failures
+  retain visible data. No new user-data cache or business write endpoint.
+- Four milestone columns display time only, in Asia/Manila, e.g. `8:05 AM` and
+  `11:45 PM`, including report Excel export. Existing editable unloading cells use
+  time inputs for populated timestamps, preserving each event's calendar date,
+  seconds and milliseconds. Blank timestamps require an explicit Manila date/time;
+  no “today” default is invented. Enter/blur, Escape, canonical confirmation and
+  exact stop ownership are preserved. Loading milestones currently remain
+  read-only in Trips/standard grids because no safe report-cell write mapping was
+  present; their existing Operations update forms remain available. Finishing a
+  loading-cell mapping is explicitly outstanding, not silently routed to a stop.
+- Added protected `/trips/:tripId` route and optional `?stop=<id>` context. Existing
+  table/details callbacks navigate by physical trip ID. Browser history derives
+  the selected trip from URL parameters; local main-section state no longer
+  retains a detail ID after Back. No transient state is required for direct links.
+- Trip Details renders authorized core trip data before optional enrichment,
+  retains cached sections while refreshing and uses bounded 20-second read
+  timeouts for its core/child/operational/booking reads. Existing cached detail,
+  forbidden-data eviction and error/retry behavior remain. This changes no write
+  timeout or mutation semantics.
+
+### Live inspection and database safety
+
+Read-only Supabase metadata confirmed loading_reports.loading_start_at and
+loading_finished_at, and trip_stops.start_unloading_time/finish_unloading_time,
+are timestamptz. Profiles already has profile_picture_path. loading_reports,
+trip_stops and admin_change_signals are published; layout invalidation continues
+through the existing secure signal bridge. No SQL, migration, grant, RLS,
+publication, Storage-object or operational-record mutation was performed.
+Existing approved/applied Phase C migrations were not repeated.
+
+### Verification
+
+- Backend full suite: 121 passed; TypeScript build passed.
+- Frontend full suite: 65 passed; TypeScript and Vite production build passed.
+  Existing >500 kB bundle warning remains.
+- Targeted lint passes for new/changed viewer/auth/socket/time/Users/report code.
+  HEAD comparison confirms existing baseline errors in DashboardPage (2 effect
+  state), ResourceView (1 effect state), flexible-table.service (4 explicit any).
+  Previously documented AuthContext/Tracker baseline issues remain; none suppressed.
+- Actual Socket.IO transport tests: Admin/Staff authorization, self inclusion,
+  table separation, multi-tab deduplication, unknown/Trucker denial, disconnect
+  cleanup, and silent-member expiry with an active heartbeat passed.
+- Isolated browser viewer test passed: synthetic Admin and Staff, self/name
+  popover, switching tables, same-user extra tab, refresh, disconnect/reconnect and
+  forced server disconnect recovery. No production data calls/writes.
+- Avatar SSR test covers three circles/+2 overflow, initial fallback and image
+  rendering. Live roster showed two different authenticated ADMIN profiles, one
+  signed profile image and one initial fallback; leaving/rejoining Trips updated
+  the other session. The user described the sessions as having the same Admin
+  permissions; a real distinct STAFF role was not verified. A live full reload
+  stalled in data loading, so it is not reported as passing authenticated E2E.
+- Users isolated browser: 3 initial data reads, 0 additional reads on cached
+  navigation, search retained. Existing cache/session/invalidation unit tests pass.
+- Time isolated browser: actual editor, one intercepted exact-stop write,
+  `11:45 PM` -> `11:50 PM`, original date/seconds retained, midnight-crossing finish
+  unchanged, sibling stop untouched. Unit tests cover null, noon/midnight, invalid
+  times/dates and explicit dates for empty values. No production timestamp edits.
+- Actual App/router + dashboard navigation with isolated auth/content APIs:
+  trip URL, stop context, Back/Forward and direct refresh passed. Trip Details
+  cache fixture separately passed initial skeleton, cached navigation (0 extra
+  reads), refresh-failure retention and forbidden eviction. Production hosting
+  must still provide SPA fallback for direct URL refresh.
+- Operations delete/selection/cleanup/resize, Tracker pagination/reference sheets,
+  management sizing/finder and shared bold/italic/draft fixtures passed.
+  Synthetic preload measurement: 23 initial requests, max concurrency 4, 734ms
+  warmup, 0 additional cached navigation reads. Not a production benchmark.
+- Browser harness now uses a genuine Vite-served tests/table-fixture.html rather
+  than rewriting the Login document. Synthetic document navigation stalled its
+  WebSocket opening; serving the actual fixture resolved it. Added explicit CSS
+  import/visible handle positioning to the Operations resize fixture. These were
+  test-harness fixes, not masked persistence failures. The local Vite server was
+  restarted with --force; no source/worktree reset or data cleanup.
+
+### Files changed
+
+- Backend services: collaboration-auth.service.ts, collaboration.logic.ts,
+  collaboration-server.ts; flexible-table.service.ts exports its existing access
+  checker. Tests: table-viewers.test.ts and collaboration-browser-server fixture.
+- Frontend: App.tsx; DashboardPage.tsx; ResourceView.tsx; TruckersView.tsx;
+  TripDetailView.tsx; shared ColumnFinder/TableViewers/ReportSpreadsheetShared;
+  ReportDataView, OperationsReportsView, TransmittalTrackerView,
+  useManagementTableColumns; collaboration, trip-time, trip and operations-report
+  services. Existing font metadata and physical write mappings retained.
+- Tests: new table-viewers, users-cache, trip-time and trip-route browser fixtures;
+  viewer/time unit tests; reusable table-fixture.html; updated existing Operations,
+  management, Tracker, Trip Details cache and shared-design browser fixtures.
+  Existing browser logs and all prior work remain. No commit/push.
+
+### Exact next resume point
+
+1. Finish safe Loading Start/Finish cell editing at loading_reports identity;
+   preserve its trip-shared ownership and require canonical write confirmation.
+   No stop-specific loading field or arbitrary report record fallback.
+2. Implement true Operations server pagination/search/sort/filter and bounded
+   export. Existing overview/read-budget safeguards are not pagination. Inspect
+   source joins and prepare any exact SQL proposal for explicit approval before
+   application. No proposal has been applied for this work.
+3. Finish remaining management order/pin/design synchronization where valid
+   controls exist, preserving Flexible Table permissions and existing shared data.
+4. Recheck authenticated live Trip Details loading after the bounded-read/core
+   rendering change, direct-link deployment fallback, real STAFF viewer access,
+   flex-permission revocation and real Redis multi-instance presence. Do not use
+   production business writes for those tests without separate authorization.
+5. Preserve deletion, image cleanup, caches and all applied migrations. Remaining
+   expanded OCR/Mapbox/POD/UI work from earlier phases is not claimed complete.
+
+
+## Phase D.2 ? Loading milestone editing checkpoint (October 17, 2026)
+
+### Completed
+
+- Trips/Combined, Dispatch Monitoring and Dispatch report cells now resolve
+  Loading Start/Finish to `loading_reports.id` plus its exact `trip_id`.
+  Page enrichment adds `loading_report_id` in the existing bounded trip-ID
+  batches. A report without a Loading Report remains valid; these cells do not
+  create a missing report or guess an ID.
+- New management-only `PATCH /reports/operations/loading/:tripId/reports/:recordId`
+  reuses the existing Loading API validation, assignment/conversion protections
+  and canonical response. An expected ID mismatch/missing report returns 409
+  before insertion/update. UPDATE predicates include both report and trip IDs.
+  Existing Trucker PUT/create behavior is preserved.
+- Both cells use the existing inline time editor, Enter/blur save, Escape cancel,
+  saving/error feedback and canonical confirmation. Manila AM/PM display and
+  export use the D.1 formatter. Populated timestamps retain their own calendar
+  date, seconds and milliseconds; a null timestamp needs an explicit Manila
+  date/time. No implicit midnight rollover or guessed date is introduced.
+- Loading is trip-shared by the live UNIQUE(trip_id) contract. Editing it updates
+  displayed siblings of that same Loading Report, not any trip_stop timestamps.
+  Unloading continues to target the exact physical stop.
+- Added loading_reports to the three enriched reports' Realtime dependencies.
+  Existing secure change signals invalidate their cache and defer refresh during
+  active drafts. Loading reports do not have an approved per-record collaboration
+  version; no fabricated version/presence identity was added for these cells.
+  Table-viewer presence and other versioned cell collaboration remain intact.
+
+### Live read-only evidence / database actions
+
+- Connected schema: loading_reports has primary key id, UNIQUE(trip_id), and
+  timestamptz loading_start_at/loading_finished_at. trip_stops retains its own
+  unloading timestamps. Both tables have RLS enabled and service_role SELECT and
+  UPDATE privileges. loading_reports, trip_stops and admin_change_signals are
+  published; loading_reports has the admin change signal trigger and the
+  converted-source immutable trigger.
+- No SQL writes, migration, grant, RLS/publication change, or production business
+  record edit was performed. No additional Supabase action is required for this
+  loading milestone checkpoint. Existing applied migrations were not repeated.
+- Catalog inspection found no Operations pagination projection. The current
+  overview still collects source tables with readPaged, then builds event_rows;
+  the component filters/sorts those rows locally. This remains unfinished, not
+  server pagination. Legacy vw_* service-read restrictions remain unchanged.
+
+### Verification
+
+- Backend suite: 121 passing; TypeScript build passes.
+- Frontend suite: 67 passing; TypeScript and Vite production build pass. Existing
+  >500kB chunk warning remains.
+- Targeted frontend/controller/route ESLint passes. Including the two touched
+  backend services reports 18 errors (16 operations-report.service, 2 report.service).
+  Running identical lint against git HEAD confirms the same 18 baseline errors;
+  no new lint diagnostics were introduced. They were not suppressed/refactored.
+- Isolated actual-editor loading browser: exact report PATCH, same-report sibling
+  reconciliation, explicit blank date, midnight finish, seconds retained, Enter
+  and blur, Escape, simulated failed-save draft retention, simulated Realtime
+  draft deferral, five-second persistence and reload pass. Three intercepted
+  attempts (two successes, one deliberately failed); zero production writes.
+- Existing unloading browser passes: one exact-stop intercepted write; date and
+  seconds retained and sibling unchanged.
+- Existing isolated regressions pass: table viewers (real Socket.IO transport,
+  synthetic ADMIN/STAFF, table isolation/multiple tabs/refresh/reconnect), Users
+  cache (3 initial reads/0 extra on cached navigation), actual App trip route
+  (URL/stop context/Back/Forward/direct refresh), Trip Details cache (7 initial
+  reads/0 extra cached navigation; transient-error retention/403 eviction),
+  Operations deletion/selection/cleanup/resize, shared design (two fixture writes,
+  draft retained), management widths/finder/hidden reveal (5 fixture width writes),
+  Tracker pagination/search/reference sheet. Tracker fixture measured 1007ms
+  initial/406ms cached navigation, 0 cached-return requests; these are isolated
+  fixture measurements, not production benchmarks.
+- Both controlled live browser tabs are currently at Login. Real Admin/Staff
+  cross-session timestamp writes and authenticated Trip Details/direct-refresh
+  hosting behavior were not verified. No production records were used as tests.
+- One initial new browser assertion expected the server's raw 500 text; the API
+  intentionally normalizes it. Corrected the fixture to assert the actual message
+  and retained draft; rerun passed. A subsequent blur fixture used Tab inside
+  the native datetime subfields (which did not leave the input); changed it to
+  invoke actual input blur and reran successfully. No production diagnostic was
+  suppressed.
+
+### Files changed in this checkpoint (in addition to preserved D.1 work)
+
+- Backend: controllers/operations-report.controller.ts, routes/report.routes.ts,
+  services/operations-report.service.ts, services/report.service.ts.
+- Frontend: components/admin/ReportDataView.tsx; services/operations-report.service.ts,
+  realtime.service.ts, report-editing.config.ts, report-edit-confirmation.ts.
+- Tests: backend/tests/operations-report.logic.test.ts and report-edit-persistence.test.ts;
+  frontend/tests/report-edit-ownership.test.ts, report-edit-confirmation.test.ts,
+  new loading-time.browser.js. Documentation: this file and collaboration-realtime.md.
+- Final staged/unstaged diff checks pass; no unmerged index entries. Preserved
+  all pre-existing worktree/untracked work, with no staging, commit or push.
+
+### Acceptance and exact next resume point
+
+**Phase 2B.5-D is NOT ready for acceptance.** Loading milestone editing is the
+completed tested subphase; the following required work remains:
+
+1. True Operations server pagination: prepare a reviewed additive service-only
+   UNION projection/RPC retaining one physical source per row, bounded page
+   hydration/export, server search/sort/filter and deterministic source/ID ordering.
+   Inspect all consumer/dependency contracts before creating the proposal. Present
+   exact SQL, security/data impact and recovery for explicit approval before any
+   live application. No Operations migration proposal was applied in this turn.
+   Wire page-scoped selection, preload/cache keys, mutation page correction and
+   draft-safe refresh only with a verified database contract.
+2. Remaining management shared design: the current common hook supports widths
+   and visibility, but Users/master fixed markup still needs column-order,
+   pin-offset and color rendering/controls. Reuse shared design/CAS; preserve
+   Flexible Tables' own definition permissions and font metadata. Do not claim
+   existing management resize tests verify these unfinished features.
+3. Authenticated ADMIN + STAFF presence/integration, live loading/unloading
+   save/reload with separately approved test records, deployment SPA fallback,
+   Redis multi-instance and session-revocation verification remain. Local browser
+   test accounts must be signed in again; do not request credentials in chat.
+4. Preserve all permanent deletion/cleanup, D.1 routing/cache/presence, and applied
+   migrations. Expanded earlier OCR/Mapbox/POD/UI tasks remain outside this checkpoint.
+
+## Phase D.3 — Operations pages and management design (October 17, 2026)
+
+### Completed application implementation
+
+- Added ADMIN/STAFF-only `GET /reports/operations/page`, strict page/search/type/
+  sort validation, limit <=100, one exact count, database range and deterministic
+  physical source/ID ordering. The proposed read projection covers Loading,
+  Unloading, Backload and Offload without multiplying assignments or items.
+- Hydration reads only selected physical reports and page-related trip context;
+  it does not download every report and slice/filter it in Node or the browser.
+  Missing projection returns an explicit configuration error, never an unbounded
+  fallback. Existing overview, assigned-Trucker and trip-detail APIs remain.
+- Added query/token-scoped page cache helpers and preload integration with the
+  existing coordinator. With paging enabled, warmup and navigation use the same
+  initial page request. Search/type/sort/page-size changes query the dataset in
+  PostgreSQL. Cached pages display immediately; refresh retains visible rows.
+- Operations UI supports Previous/Next, 25/50/100 sizes, total/page feedback,
+  page-scoped selection, safe pending-query selection, draft-gated navigation,
+  Realtime refresh and correction after deleting the last row on a page. Existing
+  exact-source edits/deletion/cleanup remain. Empty results hide the entire grid.
+- **Rollout gate:** VITE_OPERATIONS_PAGINATION defaults OFF until database
+  approval/application. Thus live production pagination is NOT yet enabled.
+  Existing production overview behavior is retained while awaiting approval.
+- Users/Admin/Staff and Trucker lists, master-data tables (including Trucks,
+  warehouses, stores, customers and other configured resources), and truck-picture
+  tables now render shared order, colors, visibility, widths and left/right pins
+  through the existing shared-design/revision service. Header and data cells move
+  together with stable keys. Sticky offsets use current visible pinned widths.
+  Existing editable fields, row actions and permissions remain unchanged.
+- Design/width application pauses during inline editing, open management forms
+  and resizing; remote changes apply afterward. Existing conflict feedback/retry
+  remains. Column options expose move left/right, pin left/right, unpin and color;
+  compact hiding/restoration and unified search remain. No font family/size UI.
+- Flexible Tables retain native versioned order and visibility. New colors/pins
+  use existing `flex_columns.settings.appearance` through the manage-authorized
+  versioned column endpoint. Other settings/metadata are preserved. Widths still
+  reuse shared storage. No duplicate configuration table/authority was introduced.
+  Existing flex change signals and draft gates provide reconciliation.
+- Read-only database explorer/detail sub-tables were not turned into editable
+  management spreadsheets. No business values, milestones, deletion safeguards,
+  Storage cleanup, auth/RLS or existing exports were changed.
+
+### Supabase inspection and exact approval boundary
+
+- Read-only catalog inspection confirmed all required source/lookup columns;
+  all sixteen queried tables have service_role SELECT. Shared-design RLS remains
+  enabled. Both proposed object names are absent live. No new base permission
+  blocker was found. No live SQL writes, data changes, migration, grant, trigger,
+  RLS or publication changes were performed.
+- Proposal: `backend/migrations/2026_10_29_proposed_operations_pagination.sql`.
+  SHA-256: `DF1E2E00532866F440A710440492F808DBD04F64E66CF1EC7395C46B843ABC84`.
+  Adds only `v_operations_report_page` and immutable pure
+  `operations_natural_sort_v1(text)` for numeric-aware identifier sorting. New
+  objects are readable/executable only by service_role; no existing object or
+  business row is altered. Existing report view contracts remain intact.
+- Approval package: `docs/operations-pagination-review.md`, including exact
+  purpose, security/data impact, compatibility, rollout and DROP recovery SQL.
+  The proposal is unapplied. Earlier migration approvals do not cover it.
+- Disposable PostgreSQL 18 only: created fixture databases
+  operations_page_d3_20261017 and operations_page_d3_20261017_v2 in the established
+  isolated cluster. The final proposal compiled and passed assertions with 78
+  physical records (75 Offloads), multiple pages, global search/type filters,
+  duplicate PRIMARY assignments, stop DR ownership, null/zero handling, conversion
+  exclusion, numeric-aware sort and role privileges. service_role could read 78
+  rows, anon/authenticated could not. Fixture-only conversion mutation rolled back.
+  EXPLAIN ANALYZE final fixture search execution was 3.844ms; not a production
+  benchmark or evidence that large-volume production needs no further indexing.
+
+### Verification and measurements
+
+- Backend full suite: 124 passing and TypeScript build passed. New page tests
+  verify count/range/allowlists, stable IDs, selection-scoped hydration of 25
+  records, role denial and no missing-view overview fallback.
+- Frontend full suite: 69 passing; TypeScript and Vite production build passed.
+  Existing large-chunk warning remains. New tests cover page cache/query/session
+  isolation, in-flight deduplication/invalidation and safe native Flex appearance.
+- Targeted lint across changed UI, API, controller/route and new pagination code
+  passes. Including operations-report.service.ts reports 16 existing errors;
+  linting that file at HEAD confirms the same 16 baseline diagnostics. No new
+  errors/warnings were suppressed. Staged/unstaged diff checks pass; no unmerged
+  index entries, staging, commit or push.
+- Actual-screen Operations pagination browser fixture: 102 records; 13 page reads
+  across search, empty, filter, sort, navigation, fixture deletion and Realtime;
+  cached back-navigation caused zero additional requests. Last-page deletion
+  corrected page 3 to page 2. Active remarks draft survived Realtime, and page
+  navigation stayed disabled until cancellation. No production writes.
+- Management two-context fixture used actual Socket.IO with synthetic ADMIN/STAFF:
+  18 fixture design writes, shared order/colors/visibility/left-right pins, reload,
+  active draft and remote-design deferral during resize all passed. Native Flex
+  browser passed pin offset/color/navigation persistence, settings preservation
+  and manage-only control visibility (2 fixture metadata writes).
+- Existing isolated browser regressions pass: Users cache (3 initial reads,
+  0 extra cached navigation reads), management widths/finder/hidden reveal (5
+  fixture width writes), table-viewer Admin/Staff/multi-tab/table isolation/
+  refresh/reconnect, actual trip route/stop/Back/Forward/direct refresh, Trip Details
+  cache (7 initial reads, 0 cached-navigation reads, error retention/403 eviction),
+  loading and unloading milestone editors, permanent Offload deletion/cleanup,
+  shared report formatting and Tracker pagination/reference sheets.
+- Tracker fixture measured 1039ms initial/410ms cached navigation, 0 cached-return
+  requests. Existing mocked preload run: 23 initial requests, max concurrency 4,
+  181ms warmup, 0 extra cached navigation reads. These are isolated fixture timings,
+  not actual login/production performance claims.
+- Both controlled live tabs show Login. Authenticated Admin/Staff production
+  pagination/design verification and deployment SPA fallback remain unverified.
+  No operational records or private receipts were modified for testing.
+- Browser harness corrections during this checkpoint: exact current accessible
+  action labels, explicit unified-search Enter, native summary control, fixture
+  modal z-index and table-cell indices. Final scenarios pass without forced
+  clicks or suppression of production diagnostics.
+
+### Files changed in D.3 (preserving all D.1/D.2 work)
+
+- Backend: src/services/operations-pagination.ts (new), operations-report.service.ts;
+  src/controllers/operations-report.controller.ts; src/routes/report.routes.ts.
+- Frontend: components/admin/OperationsReportsView.tsx,
+  useManagementTableColumns.tsx, ReportSpreadsheetShared.tsx;
+  pages/Admin/views/TruckersView.tsx, MasterDataView.tsx, FlexibleTablesView.tsx;
+  services/operations-report.service.ts, flex-column-appearance.ts (new).
+- Migration proposal: migrations/2026_10_29_proposed_operations_pagination.sql.
+- Tests: backend/tests/operations-pagination.test.ts, operations-page-service.test.ts,
+  fixtures/operations-pagination.sql, fixtures/operations-pagination-check.sql;
+  frontend/tests/operations-page-cache.test.ts, operations-pagination.browser.js,
+  management-design.browser.js, flex-column-appearance.test.ts,
+  flex-appearance.browser.js (all new).
+- Docs: this checkpoint, collaboration-realtime.md, operations-pagination-review.md.
+
+### Acceptance / exact resume point
+
+**NOT READY for final acceptance:** application implementation and isolated tests
+are complete for this checkpoint, but Operations pagination requires explicit
+approval/application of the exact proposal and activation/read-only live checks.
+
+1. Wait for explicit approval of the exact Operations SQL/hash. Do not apply it
+   or enable the page consumer before approval. On approval, recalculate the hash,
+   confirm project/schema, apply once, inspect view/function/grants and read-only
+   page/count/search/ordering; then enable VITE_OPERATIONS_PAGINATION and recheck.
+2. Sign approved Admin/Staff accounts in locally for authenticated page reads,
+   Users/master/native Flex synchronization, presence and Trip Details checks.
+   No business or design writes to live client records without explicit test scope.
+3. Profile production-sized query costs and authenticated navigation after rollout;
+   do not infer them from 78/102-record fixtures. Pagination offsets are bounded
+   but count/hydration are separate reads; concurrent changes can temporarily
+   shorten a page until Realtime/revalidation. Stable IDs prevent substitutions.
+4. Preserve completed milestone editing, deletion/cleanup, auth, migrations and
+   report contracts. Expanded OCR/Mapbox/POD tasks from earlier phases remain
+   separately documented; this checkpoint does not claim those complete.
+
+
+## Expanded D checkpoint - Operations activation and OCR review persistence (October 17, 2026)
+
+### Completed in this continuation
+
+- Preserved existing staged/unstaged/untracked work; no index conflicts, commits,
+  pushes, production test rows, record deletion or private document processing.
+- Recalculated the exact approved Operations SQL SHA-256
+  DF1E2E00532866F440A710440492F808DBD04F64E66CF1EC7395C46B843ABC84.
+  MCP project hdmknewarynwpbrhfgai matches backend public project hostname;
+  source schema/read grants and absent target objects verified before application.
+- Supabase confirmed migration **20261017011210 / operations_pagination**.
+  Only this approved additive migration was applied. Existing migration versions
+  were not repeated. View/helper service-only permissions verified afterward.
+- Enabled the existing management page API for normal navigation and preload.
+  VITE_OPERATIONS_PAGINATION=false is the explicit compatibility rollback switch;
+  default Vite behavior is now bounded. The browser fixture no longer overrides
+  the feature flag, so it tests the deployed default. Trucker path unchanged.
+- Live read-only projection: 11 distinct physical reports (5 Loading, 6 Unloading),
+  no duplicate identities. Actual PostgREST page size 5 returned 5 / total 11.
+  Actual backend service pages 1 and 2 returned 5 each; Offload filter and no-match
+  search returned true empty counts. These were service-level reads, not signed-in
+  browser/authentication verification. No live business values printed/changed.
+- Fixed a separate OCR review bug found during intake inspection: both automatic
+  scans and human review saves sent expected_version=0. They now send the current
+  receipt version, preserving existing backend optimistic concurrency checks.
+  Repeated reviewed saves/rescans no longer fail simply because a prior scan exists.
+  This is OCR text verification, NOT implementation of POD approval.
+
+### Verification
+
+- Backend suite: 124/124 pass; backend TypeScript build pass.
+- Frontend suite: 69/69 pass; frontend TypeScript and Vite production build pass.
+  Existing >500 KB chunk warning remains; no performance claim derived from it.
+- Targeted lint for page service, new browser tests and page backend modules passes.
+  ReceiptReviewCard has 2 baseline React Hooks lint errors; git HEAD comparison
+  reproduces both at the same lines. No lint suppressions or unrelated refactor.
+- Disposable PostgreSQL 18: exact approved migration compiled on 128 fixture
+  reports (125 Offloads). Count/identity/filter/search/natural sorting/conversion
+  exclusion/service grants pass, including offset 125 returning 3 records.
+  EXPLAIN fixture search execution 5.470 ms, not production-volume performance.
+- Actual-screen browser pagination: 102 fixture reports, 13 page reads across the
+  scenario, 0 cached-return reads; cross-page search/filter/sort, selection clearing,
+  last-page correction and draft-safe Realtime pass with the real default flag.
+- New receipt-review browser: expected versions [3,4,5,6,7], repeated corrections,
+  rescan, five-second persistence, reload, failed/conflicting save retains draft
+  and never falsely shows Saved. API and OCR are isolated mocks; zero real uploads.
+- Loading milestone browser: correct physical report, shared loading ownership,
+  midnight/date/seconds preservation, explicit blank date, blur/Enter/Escape,
+  failure retention, Realtime draft gating, five seconds and reload pass.
+- Unloading milestone browser: exact stop, sibling preservation and midnight pass.
+- Actual router fixture: physical trip URL, stop context, Back/Forward/direct
+  refresh pass. Deployment hosting fallback remains a manual check.
+- Both controlled live application tabs are at Login. No real independent-session
+  verification claimed in this checkpoint. Existing D.1/D.2 evidence remains above.
+
+### Database/provider findings and pending work
+
+- See docs/pod-tracking-integration-review.md for actual source/Storage/permission
+  inspection, manual acceptance checklist and approval boundaries.
+- Live POD rows 0; trip receipt rows 8, all with stop IDs. No document contents read.
+- Physical pod_records service_role SELECT/INSERT/UPDATE/DELETE are all absent.
+  Prepared ONLY read grant proposal 2026_10_30_proposed_pod_service_read.sql,
+  SHA-256 274EBDDD03A6E8E936E0EB68A7FBB647981CF42FEE5144B7754125518726DD0D.
+  NOT APPLIED. Disposable service/browser/RLS scope tests passed.
+- POD approval/rejection audit/history, transactional linked updates and trucker
+  notifications remain unimplemented. Current notification CHECK allows only
+  report_mention. Existing OCR review must not impersonate approval.
+- Existing private trip-images bucket accepts 5 MB JPEG/PNG/WebP only; PDF support
+  requires separate approved bucket/schema/API/OCR rendering work.
+- User selected Gemini as interpretation provider. Backend key/model not configured;
+  requested local GEMINI_API_KEY/GEMINI_MODEL without secrets in chat. No AI request
+  or external document transmission performed. Strict structured extraction and
+  exact stop evidence matching are the next implementation checkpoint.
+- Existing Mapbox raster map/GPS event collection preserved. Explicit opt-in
+  continuous tracking, accuracy/capture ordering, hourly Directions/cache, independent
+  pin broadcasts and 10-road-route verification remain unimplemented. No new
+  tracking schema or Realtime publication approved/applied.
+
+### Files changed in this continuation (previous work preserved)
+
+- Frontend: services/operations-report.service.ts; components/admin/ReceiptReviewCard.tsx.
+- Tests: frontend/tests/operations-pagination.browser.js;
+  frontend/tests/receipt-review.browser.js (new);
+  backend/tests/fixtures/operations-pagination.sql;
+  backend/tests/fixtures/operations-pagination-check.sql.
+- Proposal: backend/migrations/2026_10_30_proposed_pod_service_read.sql (new, pending).
+  Applied 2026_10_29_proposed_operations_pagination.sql bytes remain unchanged.
+- Docs: this progress file; collaboration-realtime.md;
+  operations-pagination-review.md; pod-tracking-integration-review.md (new).
+
+### Acceptance and exact resume point
+
+**Expanded Phase D is NOT ready for final acceptance.** Operations activation and
+OCR version fix form the tested checkpoint; do not repeat the applied migration.
+
+1. Confirm configured Gemini backend key/model without printing secrets; implement
+   bounded, schema-validated extraction using retained Tesseract text, no automatic
+   operational updates or approval. Preserve raw text and explicit confidence/evidence.
+2. Complete exact document/stop match and review consumer design, then propose minimal
+   extraction/approval/history/notification SQL with rollback and disposable tests.
+   Obtain explicit approval before live DDL, grants, bucket or publication changes.
+3. Optional physical POD read proposal above remains pending; it alone cannot enable
+   approval writes or alter existing lifecycle values. Do not grant broad browser access.
+4. Implement idempotent approval/rejection + trucker feedback, then PDF intake and
+   opt-in GPS/Directions integration, each in coherent tested approved-schema stages.
+5. Re-run independent signed-in acceptance when approved accounts are locally available;
+   do not create production fixtures or process client documents as tests.
+
+
+### Final checkpoint verification addendum
+
+- Re-ran the frontend unit suite after final source changes: 69/69 pass.
+- Users browser: 3 initial reads, 0 cached-navigation reads, search preserved.
+- Trip Details browser: 7 initial requests, 0 cached-navigation requests;
+  initial skeleton, transient-error retention and forbidden-data eviction pass.
+- Operations legacy regression fixture: skeleton, conditional actions, finder,
+  Edit, cancellation, exact physical-ID deletion, selection reset, protected
+  historical error, pending image cleanup/retry and width persistence pass.
+- These last three browser checks initially failed because the existing Vite
+  listener exited (ERR_CONNECTION_REFUSED). Confirmed port was closed, restarted
+  Vite on 5173, then all three passed. No application workaround or forced clicks.
+- Both diff checks pass; no unmerged index entries. Only CRLF normalization
+  warnings on existing browser logs/fixture remain. Disposable PostgreSQL cluster
+  stopped cleanly; isolated fixture database retained for reproducibility.
+- No additional live migration beyond 20261017011210 was applied. The POD read
+  proposal and broader schema/provider integration remain pending as stated above.
+
+
+## D.4 Gemini configuration and provisional interpretation checkpoint (October 17, 2026)
+
+### Completed
+
+- Preserved worktree, existing Tesseract, reviewed OCR, deletion workflows and D.1-D.3.
+- Privately moved existing GEMINI_API_KEY from frontend/.env to backend/.env and set
+  GEMINI_MODEL=gemini-2.5-flash. Removed frontend Gemini entries; no VITE key introduced.
+  Both credential files are ignored/untracked. .env.example exception exposes only
+  the new placeholder template. No credential values logged, staged or committed.
+- Checked exact key privately against tracked files, reachable Git objects and
+  existing/fresh client builds: no match. Fresh build scan covered 34 files.
+- Implemented protected backend POST receipt interpretation endpoint; ADMIN/STAFF
+  only, exact physical trip/receipt/active stop, explicit external-text consent and
+  optimistic receipt version. No AI requests on scan/load or background refresh.
+- Gemini 2.5 Flash structured JSON, strict nullable/evidence/uncertainty validation,
+  missing/unsupported fields retained as null, quantity zero preserved. No model
+  response accepted as approval or an operational write.
+- Added bounded in-memory caching and in-flight deduplication, per-actor cost limits,
+  global-per-process concurrency 2, timeout/input/response limits, sanitized billing,
+  rate-limit and provider failures. No automatic retry loops.
+- Matching uses current linked trip transaction context, dispatch/DR and names;
+  ambiguous/conflicting IDs or a suggested different stop require review. No
+  reassociation or sibling updates. SO/date matching/global trip discovery pending.
+- UI explicit confirmation before sending only saved original OCR text to Gemini;
+  separate suggestions/evidence, explicit use of supported draft fields, no autosave.
+  Manual review remains usable on provider failure. Account/trip/version scope protects
+  stale interpretation responses. Existing OCR reviewed text remains distinct.
+
+### Actual provider status and limitations
+
+- Model metadata HTTP 200: key/model recognized. Synthetic-only generateContent
+  attempts returned HTTP 402: prepayment credits depleted. Provider billing must be
+  replenished. No successful live extraction claimed, no production documents sent.
+- Mocked backend/provider tests validate parsing/schema/error handling; real Gemini
+  structured-output acceptance awaits a successful synthetic request after billing.
+- Interpretation results are provisional and process-cached, not stored as durable
+  extraction jobs/history. Existing reviewed OCR text save is unchanged and is NOT
+  POD approval. Durable structured storage, PDFs, atomic POD approval/rejection,
+  trucker notifications and GPS/road routing still need the previously documented
+  implementation/proposals/approval. No additional migration applied.
+
+### Verification
+
+- Backend full suite 128/128; frontend 69/69; both TypeScript checks/builds pass.
+- Four new backend tests include role/consent/version/scoping, original-text-only
+  transfer, no writes, unsupported evidence, null/zero/invalid dates, ambiguity,
+  cache/deduplication/session identity, limits, failure retry and provider errors.
+- Browser receipt review passes: consent cancel (zero requests), two isolated AI
+  requests, explicit draft application, no auto-save/approval, provider failure
+  manual fallback, reviewed-save versions [3,4,5,6,7], five seconds/reload and
+  conflict draft preservation. No actual business/document writes.
+- Targeted new backend/service/browser lint passes. ReceiptReviewCard still reports
+  only its 2 documented baseline Hooks errors. Existing Vite chunk warning remains.
+- Browser harness initially used a generic alert selector after two simultaneous
+  error messages and expected the raw 502 text; corrected to specific review errors
+  and the application's sanitized manual-fallback UI. Final browser run passed.
+
+### Files changed in this continuation
+
+- .gitignore; backend/.env.example (placeholder-only, newly visible to Git).
+- Ignored local configuration: backend/.env and frontend/.env (never stage).
+- Backend: src/services/pod-interpretation.service.ts (new), trip-receipt.service.ts;
+  src/controllers/trip-receipt.controller.ts; src/routes/trip.routes.ts.
+- Frontend: src/services/receipt.service.ts;
+  src/components/admin/ReceiptReviewCard.tsx.
+- Tests: backend/tests/pod-interpretation.test.ts (new),
+  backend/tests/pod-interpretation-service.test.ts (new);
+  frontend/tests/receipt-review.browser.js.
+- Docs: this checkpoint; docs/pod-tracking-integration-review.md.
+
+### Exact resume point / acceptance
+
+**Expanded Phase D remains NOT READY for final acceptance.**
+
+1. Replenish Gemini billing, then repeat a synthetic-only structured extraction smoke
+   check (never log key/provider documents). Do not repeatedly retry depleted billing.
+2. Obtain explicit approved document-processing scope for real POD acceptance; each
+   UI action already asks for per-document external OCR-text processing consent.
+3. Design/propose durable extraction/history plus atomic approval/notification SQL
+   against inspected schema; get explicit approval before live database/Storage/RLS
+   changes. Existing POD service-read grant proposal remains unapplied.
+4. Continue PDFs, POD workflow, opt-in GPS, location ordering and hourly Mapbox road
+   routes in coherent stages. Do not claim the new suggestions endpoint completes them.
+5. Preserve applied Operations migration 20261017011210 and prior deletion/milestone/
+   management/collaboration checkpoints. No commit or push.
+
+
+## D.5 POD decisions, private document and tracking preparation (October 17, 2026)
+
+### Read-only inspection / safety
+
+- Preserved all existing worktree changes. No commit/push or live DDL/DML/Storage
+  policy/publication action. Operations migration was not repeated.
+- Live public.pod_records: 0 rows; receipt images: 8. All have original Storage
+  metadata. trip-images/report-receipts remain private, image-only, 5 MB.
+- Existing pod_records has stop/DR uniqueness and downstream lifecycle statuses,
+  but no decision audit. service_role lacks base POD grants; existing recipient
+  notification RLS/publication and restricted receipt/POD change signals suffice.
+- No Gemini requests (including metadata or synthetic retries) in this checkpoint.
+  Last known blocker remains HTTP 402 prepaid billing; OCR/manual fallback kept.
+
+### Application work completed safely before schema approval
+
+- Default-disabled POD_REVIEW_ENABLED gate and capability endpoint. ADMIN/STAFF
+  decision/history endpoints derive actor identity from the authenticated request.
+- Exact receipt/trip/stop, validated fields/date/zero/null, optimistic OCR/review
+  versions, stable request IDs and canonical confirmation. No split business writes
+  in the backend: it delegates the decision to one proposed transaction-safe RPC.
+- Receipt review screen has separate POD approval/rejection controls, explicit
+  confirmation, required rejection reason, duplicate-submit protection, same-ID
+  retry, retained failed drafts, canonical status and latest-50 decision history.
+  OCR verification remains separate. Controls stay hidden until approved activation.
+- Recipient-only notification APIs now support Truckers using existing authorization
+  and own-recipient filters. Existing Socket.IO bridge emits minimal user-room
+  notice invalidations, deduplicates them and never sends OCR/paths/messages.
+- Trucker notification bell displays cached owned data and refreshes only notices
+  on signals/reconnect, preserving the portal's existing assignment loading behavior.
+- Fixed completed-stop receipt resubmission replaying delivery completion. New
+  documents preserve original files, DR, trip status, line items and unloading time;
+  mismatched saved DR is rejected before upload. First completion behavior retained.
+- Bucket checks no longer auto-create/reconfigure Storage during read/upload/delete.
+  Existing private buckets work; missing/public buckets require administrative review.
+- Prepared/tested PDF signature/size/hash/active-content validator, disabled by
+  default; actual PDF parser/renderer and upload/preview integration remain pending.
+- Prepared GPS capture/time/accuracy/newer-fix validation, ordered destination/
+  assignment-revision fingerprint and hourly/backoff/lease planner. No tracking API,
+  Geolocation watch or Directions calls activated; existing maps preserved.
+
+### Separate proposals: all UNAPPLIED
+
+Exact hashes and full impact/recovery are in docs/pod-workflow-approval.md.
+
+1. 2026_10_31_proposed_pod_review.sql: receipt decision metadata, minimal retained
+   audit, service-only atomic review RPC, two notification types. This is the next
+   approval candidate. No new base POD/browser grants, policies or publications.
+2. 2026_11_01_proposed_pod_extraction_history.sql: private source/result/lease history,
+   immutable source/terminal attempts, receipt-owned derived retention. Durable claim/
+   finalize/expired-job adapter is NOT wired yet; no history persistence claim.
+3. 2026_11_02_proposed_pdf_receipts.sql: same private 5 MB bucket plus PDF MIME,
+   nullable file metadata and exact-stop content-hash index. No backfill/object move;
+   renderer/intake must be finished before activation/application.
+4. 2026_11_03_proposed_tracking_route_cache.sql: private per-assignment latest-fix
+   and road-cache tables, no duplicate writable trip ownership, no public Realtime.
+   Protected capture/CAS/route worker/API/map consumer remain to implement.
+
+The earlier 2026_10_30 POD read grant remains unapplied and is not needed by the
+new security-definer RPC; do not treat it as a required dependency.
+
+### Verification evidence
+
+- Backend full suite: 135/135 pass before final resubmission test; final suite is
+  rerun below. New isolated resubmission test separately passes.
+- Frontend unit suite: 69/69 pass. Backend TypeScript and frontend TypeScript/Vite
+  builds pass; existing >500 KB chunk warning remains.
+- Targeted new/changed services/components lint passes. ReceiptReviewCard still has
+  its 2 documented pre-existing Hooks errors; DriverPortal adds no lint errors.
+- Fresh disposable PostgreSQL 18: all four exact proposal files compile, assertions
+  pass for actor/stop/version/DR/object eligibility, idempotent notification, required
+  rejection reason, downstream/ref/remarks preservation and atomic rollback on
+  notification failure. Private grants and source/terminal history checks pass.
+- Schema FK fixture removes only selected stop-owned children and rolls back;
+  sibling/shared assignment survives, derived extraction is removed, minimal audit
+  survives. This is not a production Storage cleanup or full deletion-RPC test.
+- Two concurrent local writers: 1 commit/1 conflict with one audit/notice; service_role
+  executes review RPC without base POD grants. No live records used.
+- Real Socket.IO isolated test: recipient room only, no unrelated user delivery,
+  notice-ID/revision payload only, duplicate suppression. Own-recipient API filters tested.
+- Actual UI fixtures: POD cancel/no-write, reason required, preserved error draft,
+  retry same ID, submit disabled while pending, canonical approval, account isolation
+  (3 fixture POSTs); trucker initial read 1/cached-open extra 0/coalesced signal extra 1.
+- Existing receipt-review browser passed Tesseract/Gemini mocked/manual fallback,
+  consent cancel, five-second persistence/reload and conflict draft protection.
+- New trucker notification browser initially used an exact text selector on a button
+  containing its timestamp; corrected to the actual accessible button name. Final
+  fixture passed without forced clicks or production diagnostic suppression.
+
+### Files changed in this continuation
+
+- Backend services: pod-review.service.ts (new), pod-document.logic.ts (new),
+  tracking.logic.ts (new), trip-receipt.service.ts, trip-image.service.ts,
+  trucker.service.ts, collaboration-server.ts.
+- Backend controller/routes: trip-receipt.controller.ts; trip.routes.ts;
+  notification.routes.ts. Config template: backend/.env.example; no credential change.
+- Frontend components: PodDecisionControls.tsx (new), TruckerNotifications.tsx (new),
+  ReceiptReviewCard.tsx; Driver/DriverPortal.tsx.
+- Frontend services: receipt.service.ts, notification.service.ts,
+  collaboration.service.ts, trucker.service.ts.
+- Four new migration proposals above; backend/tests/fixtures/pod-review.sql and
+  pod-review-check.sql (new, disposable only).
+- Backend tests (new): pod-review.test.ts, pod-document-tracking.test.ts,
+  notification-bridge.test.ts, notification-scope.test.ts, pod-resubmission.test.ts.
+- Browser tests (new): pod-decision.browser.js, trucker-notifications.browser.js.
+- Docs: progress, collaboration-realtime.md, pod-tracking-integration-review.md;
+  pod-workflow-approval.md (new approval package).
+
+### Next exact approval / resume point
+
+**Expanded Phase D is not ready for final acceptance.**
+
+1. Review/approve ONLY the exact 2026_10_31 POD review proposal/hash in the approval
+   package if desired. Recheck project/schema/grants/counts/hash before application.
+   After explicit approval/application verify service-only RPC access, then enable
+   POD_REVIEW_ENABLED and test with separately approved disposable/test documents.
+2. Complete Requests-tab pending/approved/rejected queue integration and historical
+   explicit-POD-selection UX; current controls are in the existing receipt screen.
+3. Finish durable extraction lease/request/retry adapter before applying its schema;
+   do not retry Gemini until billing is restored. Real documents need processing scope.
+4. Finish bounded PDF renderer/preview/Tesseract page intake before applying bucket
+   proposal. No real documents/objects may be used as fixtures without approval.
+5. Implement protected opt-in capture/session/assignment CAS API and Mapbox lease/
+   hourly cache worker/map integration before applying tracking proposal. Browser
+   suspension is not reliable background tracking; retain stale-position timestamps.
+6. Preserve existing deletion/cleanup, shared table, milestone and auth safeguards.
+
+
+### Final verification addendum
+
+- Final backend full suite: 136/136 pass; frontend unit suite: 69/69 pass.
+  Backend build and frontend TypeScript/Vite build pass. Targeted changed/new
+  service/component/browser lint clean; only the 2 known ReceiptReviewCard baseline
+  errors remain when linting that pre-existing component. DriverPortal/trucker service
+  have no new lint errors. Existing Vite chunk-size warning persists.
+- Completed-stop resubmission regression passes against the real service with
+  isolated DB/Storage fixtures: no trip/stop/line-item update, original and sibling
+  preserved, original timestamp retained, wrong saved DR rejected before upload.
+- Notification socket payload now contains ID plus commit-derived revision. Frontend
+  deduplication handles overlapping multi-instance bridge events; no private values
+  are broadcast. Recipient-only transport test passes with this final payload.
+- All proposals compile/assert in the retained disposable DB
+  pod_review_20261017_approval on local PostgreSQL 18. Final concurrent writer and
+  service-role-execution tests pass. Cluster stopped cleanly; fixtures retained.
+- No live schema/data/Storage changes, Gemini calls, commits or pushes.
+
+
+## POD review activation checkpoint (October 17, 2026)
+
+### Exact approval and live verification
+
+- Applied ONLY `backend/migrations/2026_10_31_proposed_pod_review.sql` after
+  recomputing SHA-256 `472F3590BEA5CBA08667729D274C6163BEC742CEF1A93B4E1E25425CFC3C36BF`.
+  The approved file was not edited. Supabase confirmed success, recorded exactly
+  once as `20261017022906` / `pod_review`.
+- MCP project `hdmknewarynwpbrhfgai` matches backend SUPABASE_URL. Read-only
+  preflight checked physical columns, constraints, bucket, publication, RLS,
+  privileges, absent review objects and migration history before applying.
+- RPC signature verified: `review_pod_receipt_v1(uuid,uuid,uuid,uuid,uuid,bigint,integer,text,text,jsonb,uuid)`.
+  SECURITY DEFINER owner postgres, fixed `search_path=pg_catalog`; only owner and
+  service_role EXECUTE. anon/authenticated denied. Audit RLS enabled, service_role
+  SELECT only, no browser audit reads or generic service audit writes. Existing
+  base pod_records service SELECT remains denied; the RPC needs no broad read grant.
+- All six receipt decision columns/defaults and notification approval/rejection
+  CHECK verified. Existing private trip-images bucket is unchanged: 5 MiB,
+  JPEG/PNG/WebP, no PDF. Publication membership and browser permissions unchanged.
+- Before/after counts and whole-row content hashes match, excluding the six new
+  default columns: trip_images 9 (`3a52d13bc1a0984ffa195c0c79053b43`), trip_stops 7
+  (`6ca38ae3f73d39b04c7f45bca6774dd3`), pod_records 0, admin_notifications 0.
+  Every image has PENDING/version 0/null decision metadata; audit has 0 rows.
+  No live approvals, rejections, backfills, uploads, cleanup or test records.
+- Operations pagination view reads 11 rows and Tracker page view 6, unchanged.
+  Receipt object metadata has no missing originals. This verifies metadata presence,
+  not a download of every private file.
+
+### Activation and rollback
+
+- Ignored local backend/.env now has `POD_REVIEW_ENABLED=true`. The existing tsx
+  development server was restarted without changing source contents. A fresh
+  backend service import reports enabled; real service credentials successfully
+  read the new audit and receipt metadata through Supabase REST (read-only).
+- backend/.env.example intentionally retains false as the safe deployment default.
+  Rollback: set POD_REVIEW_ENABLED=false and restart the backend. Retain decision
+  columns/audit/history. Do not drop tables, narrow notification checks or change
+  grants as an improvised rollback. Deployed environments need their own flag/restart.
+- Existing Admin/Staff receipt review controls are activated by the capability API:
+  original document, saved OCR/manual correction, optional AI suggestions, confirmed
+  approve/reject, required rejection reason, canonical status and latest 50 decisions.
+  The global Requests queue remains a separate unfinished integration.
+- Existing recipient-scoped notification bridge/read-unread UI is reused. No new
+  Realtime publication or Storage change was required. RPC notification insertion
+  commits atomically; only the authenticated recipient receives socket invalidation.
+- Gemini was not called; HTTP 402 billing remains unresolved. Tesseract/manual
+  review and POD decisions do not depend on Gemini availability.
+
+### Verification and evidence
+
+- Backend full automated suite 136/136; frontend full automated suite 69/69.
+  Backend TypeScript build and frontend TypeScript/Vite production build pass.
+- Targeted POD/notification/backend/frontend lint passes. Separate baseline check
+  still finds 2 pre-existing ReceiptReviewCard React Hooks errors (ref during render,
+  setState in effect); no suppression/refactor added. Vite retains its chunk warning.
+- New review-only disposable SQL assertions deliberately exclude the unapproved
+  history/PDF/tracking proposals. PostgreSQL 18 databases
+  `pod_review_activation_20261017` and `pod_review_activation_final_20261017` contain
+  synthetic data only. Assertions cover approval, rejection, exact trip/stop,
+  idempotency, request reuse, role denial, stale version, required reason, missing
+  original metadata, notification failure rollback and retained downstream POD state.
+  Concurrent independent writers: 1 success/1 stale conflict, exactly 1 audit event.
+  Explicit service-role execution passes; authenticated direct execution is denied.
+- Isolated actual-component browser fixtures pass:
+  * POD decision: cancel=0 writes, reason required, retry same request ID, draft
+    retained after failure, busy protection, canonical approval, decision history,
+    account isolation; 3 fixture POSTs, 0 production writes.
+  * Trucker notifications: 1 initial read, 0 extra cached-open reads, 1 coalesced
+    realtime refresh, 1 mark-read; unread badge, rejection reason and Escape pass.
+  * Receipt review: versions 3 through 7, five-second persistence/reload, conflict
+    draft retained, manual AI-unavailable fallback; all provider responses mocked.
+  * Operations pagination: 102 fixture records, 13 requests, 0 cached-return
+    requests, cross-page search/filter/sort, selection reset, last-page deletion
+    correction and draft-safe refresh. Offload cleanup/deletion regression passes.
+  * Loading/unloading editor fixtures: Manila display, dates/seconds/midnight,
+    exact loading-report identity and stop isolation, reload and realtime drafts.
+- Controlled live tabs were both logged out. Authenticated live decision, private
+  document access and real trucker notification delivery are PENDING, not claimed.
+  No live business writes were authorized/performed for acceptance. Sign in with
+  approved Admin/Staff and Trucker accounts and use a separately approved test POD
+  for the remaining end-to-end review/notification checks.
+- Both Git diff checks pass; no unmerged entries, commits or pushes. Existing
+  staged/unstaged/untracked work retained. Local PostgreSQL cluster stopped after tests.
+
+### Files changed in this activation continuation
+
+- Ignored local backend/.env: enabled flag only; no credentials exposed.
+- backend/tests/fixtures/pod-review-activation-check.sql (new review-only assertions).
+- frontend/tests/pod-decision.browser.js: decision history verification added.
+- backend/tests/fixtures/README.md: review-only fixture instructions.
+- docs/tms-table-overhaul-progress.md, docs/pod-workflow-approval.md,
+  docs/pod-tracking-integration-review.md, docs/collaboration-realtime.md.
+- The approved migration and prepared application implementation were preserved.
+
+### Exact remaining work
+
+POD review is schema-activated and fixture-verified; authenticated live acceptance
+is pending. Expanded Phase D is not fully complete. Next: approved test-document
+review/notification acceptance, Requests queue and historical explicit POD selector.
+Durable AI history, PDF intake and tracking/route cache remain separate UNAPPLIED
+proposals requiring explicit approval and their dependent implementation. Do not
+apply the older standalone POD read-grant proposal as a dependency. Do not retry
+Gemini while billing remains unavailable.
+
+## Live POD acceptance / PDF and tracking preparation (October 17, 2026)
+
+See `docs/pod-tracking-integration-review.md`, latest section, for the exact live
+test scope, database proof, service contracts, blocked activation and next steps.
+
+- User explicitly approved rejecting then approving ONLY test receipt
+  `35217c69-9180-4103-9c33-66a51ee85c60` (DR 333). Both actual UI/API calls succeeded;
+  final APPROVED/version 2, two history entries, one exact-stop RECEIVED POD and
+  two notices to one correct Trucker. Original/OCR loaded, reason required,
+  approval survives refresh and becomes terminal. Both notices reached the portal;
+  approval appeared automatically without reload. Left notices unread.
+- Read-only hashes prove parent trip, both stops and line items unchanged; sibling
+  DR 111 receipt remains PENDING/version 0, original private image preserved.
+  Real unrelated-Trucker and independent STAFF sessions still unavailable. Earlier
+  logged-out limitation is superseded for Admin/recipient-Trucker checks only.
+- Added backend pod-intake.service.ts, mapbox-directions.service.ts,
+  road-route.service.ts, tracking.service.ts; frontend location-capture.ts,
+  pod-upload-validation.ts, TrackedTruckLayer.tsx. Receipt validation is wired into
+  existing trip-image.service/trucker.service; trucker route parses PDFs only to
+  return the disabled error. No runtime tracking route or PDF activation.
+- Backend/.env.example has a backend-only MAPBOX_DIRECTIONS_TOKEN placeholder.
+  Existing frontend tile token unchanged; backend token absent. No secrets exposed
+  or paid Mapbox/Gemini calls. Last known Gemini HTTP 402 remains.
+- Tests: backend 142/142; frontend 73/73; both TypeScript/builds pass; targeted lint
+  clean; known ReceiptReviewCard baseline lint/Vite chunk warning unchanged.
+  New tracking-services.test.ts, location-pod.test.ts and tracking-map.browser.js
+  cover mocked provider/store/GPS and actual prepared Leaflet layer. Existing
+  POD/OCR/notification browser regressions pass. Mock 10-route request counts:
+  initial 10, pin movement 0 additional, hourly 10 additional, max concurrent 2.
+  No real GPS/provider or third-account acceptance claimed.
+- No migration/Storage/publication/grant changes, no reapplication, commits or pushes.
+- PDF upload remains disabled pending renderer and separately approved PDF proposal.
+  Tracking remains unmounted pending atomic Supabase repository/RPC proposal,
+  protected APIs and UI/map wiring; table-only proposal is insufficient.
+  Durable AI history, Requests queue and broader expanded Phase D remain incomplete.
+
+Files changed this continuation:
+
+- Backend new services: pod-intake, mapbox-directions, road-route, tracking.
+- Backend existing: trip-image.service.ts, routes/trucker.routes.ts, .env.example.
+- Frontend new: location-capture.ts, pod-upload-validation.ts, TrackedTruckLayer.tsx.
+- Frontend existing: services/trucker.service.ts.
+- Tests new: backend/tests/tracking-services.test.ts; frontend/tests/location-pod.test.ts
+  and tracking-map.browser.js.
+- Docs: this progress file and pod-tracking-integration-review.md.
+
+Exact resume: optional third unrelated Trucker/independent Staff for remaining
+live checks; bounded sandboxed PDF renderer and original/metadata upload/preview
+wiring; safe atomic tracking SQL/repository and protected routes before seeking
+approval for either activation. Do not repeat the already-completed live receipt
+test or call Gemini until billing is restored.
+
+## Tracking/PDF gated integration checkpoint (October 17, 2026)
+
+Detailed SQL approval/recovery/security package: `docs/tracking-pdf-activation.md`.
+Earlier unmounted-service status is superseded: endpoints, portal controls, map
+feed, route worker and PDF intake are wired, but DISABLED pending separate approval.
+
+### Completed implementation
+
+- Tracking HTTP endpoints use existing Supabase JWT, app-session and role guards.
+  Exact assignment/session GPS writes use the new atomic RPC proposal. Management
+  feed is UUID-paginated 50+1, includes accuracy/time/staleness and process metrics.
+- Atomic proposal: owner/revision/session/new capture checks, 5-second receive
+  limit, locked route context, CAS leases/finalization, shared 30/minute Directions
+  budget and retention. Base tracking proposal unchanged; neither applied live.
+- Explicit Trucker location controls, assignment choice, 30-second default fixes,
+  navigation/pagehide cleanup, permission/session races and account isolation.
+  Phone lock/closed browser cannot guarantee collection or final network STOP.
+- Existing Socket.IO management room gets minimal committed assignment signals;
+  Redis plus 15-second protected API polling recovers missed cross-instance changes.
+  Map shows multiple assignments/roads without rebuilding routes on pin updates.
+  Cached context changes hide obsolete geometry and wake bounded hourly worker.
+  Missing/stale coordinates skip Directions. Co-located marker UX remains limited.
+- PDF.js/native canvas run in credential-free child with page/pixel/byte/heap/time
+  limits; deployment also needs unprivileged container/native-memory/network limits.
+- PDF prepare/saved-page APIs, MIME/hash/duplicate protection, original retention,
+  exact stop association, private preview, per-actor throttling and clear 413.
+  Portal picker stays capability-gated. Tesseract processes <=10 pages in one worker;
+  manual review, optimistic OCR versions and Gemini consent remain unchanged.
+- TRACKING_ENABLED and POD_PDF_ENABLED remain false/unset locally/template false.
+  Backend Directions token absent; frontend tile token not copied. No paid API calls.
+
+### Proposals (not applied)
+
+1. `2026_11_03_proposed_tracking_route_cache.sql`, unchanged:
+   `D70280C19A405665F4EE14D549ED631E753324C7C892BF700C0C633B1E83FA96`.
+2. New `2026_11_04_proposed_tracking_atomic.sql`:
+   `1DD36954AA6C816AAF64955DF96D9C04911B0AF9C082FF03516B174EBFF03246`.
+3. Independent `2026_11_02_proposed_pdf_receipts.sql`, unchanged:
+   `3066E5B2A1773673BAEF8BFB06186A7F16555F6954510C495D9E5389A0183B03`.
+
+Tracking base then atomic, flag disabled until verified. PDF can be approved
+independently; same private 5 MiB bucket, new PDF MIME and metadata. No browser
+grant, RLS relaxation or publication change. Every application needs new approval.
+
+### Verification
+
+- Backend 146/146; frontend 73/73; both TypeScript/builds pass. Backend build copies
+  worker to dist. Targeted changed/new module lint and both Git diff checks pass.
+  Known ReceiptReviewCard baseline errors/Vite chunk warning remain. npm audit
+  reports existing critical proxy-addr 2.0.7, identical to HEAD; no unrelated fix.
+- Real synthetic two-page PDF -> PNG in child process; malformed/page-limit/cancel
+  rejected. Actual upload service with isolated DB/Storage saves original/hash/MIME
+  to exact stop, preserves milestones/sibling and safely rejects duplicate content.
+- Actual PDF UI + mocked Tesseract: one raster read, two pages, one terminated worker,
+  manual review saves. Actual recognition quality/native PDF viewer remains pending.
+- Actual Express middleware + isolated JWT/session/DB: role denial, disabled flag,
+  server-derived actor, start/fix/stop and bounded feed. Browser controls verify
+  explicit permission, two fixes, stop and unmount cleanup. No live GPS.
+- Disposable PostgreSQL 18 compiled both proposals; session replacement, stale
+  capture/revision, unrelated actor/browser denial, feed bounds, stop order, route
+  lease/context assertions pass. Two local writers: one saved/one duplicate rejected.
+  Synthetic DBs retained; owned local cluster stopped after verification.
+- Seven browser fixtures pass: tracking-map, tracking-controls, pdf-review,
+  receipt-review, pod-decision, trucker-notifications, operations-pagination.
+  Mock route measurements: 10 initial, 0 pin movement additional, 10 hourly additional,
+  max concurrency 2. No real provider/GPS/private PDF acceptance claimed.
+- Read-only Supabase: tracking tables/PDF metadata absent; bucket private, images
+  only, 5 MiB; DR 333 Approved/version 2 unchanged. Required service SELECT verified.
+  No live writes/migrations/Storage/publication changes, commits or pushes.
+
+### Files changed
+
+- Backend new: tracking-runtime.service.ts, tracking.routes.ts, pdf-renderer.service.ts
+  and worker.mjs, pod-pages.service.ts, pod-intake.controller.ts,
+  pod-upload.middleware.ts, scripts/copy-pdf-worker.cjs, atomic SQL proposal.
+- Backend existing: app/server, tracking/road-route/trip-image/trip-receipt/collaboration
+  services, trip/trucker routes, trucker controller, .env.example, package/lock.
+- Frontend new: tracking-api.service.ts, pdf-intake.service.ts, LocationSharing.tsx,
+  useTrackedAssignments.ts. Existing: LiveTripMap, TrackedTruckLayer, DriverPortal,
+  ReceiptReviewCard, collaboration/receipt/trucker/ocr services.
+- Tests: tracking-api, pdf-renderer, pdf-upload, pod-upload-limit; SQL tracking
+  schema/check, synthetic PDF fixture; tracking-controls/pdf-review browser fixtures.
+- Docs: progress, tracking-pdf-activation.md, integration/collaboration docs.
+
+### Exact resume / blockers
+
+Review the exact proposal package before approval. After approved application,
+verify RPC/current schema, configure backend token and OS renderer isolation,
+obtain real paid-routing/GPS/PDF test scope, then activate flags independently.
+Do not repeat DR 333 decisions or retry Gemini (HTTP 402). Independent Staff/
+unrelated Trucker acceptance, co-located marker polish, Requests queue and durable
+AI history remain separate. Expanded Phase D is not fully accepted.
+
+
+## Phase D - Tracking/PDF approved migration checkpoint (October 17, 2026)
+
+See docs/tracking-pdf-activation.md for exact checksums, project verification and
+full postflight. Only the three explicitly approved files were applied, unchanged:
+tracking_route_cache 20261017033055, tracking_atomic 20261017033115, and pdf_receipts
+20261017033128. Each is recorded once. No extraction-history/unrelated migration.
+
+- Verified project hdmknewarynwpbrhfgai matches backend configuration. Private tracking
+  tables and six service-only RPCs verified; RLS/browser grants/publications remain
+  restricted. Private bucket now allows PDF in addition to images, still 5 MB.
+- Operational hashes unchanged: 6 trips, 7 stops, 6 assignments, 9 images, 1 POD,
+  2 review events, 2 notifications. DR 333 untouched. Operations/Tracker views read
+  11/6 rows; review RPC remains service-only. No live GPS or PDF writes.
+- TRACKING_ENABLED remains false: backend MAPBOX_DIRECTIONS_TOKEN is absent.
+  POD_PDF_ENABLED remains false: compiled renderer/native dependencies work locally,
+  but deployed unprivileged/native-memory/network isolation is not verified.
+  POD_REVIEW_ENABLED=true preserved. No restart required; no paid APIs called.
+- Backend 146/146 and frontend 73/73 pass; both TS/builds pass. Targeted tracking/PDF
+  lint clean; existing ReceiptReviewCard Hook errors and Vite chunk warning remain.
+- Disposable PG18 tracking/PDF/POD+PDF schema tests and two concurrent GPS writers
+  pass. Added repeatable PDF schema/check fixtures, no production fixture writes.
+- Seven isolated browser regressions pass, including ten-truck map, explicit consent,
+  PDF manual review, POD decisions, notifications and 102-row Operations pagination.
+  Recognition engine/Mapbox/GPS and DB APIs are mocked in browser tests; compiled PDF
+  rendering and disposable SQL are real. Authenticated GPS/PDF acceptance pending.
+- Files changed this activation checkpoint: docs/tracking-pdf-activation.md,
+  docs/pod-tracking-integration-review.md, this progress document,
+  backend/tests/fixtures/pdf-receipts-schema.sql, pdf-receipts-check.sql and README.md.
+  Existing implementation/worktree preserved; no application code or approved SQL
+  changed. Both Git diff checks pass; no unmerged entries. No commit/push.
+
+Exact resume: supply private Directions configuration and verify deployment renderer
+OS isolation; activate flags independently, restart, then obtain safe GPS/PDF test
+scope for authenticated acceptance. Do not modify DR 333, call Gemini (402), or
+reapply these migrations. Expanded Phase D is not ready for full acceptance yet.
+Rollback: both flags false plus backend restart; preserve schema and existing files.
+
+
+## Phase D - Mapbox readiness and renderer hardening (October 17, 2026)
+
+- Preserved all three applied migrations and flags. Backend Directions token absent;
+  frontend public token present, not reused. Exact local configuration/runbook and
+  request budgets documented in docs/tracking-pdf-activation.md. Directions access
+  remains unverified; no paid calls made.
+- PDF parent enforces input/caller limits, validates child raster protocol and PNG
+  dimensions, forcibly terminates cancelled/timed-out children and clears buffers.
+  Worker obeys requested limits and cleans canvas/page/PDF task on failure.
+- Compiled worker/native canvas render synthetic PDFs successfully on local Windows.
+  No production backend deployment manifest found. Child inherits backend OS rights;
+  native-memory cap, restricted identity/filesystem and OS egress isolation remain
+  unverified. PDF intake stays disabled; deployment configuration requested.
+- Backend150/150, frontend73/73; both TS/builds and targeted changed-module lint pass.
+  Compiled-dist renderer smoke and isolated PDF review browser fixture pass. New tests
+  cover invalid output, tighter budgets, in-flight cancellation/slot recovery and
+  30/minute Directions limit. Git diff/cached checks pass. Vite baseline warning stays.
+- Read-only Supabase confirms private5MiB bucket, empty unpublished tracking tables
+  and existing migrations. Browser only has about:blank; authenticated checks pending.
+  No real GPS/PDF write, DR333 edit, Gemini/paid routing call, SQL, commit or push.
+- Changed: backend/src/services/pdf-renderer.service.ts, pdf-renderer.worker.mjs,
+  pod-intake.service.ts comment; backend/tests/pdf-renderer.test.ts,
+  tracking-services.test.ts; activation/integration/progress docs.
+
+Resume: obtain actual backend deployment configuration, verify worker OS isolation,
+configure private MAPBOX_DIRECTIONS_TOKEN, then seek controlled live acceptance scope.
+POD_REVIEW_ENABLED=true preserved; TRACKING_ENABLED=false and POD_PDF_ENABLED=false.
+No additional Supabase action is needed for this checkpoint.
+
+
+## Hostinger KVM2 Docker preparation checkpoint - October 17, 2026
+
+Architecture prepared only; no purchase, provisioning, deployment, DNS/Auth change,
+Supabase write, paid provider call, DR333 modification, commit or push.
+
+### Created configuration and integration
+
+- deployment/compose.yaml: HTTPS proxy, static frontend, single backend, isolated
+  PDF/OCR worker. Only80/443 published. Multi-stage Dockerfiles, UID1000, read-only
+  roots, no capabilities/new privileges, health checks, restart policies, CPU/RAM/PID
+  limits, bounded noexec tmpfs and rotated operational logs. Cloud Supabase retained.
+- deployment/Dockerfile.backend provides backend and worker targets; frontend/proxy
+  Dockerfiles and Caddyfiles provide HTTPS, WebSockets, SPA direct links, public-only
+  build arguments, persistent certificates and redacted/rotated proxy logs.
+- PDF worker has network_mode:none, no app credentials/env_file and only a dedicated
+  Unix socket volume. Backend mounts the socket volume read-only. Production renderer
+  delegates to the socket and refuses credential-bearing local fallback. Worker
+  handles bounded rendering plus optional offline English Tesseract CLI OCR; existing
+  browser Tesseract remains the application's current OCR path.
+- Added exact production HTTPS CORS/proxy configuration; unconfigured development
+  behavior preserved. Same JWT/role/app-session/Socket.IO safeguards remain.
+- Templates: deployment/.env.example (public build/config), backend.env.example
+  (private placeholder-only server config), backend/.env.example socket/CORS guidance.
+  Root .dockerignore excludes secrets/envs/tests/builds. Secrets/runtime paths ignored.
+- deployment/container-healthcheck.cjs, smoke-pdf.cjs and validate-config.py provide
+  process/socket probes, a real future container synthetic render+Tesseract test and
+  static YAML/policy checks without reading actual environment files.
+- docs/hostinger-vps-deployment.md: Ubuntu/Docker/firewall/DNS/ACME setup,8GB resource
+  budget, controlled build/start, isolation checks, monitoring, rollback and encrypted
+  backup/recovery responsibilities. Contains official primary documentation links.
+
+### Verification / blockers
+
+- Backend153/153 and frontend73/73 pass; both TypeScript/builds and targeted new/changed
+  module lint pass. Health/smoke scripts pass Node syntax checks. Static YAML/policy
+  validation passes with disposable PyYAML outside the project. Git diff/cached checks
+  pass. No unmerged entries. Existing Vite chunk warning/ReceiptReviewCard lint baseline
+  remain; dependency advisory release review remains separate.
+- Local native PDF rendering passes. Adding local standard fonts initially exposed
+  a Windows separator requirement; fixed and renderer tests pass again. Real socket/
+  named-pipe protocol test covers health, bounds, busy response, OCR (mocked engine),
+  unavailable worker and sanitized errors. Production no-socket refusal/CORS tested.
+- Docker is NOT installed on this workstation. No Docker/Compose engine execution,
+  image build, Caddy validation/ACME, Linux cgroup/PID/egress enforcement, Ubuntu-host
+  native canvas or real container Tesseract test has been claimed. Run the documented
+  smoke/isolation acceptance checks on an approved Docker host before enabling PDF.
+- Backend Directions token is now present but equals the existing frontend public
+  rendering token (public prefix, not secret prefix). It appears in browser assets
+  as that already-public rendering token. No new private token was exposed by this
+  work; separate backend token/API authorization remain prerequisites. Supabase
+  service-role and Gemini private values absent from frontend build/deployment files.
+  No local credentials were copied into templates or modified.
+- Flags remain POD_REVIEW_ENABLED=true, TRACKING_ENABLED=false, POD_PDF_ENABLED=false.
+  Gemini402 unchanged. No tracking/PDF live writes or paid verification.
+
+### Files / exact resume
+
+New: deployment/* configuration/templates/scripts, docs/hostinger-vps-deployment.md,
+backend/src/config/http.ts, src/pdf-worker.ts, services/pdf-worker-client.ts,
+services/pdf-worker-server.ts and tests/deployment.test.ts; root .dockerignore.
+Modified: .gitignore, backend/.env.example, app.ts, pdf-renderer.service.ts,
+pdf-renderer.worker.mjs and progress/activation/integration docs. Existing work kept.
+
+Next: approve a precise release artifact and target-host access/provisioning before
+any deployment. Pin verified base-image digests, run actual Docker builds/config
+validation and native worker smoke/isolation tests. Supply separate Directions
+credentials and approve controlled test records/provider usage. Coordinate domain,
+DNS and Supabase Auth URLs separately. No additional database migration is required
+for this prepared topology. Keep both new feature flags false through those gates.
+
+
+## Local POD/Mapbox functional acceptance - October 17, 2026
+
+Hosting/deployment postponed by user. New local acceptance guide:
+`docs/pod-mapbox-local-acceptance.md`; supersedes the prior deployment resume order.
+No Supabase writes/migrations, production uploads/decisions/GPS, DR333 changes,
+paid Mapbox/Gemini calls, commits or pushes in this checkpoint.
+
+### Verified
+
+- Real user-signed-in Admin and Trucker sessions available. Admin review capability
+  enabled; Trucker administrative receipt/review endpoint403; own assigned list5
+  trips and existing notifications readable. PDF/GPS capabilities false. Admin
+  denied Trucker-only assigned-trip endpoint. Independent STAFF/unrelated Trucker
+  sessions were not available; their permissions are covered by isolated tests only.
+- User allowed an existing non-DR333 receipt to be viewed. Used receipt
+  62fa7830-7fb9-4ace-9921-0e3879b08d02 (DR111), trip
+  ed329614-62d0-4d83-afbc-8c578fdb23d1, stop
+  cb9bf6f1-f6ef-439e-b7da-0046375f308d. Outside the old DR333 trip.
+  Actual review component rendered original image;444 OCR characters accessible;
+  Approve/Reject enabled; history shows no decisions; status remained PENDING.
+  Private image362169bytes with matching hashes on two reads. Admin fixture blocked
+  non-GET API requests, with0 attempted writes. No new records were created.
+- Full images/stops/trips/POD/review-event/notification hashes matched before/after.
+  Read-only live schema check: private5MiB bucket, service-only decision RPC, RLS
+  GPS tables/no browser SELECT or tracking publication; tracking/cache rows0.
+- Real Tesseract browser run on six generated images: clear95confidence found2468;
+  blur51/rotated55 missed the DR; multiple95 found2468+1357; missing95 invented neither;
+  blank0 returned empty; invalid bytes rejected. These scores are engine confidence,
+  not measured general accuracy. Blurry/sideways images need manual correction or
+  clearer upright photos. No business image/text sent to an AI/provider.
+- Mocked POD decisions/audit/retry/conflict/reason, receipt-only resubmission, exact
+  stop preservation, original retention and recipient-only notifications pass.
+  Added actual HTTP Auth/role fixture for Admin/Staff read access and denied Trucker
+  admin operations; unrelated driver resubmission rejected before Storage.
+- Mock tracking:10roads/20stops, no Directions requests for pin changes,10hourly
+  requests, max2concurrent,30/minute budget. Socket-refresh browser shows initial1,
+  committed update1, reconnect1, unrelated event0 requests. No real GPS/routes.
+
+### Direct local fixes
+
+- OCR preprocessing now closes ImageBitmap in finally, including fallback/error.
+- GPS confirmed/reconnect events invalidate only active-location cache before fetch,
+  avoiding briefly stale cached pins; replaced socket tracking events check active
+  session. Existing route geometry, session isolation and draft protection preserved.
+- Backend Directions token still equals frontend public rendering token. Configure a
+  separate server-appropriate token and approve authorization/routing verification.
+
+### Tests / files / exact resume
+
+Backend154/154, frontend73/73; both TS/builds and targeted changed TS/TSX lint pass.
+Seven isolated browser fixtures pass, including actual Tesseract accuracy test.
+Vite chunk warning/old ReceiptReviewCard lint baseline remain. Both Git diff checks
+pass. New: pod-mapbox-local-acceptance.md, pod-permissions.test.ts,
+ocr-accuracy.browser.js, tracking-realtime.browser.js. Modified: pod-resubmission
+fixture, ocr.service.ts, collaboration.service.ts, useTrackedAssignments.ts and
+progress/activation/integration docs. All preexisting work preserved.
+
+Resume locally: obtain independent STAFF and unrelated Trucker sessions; explicitly
+approve a new non-DR333 decision/upload/resubmission sequence and safe active
+assignment/GPS/paid-routing scope. Use the new checklist's exact IDs, baseline and
+rollback requirements. Current Trucker is assigned to the viewed trip; its403 proves
+admin-role separation, not unrelated-driver ownership denial. Historical Trucker
+receipt gallery/reload viewing remains unverified beyond selected-upload preview.
+No new schema change needed. Keep POD_REVIEW_ENABLED=true, TRACKING_ENABLED=false,
+POD_PDF_ENABLED=false and Gemini unused until separately cleared. Do not deploy.
+
+
+## GPS controlled-test PREPARATION checkpoint - October 17, 2026
+
+User explicitly requested preparation only. Full checklist and technical token audit:
+`docs/mapbox-gps-controlled-test.md`. No activation, live GPS writes, paid Mapbox/
+Gemini requests, operational edits/DR333 access, Supabase SQL changes, deployment,
+commits or pushes. Hostinger configuration untouched; all existing work preserved.
+
+### Local fixes
+
+- Location controller now flushes coalesced throttled fixes using a timer, retries
+  recent failed fixes, rejects invalid/duplicate/delayed browser input, drops stale
+  queued fixes and cancels pending timer/watch/fetch on stop.
+- Watch setup failure cleans its created session. Failed server STOP retains exact
+  session for explicit retry and prevents silently opening another. UI rechecks
+  mounted scope and secure context. AbortSignal reaches actual tracking HTTP request.
+- Active-map events during a fetch schedule a coalesced follow-up refresh; retained
+  pins survive failures. Prior event/cache/session guards preserved.
+- Added optional TRACKING_TEST_PROFILE_ID + TRACKING_TEST_ASSIGNMENT_ID (both or
+  neither; invalid partial scope fails closed). Exact driver/assignment ownership,
+  role/revision/RPC checks still apply. Scope gates starts/captures, filters management
+  feed and route jobs, and skips global retention pruning. Safe owner/session STOP
+  remains available after scope change. Actual .env scope is UNSET, flags remain off.
+
+### Token / phone / database findings
+
+Directions token remains identical to existing frontend public pk token. Directions
+requires valid Mapbox token, not extra secret/admin scopes; it may technically work
+with a public/default token. Actual restrictions/entitlement/access are unverified;
+no live request. Recommend separate backend token for rotation/usage and no browser
+origin restrictions blindly reused for server calls. Built frontend scan found no
+Supabase service-role or Gemini secret value. Backend is the only Directions caller
+in source. Existing public rendering token is intentionally browser-visible.
+
+Read-only live GPS tables0/cache0, RLS/no anon/authenticated SELECT, no tracking
+publication and service-only RPC EXECUTE verified. No new database change needed.
+Phone LAN HTTP is not a valid substitute for trusted HTTPS; localhost points to phone.
+Guide details trusted local TLS/origins/API/socket accessibility, exact account/trip/
+assignment/stop approval, paid-budget consent, scoped flags/restart, no-auto-resume,
+30second capture/15second poll/2minute stale behavior, confirmed STOP before disabling,
+and separately approved exact-session GPS cleanup. Unexpected tab kill cannot
+promise server STOP delivery. Scope mode deliberately does not globally prune data.
+
+### Tests and files
+
+- Backend157/157 serial full suite passes; frontend76/76 passes. Initial parallel
+  backend run had2existing PDF timeout failures under load; serial rerun passes with
+  unchanged15second safety limits. Both TS/builds, targeted lint and Git diff/cached
+  checks pass. Existing Vite warning/old unrelated ReceiptReviewCard lint remain.
+- New10truck/10trip/2stop simulation:10initial mock routes,0movement additional,
+  2context-change additional,10hourly additional. Unauthorized/duplicate/out-of-order/
+  invalid/stale captures denied; stopping one truck preserves others.
+- Unit/HTTP/runtime fixtures cover scope denial/fail-closed/filter/no-global-prune,
+  offline retry, pending permission/logout, watch failure and failed-stop recovery.
+- Three browser fixtures pass: multi-truck map; explicit consent/pagehide/unmount/
+  reload without auto-resume; event freshening/network loss/reconnect cache behavior.
+  All GPS/API/Mapbox responses simulated. No real GPS acceptance claim.
+- New files: backend/src/services/tracking-test-scope.ts,
+  backend/tests/tracking-test-scope.test.ts, tracking-scope-runtime.test.ts,
+  tracking-simulation.test.ts, docs/mapbox-gps-controlled-test.md.
+- Modified: backend runtime/routes/.env.example/tracking-api test;
+  frontend location-capture/api/tracking-api services, LocationSharing/
+  useTrackedAssignments, location-pod test, tracking-controls/realtime browser tests;
+  progress/activation/integration docs. No Hostinger files changed.
+
+Exact resume: WAIT for explicit one-profile/assignment test scope approval, trusted
+phone HTTPS setup, separately configured/verified Mapbox token and GPS/provider-spend
+permission. Do not change flags or delete retained data under this preparation scope.
+
+## October 17 — Cached Mapbox GL road-routing checkpoint
+
+Continued under road-routing preparation authorization; tracking/PDF flags remain
+false. No SQL, migration, operational/location/receipt writes, live Directions,
+Gemini, GPS capture, deployment, commit or push. Existing DR 333 is untouched.
+
+Completed:
+- Admin/Staff map defaults to lazy-loaded Mapbox GL road view; existing Leaflet
+  recorded-events view remains available with explicitly schematic link labels.
+- Bounded, protected read-only `/api/tracking/roads` joins exact trips/stops/current
+  assignments, warehouses/stores, driver/truck, saved position and existing cache.
+  Cached remaining routes must match the existing read-only RPC context/fingerprint.
+- Planned/remaining display modes, warehouse/numbered-stop/truck markers, independent
+  colored routes, selection emphasis, road-bounds fit and metadata/status panel.
+- Marker refresh preserves route source and viewport. Sources/layers/listeners/pins
+  clean up; no fallback straight-line road geometry is generated.
+- Token-isolated cache-first reads, deduplication, retained data/retry and targeted
+  collaboration refresh; no write or Directions operation in the new read path.
+- Coordinate-management implementation plan prepared; no location edits enabled.
+
+Read-only SDK counts: warehouses7 (1 valid pair), stores8 (8 valid), trips6,
+stops7, assignments6, tracking locations0 and cached routes0. Coordinate columns
+already exist; no coordinate schema migration is required. Six warehouse locations
+need separately approved verification/entry.
+
+**Remaining limitation:** existing cache stores only one remaining variant per
+assignment. Planned mode renders fixture geometry but cannot generate/persist a
+production planned variant yet. It truthfully shows unavailable instead of reusing
+remaining geometry. Prepare an approved extension of the existing cache/RPC before
+planned-route generation; no duplicate location table or unapproved SQL.
+
+Verification: backend159/159 serial; frontend79/79; both TS/builds and targeted
+changed TS/TSX lint pass. Staged/unstaged diff checks pass (existing CRLF notices).
+Actual offline GL browser test:10 independent road features,10 warehouses,20 stops,
+10 trucks; planned without GPS, remaining/completed-stop filtering, fit/highlight,
+marker-only/source/viewport reuse and cleanup pass.0 external/Directions requests,
+0 GPS writes. Geometry fixture comes from Mapbox's documented road-step example;
+it is not live ALZHEN routing verification. Four existing tracking/Trip Details
+browser regressions pass. New lazy GL chunk~1.88MB minified/524KB gzip; Vite chunk
+warning remains. No live performance/road-accuracy claim.
+
+Files this checkpoint: backend tracking route + road-routing-read service/tests and
+tracking-api HTTP tests; frontend package/lock, LiveTripMap, RoadRoutingPanel,
+RoadRouteMap, road-map-layer, road-routing service, road-routing unit/browser tests,
+documented geometry fixture; docs/road-routing-readiness.md and this progress log.
+
+Exact resume: review mode-aware planned-cache proposal, approve/verify missing
+warehouse coordinates and backend Directions configuration, then separately
+authorize controlled live routing/GPS. Keep TRACKING_ENABLED/POD_PDF_ENABLED=false.
+See docs/road-routing-readiness.md for evidence, current limits and coordinate plan.
+
+## October 17 — Planned routes and warehouse-coordinate preparation
+
+Supabase MCP was reconnected by the user. Read-only table/catalog checks confirm
+existing assignment-keyed cache/RPC contracts, RLS and service-only function access;
+private GPS/cache tables are not published. Warehouses7, usable coordinate pairs1.
+No Supabase migration/write, live Directions/GPS/Gemini call or operational change.
+TRACKING_ENABLED=false and POD_PDF_ENABLED=false unchanged; new PLANNED_ROUTES_ENABLED
+is unset (false) locally and false in the example template. No Hostinger changes.
+
+Prepared proposal (NOT APPLIED):
+`backend/migrations/2026_11_05_proposed_planned_routes.sql`
+SHA-256 `41EF6DD91F9E21C4319C5F352F04C2FC35719107B04F2252EFE9FC6A00D83890`.
+Adds eleven planned_* columns to existing cache and two service-only context/write
+RPCs. Keeps assignment PK/FK, remaining data/functions, grants, RLS and publications.
+Independent planned leases/revisions; combined existing 30/minute provider budget.
+No duplicate location/cache table, coordinate backfill or operational edits.
+
+Application:
+- Planned service resolves warehouse and every physical stop in saved sequence,
+  independent of GPS. Missing coordinates and >24 stops fail explicitly before
+  claiming/provider use. Supports cache reuse, hourly expiry, context invalidation,
+  concurrent deduplication and retained geometry/retry after failure.
+- Protected POST /api/tracking/roads/:assignmentId/planned requires ADMIN/STAFF,
+  server-derived identity and the separate disabled flag. Future committed updates
+  use existing management-only invalidation. No scheduled automatic provider calls.
+- Read API/UI supports independent plannedCache/remaining cache metadata and expiry.
+  New schema columns/RPCs are not accessed while the flag is false.
+- Road routes → Warehouse coordinates reads existing paginated management API,
+  displays saved/missing coordinates, offers local map pin/numeric preview, validates
+  bounds/order, and leaves Save disabled. No persistence call exists in the editor.
+  Six warehouses need separately authorized coordinate verification, not schema work.
+
+Tests:
+- Full backend164/164 serial; frontend81/81. Both TypeScript/builds and targeted
+  changed TS/TSX lint pass; existing Vite large-chunk warning remains.
+- Disposable PostgreSQL18 compiles proposal and verifies role/RPC ACLs, active
+  assignment/ordered stops, missing origin/store, waypoint limit, shared budget,
+  expiry/context changes, existing six RPC definitions and remaining cache unchanged,
+  retained geometry on failure, RLS and zero GPS rows.
+- Independent psql contenders:1 successful lease,1 rejected; no GPS data created.
+- Browser Staff warehouse editor:1 mock read, existing/missing coordinates, pin
+  selection/validation, unchanged source records, disabled Save and cleanup;0 external
+  requests/0 mutations. GL10trip regression passes (cached geometry/pin/viewport reuse).
+- All Directions results are isolated fixtures. No live planned route, warehouse
+  save, provider/token authorization or GPS acceptance is claimed.
+
+Files: planned migration; planned-route service/runtime and tests; tracking routes,
+road read service and tests; backend .env.example; local SQL/concurrency fixtures;
+WarehouseCoordinateEditor, coordinate-draft service/test, RoadRouteMap/RoadRoutingPanel,
+road-routing service/tests, warehouse browser fixture; approval/readiness/progress docs.
+
+Exact resume: obtain explicit approval of the exact planned SQL/checksum, verify
+project/schema and apply only approved SQL later; separately approve warehouse edits
+and provider credentials/budget/controlled planned generation. No flags or persistence
+are to be enabled merely by migration approval. See docs/planned-route-approval.md
+for verification/recovery and the complete activation boundary. No commit/push.
+
+## October 17 — Approved planned-route migration applied (activation still OFF)
+
+User explicitly approved only backend/migrations/2026_11_05_proposed_planned_routes.sql
+with SHA-256 41EF6DD91F9E21C4319C5F352F04C2FC35719107B04F2252EFE9FC6A00D83890.
+Read complete disk file; exact checksum verified before/after. Supabase MCP configured
+project scope and backend project both match hdmknewarynwpbrhfgai. Read-only preflight
+verified absent migration/columns/functions, expected tracking dependencies and ACLs.
+
+Applied exact disk SQL once through MCP: success, version20261017124148,
+name planned_routes. No other migration or corrective SQL was executed.
+Post-checks:11 planned columns,2 expected SECURITY DEFINER/search_path pg_catalog
+RPCs; service_role EXECUTE true, anon/authenticated false; expected4 checks/defaults.
+Existing6 tracking function definition hashes/ACLs, original PK/FK/checks, cache ACL,
+RLS/policies and private publication membership unchanged. Row counts/content hashes
+match across30 operational/lookup/receipt/POD/notification/GPS/cache tables.
+Route cache0/GPS0 before and after. Read-only planned, remaining and assignment RPCs
+retain exact parent identity for6/6 assignments; existing feed read succeeds with0.
+Migration history records20261017124148 exactly once. No database execution errors.
+
+Flags unchanged:TRACKING_ENABLED=false;POD_PDF_ENABLED=false;
+PLANNED_ROUTES_ENABLED unset(defaultfalse). No GPS capture/write, warehouse edits,
+route generation, Mapbox/Gemini call, cleanup, Storage/publication change, deploy,
+commit or push. Approved SQL file remains byte-for-byte unchanged.
+
+STOPPED after migration verification. Next steps require separate explicit approval
+for warehouse-coordinate edits, provider credentials/budget and controlled planned
+route activation. Do not reapply the planned migration or enable flags automatically.

@@ -910,18 +910,35 @@ export async function saveDriverTripReceipt(
   fileName: string,
   drNumber: string,
 ) {
-  await assertDriverHasActiveTrip(profileId, tripId);
+  const driverId = await assertDriverHasActiveTrip(profileId, tripId);
   const { data: receiptStop, error: receiptStopError } = await supabaseAdmin.from("trip_stops")
-    .select("id, archived_at").eq("id", tripStopId).eq("trip_id", tripId).maybeSingle();
+    .select("id, archived_at, dr_number, delivery_status, finish_unloading_time").eq("id", tripStopId).eq("trip_id", tripId).maybeSingle();
   if (receiptStopError) throw new Error("Unable to verify delivery stop.");
   if (!receiptStop || receiptStop.archived_at) throw new Error("This dispatch has been archived or removed. Refresh your assigned trips.");
   const cleanDrNumber = drNumber.trim();
   if (!cleanDrNumber || cleanDrNumber.length > 100) {
     throw new Error("Enter a valid delivery receipt number.");
   }
+  const receiptOnly = String(receiptStop.delivery_status).toUpperCase() === "COMPLETED";
+  if (receiptOnly && (!receiptStop.dr_number || String(receiptStop.dr_number).trim() !== cleanDrNumber)) {
+    throw new Error("Use the completed transaction's saved DR number. Ask dispatch to correct its DR before resubmitting.");
+  }
 
   const image = await uploadTripImage(tripId, bytes, contentType, fileName, { stopId: tripStopId, profileId, drNumber: cleanDrNumber });
   try {
+    if (receiptOnly) {
+      const { data: trip, error: tripError } = await supabaseAdmin.from("trips").select("status").eq("id", tripId).maybeSingle();
+      if (tripError || !trip) throw new Error("Unable to confirm the transaction's current status.");
+      const timestamp = new Date().toISOString();
+      const { error: auditError } = await supabaseAdmin.from("driver_trip_updates").insert({
+        trip_id:tripId,driver_id:driverId,status:"Details updated",delivery_status:receiptStop.delivery_status,
+        dr_number:receiptStop.dr_number,pod_image_path:image.storage_path,notes:"Receipt resubmitted for review; delivery milestones unchanged.",updated_at:timestamp,
+      });
+      if (auditError) throw new Error("The receipt resubmission could not be recorded. Please retry.");
+      return {trip_id:tripId,trip_stop_id:tripStopId,driver_id:driverId,status:"Delivered",delivery_status:receiptStop.delivery_status,
+        trip_status:trip.status,updated_at:timestamp,receipt_only:true,finish_unloading_time:receiptStop.finish_unloading_time,
+        receipt_id:image.id,storage_path:image.storage_path,file_name:image.file_name,signed_url:image.signed_url};
+    }
     const update = await updateDriverTripStatus(profileId, {
       trip_id: tripId,
       trip_stop_id: tripStopId,
@@ -931,6 +948,8 @@ export async function saveDriverTripReceipt(
     });
     return {
       ...update,
+      receipt_only:false,
+      finish_unloading_time:update.updated_at,
       receipt_id: image.id,
       storage_path: image.storage_path,
       file_name: image.file_name,

@@ -54,3 +54,19 @@
 [ 1681326ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792152822309:239
 [ 1742772ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 6} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792152822309:239
 [ 1742772ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792152822309:239
+[ 1801547ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 6} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792152822309:239
+[ 1801547ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792152822309:239
+[ 1861618ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 6} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792152822309:239
+[ 1861618ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792152822309:239
+[ 1921374ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 6} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792152822309:239
+[ 1921374ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792152822309:239
+[ 1959638ms] [WARNING] Realtime unavailable for public.admin_notifications; periodic report refresh remains active. Error: socket closed: 1006
+    at normalizeChannelError (http://localhost:5173/node_modules/.vite/deps/@supabase_supabase-js.js?v=12ed1a61:6664:11)
+    at http://localhost:5173/node_modules/.vite/deps/@supabase_supabase-js.js?v=12ed1a61:7064:99
+    at Object.callback (http://localhost:5173/node_modules/.vite/deps/@supabase_supabase-js.js?v=12ed1a61:5122:52)
+    at Channel.trigger (http://localhost:5173/node_modules/.vite/deps/@supabase_supabase-js.js?v=12ed1a61:5294:67)
+    at http://localhost:5173/node_modules/.vite/deps/@supabase_supabase-js.js?v=12ed1a61:6364:85
+    at Array.forEach (<anonymous>)
+    at Socket.triggerChanError (http://localhost:5173/node_modules/.vite/deps/@supabase_supabase-js.js?v=12ed1a61:6363:17)
+    at Socket.onConnClose (http://localhost:5173/node_modules/.vite/deps/@supabase_supabase-js.js?v=12ed1a61:6342:8)
+    at conn.onclose (http://localhost:5173/node_modules/.vite/deps/@supabase_supabase-js.js?v=12ed1a61:6214:39) @ http://localhost:5173/@vite/client:532

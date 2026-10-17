@@ -317,12 +317,14 @@ export async function apiPost<T>(
   endpoint: string,
   body: unknown,
   token?: string,
+  signal?: AbortSignal,
 ): Promise<T> {
   return request<T>(
     endpoint,
     {
       method: "POST",
       body: JSON.stringify(body),
+      signal,
     },
     token,
   );

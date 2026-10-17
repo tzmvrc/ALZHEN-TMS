@@ -37,7 +37,7 @@ async function recordAudit(tableId: string, actorId: string, action: string, ent
   }
 }
 
-async function getTableAccess(tableIdInput: unknown, actor: FlexActor, level: "view" | "edit" | "manage") {
+export async function getTableAccess(tableIdInput: unknown, actor: FlexActor, level: "view" | "edit" | "manage") {
   const tableId = requireUuid(tableIdInput, "table_id");
   const { data: table, error } = await supabaseAdmin.from("flex_tables").select(TABLE_FIELDS).eq("id", tableId).maybeSingle();
   if (error) failDb("load", error);

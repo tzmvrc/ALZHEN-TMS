@@ -20,6 +20,7 @@ const router = Router();
 
 // Operational report writes authorize ADMIN/STAFF versus assigned TRUCKER
 // accounts inside the service using the authenticated profile/session.
+router.get("/operations/page", authMiddleware, requireRole("ADMIN", "STAFF"), operationsReportController.getPage);
 router.get("/operations/overview", authMiddleware, operationsReportController.getOverview);
 router.get("/operations/reporters", authMiddleware, requireRole("ADMIN", "STAFF"), operationsReportController.getReporters);
 router.get("/operations/offload-transactions", authMiddleware, operationsReportController.getOffloadTransactions);
@@ -27,6 +28,7 @@ router.get("/operations/offload-cleanup", authMiddleware, requireRole("ADMIN", "
 router.post("/operations/offload-cleanup/:operationId/retry", authMiddleware, requireRole("ADMIN", "STAFF"), operationsReportController.retryCleanup);
 router.get("/operations/assigned", authMiddleware, operationsReportController.getAssigned);
 router.get("/operations/trips/:tripId", authMiddleware, operationsReportController.getTripDetails);
+router.patch("/operations/loading/:tripId/reports/:recordId", authMiddleware, requireRole("ADMIN", "STAFF"), operationsReportController.updateLoading);
 router.put("/operations/loading/:tripId", authMiddleware, operationsReportController.saveLoading);
 router.put("/operations/unloading/:tripId/stops/:stopId", authMiddleware, operationsReportController.saveUnloading);
 router.post("/operations/backloads", authMiddleware, operationsReportController.createBackload);

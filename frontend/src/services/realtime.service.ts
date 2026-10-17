@@ -21,6 +21,7 @@ export type RealtimePayload = {
 // Tables are based on the checked-in view definitions and report enrichment queries.
 export const REPORT_REALTIME_TABLES: Record<ReportKey, readonly string[]> = {
   combined: [
+    "loading_reports",
     "flex_cells", "flex_rows", "flex_columns", "flex_tables",
     "trips",
     "trip_truck_assignments",
@@ -38,6 +39,7 @@ export const REPORT_REALTIME_TABLES: Record<ReportKey, readonly string[]> = {
     "warehouses",
   ],
   "dispatch-monitoring": [
+    "loading_reports",
     "flex_cells", "flex_rows", "flex_columns", "flex_tables",
     "trips",
     "trip_truck_assignments",
@@ -53,6 +55,7 @@ export const REPORT_REALTIME_TABLES: Record<ReportKey, readonly string[]> = {
     "warehouses",
   ],
   dispatch: [
+    "loading_reports",
     "trips",
     "trip_stops",
     "trip_line_items",

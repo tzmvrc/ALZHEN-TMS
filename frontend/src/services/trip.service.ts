@@ -138,7 +138,7 @@ export async function fetchTripEvents(
   const response = await apiGetCached<ApiResponse<TripEvent[]>>(
     `/trips/${encodeURIComponent(tripId)}/events`,
     token,
-    TRIP_EVENT_CACHE_TTL_MS,
+    TRIP_EVENT_CACHE_TTL_MS,undefined,20_000,
   );
   if (!response.success || !response.data) {
     throw new Error(response.message ?? "Unable to load trip events.");
@@ -153,7 +153,7 @@ async function fetchTripChildren(
 ): Promise<TripChildRecord[]> {
   const response = await apiGetCached<ApiResponse<TripChildRecord[]>>(
     `/trips/${encodeURIComponent(tripId)}/${resource}`,
-    token,
+    token,undefined,undefined,20_000,
   );
   if (!response.success || !response.data) {
     throw new Error(response.message ?? `Unable to load trip ${resource}.`);
@@ -167,7 +167,7 @@ export async function fetchTripDetail(
 ): Promise<TripDetail> {
   const response = await apiGetCached<ApiResponse<TripDetail>>(
     `/trips/${encodeURIComponent(tripId)}`,
-    token,
+    token,undefined,undefined,20_000,
   );
   if (!response.success || !response.data) {
     throw new Error(response.message ?? "Unable to load trip details.");

@@ -35,3 +35,12 @@ test("trip, assignment, billing and store-call writes confirm their own source i
     assert.throws(()=>confirmReportCellWrite({id:"unrelated",trip_id:"trip-a",remarks:"Saved"},target,"remarks"),/did not confirm/);
   }
 });
+
+test("loading Saved requires the canonical loading report, trip and timestamp", () => {
+  const target = {sourceEntity: "loadingReport" as const, loadingReportId: "loading-a", tripId: "trip-a"};
+  const saved = {id: "loading-a", trip_id: "trip-a", loading_start_at: "2026-10-16T15:50:23.250+00:00"};
+  assert.equal(confirmReportCellWrite(saved, target, "loading_start_at", {value: "2026-10-16T15:50:23.250Z", editor: "datetime"}), saved.loading_start_at);
+  assert.throws(() => confirmReportCellWrite({...saved, id: "stop-a"}, target, "loading_start_at"), /draft is retained/);
+  assert.throws(() => confirmReportCellWrite({...saved, trip_id: "trip-b"}, target, "loading_start_at"), /different trip/);
+  assert.throws(() => confirmReportCellWrite(saved, target, "loading_finished_at"), /draft is retained/);
+});

@@ -1,4 +1,4 @@
-import { apiGet, apiPatch, type ApiResponse } from "./api.service";
+import { apiGet, apiGetCached, apiPatch, invalidateApiCache, type ApiResponse } from "./api.service";
 import type { ReportKey } from "./report.service";
 
 export type AdminNotification = {
@@ -22,8 +22,8 @@ export type AdminNotificationTarget = {
   searchText?: string;
 };
 
-export async function fetchNotifications(token: string) {
-  const response = await apiGet<ApiResponse<{ notifications: AdminNotification[]; unreadCount: number }>>("/notifications", token);
+export async function fetchNotifications(token: string, cached = false) {
+  const response = await (cached ? apiGetCached : apiGet)<ApiResponse<{ notifications: AdminNotification[]; unreadCount: number }>>("/notifications", token);
   if (!response.success || !response.data) throw new Error(response.message ?? "Unable to load notifications.");
   return response.data;
 }
@@ -31,11 +31,13 @@ export async function fetchNotifications(token: string) {
 export async function markNotificationAsRead(token: string, id: string) {
   const response = await apiPatch<ApiResponse<{ id: string; read_at: string }>>(`/notifications/${id}/read`, {}, token);
   if (!response.success || !response.data) throw new Error(response.message ?? "Unable to mark notification as read.");
+  invalidateApiCache("/notifications");
   return response.data;
 }
 
 export async function markAllNotificationsAsRead(token: string) {
   const response = await apiPatch<ApiResponse<{ notifications: Array<{ id: string; read_at: string }>; read_at: string }>>("/notifications/read-all", {}, token);
   if (!response.success || !response.data) throw new Error(response.message ?? "Unable to mark notifications as read.");
+  invalidateApiCache("/notifications");
   return response.data;
 }

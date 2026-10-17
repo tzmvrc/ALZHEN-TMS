@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { createPortal } from "react-dom";
-import { ArrowDown, ArrowUp, Bold,Italic, EyeOff, LoaderCircle, Paintbrush, Palette, Pencil, Pin, RotateCcw, Search, SlidersHorizontal, Trash2, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Bold,Italic,Underline, EyeOff, LoaderCircle, Paintbrush, Palette, Pencil, Pin, RotateCcw, Search, SlidersHorizontal, Trash2, X } from "lucide-react";
 import { addDropdownOption, editDropdownOption, fetchDropdownOptions, type DropdownField, type DropdownOption } from "../../services/dropdown-option.service";
 import { REPORT_COLUMN_COLORS, type ReportCellFormat } from "./ReportSpreadsheetUtils";
 
@@ -13,19 +13,19 @@ export function ReportRowActionButton({ action, disabled, onClick, label: custom
   </button>;
 }
 
-export function ReportCellFormattingToolbar({ selectedCellCount, selectionIsBold, selectedTextColor, selectedBackgroundColor, onApply,advanced=false,selectionIsItalic=false,fontSize,fontFamily }: {
+export function ReportCellFormattingToolbar({ selectedCellCount, selectionIsBold, selectedTextColor, selectedBackgroundColor, onApply,advanced=false,selectionIsItalic=false,selectionIsUnderlined=false }: {
   selectedCellCount: number;
   selectionIsBold: boolean;
   selectedTextColor: string | null;
   selectedBackgroundColor: string | null;
   onApply: (change: Partial<ReportCellFormat>) => void;
-  advanced?:boolean;selectionIsItalic?:boolean;fontSize?:number|null;fontFamily?:string|null;
+  advanced?:boolean;selectionIsItalic?:boolean;selectionIsUnderlined?:boolean;
 }) {
   const [openColorPicker, setOpenColorPicker] = useState<"text" | "background" | null>(null);
   const apply = (change: Partial<ReportCellFormat>) => { onApply(change); setOpenColorPicker(null); };
   const toolbarButtonClass = "inline-flex h-7 w-7 items-center justify-center rounded border disabled:cursor-not-allowed disabled:opacity-40";
   return <div role="toolbar" aria-label="Cell formatting" className="flex min-h-9 items-center gap-1 border-b border-slate-100 bg-slate-50/70 px-3 py-1.5">
-    {advanced&&<><select aria-label="Font family" value={fontFamily??""} disabled={!selectedCellCount} onChange={e=>apply({fontFamily:e.target.value||null})} className="h-7 max-w-28 rounded border border-slate-200 bg-white px-1 text-xs"><option value="">Default font</option>{["Arial","Calibri","Verdana","Georgia","monospace"].map(v=><option key={v}>{v}</option>)}</select><select aria-label="Font size" value={fontSize??""} disabled={!selectedCellCount} onChange={e=>apply({fontSize:e.target.value?Number(e.target.value):null})} className="h-7 rounded border border-slate-200 bg-white px-1 text-xs"><option value="">Size</option>{[9,10,11,12,13,14,16,18,20,24,28,32].map(v=><option key={v}>{v}</option>)}</select><button type="button" title="Italic selected cells" aria-label="Italic selected cells" aria-pressed={selectionIsItalic} disabled={!selectedCellCount} onMouseDown={e=>e.preventDefault()} onClick={()=>apply({italic:!selectionIsItalic})} className={toolbarButtonClass}><Italic className="h-4 w-4" /></button></>}
+    {advanced&&<><button type="button" title="Italic selected cells" aria-label="Italic selected cells" aria-pressed={selectionIsItalic} disabled={!selectedCellCount} onMouseDown={e=>e.preventDefault()} onClick={()=>apply({italic:!selectionIsItalic})} className={toolbarButtonClass}><Italic className="h-4 w-4" /></button><button type="button" aria-label="Underline selected cells" title="Underline selected cells" aria-pressed={selectionIsUnderlined} disabled={!selectedCellCount} onMouseDown={e=>e.preventDefault()} onClick={()=>apply({underline:!selectionIsUnderlined})} className={toolbarButtonClass}><Underline className="h-4 w-4"/></button></>}
     <button type="button" title="Bold selected cells" aria-label="Bold selected cells" aria-pressed={selectionIsBold} disabled={!selectedCellCount} onMouseDown={(event) => event.preventDefault()} onClick={() => apply({ bold: !selectionIsBold })} className={`${toolbarButtonClass} ${selectionIsBold ? "border-blue-300 bg-blue-100 text-blue-800" : "border-transparent text-slate-600 hover:bg-white hover:text-slate-900"}`}><Bold aria-hidden="true" className="h-4 w-4" /></button>
     <div className="relative">
       <button type="button" title="Text color" aria-label="Text color" aria-expanded={openColorPicker === "text"} disabled={!selectedCellCount} onMouseDown={(event) => event.preventDefault()} onClick={() => setOpenColorPicker((current) => current === "text" ? null : "text")} className={`${toolbarButtonClass} ${openColorPicker === "text" ? "border-blue-300 bg-blue-100 text-blue-800" : "border-transparent text-slate-600 hover:bg-white hover:text-slate-900"}`}><Palette aria-hidden="true" className="h-4 w-4" /></button>
@@ -94,7 +94,7 @@ export function ReportColumnColorDialog({ columnName, color, onChange, onReset, 
   return createPortal(<div className="fixed inset-0 z-[2000] flex items-center justify-center bg-slate-900/20 p-4 backdrop-blur-[2px]" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
     <section role="dialog" aria-modal="true" aria-labelledby="report-column-color-title" className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl">
       <div className="flex items-start justify-between gap-3"><div><h2 id="report-column-color-title" className="text-sm font-semibold text-slate-900">Edit Column</h2><p className="mt-1 text-xs text-slate-500">Choose a display color for {columnName}.</p></div><button type="button" title="Close" aria-label="Close column color dialog" onClick={onClose} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100"><X className="h-4 w-4" /></button></div>
-      <div className="mt-4 flex items-center gap-3"><input aria-label="Column display color" type="color" value={color || "#eaf2fb"} onChange={(event) => onChange(event.target.value)} className="h-9 w-12 cursor-pointer rounded border border-slate-200 bg-white p-1" /><span className="text-xs text-slate-600">Color is saved with this browser’s report column preferences.</span></div>
+      <div className="mt-4 flex items-center gap-3"><input aria-label="Column display color" type="color" value={color || "#eaf2fb"} onChange={(event) => onChange(event.target.value)} className="h-9 w-12 cursor-pointer rounded border border-slate-200 bg-white p-1" /><span className="text-xs text-slate-600">Color is shared with authorized users of this table.</span></div>
       <div className="mt-4 grid grid-cols-8 gap-2" aria-label="Column color palette">{REPORT_COLUMN_COLORS.map((choice) => <button key={choice} type="button" aria-label={`Set column color ${choice}`} title={choice} aria-pressed={color.toLowerCase() === choice} onClick={() => onChange(choice)} className="h-7 w-7 rounded-full border border-slate-300 ring-offset-2 hover:ring-2 hover:ring-[#0b2341] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0b2341]" style={{ backgroundColor: choice }} />)}</div>
       <div className="mt-5 flex justify-between"><button type="button" onClick={onReset} className="rounded-lg px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100">Reset to default</button><button type="button" onClick={onClose} className="rounded-lg bg-[#0b2341] px-3 py-2 text-xs font-semibold text-white hover:bg-[#17375f]">Done</button></div>
     </section>
@@ -106,7 +106,7 @@ export function ReportTextCellEditor({
   commitOnBlur = true, onChange, onCommit, onCancel,
 }: {
   value: string;
-  type?: "text" | "number" | "date" | "datetime-local";
+  type?: "text" | "number" | "date" | "time" | "datetime-local";
   multiline?: boolean;
   label: string;
   disabled?: boolean;

@@ -1,0 +1,43 @@
+{
+ admin off
+ email {$ACME_EMAIL}
+ log {
+  level {$CADDY_LOG_LEVEL:INFO}
+ }
+}
+{$APP_DOMAIN} {
+ encode zstd gzip
+ header {
+  X-Content-Type-Options nosniff
+  Referrer-Policy strict-origin-when-cross-origin
+  Permissions-Policy "geolocation=(self), camera=(self), microphone=()"
+  Strict-Transport-Security "max-age=31536000"
+ }
+ log {
+  output file /var/log/caddy/access.json {
+   roll_size 10MiB
+   roll_keep 5
+  }
+  format filter {
+   wrap json
+   fields {
+    request>uri delete
+    request>headers>Authorization delete
+    request>headers>Cookie delete
+    request>headers>X-App-Session delete
+    resp_headers>Set-Cookie delete
+    resp_headers>Location delete
+   }
+  }
+ }
+ @backend path /api /api/* /socket.io /socket.io/*
+ handle @backend {
+  reverse_proxy backend:5000
+ }
+ handle {
+  reverse_proxy frontend:8080
+ }
+}
+http://127.0.0.1:8081 {
+ respond /healthz "ok" 200
+}

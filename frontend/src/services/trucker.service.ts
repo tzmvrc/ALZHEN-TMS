@@ -1,4 +1,6 @@
 import { apiGetCached, apiPatch, apiPost, apiUpload, getCachedApiResponse,invalidateApiCache,type ApiResponse } from "./api.service";
+import {pdfIntakeAvailable} from "./pdf-intake.service";
+import {validatePodUpload} from "./pod-upload-validation";
 
 export type TruckerListItem = {
   id: string;
@@ -120,6 +122,8 @@ export type DriverAssignedStop = {
 };
 
 export type SavedDriverReceipt = {
+  receipt_only?: boolean;
+  finish_unloading_time?: string | null;
   receipt_id: string;
   trip_id: string;
   trip_stop_id: string;
@@ -246,6 +250,7 @@ export async function uploadDriverPod(
   file: File,
   drNumber: string,
 ): Promise<SavedDriverReceipt> {
+  validatePodUpload(file,file.type==="application/pdf"?await pdfIntakeAvailable(token):false);
   const response = await apiUpload<
     ApiResponse<SavedDriverReceipt>
   >(

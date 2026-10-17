@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   CircleMarker,
   MapContainer,
@@ -10,6 +10,8 @@ import {
   useMap,
 } from "react-leaflet";
 import L from "leaflet";
+import TrackedTruckLayer from "./TrackedTruckLayer";
+import {useTrackedAssignments} from "./useTrackedAssignments";
 import { RefreshCw } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { usePingingTrips } from "./live-trip-pings";
@@ -17,6 +19,12 @@ import { fetchSavedMapLocations, type SavedMapLocation } from "../../services/ma
 import type { TripEvent, TripRecord } from "../../services/trip.service";
 
 const MAPBOX_ACCESS_TOKEN = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN?.trim();
+const RoadRoutingPanel = lazy(()=>import("./RoadRoutingPanel"));
+export default function LiveTripMap(props:Parameters<typeof RecordedTripMap>[0]){
+ const [view,setView]=useState<"roads"|"events">("roads");
+ const ids=props.focusTripId?[props.focusTripId]:[...new Set([...props.tracks.map(t=>t.trip.id),...(props.tripLocationRoutes??[]).map(t=>t.tripId)].filter((id):id is string=>typeof id==="string"))];
+ return <div><div className="flex gap-2 p-2"><button className="rounded border px-3 py-1 text-sm" aria-pressed={view==="roads"} onClick={()=>setView("roads")}>Road routes</button><button className="rounded border px-3 py-1 text-sm" aria-pressed={view==="events"} onClick={()=>setView("events")}>Recorded events</button></div>{view==="roads"?<Suspense fallback={<div className="animate-pulse bg-slate-100 p-6">Loading map…</div>}><RoadRoutingPanel tripIds={ids} height={props.height}/></Suspense>:<RecordedTripMap {...props}/>}</div>;
+}
 /* Light base map, desaturated by the CSS filter below so the navy route stands out.
    Mapbox raster tiles are 512px, so the TileLayer uses tileSize 512 and zoomOffset -1. */
 const MAPBOX_STYLE = "mapbox/light-v11";
@@ -482,7 +490,7 @@ function clusterIcon(items: MapItem[], ping = false) {
   });
 }
 
-export default function LiveTripMap({
+function RecordedTripMap({
   tracks,
   locationIds,
   tripLocationRoutes,
@@ -499,7 +507,12 @@ export default function LiveTripMap({
   height?: number;
   fillHeight?: boolean;
 }) {
-  const { accessToken } = useAuth();
+  const { accessToken,profile } = useAuth();
+  const tracked=useTrackedAssignments(profile&&["ADMIN","STAFF"].includes(profile.role)?accessToken:null,focusTripId);
+  const [trackingClock,setTrackingClock]=useState(Date.now);
+  useEffect(()=>{if(!tracked.length)return;const timer=setInterval(()=>setTrackingClock(Date.now()),15000);return()=>clearInterval(timer);},[tracked.length]);
+  const trackedIdentity=tracked.map(t=>t.tripId).sort().join(",");
+  const trackedTrips=useMemo(()=>new Set(trackedIdentity?trackedIdentity.split(","):[]),[trackedIdentity]);
   /* Trucks that just sent an update pulse on the map for a few seconds. */
   const pingingTrips = usePingingTrips();
   const [locations, setLocations] = useState<SavedMapLocation[]>([]);
@@ -529,7 +542,7 @@ export default function LiveTripMap({
 
   const plotted = useMemo(
     () =>
-      tracks
+      tracks.filter(t=>!trackedTrips.has(String(t.trip.id)))
         .map((track) => {
           const points = track.events
             .slice()
@@ -543,7 +556,7 @@ export default function LiveTripMap({
           return { ...track, points };
         })
         .filter((track) => track.points.length > 0),
-    [tracks],
+    [tracks,trackedTrips],
   );
 
   const tripCoords = useMemo(
@@ -566,7 +579,7 @@ export default function LiveTripMap({
   }, [tripLocationRoutes, visibleLocations]);
   const tripLocationSegments = useMemo(() => {
     const locationsById = new Map(visibleLocations.map((location) => [location.id, location]));
-    return (tripLocationRoutes ?? []).flatMap((route) => {
+    return (tripLocationRoutes ?? []).filter(r=>!trackedTrips.has(r.tripId)).flatMap((route) => {
       const origin = locationsById.get(route.originWarehouseId);
       if (!origin || origin.kind !== "warehouse") return [];
       return [...new Set(route.destinationStoreIds)].flatMap((storeId) => {
@@ -584,7 +597,7 @@ export default function LiveTripMap({
         }];
       });
     });
-  }, [tripLocationRoutes, visibleLocations]);
+  }, [tripLocationRoutes, visibleLocations,trackedTrips]);
   const originLocationIds = useMemo(
     () => new Set(tripLocationSegments.map((segment) => segment.origin.id)),
     [tripLocationSegments],
@@ -602,7 +615,7 @@ export default function LiveTripMap({
     [tripCoords, locationCoords],
   );
   const center: [number, number] = allCoords[0] ?? [12.8797, 121.774];
-  const markerCount = plotted.length;
+  const markerCount = plotted.length+tracked.length;
   const warehouseCount = visibleLocations.filter((location) => location.kind === "warehouse").length;
   const storeCount = visibleLocations.filter((location) => location.kind === "store").length;
   const overlapGroups = useMemo<OverlapGroup[]>(() => {
@@ -707,6 +720,7 @@ export default function LiveTripMap({
           scrollWheelZoom={false}
         >
           <ResizeMap />
+          <TrackedTruckLayer assignments={tracked} now={trackingClock}/>
           <TileLayer
             attribution={TILE_ATTRIBUTION}
             url={TILE_URL}
@@ -928,7 +942,7 @@ export default function LiveTripMap({
             <span aria-hidden="true">{STORE_STOP_EMOJI}</span> Store stop
           </span>
           <span className="inline-flex items-center gap-1.5">
-            <span aria-hidden="true" className="inline-block w-6 border-t-2 border-dashed border-[#2678b9]" /> Trip origin → ship-to
+            <span aria-hidden="true" className="inline-block w-6 border-t-2 border-dashed border-[#2678b9]" /> Schematic origin → ship-to (not a road route)
           </span>
           <span className="inline-flex items-center gap-1.5">
             <svg viewBox="0 0 24 32" width="11" height="14" aria-hidden="true">
@@ -951,7 +965,7 @@ export default function LiveTripMap({
             <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-amber-500 text-[8px] font-bold text-white">!</span> Delayed / error
           </span>
           <span className="text-slate-400">
-          Routes follow recorded GPS fixes; unreported route segments are not inferred.
+          Event lines connect recorded GPS fixes. Dashed destination links are schematic; use Road routes for cached road geometry.
           </span>
         </div>
       </footer>

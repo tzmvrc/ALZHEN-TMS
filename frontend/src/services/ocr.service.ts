@@ -8,8 +8,9 @@ const MAX_SIDE = 2200;
 /* Phone photos of receipts are shadowy and often huge. Scaling to a sane size and
    boosting grayscale contrast noticeably improves recognition. */
 async function prepareImage(source: Blob): Promise<Blob> {
+  let bitmap: ImageBitmap | undefined;
   try {
-    const bitmap = await createImageBitmap(source);
+    bitmap = await createImageBitmap(source);
     const scale = Math.min(1, MAX_SIDE / Math.max(bitmap.width, bitmap.height));
     const canvas = document.createElement("canvas");
     canvas.width = Math.round(bitmap.width * scale);
@@ -17,7 +18,6 @@ async function prepareImage(source: Blob): Promise<Blob> {
     const context = canvas.getContext("2d");
     if (!context) return source;
     context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-    bitmap.close();
     const image = context.getImageData(0, 0, canvas.width, canvas.height);
     const { data } = image;
     for (let i = 0; i < data.length; i += 4) {
@@ -31,25 +31,28 @@ async function prepareImage(source: Blob): Promise<Blob> {
     );
   } catch {
     return source;
+  } finally {
+    bitmap?.close();
   }
 }
 
 export async function recognizeReceipt(
-  source: Blob,
+  source: Blob | Blob[],
   onProgress?: (fraction: number) => void,
 ): Promise<OcrResult> {
-  const [{ createWorker }, prepared] = await Promise.all([
-    import("tesseract.js"),
-    prepareImage(source),
-  ]);
+  const pages=Array.isArray(source)?source:[source];
+  if(!pages.length||pages.length>10)throw Error("Choose a receipt with at most 10 pages.");
+  const {createWorker}=await import("tesseract.js");
+  let completed=0;
   const worker = await createWorker("eng", 1, {
     logger: (message: { status: string; progress: number }) => {
-      if (message.status === "recognizing text") onProgress?.(message.progress);
+      if (message.status === "recognizing text") onProgress?.((completed+message.progress)/pages.length);
     },
   });
   try {
-    const { data } = await worker.recognize(prepared);
-    return { text: data.text.trim(), confidence: Math.round(data.confidence) };
+    const results:OcrResult[]=[];
+    for(const page of pages){const {data}=await worker.recognize(await prepareImage(page));results.push({text:data.text.trim(),confidence:data.confidence});completed++;}
+    return {text:results.map(r=>r.text).join("\n\n").slice(0,100000),confidence:Math.round(results.reduce((sum,r)=>sum+r.confidence,0)/results.length)};
   } finally {
     await worker.terminate();
   }

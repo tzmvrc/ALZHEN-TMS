@@ -15,6 +15,7 @@ test("confirmed physical stop edits survive delayed report refresh without paren
     transaction_number: `TX-${index + 1}`, quantity: index + 1, total_cbm: null,
     customer_id: null, store_id: null, remarks: null, delivery_status: "Planned",
   }));
+  const loading = { id: "623e4567-e89b-42d3-a456-426614174000", trip_id: tripId, loading_start_at: "2026-10-16T15:50:23.250Z", loading_finished_at: "2026-10-16T16:35:10.000Z" };
   const trip = { id: tripId, dispatch_number: "PARENT-LEGACY", transaction_number: "PARENT-TX" };
   const writes: Array<{table: string; filters: Array<[string, unknown]>; payload: Record<string, unknown>}> = [];
   let failWrite = false;
@@ -42,7 +43,7 @@ test("confirmed physical stop edits survive delayed report refresh without paren
         stop_remarks: stop.remarks, delivery_status: stop.delivery_status,
       }));
       const candidates: Array<Record<string, unknown>> = table.startsWith("v_") || table.startsWith("vw_")
-        ? viewRows() : table === "trips" ? [trip] : table === "trip_stops" ? stops
+        ? viewRows() : table === "trips" ? [trip] : table === "trip_stops" ? stops : table === "loading_reports" ? [loading]
         : table === "tms_dropdown_options" ? [{field_key:"delivery_status",option_value:"Completed",active:true}] : [];
       const matches = candidates.filter(row => filters.every(([key,value]) => row[key] === value)
         && (!included || included.values.includes(row[included.key])));
@@ -75,6 +76,11 @@ test("confirmed physical stop edits survive delayed report refresh without paren
         assert.equal(result.rows[1].transaction_quantity,0);
         assert.equal(result.rows[1].transaction_total_cbm,null);
         assert.equal(result.rows[1].delivery_status,"Completed");
+        if (["combined", "dispatch", "dispatch-monitoring"].includes(report)) {
+          assert.equal(result.rows[1].loading_report_id, loading.id);
+          assert.equal(result.rows[1].loading_start_at, loading.loading_start_at);
+          assert.equal(result.rows[1].loading_finished_at, loading.loading_finished_at);
+        }
       }
     };
     await check();

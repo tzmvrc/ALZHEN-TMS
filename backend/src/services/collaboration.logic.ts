@@ -1,5 +1,10 @@
 import { isValidUuid } from "../utils/validation.js";
 export const COLLAB_TABLES = ["trips","combined","dispatch-monitoring","dispatch","trip-booking","store-calling"] as const;
+export function canViewTable(role:string,key:string){
+ if(!management(role))return false;
+ if(key==="users:staff")return role==="ADMIN";
+ return (COLLAB_TABLES as readonly string[]).includes(key)||["operations","transmittal-tracker","users:truckers"].includes(key)||/^master:(warehouses|customers|customer-stores|stores|store-contacts|pictures|drivers|trucks|trucking-companies|products|trip-types)$/.test(key)||key.startsWith("flex:")&&isValidUuid(key.slice(5));
+}
 export const SOURCE_FIELDS: Record<string,readonly string[]> = {
  trips:["dispatch_number","transaction_number","trip_number","loading_date","estimated_delivery_date","status","remarks","trip_type_id","warehouse_id","added_to_report","letter_status","truck_allocated_by","subcon_rate_manual","signed_dr_upload_date","transmittal_date","tms_date","tms_done_by","pod_ac_shipping_date","lbc_tracking_number"],
  trip_stops:["dispatch_number","transaction_number","dr_number","quantity","total_cbm","stop_sequence","customer_id","store_id","delivery_status","arrival_time","start_unloading_time","finish_unloading_time","departure_time","remarks"],
