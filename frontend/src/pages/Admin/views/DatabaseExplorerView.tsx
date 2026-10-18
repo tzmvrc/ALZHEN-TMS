@@ -85,9 +85,15 @@ export default function DatabaseExplorerView() {
   });
   const pageCount = result?.pagination.totalPages ?? 0;
 
+  const selectSource = (source: string) => {
+    setSelectedSource(source);
+    setPage(1);
+    setRowSearch("");
+  };
+
   return (
-    <div className="grid min-h-[calc(100vh-11rem)] gap-4 xl:grid-cols-[260px_minmax(0,1fr)]">
-      <aside className={`${tableUi.shell} flex min-h-0 flex-col`}>
+    <div className="grid min-w-0 gap-3 xl:min-h-[calc(100vh-11rem)] xl:grid-cols-[260px_minmax(0,1fr)] xl:gap-4">
+      <aside className={`${tableUi.shell} flex min-w-0 flex-col xl:min-h-0`}>
         <header className="border-b border-slate-100 p-4">
           <div className="flex items-center gap-2">
             <Database aria-hidden="true" className="h-4 w-4 text-[#2678b9]" />
@@ -104,17 +110,28 @@ export default function DatabaseExplorerView() {
               className={`${tableUi.search} h-9 pl-8 text-xs !bg-[#f2f6fa] !shadow-none`}
             />
           </label>
+          <label className="mt-3 block xl:hidden">
+            <span className="sr-only">Choose database source</span>
+            <select
+              aria-label="Choose database source"
+              value={selectedSource}
+              onChange={(event) => selectSource(event.target.value)}
+              className={`${tableUi.select} w-full !bg-[#f2f6fa] !shadow-none`}
+            >
+              {filteredSources.map((source) => (
+                <option key={source.name} value={source.name}>
+                  {source.label} · {source.kind}
+                </option>
+              ))}
+            </select>
+          </label>
         </header>
-        <nav aria-label="Database sources" className="min-h-0 flex-1 space-y-0.5 overflow-y-auto p-2">
+        <nav aria-label="Database sources" className="hidden min-h-0 flex-1 space-y-0.5 overflow-y-auto p-2 xl:block">
           {filteredSources.map((source) => (
             <button
               key={source.name}
               type="button"
-              onClick={() => {
-                setSelectedSource(source.name);
-                setPage(1);
-                setRowSearch("");
-              }}
+              onClick={() => selectSource(source.name)}
               className={`flex min-h-9 w-full items-center gap-2 rounded-full px-3 text-left text-xs transition-colors ${
                 selectedSource === source.name
                   ? "bg-[#e6f0f9] font-semibold text-[#0b2341]"
@@ -134,7 +151,7 @@ export default function DatabaseExplorerView() {
       </aside>
 
       <section className={`${tableUi.shell} flex min-w-0 flex-col`}>
-        <header className="flex flex-col gap-3 border-b border-slate-100 px-5 py-4 md:flex-row md:items-center md:justify-between">
+        <header className="flex flex-col gap-3 border-b border-slate-100 px-4 py-3 sm:px-5 sm:py-4 md:flex-row md:items-center md:justify-between">
           <div>
             <p className="text-[11px] font-medium text-slate-400">Read only · administrator access</p>
             <h2 className="mt-0.5 text-[17px] font-semibold tracking-tight text-[#0b2341]">
@@ -197,7 +214,7 @@ export default function DatabaseExplorerView() {
                       {(result?.columns ?? []).map((column) => {
                         const value = displayCell(row[column]);
                         return (
-                          <td key={column} className={`max-w-80 ${tableUi.td} !text-xs`}>
+                          <td key={column} className={`max-w-80 ${tableUi.td}`}>
                             <span className="block max-h-24 min-w-12 overflow-auto whitespace-pre-wrap break-words" title={value}>{value}</span>
                           </td>
                         );
@@ -207,7 +224,7 @@ export default function DatabaseExplorerView() {
                 </tbody>
               </table>
             </div>
-            <footer className={tableUi.footer}>
+            <footer className={`${tableUi.footer} flex-wrap gap-2 px-4`}>
               <span>
                 {result
                   ? `Page ${result.pagination.page} of ${result.pagination.totalPages} · Showing ${filteredRows.length} of ${result.rows.length} rows`

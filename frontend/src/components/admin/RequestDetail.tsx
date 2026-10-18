@@ -1,28 +1,16 @@
 // src/components/admin/RequestDetail.tsx
 import { useState } from "react";
-import {
-  Check,
-  ChevronDown,
-  ChevronRight,
-  MessageSquare,
-  Package,
-  Send,
-  X,
-} from "lucide-react";
+import { Check, MessageSquare, Package, Send, X } from "lucide-react";
 import type { DispatchRequest, RequestStatus } from "../../types/requests";
-import { surface, tableUi } from "./dashboardStyles";
+import { surface } from "./dashboardStyles";
 import { senderInitials } from "./requestFormat";
 
 /* ---------- helpers ---------- */
 function formatDate(iso?: string) {
-  if (!iso) return "—";
+  if (!iso) return undefined;
   const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "—";
-  return date.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
+  if (Number.isNaN(date.getTime())) return undefined;
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
 function formatTime(iso: string) {
@@ -40,6 +28,12 @@ const statusPill: Record<RequestStatus, string> = {
   Declined: "bg-[#fde4e4] text-[#a12626]",
 };
 
+const statusDot: Record<RequestStatus, string> = {
+  Pending: "bg-amber-500",
+  Approved: "bg-emerald-500",
+  Declined: "bg-rose-500",
+};
+
 const categoryColor: Record<string, string> = {
   AC: "bg-blue-50 text-blue-700",
   REF: "bg-violet-50 text-violet-700",
@@ -49,31 +43,30 @@ const categoryColor: Record<string, string> = {
 };
 
 const fieldClass =
-  "w-full resize-none rounded-2xl border border-transparent bg-[#f2f6fa] px-3.5 py-2.5 text-xs text-slate-700 outline-none placeholder:text-slate-400 focus:border-[#2678b9]/40 focus:bg-white focus:ring-2 focus:ring-[#2678b9]/15";
+  "w-full resize-none rounded-2xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs text-slate-700 outline-none placeholder:text-slate-400 focus:border-[#2678b9]/50 focus:ring-2 focus:ring-[#2678b9]/15";
+
+const eyebrow = "text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-400";
 
 /* ---------- small blocks ---------- */
-function MetaCell({ label, value }: { label: string; value?: string }) {
+function Kpi({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
-    <div className="min-w-0 rounded-2xl bg-[#f2f6fa] px-3.5 py-2.5">
-      <p className="text-[10px] font-medium uppercase tracking-wide text-slate-400">
-        {label}
+    <div className="min-w-0 flex-1 px-5 py-4 first:pl-0 last:pr-0">
+      <p className={eyebrow}>{label}</p>
+      <p className="mt-1.5 truncate text-[22px] font-semibold leading-none tracking-tight tabular-nums text-[#0b2341]">
+        {value}
       </p>
-      <p className="mt-0.5 truncate text-[13px] font-semibold text-[#0b2341]">
-        {value || "—"}
-      </p>
+      {hint ? <p className="mt-1.5 text-[11px] text-slate-400">{hint}</p> : null}
     </div>
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function DetailRow({ label, value }: { label: string; value?: string }) {
   return (
-    <div className="text-center">
-      <p className="text-lg font-semibold leading-none tabular-nums text-[#0b2341]">
-        {value}
-      </p>
-      <p className="mt-1 text-[10px] font-medium uppercase tracking-wide text-slate-400">
-        {label}
-      </p>
+    <div className="flex items-baseline justify-between gap-4 py-2.5">
+      <dt className="shrink-0 text-xs text-slate-400">{label}</dt>
+      <dd className={`min-w-0 truncate text-right text-xs ${value ? "font-medium text-slate-700" : "text-slate-300"}`}>
+        {value || "—"}
+      </dd>
     </div>
   );
 }
@@ -92,7 +85,6 @@ export default function RequestDetail({
   onDecline: (note?: string) => void;
   onSendMessage: (body: string) => void;
 }) {
-  const [showThread, setShowThread] = useState(false);
   const [messageDraft, setMessageDraft] = useState("");
   const [actionMode, setActionMode] = useState<"none" | "approve" | "decline">("none");
   const [actionNote, setActionNote] = useState("");
@@ -118,264 +110,236 @@ export default function RequestDetail({
   return (
     <>
       {/* Header */}
-      <header className="flex items-start gap-4 border-b border-slate-100 px-6 py-5">
+      <header className="flex items-start gap-4 px-7 pb-5 pt-7">
         <span
           aria-hidden="true"
-          className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#e6f0f9] text-sm font-bold text-[#1d5f94]"
+          className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#0b2341] text-sm font-bold text-white"
         >
           {senderInitials(request.fromEmail)}
         </span>
         <div className="min-w-0 flex-1">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-[#2678b9]">
-            Dispatch request
-          </p>
-          <div className="mt-0.5 flex flex-wrap items-center gap-2">
-            <h2 className="truncate text-lg font-semibold tracking-tight text-[#0b2341]">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+            <h2 className="truncate text-xl font-semibold tracking-tight text-[#0b2341]">
               {request.reference}
             </h2>
             <span
-              className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${statusPill[request.status]}`}
+              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ${statusPill[request.status]}`}
             >
+              <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${statusDot[request.status]}`} />
               {request.status}
             </span>
           </div>
-          <p className="mt-1 truncate text-xs text-slate-500">
-            From{" "}
-            <span className="font-medium text-slate-700">{request.fromName}</span>{" "}
-            &lt;{request.fromEmail}&gt;
+          <p className="mt-1 truncate text-[13px] text-slate-500">
+            {request.fromName ? (
+              <>
+                <span className="font-medium text-slate-700">{request.fromName}</span>
+                <span className="mx-1.5 text-slate-300">·</span>
+              </>
+            ) : null}
+            {request.fromEmail}
           </p>
         </div>
         <button
           type="button"
           onClick={onClose}
           aria-label="Close request"
-          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9]"
+          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-500 transition hover:bg-slate-200 hover:text-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9]"
         >
-          <X aria-hidden="true" className="h-5 w-5" />
+          <X aria-hidden="true" className="h-4 w-4" />
         </button>
       </header>
 
       {/* Scrollable body */}
-      <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-6 py-5">
-        <div className="grid grid-cols-2 gap-2.5 md:grid-cols-3">
-          <MetaCell label="Warehouse" value={request.warehouse} />
-          <MetaCell label="Courier" value={request.courier} />
-          <MetaCell label="Truck" value={request.truckAssignment} />
-          <MetaCell
-            label="Dispatch date"
-            value={request.dispatchDate ? formatDate(request.dispatchDate) : "—"}
-          />
-          <MetaCell
-            label="Delivery date"
-            value={request.deliveryDate ? formatDate(request.deliveryDate) : "—"}
-          />
-          <MetaCell label="Total amount" value={request.amount} />
+      <div className="min-h-0 flex-1 overflow-y-auto px-7 pb-7">
+        {/* KPI strip */}
+        <div className="flex divide-x divide-slate-100 border-y border-slate-100">
+          <Kpi label="Lines" value={String(request.items.length)} />
+          <Kpi label="Units" value={String(totalQty)} />
+          <Kpi label="CBM" value={totalCbm > 0 ? totalCbm.toFixed(2) : "—"} />
+          <Kpi label="Amount" value={request.amount || "—"} />
         </div>
 
-        {request.remarks ? (
-          <div className="rounded-2xl bg-[#fff8dc] px-4 py-3">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-[#7a5b00]">
-              Remarks
-            </p>
-            <p className="mt-1 text-xs leading-relaxed text-[#5c4400]">
-              {request.remarks}
-            </p>
-          </div>
-        ) : null}
-
-        {/* Items */}
-        <section className="overflow-hidden rounded-2xl ring-1 ring-slate-900/[0.06]">
-          <div className="flex flex-wrap items-center justify-between gap-3 bg-[#f7f9fc] px-4 py-3">
-            <h3 className="inline-flex items-center gap-2 text-xs font-semibold text-[#0b2341]">
+        <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_19rem]">
+          {/* Left: items */}
+          <section className="min-w-0">
+            <h3 className="mb-3 inline-flex items-center gap-2 text-[13px] font-semibold text-[#0b2341]">
               <Package aria-hidden="true" className="h-4 w-4 text-[#2678b9]" />
               Items
             </h3>
-            <div className="flex items-center gap-6">
-              <Stat label="Lines" value={String(request.items.length)} />
-              <Stat label="Qty" value={String(totalQty)} />
-              {totalCbm > 0 ? <Stat label="CBM" value={totalCbm.toFixed(2)} /> : null}
-            </div>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[760px] border-collapse text-left">
-              <thead className={tableUi.thead}>
-                <tr>
-                  <th className={tableUi.th}>SO / DR</th>
-                  <th className={tableUi.th}>Customer</th>
-                  <th className={tableUi.th}>Ship to</th>
-                  <th className={tableUi.th}>Category</th>
-                  <th className={tableUi.th}>Model</th>
-                  <th className={`${tableUi.th} text-right`}>Qty</th>
-                  <th className={`${tableUi.th} text-right`}>Total CBM</th>
-                </tr>
-              </thead>
-              <tbody>
-                {request.items.map((item) => (
-                  <tr key={item.id} className={`align-top ${tableUi.row}`}>
-                    <td className={tableUi.td}>
-                      <p className="font-semibold text-[#0b2341]">{item.soNo ?? "—"}</p>
-                      {item.dr ? (
-                        <p className="mt-0.5 text-[10px] text-slate-400">DR {item.dr}</p>
-                      ) : null}
-                    </td>
-                    <td className={tableUi.td}>{item.customerName}</td>
-                    <td className={tableUi.td}>
-                      <p>{item.shipTo}</p>
-                      {item.city ? (
-                        <p className="text-[10px] text-slate-400">
-                          {item.city}
-                          {item.province ? `, ${item.province}` : ""}
+            <ul className="space-y-2.5">
+              {request.items.map((item) => (
+                <li key={item.id} className="rounded-2xl bg-slate-50 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="flex flex-wrap items-center gap-2">
+                        <span className="text-[13px] font-semibold text-[#0b2341]">{item.soNo ?? "—"}</span>
+                        {item.dr ? <span className="text-[11px] text-slate-400">DR {item.dr}</span> : null}
+                        {item.productCategory ? (
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${categoryColor[item.productCategory] ?? "bg-slate-100 text-slate-600"}`}
+                          >
+                            {item.productCategory}
+                          </span>
+                        ) : null}
+                      </p>
+                      <p className="mt-1 truncate text-xs text-slate-600">{item.customerName}</p>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <p className="text-lg font-semibold leading-none tabular-nums text-[#0b2341]">
+                        {item.qty}
+                        <span className="ml-1 text-[11px] font-medium text-slate-400">pcs</span>
+                      </p>
+                      {item.totalCbm != null ? (
+                        <p className="mt-1.5 text-[11px] tabular-nums text-slate-400">
+                          {item.totalCbm.toFixed(4)} CBM
                         </p>
                       ) : null}
-                    </td>
-                    <td className={tableUi.td}>
-                      {item.productCategory ? (
-                        <span
-                          className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${categoryColor[item.productCategory] ?? "bg-slate-100 text-slate-600"}`}
-                        >
-                          {item.productCategory}
-                        </span>
-                      ) : (
-                        <span className="text-slate-400">—</span>
-                      )}
-                    </td>
-                    <td className={`${tableUi.td} font-mono !text-[11px]`}>
-                      {item.customerModel}
-                    </td>
-                    <td className={`${tableUi.tdStrong} text-right tabular-nums`}>
-                      {item.qty}
-                    </td>
-                    <td className={`${tableUi.td} text-right tabular-nums`}>
-                      {item.totalCbm != null ? item.totalCbm.toFixed(4) : "—"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
+                    </div>
+                  </div>
+                  <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-slate-200/70 pt-3 text-[11px] text-slate-500">
+                    {item.shipTo ? (
+                      <span className="min-w-0 truncate">
+                        {item.shipTo}
+                        {item.city ? `, ${item.city}` : ""}
+                        {item.province ? `, ${item.province}` : ""}
+                      </span>
+                    ) : null}
+                    {item.customerModel ? (
+                      <span className="ml-auto rounded-md bg-white px-1.5 py-0.5 font-mono text-[11px] text-slate-600 ring-1 ring-slate-900/[0.06]">
+                        {item.customerModel}
+                      </span>
+                    ) : null}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </section>
 
-        {/* Messages */}
-        <section className="overflow-hidden rounded-2xl ring-1 ring-slate-900/[0.06]">
-          <button
-            type="button"
-            onClick={() => setShowThread((v) => !v)}
-            aria-expanded={showThread}
-            className="flex w-full items-center justify-between bg-[#f7f9fc] px-4 py-3 text-left transition hover:bg-[#f2f6fa] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2678b9]"
-          >
-            <span className="inline-flex items-center gap-2 text-xs font-semibold text-[#0b2341]">
-              <MessageSquare aria-hidden="true" className="h-4 w-4 text-[#2678b9]" />
-              Messages
-              <span className="rounded-full bg-[#e6f0f9] px-2 py-0.5 text-[10px] font-semibold text-[#1d5f94]">
-                {request.messageThread.length}
-              </span>
-            </span>
-            {showThread ? (
-              <ChevronDown aria-hidden="true" className="h-4 w-4 text-slate-400" />
-            ) : (
-              <ChevronRight aria-hidden="true" className="h-4 w-4 text-slate-400" />
-            )}
-          </button>
+          {/* Right: details + remarks + messages */}
+          <aside className="min-w-0 space-y-5">
+            <section>
+              <h3 className={`${eyebrow} mb-1`}>Details</h3>
+              <dl className="divide-y divide-slate-100">
+                <DetailRow label="Warehouse" value={request.warehouse} />
+                <DetailRow label="Courier" value={request.courier} />
+                <DetailRow label="Truck" value={request.truckAssignment} />
+                <DetailRow label="Dispatch" value={formatDate(request.dispatchDate)} />
+                <DetailRow label="Delivery" value={formatDate(request.deliveryDate)} />
+              </dl>
+            </section>
 
-          {showThread && (
-            <div className="px-4 py-4">
+            {request.remarks ? (
+              <section className="rounded-2xl bg-[#fffbea] px-4 py-3.5">
+                <h3 className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[#7a5b00]">Remarks</h3>
+                <p className="mt-1.5 text-xs leading-relaxed text-[#5c4400]">{request.remarks}</p>
+              </section>
+            ) : null}
+
+            <section>
+              <h3 className="mb-2.5 inline-flex items-center gap-2 text-[13px] font-semibold text-[#0b2341]">
+                <MessageSquare aria-hidden="true" className="h-4 w-4 text-[#2678b9]" />
+                Messages
+                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500">
+                  {request.messageThread.length}
+                </span>
+              </h3>
+
               {request.messageThread.length === 0 ? (
-                <p className="text-[11px] text-slate-400">
-                  No messages yet. Write the first one below.
+                <p className="rounded-2xl border border-dashed border-slate-200 px-4 py-6 text-center text-[11px] text-slate-400">
+                  No messages yet
                 </p>
               ) : (
-                <ul className="space-y-3">
+                <ul className="max-h-64 space-y-2.5 overflow-y-auto pr-1">
                   {request.messageThread.map((m) => (
-                    <li
-                      key={m.id}
-                      className={`flex ${m.self ? "justify-end" : "justify-start"}`}
-                    >
+                    <li key={m.id} className={`flex ${m.self ? "justify-end" : "justify-start"}`}>
                       <div
-                        className={`max-w-[80%] rounded-2xl px-3.5 py-2 text-xs ${
+                        className={`max-w-[88%] rounded-2xl px-3.5 py-2 text-xs ${
                           m.self
-                            ? "bg-[#0b2341] text-white"
-                            : "bg-[#f2f6fa] text-slate-700"
+                            ? "rounded-br-md bg-[#0b2341] text-white"
+                            : "rounded-bl-md bg-slate-100 text-slate-700"
                         }`}
                       >
-                        <p className="text-[10px] font-medium opacity-70">
+                        <p className="text-[10px] font-medium opacity-60">
                           {m.from} · {formatTime(m.at)}
                         </p>
-                        <p className="mt-1 leading-relaxed">{m.body}</p>
+                        <p className="mt-0.5 leading-relaxed">{m.body}</p>
                       </div>
                     </li>
                   ))}
                 </ul>
               )}
 
-              <div className="mt-4 flex items-end gap-2">
+              <div className="mt-3 flex items-end gap-2">
                 <textarea
-                  rows={2}
+                  rows={1}
                   value={messageDraft}
                   onChange={(e) => setMessageDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSend();
+                    }
+                  }}
                   aria-label="Message to the dispatcher"
-                  placeholder="Write a message to the dispatcher…"
-                  className={`${fieldClass} min-h-[44px]`}
+                  placeholder="Write a message…"
+                  className={`${fieldClass} min-h-[40px]`}
                 />
                 <button
                   type="button"
                   onClick={handleSend}
                   disabled={!messageDraft.trim()}
-                  className={`${surface.chip} h-10 shrink-0 gap-1.5 px-4 disabled:cursor-not-allowed disabled:opacity-50`}
+                  aria-label="Send message"
+                  className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#0b2341] text-white transition hover:bg-[#12335c] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#ffd43b] disabled:cursor-not-allowed disabled:opacity-40"
                 >
-                  <Send aria-hidden="true" className="h-3.5 w-3.5" />
-                  Send
+                  <Send aria-hidden="true" className="h-4 w-4" />
                 </button>
               </div>
-            </div>
-          )}
-        </section>
+            </section>
+          </aside>
+        </div>
       </div>
 
-      {/* Sticky action footer */}
-      <footer className="border-t border-slate-100 bg-white px-6 py-4">
+      {/* Footer */}
+      <footer className="border-t border-slate-100 bg-white px-7 py-4">
         {actionMode === "none" ? (
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-[11px] text-slate-500">
+            <p className="text-xs text-slate-500">
               {canAct
-                ? "Review the items, then approve or decline this request."
+                ? "Review the items, then approve or decline."
                 : `This request was already ${request.status.toLowerCase()}.`}
             </p>
             <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={onClose}
-                className={surface.chipGhost}
-              >
+              <button type="button" onClick={onClose} className={surface.chipGhost}>
                 Close
               </button>
-              <button
-                type="button"
-                disabled={!canAct}
-                onClick={() => setActionMode("decline")}
-                className="inline-flex items-center gap-1.5 rounded-full border border-rose-200 bg-white px-4 py-2 text-xs font-semibold text-rose-700 transition hover:bg-rose-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-300 disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                <X aria-hidden="true" className="h-3.5 w-3.5" />
-                Decline
-              </button>
-              <button
-                type="button"
-                disabled={!canAct}
-                onClick={() => setActionMode("approve")}
-                className="inline-flex items-center gap-1.5 rounded-full bg-[#0b2341] px-4 py-2 text-xs font-semibold text-white transition hover:bg-[#12335c] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#ffd43b] disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                <Check aria-hidden="true" className="h-3.5 w-3.5 text-[#ffd43b]" />
-                Approve
-              </button>
+              {canAct && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setActionMode("decline")}
+                    className="inline-flex h-10 items-center gap-1.5 rounded-full border border-slate-200 bg-white px-5 text-xs font-semibold text-slate-600 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-300"
+                  >
+                    <X aria-hidden="true" className="h-3.5 w-3.5" />
+                    Decline
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActionMode("approve")}
+                    className="inline-flex h-10 items-center gap-1.5 rounded-full bg-[#0b2341] px-5 text-xs font-semibold text-white transition hover:bg-[#12335c] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#ffd43b]"
+                  >
+                    <Check aria-hidden="true" className="h-3.5 w-3.5 text-[#ffd43b]" />
+                    Approve
+                  </button>
+                </>
+              )}
             </div>
           </div>
         ) : (
           <div className="space-y-3">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2.5">
               <span
-                className={`inline-flex h-6 w-6 items-center justify-center rounded-full ${
-                  actionMode === "approve"
-                    ? "bg-[#e4f3e8] text-[#1d6b3a]"
-                    : "bg-[#fde4e4] text-[#a12626]"
+                className={`inline-flex h-7 w-7 items-center justify-center rounded-full ${
+                  actionMode === "approve" ? "bg-[#e4f3e8] text-[#1d6b3a]" : "bg-[#fde4e4] text-[#a12626]"
                 }`}
               >
                 {actionMode === "approve" ? (
@@ -384,7 +348,7 @@ export default function RequestDetail({
                   <X aria-hidden="true" className="h-3.5 w-3.5" />
                 )}
               </span>
-              <p className="text-xs font-semibold text-[#0b2341]">
+              <p className="text-[13px] font-semibold text-[#0b2341]">
                 {actionMode === "approve" ? "Approve this request?" : "Decline this request?"}
               </p>
             </div>
@@ -394,11 +358,7 @@ export default function RequestDetail({
               value={actionNote}
               onChange={(e) => setActionNote(e.target.value)}
               aria-label={actionMode === "approve" ? "Note for the dispatcher" : "Reason for declining"}
-              placeholder={
-                actionMode === "approve"
-                  ? "Optional note for the dispatcher…"
-                  : "Reason for declining…"
-              }
+              placeholder={actionMode === "approve" ? "Optional note for the dispatcher…" : "Reason for declining…"}
               className={fieldClass}
             />
             <div className="flex items-center justify-end gap-2">
@@ -415,7 +375,7 @@ export default function RequestDetail({
               <button
                 type="button"
                 onClick={handleActionConfirm}
-                className={`rounded-full px-4 py-2 text-xs font-semibold transition focus:outline-none focus-visible:ring-2 ${
+                className={`inline-flex h-10 items-center rounded-full px-5 text-xs font-semibold transition focus:outline-none focus-visible:ring-2 ${
                   actionMode === "approve"
                     ? "bg-[#ffd43b] text-[#0b2341] hover:bg-[#f2c200] focus-visible:ring-[#0b2341]/40"
                     : "bg-rose-600 text-white hover:bg-rose-700 focus-visible:ring-rose-300"

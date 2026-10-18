@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { TripPingContext } from "./live-trip-pings";
 import {
   ArrowRight,
   Check,
@@ -22,9 +23,10 @@ import { TRACKER_STAGES, trackerIndex, type ActivityStage } from "../../services
 /* Which trucks just reported in. Read by the map to make them pulse.   */
 /* ------------------------------------------------------------------ */
 
-const EMPTY: ReadonlySet<string> = new Set();
-const PingContext = createContext<ReadonlySet<string>>(EMPTY);
-export const usePingingTrips = () => useContext(PingContext);
+/* The context lives in live-trip-pings.ts so the map and this provider share
+   the SAME context object (they previously each created their own, so the
+   map never received pings). */
+export { usePingingTrips } from "./live-trip-pings";
 
 /* The persistent feed behind the bell (see TruckerUpdatesBell). */
 type Feed = {
@@ -291,7 +293,7 @@ export default function LiveTripAlerts({
   const hidden = items.length - visible.length;
 
   return (
-    <PingContext.Provider value={pingingTripIds}>
+    <TripPingContext.Provider value={pingingTripIds}>
       <FeedContext.Provider value={{ history, unreadCount, markRead, markAllRead, clearHistory, openTrip: onOpenTrip, fresh: pingingTripIds.size > 0 }}>
       {children}
       <style>{`
@@ -340,6 +342,6 @@ export default function LiveTripAlerts({
         </div>
       )}
       </FeedContext.Provider>
-    </PingContext.Provider>
+    </TripPingContext.Provider>
   );
 }

@@ -158,11 +158,11 @@ export function PageIntro({
   subtitle: string;
 }) {
   return (
-    <div className="mb-6">
-      <h1 className="text-[26px] font-bold leading-tight tracking-tight text-[#0b2341]">
+    <div className="mb-4">
+      <h1 className="text-xl font-bold leading-tight tracking-tight text-[#0b2341]">
         {title}
       </h1>
-      <p className="mt-1 text-[13px] text-slate-500">{subtitle}</p>
+      <p className="mt-1 text-xs leading-snug text-slate-600">{subtitle}</p>
     </div>
   );
 }

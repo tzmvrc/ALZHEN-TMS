@@ -809,7 +809,7 @@ export default function OverviewView({
         <SpotlightTrips rows={fleetRows} onViewTrip={onOpenTrip} />
 
         {/* Bento grid: requests + status | activity + fleet | map */}
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-12 xl:grid-rows-[340px_430px]">
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-12 xl:grid-rows-[minmax(340px,auto)_minmax(430px,auto)]">
           <div className="relative flex min-w-0 xl:col-span-3">
           <PendingRequestsCard
             className="h-full w-full"
@@ -835,7 +835,7 @@ export default function OverviewView({
               tripLocationRoutes={activeMapRoutes}
               focusTripId={focusedTripId && activeTripIds.has(focusedTripId) ? focusedTripId : null}
               eventLoadError={snapshot?.eventsUnavailable ?? false}
-              height={460}
+              height={380}
               fillHeight
             />
           </div>

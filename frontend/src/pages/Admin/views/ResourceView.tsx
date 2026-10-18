@@ -255,10 +255,10 @@ const TABLE_PAGE_IDS = new Set([
 function PageHeading({ title, subtitle }: { title: string; subtitle?: string }) {
   return (
     <header className="mb-4 min-w-0">
-      <h1 className="truncate text-[26px] font-bold leading-tight tracking-tight text-[#0b2341]">
+      <h1 className="truncate text-xl font-bold leading-tight tracking-tight text-[#0b2341]">
         {title}
       </h1>
-      {subtitle && <p className="mt-1 text-[13px] text-slate-500">{subtitle}</p>}
+      {subtitle && <p className="mt-1 text-xs leading-snug text-slate-600">{subtitle}</p>}
     </header>
   );
 }

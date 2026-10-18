@@ -7,7 +7,6 @@ import {
   ChevronRight,
   LayoutGrid,
   MessageSquare,
-  Package,
   Search,
   Table2,
   X,
@@ -55,82 +54,84 @@ function summary(request: DispatchRequest) {
 /* ---------- Board card ---------- */
 function RequestCard({
   request,
-  column,
   onOpen,
   onApprove,
   onDecline,
 }: {
   request: DispatchRequest;
-  column: (typeof COLUMNS)[number];
   onOpen: () => void;
   onApprove: () => void;
   onDecline: () => void;
 }) {
   const qty = request.items.reduce((sum, item) => sum + item.qty, 0);
+  const lines = `${request.items.length} line${request.items.length === 1 ? "" : "s"}`;
   const date = shortDate(request.dispatchDate);
   const pending = request.status === "Pending";
 
   return (
-    <article className="rounded-2xl border border-slate-200/80 bg-white shadow-[0_1px_2px_rgba(11,35,65,0.04)] transition hover:border-slate-300 hover:shadow-[0_8px_24px_-12px_rgba(11,35,65,0.2)]">
+    <article className="group overflow-hidden rounded-2xl bg-white shadow-[0_1px_2px_rgba(11,35,65,0.05)] ring-1 ring-slate-900/[0.06] transition hover:shadow-[0_10px_28px_-14px_rgba(11,35,65,0.28)] hover:ring-slate-900/10">
       <button
         type="button"
         onClick={onOpen}
         aria-label={`Open request ${request.reference}`}
-        className="block w-full rounded-2xl p-4 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9]"
+        className="block w-full p-4 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2678b9]"
       >
-        <h3 className="truncate text-[13px] font-semibold text-[#0b2341]">{request.reference}</h3>
-        <p className="mt-1.5 line-clamp-2 min-h-[2.5rem] text-[11px] leading-5 text-slate-500">
-          {summary(request)}
-        </p>
-
-        <div className="mt-3 flex items-center justify-between text-[11px] text-slate-500">
-          <span className="inline-flex items-center gap-1.5">
-            <Package aria-hidden="true" className="h-3.5 w-3.5 text-slate-400" />
-            {column.stage}
+        {/* Sender + date */}
+        <span className="flex items-center gap-2.5">
+          <span
+            aria-hidden="true"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#e6f0f9] text-[10px] font-bold text-[#1d5f94]"
+          >
+            {senderInitials(request.fromEmail)}
           </span>
-          <span className="tabular-nums">
-            {request.items.length} line{request.items.length === 1 ? "" : "s"} · {qty} units
-          </span>
-        </div>
-        <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-slate-100">
-          <div className={`h-full rounded-full ${column.bar}`} style={{ width: `${column.progress}%` }} />
-        </div>
-
-        <div className="mt-4 flex items-center justify-between gap-3">
-          <span className="flex min-w-0 items-center gap-2">
-            <span
-              aria-hidden="true"
-              className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#e6f0f9] text-[9px] font-bold text-[#1d5f94]"
-            >
-              {senderInitials(request.fromEmail)}
-            </span>
-            <span className="truncate text-[11px] text-slate-500">
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-[12px] font-medium text-slate-700">
               {request.fromName || request.fromEmail}
             </span>
+            {request.fromName && (
+              <span className="block truncate text-[10px] text-slate-400">{request.fromEmail}</span>
+            )}
           </span>
-        </div>
+          {date && (
+            <span className="inline-flex shrink-0 items-center gap-1 text-[10px] text-slate-400">
+              <CalendarDays aria-hidden="true" className="h-3 w-3" />
+              {date}
+            </span>
+          )}
+        </span>
 
-        <div className="mt-3 flex items-center gap-3 border-t border-slate-100 pt-3 text-[10px] text-slate-400">
-          <span className="inline-flex items-center gap-1">
-            <CalendarDays aria-hidden="true" className="h-3.5 w-3.5" />
-            {date || "No date"}
-          </span>
-          <span className="inline-flex items-center gap-1">
-            <MessageSquare aria-hidden="true" className="h-3.5 w-3.5" />
-            {request.messageThread.length}
-          </span>
-          {request.amount ? (
-            <span className="ml-auto font-semibold tabular-nums text-[#0b2341]">{request.amount}</span>
-          ) : null}
-        </div>
+        {/* Reference + summary */}
+        <span className="mt-3.5 block truncate text-[14px] font-semibold text-[#0b2341]">
+          {request.reference}
+        </span>
+        <span className="mt-1 line-clamp-2 block text-[12px] leading-5 text-slate-500">
+          {summary(request)}
+        </span>
+
+        {/* Meta */}
+        <span className="mt-4 flex items-center gap-1.5 text-[11px] text-slate-500">
+          <span className="rounded-full bg-slate-100 px-2 py-0.5 font-medium tabular-nums">{qty} units</span>
+          <span className="rounded-full bg-slate-100 px-2 py-0.5 tabular-nums">{lines}</span>
+          {request.messageThread.length > 0 && (
+            <span className="inline-flex items-center gap-1 text-slate-400">
+              <MessageSquare aria-hidden="true" className="h-3 w-3" />
+              {request.messageThread.length}
+            </span>
+          )}
+          {request.amount && (
+            <span className="ml-auto text-[12px] font-semibold tabular-nums text-[#0b2341]">
+              {request.amount}
+            </span>
+          )}
+        </span>
       </button>
 
       {pending && (
-        <div className="flex gap-2 border-t border-slate-100 p-2.5">
+        <div className="grid grid-cols-2 gap-px border-t border-slate-100 bg-slate-100">
           <button
             type="button"
             onClick={onDecline}
-            className="inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-full border border-rose-200 text-[11px] font-semibold text-rose-700 transition hover:bg-rose-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-300"
+            className="inline-flex h-10 items-center justify-center gap-1.5 bg-white text-[12px] font-medium text-slate-500 transition hover:bg-rose-50 hover:text-rose-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-rose-300"
           >
             <X aria-hidden="true" className="h-3.5 w-3.5" />
             Decline
@@ -138,9 +139,9 @@ function RequestCard({
           <button
             type="button"
             onClick={onApprove}
-            className="inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-full bg-[#0b2341] text-[11px] font-semibold text-white transition hover:bg-[#12335c] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#ffd43b]"
+            className="inline-flex h-10 items-center justify-center gap-1.5 bg-white text-[12px] font-semibold text-[#0b2341] transition hover:bg-[#0b2341] hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#ffd43b]"
           >
-            <Check aria-hidden="true" className="h-3.5 w-3.5 text-[#ffd43b]" />
+            <Check aria-hidden="true" className="h-3.5 w-3.5" />
             Approve
           </button>
         </div>
@@ -150,6 +151,33 @@ function RequestCard({
 }
 
 /* ---------- List row ---------- */
+const STATUS_DOT: Record<RequestStatus, string> = {
+  Pending: "bg-amber-500",
+  Approved: "bg-emerald-500",
+  Declined: "bg-rose-500",
+};
+
+// Shared column template so the header and every row line up.
+const LIST_GRID =
+  "md:grid md:grid-cols-[minmax(0,1.5fr)_minmax(0,2fr)_6.5rem_7rem_6.5rem] md:items-center md:gap-5";
+const ACTIONS_W = "w-[5rem]";
+
+function RequestListHeader() {
+  const label = "text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-400";
+  return (
+    <div className="hidden items-center gap-2 border-b border-slate-100 px-4 py-3 sm:px-6 md:flex">
+      <div className={`min-w-0 flex-1 ${LIST_GRID}`}>
+        <span className={label}>Sender</span>
+        <span className={label}>Request</span>
+        <span className={label}>Items</span>
+        <span className={label}>Dispatch</span>
+        <span className={label}>Status</span>
+      </div>
+      <div className={`${ACTIONS_W} shrink-0`} />
+    </div>
+  );
+}
+
 function RequestRow({
   request,
   onOpen,
@@ -162,35 +190,110 @@ function RequestRow({
   onDecline: () => void;
 }) {
   const qty = request.items.reduce((sum, item) => sum + item.qty, 0);
+  const lines = `${request.items.length} line${request.items.length === 1 ? "" : "s"}`;
+  const pending = request.status === "Pending";
+  const date = shortDate(request.dispatchDate);
+
   return (
-    <li className="group flex min-h-[82px] items-center gap-4 px-4 py-3 transition hover:bg-[#f6f9fc] sm:px-5">
-      <button type="button" onClick={onOpen} aria-label={`Open request ${request.reference}`} className="flex min-w-0 flex-1 items-center gap-4 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2678b9]">
-        <span aria-hidden="true" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#e6f0f9] text-xs font-bold text-[#1d5f94]">{senderInitials(request.fromEmail)}</span>
-        <span className="min-w-0 flex-1">
-          <span className="flex min-w-0 items-center gap-2">
-            <span className="truncate text-xs font-semibold text-slate-700">{request.fromName || request.fromEmail}</span>
-            {request.fromName && <span className="hidden truncate text-[11px] text-slate-400 lg:inline">&lt;{request.fromEmail}&gt;</span>}
+    <li className="group flex items-center gap-2 px-4 py-3.5 transition-colors hover:bg-slate-50 sm:px-6">
+      <button
+        type="button"
+        onClick={onOpen}
+        aria-label={`Open request ${request.reference}`}
+        className={`min-w-0 flex-1 rounded-xl text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9] ${LIST_GRID}`}
+      >
+        {/* Sender */}
+        <span className="flex min-w-0 items-center gap-3">
+          <span
+            aria-hidden="true"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#e6f0f9] text-[11px] font-bold text-[#1d5f94]"
+          >
+            {senderInitials(request.fromEmail)}
           </span>
-          <span className="mt-0.5 flex min-w-0 items-baseline gap-2">
-            <span className="shrink-0 text-sm font-bold text-[#0b2341]">{request.reference}</span>
-            <span className="truncate text-xs text-slate-500">{summary(request)}</span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-[13px] font-medium text-slate-800">
+              {request.fromName || request.fromEmail}
+            </span>
+            {request.fromName && (
+              <span className="block truncate text-[11px] text-slate-400">{request.fromEmail}</span>
+            )}
           </span>
-          <span className="mt-1 flex items-center gap-3 text-[10px] text-slate-400">
-            <span>{request.items.length} line{request.items.length === 1 ? "" : "s"} · {qty} units</span>
-            {request.messageThread.length > 0 && <span className="inline-flex items-center gap-1"><MessageSquare aria-hidden="true" className="h-3 w-3" />{request.messageThread.length}</span>}
-            {request.amount && <span className="font-semibold text-slate-500">{request.amount}</span>}
+          <span
+            className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold md:hidden ${STATUS_PILL[request.status]}`}
+          >
+            <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${STATUS_DOT[request.status]}`} />
+            {request.status}
           </span>
         </span>
-        <span className="hidden w-28 shrink-0 text-right text-xs text-slate-400 sm:block">{shortDate(request.dispatchDate) || "—"}</span>
-        <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold ${STATUS_PILL[request.status]}`}>{request.status}</span>
-        <ChevronRight aria-hidden="true" className="h-4 w-4 shrink-0 text-slate-300 group-hover:text-[#2678b9]" />
+
+        {/* Request */}
+        <span className="mt-2 block min-w-0 md:mt-0">
+          <span className="flex min-w-0 items-center gap-2">
+            <span className="truncate text-[13px] font-semibold text-[#0b2341]">{request.reference}</span>
+            {request.messageThread.length > 0 && (
+              <span className="inline-flex shrink-0 items-center gap-1 text-[11px] text-slate-400">
+                <MessageSquare aria-hidden="true" className="h-3 w-3" />
+                {request.messageThread.length}
+              </span>
+            )}
+          </span>
+          <span className="mt-0.5 block truncate text-[12px] text-slate-500">{summary(request)}</span>
+        </span>
+
+        {/* Items */}
+        <span className="mt-1 block text-[12px] text-slate-500 md:mt-0 md:text-slate-600">
+          <span className="tabular-nums">{qty} units</span>
+          <span className="text-slate-300 md:hidden"> · </span>
+          <span className="tabular-nums text-slate-400 md:block md:text-[11px]">
+            {lines}
+            {request.amount ? ` · ${request.amount}` : ""}
+          </span>
+        </span>
+
+        {/* Dispatch date */}
+        <span className="hidden text-[12px] text-slate-500 md:block">{date || "—"}</span>
+
+        {/* Status */}
+        <span className="hidden md:block">
+          <span
+            className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ${STATUS_PILL[request.status]}`}
+          >
+            <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${STATUS_DOT[request.status]}`} />
+            {request.status}
+          </span>
+        </span>
       </button>
-      {request.status === "Pending" && (
-        <div className="hidden shrink-0 items-center gap-1.5 sm:flex">
-          <button type="button" onClick={onDecline} aria-label={`Decline ${request.reference}`} className="rounded-full px-2.5 py-1.5 text-[11px] font-semibold text-rose-700 opacity-70 transition hover:bg-rose-50 hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-300">Decline</button>
-          <button type="button" onClick={onApprove} aria-label={`Approve ${request.reference}`} className="inline-flex items-center gap-1 rounded-full bg-[#0b2341] px-3 py-1.5 text-[11px] font-semibold text-white transition hover:bg-[#12335c] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ffd43b]"><Check aria-hidden="true" className="h-3.5 w-3.5 text-[#ffd43b]" />Approve</button>
-        </div>
-      )}
+
+      {/* Actions (fixed width keeps columns aligned) */}
+      <div className={`hidden shrink-0 items-center justify-end gap-1.5 sm:flex ${ACTIONS_W}`}>
+        {pending ? (
+          <>
+            <button
+              type="button"
+              onClick={onDecline}
+              aria-label={`Decline ${request.reference}`}
+              title="Decline"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-300"
+            >
+              <X aria-hidden="true" className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={onApprove}
+              aria-label={`Approve ${request.reference}`}
+              title="Approve"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[#0b2341] text-[#ffd43b] transition hover:bg-[#12335c] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ffd43b]"
+            >
+              <Check aria-hidden="true" className="h-4 w-4" />
+            </button>
+          </>
+        ) : (
+          <ChevronRight
+            aria-hidden="true"
+            className="h-4 w-4 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-[#2678b9]"
+          />
+        )}
+      </div>
     </li>
   );
 }
@@ -237,8 +340,8 @@ export default function RequestsView() {
     <div className="w-full space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="text-[26px] font-bold leading-tight tracking-tight text-[#0b2341]">Requests</h1>
-          <p className="mt-1 text-[13px] text-slate-500">Dispatch requests parsed from incoming TCL emails</p>
+          <h1 className="text-xl font-bold leading-tight tracking-tight text-[#0b2341]">Requests</h1>
+          <p className="mt-1 text-xs leading-snug text-slate-600">Dispatch requests parsed from incoming TCL emails</p>
         </div>
         <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
           <label className="relative block w-full sm:w-72">
@@ -279,22 +382,21 @@ export default function RequestsView() {
 
       <div className="w-full rounded-3xl bg-white ring-1 ring-slate-900/[0.05] shadow-[0_1px_2px_rgba(11,35,65,0.03)]">
       {view === "board" ? (
-        <div className="grid grid-cols-1 gap-5 p-5 md:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 p-4 md:grid-cols-3">
           {COLUMNS.map((column) => {
             const rows = filtered.filter((request) => request.status === column.id);
             return (
-              <section key={column.id} aria-label={column.label} className="min-w-0">
-                <header className="mb-3 flex items-center gap-2 px-1">
+              <section key={column.id} aria-label={column.label} className="min-w-0 rounded-2xl bg-slate-50/80 p-3">
+                <header className="mb-3 flex items-center gap-2 px-1.5 pt-0.5">
+                  <span aria-hidden="true" className={`h-2 w-2 rounded-full ${column.bar}`} />
                   <h3 className="text-[13px] font-semibold text-[#0b2341]">{column.label}</h3>
-                  <span
-                    className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[10px] font-bold tabular-nums ${column.badge}`}
-                  >
+                  <span className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-white px-1.5 text-[10px] font-semibold tabular-nums text-slate-500 ring-1 ring-slate-900/[0.06]">
                     {rows.length}
                   </span>
                 </header>
-                <div className="space-y-3">
+                <div className="space-y-2.5">
                   {rows.length === 0 ? (
-                    <p className="rounded-2xl border border-dashed border-slate-200 py-10 text-center text-xs text-slate-400">
+                    <p className="rounded-xl border border-dashed border-slate-200 py-10 text-center text-xs text-slate-400">
                       No {column.label.toLowerCase()} requests
                     </p>
                   ) : (
@@ -302,7 +404,6 @@ export default function RequestsView() {
                       <RequestCard
                         key={request.id}
                         request={request}
-                        column={column}
                         onOpen={() => openRequest(request)}
                         onApprove={() => setStatus(request.id, "Approved")}
                         onDecline={() => setStatus(request.id, "Declined")}
@@ -317,11 +418,20 @@ export default function RequestsView() {
       ) : filtered.length === 0 ? (
         <p className="px-6 py-16 text-center text-sm text-slate-500">No requests found.</p>
       ) : (
-        <ul className="divide-y divide-slate-100">
-          {filtered.map((request) => (
-            <RequestRow key={request.id} request={request} onOpen={() => openRequest(request)} onApprove={() => setStatus(request.id, "Approved")} onDecline={() => setStatus(request.id, "Declined")} />
-          ))}
-        </ul>
+        <div>
+          <RequestListHeader />
+          <ul className="divide-y divide-slate-100/80 pb-1">
+            {filtered.map((request) => (
+              <RequestRow
+                key={request.id}
+                request={request}
+                onOpen={() => openRequest(request)}
+                onApprove={() => setStatus(request.id, "Approved")}
+                onDecline={() => setStatus(request.id, "Declined")}
+              />
+            ))}
+          </ul>
+        </div>
       )}
 
       </div>
@@ -339,7 +449,7 @@ export default function RequestsView() {
             role="dialog"
             aria-modal="true"
             aria-label={`Request ${selected.reference}`}
-            className="flex max-h-[94vh] w-full max-w-4xl flex-col overflow-hidden rounded-t-2xl border border-slate-200 bg-white shadow-[0_24px_60px_rgba(11,35,65,0.28)] sm:rounded-2xl"
+            className="flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-t-3xl bg-white shadow-[0_32px_80px_-20px_rgba(11,35,65,0.45)] ring-1 ring-slate-900/[0.06] sm:rounded-3xl"
           >
             <RequestDetail
               key={selected.id}

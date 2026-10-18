@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { MoreHorizontal, RefreshCw, SlidersHorizontal, UserRound, Pencil, Plus, X } from "lucide-react";
+import { SlidersHorizontal, UserRound, Pencil, Plus, X } from "lucide-react";
 import { useAuth } from "../../../context/AuthContext";
 import { tableUi } from "../../../components/admin/dashboardStyles";
 import SlidingSegmentedControl from "../../../components/admin/SlidingSegmentedControl";
@@ -13,7 +13,7 @@ import { useDeferredRealtimeRefresh } from "../../../components/admin/useDeferre
 
 import { useManagementTableColumns } from "../../../components/admin/useManagementTableColumns";
 
-const PAGE_SIZE = 12;
+const PAGE_SIZE = 100;
 const userCategoryOptions = [
   { value: "staff", label: "Admin & Staff" },
   { value: "truckers", label: "Truckers" },
@@ -43,25 +43,22 @@ export default function TruckersView(){
 function UsersTable() {
   const { accessToken, profile } = useAuth();
   const preferencesKey=`/users/table-state/${profile?.role??"none"}`;
-  const saved=accessToken?getCachedApiResponse<{category:"staff"|"truckers";search:string;status:string;assignment:"all"|"assigned"|"unassigned";page:number}>(preferencesKey,accessToken,300000):null;
+  const saved=accessToken?getCachedApiResponse<{category:"staff"|"truckers";search:string;status:string;assignment:"all"|"assigned"|"unassigned"}>(preferencesKey,accessToken,300000):null;
   const [selectedCategory, setSelectedCategory] = useState<"staff" | "truckers">(() => saved?.category??(profile?.role === "ADMIN" ? "staff" : "truckers"));
   const category = profile?.role === "ADMIN" ? selectedCategory : "truckers";
   const [search, setSearch] = useState(saved?.search??"");
   const [status, setStatus] = useState(saved?.status??"all");
   const [assignment, setAssignment] = useState<"all" | "assigned" | "unassigned">(saved?.assignment??"all");
-  const [page, setPage] = useState(saved?.page??1);
-  useEffect(()=>{if(accessToken)cacheApiSnapshot(preferencesKey,accessToken,{category,search,status,assignment,page},apiCacheGeneration());},[accessToken,preferencesKey,category,search,status,assignment,page]);
-  const cachedTruckers=accessToken?getCachedTruckers(accessToken,{search,status,assignment,page,limit:PAGE_SIZE}):null;
+  useEffect(()=>{if(accessToken)cacheApiSnapshot(preferencesKey,accessToken,{category,search,status,assignment},apiCacheGeneration());},[accessToken,preferencesKey,category,search,status,assignment]);
+  const cachedTruckers=accessToken?getCachedTruckers(accessToken,{search,status,assignment,page:1,limit:PAGE_SIZE}):null;
   const adminCache=accessToken?getCachedApiResponse<ApiResponse<ProfileLookupRow[]>>("/lookups/profiles?role=ADMIN",accessToken,5*60_000):null;
   const staffCache=accessToken?getCachedApiResponse<ApiResponse<ProfileLookupRow[]>>("/lookups/profiles?role=STAFF",accessToken,5*60_000):null;
   const cachedProfiles=adminCache?.data&&staffCache?.data?[...adminCache.data,...staffCache.data].filter((p):p is AdminStaffProfile=>(p.role==="ADMIN"||p.role==="STAFF")&&Boolean(p.id)):null;
   const [rows, setRows] = useState<TruckerListItem[]>(cachedTruckers?.rows??[]);
   const [profiles, setProfiles] = useState<AdminStaffProfile[]>(cachedProfiles??[]);
-  const [totalPages, setTotalPages] = useState(cachedTruckers?.pagination.totalPages??1);
   const [loading, setLoading] = useState(!(category==="staff"?cachedProfiles:cachedTruckers));
   const [error, setError] = useState("");
   const [refreshVersion, setRefreshVersion] = useState(0);
-  const [actionsOpen, setActionsOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<Awaited<ReturnType<typeof fetchTruckerDetail>> | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -71,7 +68,7 @@ function UsersTable() {
   const [editingUser, setEditingUser] = useState<ManagedUser | null>(null);
   const [notice, setNotice] = useState("");
   const tableColumns = useMemo(() => (category === "staff" ? ["User", "Email", "Role", "Actions"] : ["User", "Contact", "Assigned truck", "Current trip", "Delivery status", "Actions"]).map((title) => ({ key: title.toLowerCase().replaceAll(" ", "-"), title, width: title === "User" ? 280 : title === "Actions" ? 110 : 200 })), [category]);
-  const { attachViewport, viewportProps, tableStyle, controls: columnControls, hiddenControl, colgroup, headerProps, headerControls, orderedColumns, renderCells } = useManagementTableColumns({ table: `users:${category}`, token: accessToken, profileId: profile?.id, columns: tableColumns, paused: Boolean(userModalOpen || selectedId), enabled: ["ADMIN", "STAFF"].includes(profile?.role ?? ""),rowSearch:{value:search,onSearch:value=>{setSearch(value);setPage(1);},placeholder:"Search users or columns…"} });
+  const { attachViewport, viewportProps, tableStyle, controls: columnControls, hiddenControl, colgroup, headerProps, headerControls, orderedColumns, renderCells } = useManagementTableColumns({ table: `users:${category}`, token: accessToken, profileId: profile?.id, columns: tableColumns, paused: Boolean(userModalOpen || selectedId), enabled: ["ADMIN", "STAFF"].includes(profile?.role ?? ""),rowSearch:{value:search,onSearch:setSearch,placeholder:"Search users or columns…"} });
   const realtimeGate = useDeferredRealtimeRefresh(() => setRefreshVersion((version) => version + 1), userModalOpen);
 
   useEffect(() => subscribeToAdminRealtime((event) => {
@@ -123,19 +120,23 @@ function UsersTable() {
   useEffect(() => {
     if (!accessToken || category !== "truckers") return;
     let active = true;
-    queueMicrotask(()=>{if(active){setLoading(!getCachedTruckers(accessToken,{search,status,assignment,page,limit:PAGE_SIZE}));setError("");}});
+    queueMicrotask(()=>{if(active){setLoading(!getCachedTruckers(accessToken,{search,status,assignment,page:1,limit:PAGE_SIZE}));setError("");}});
     void (async () => {
       try {
-        const result = await fetchTruckers(accessToken, {
+        const params = {
           search,
           status,
           assignment,
-          page,
           limit: PAGE_SIZE,
-        });
+        };
+        const firstPage = await fetchTruckers(accessToken, { ...params, page: 1 });
+        const allRows = [...firstPage.rows];
+        for (let nextPage = 2; nextPage <= firstPage.pagination.totalPages; nextPage += 1) {
+          const result = await fetchTruckers(accessToken, { ...params, page: nextPage });
+          allRows.push(...result.rows);
+        }
         if (!active) return;
-        setRows(result.rows);
-        setTotalPages(result.pagination.totalPages || 1);
+        setRows(allRows);
       } catch (cause) {
         if (active) setError(cause instanceof Error ? cause.message : "Unable to load truckers.");
       } finally {
@@ -143,7 +144,7 @@ function UsersTable() {
       }
     })();
     return () => { active = false; };
-  }, [accessToken, assignment, category, page, refreshVersion, search, status]);
+  }, [accessToken, assignment, category, refreshVersion, search, status]);
 
   useEffect(() => {
     if (!selectedId || !accessToken || category !== "truckers") {
@@ -175,24 +176,14 @@ function UsersTable() {
       return !term || `${profile.full_name} ${profile.role}`.toLocaleLowerCase().includes(term);
     });
   }, [profiles, search]);
-  const visibleProfiles = useMemo(() => {
-    const start = (page - 1) * PAGE_SIZE;
-    return matchingProfiles.slice(start, start + PAGE_SIZE);
-  }, [matchingProfiles, page]);
-  const visibleTotalPages = category === "staff"
-    ? Math.max(1, Math.ceil(matchingProfiles.length / PAGE_SIZE))
-    : totalPages;
-
   function refreshList() {
     invalidateApiCache("/lookups/profiles");
     invalidateApiCache("/truckers");
-    setActionsOpen(false);
     setRefreshVersion((current) => current + 1);
   }
 
   function changeCategory(next: "staff" | "truckers") {
     setSelectedCategory(next);
-    setPage(1);
     setSearch("");
     setSelectedId(null);
   }
@@ -201,7 +192,7 @@ function UsersTable() {
     <div className="space-y-4">
       {notice && <div role="status" className="flex items-center justify-between rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-800">{notice}<button type="button" aria-label="Dismiss message" onClick={() => setNotice("")}><X className="h-4 w-4" /></button></div>}
       <div>
-        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+        <div className="relative z-20 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div className="flex flex-wrap items-center gap-2">
             <SlidingSegmentedControl
               aria-label="User category"
@@ -215,13 +206,13 @@ function UsersTable() {
               <>
                 <div className="relative">
                   <SlidersHorizontal aria-hidden="true" className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                  <select aria-label="Filter truckers by status" value={status} onChange={(event) => { setPage(1); setStatus(event.target.value); }} className={`${tableUi.select} pl-9`}>
+                  <select aria-label="Filter truckers by status" value={status} onChange={(event) => setStatus(event.target.value)} className={`${tableUi.select} pl-9`}>
                     <option value="all">All status</option>
                     <option value="ACTIVE">Active</option>
                     <option value="INACTIVE">Inactive</option>
                   </select>
                 </div>
-                <select aria-label="Filter truckers by assignment" value={assignment} onChange={(event) => { setPage(1); setAssignment(event.target.value as "all" | "assigned" | "unassigned"); }} className={`${tableUi.select} pr-4`}>
+                <select aria-label="Filter truckers by assignment" value={assignment} onChange={(event) => setAssignment(event.target.value as "all" | "assigned" | "unassigned")} className={`${tableUi.select} pr-4`}>
                   <option value="all">All assignments</option>
                   <option value="assigned">Assigned</option>
                   <option value="unassigned">Unassigned</option>
@@ -231,22 +222,13 @@ function UsersTable() {
           </div>
           <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
             {columnControls}
-            <div className="relative">
-              <button type="button" aria-label="User list options" aria-haspopup="menu" aria-expanded={actionsOpen} onClick={() => setActionsOpen((current) => !current)} className={tableUi.iconBtn} title="User list options"><MoreHorizontal aria-hidden="true" className="h-5 w-5" /></button>
-              {actionsOpen && <div role="menu" className="absolute right-0 top-11 z-30 min-w-44 rounded-2xl border border-slate-100 bg-white p-1 shadow-[0_16px_40px_-12px_rgba(11,35,65,0.2)]"><button type="button" role="menuitem" onClick={refreshList} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"><RefreshCw aria-hidden="true" className="h-4 w-4" />Refresh list</button></div>}
-            </div>
-            <div className="flex items-center gap-2 pl-1">
-              <button type="button" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={page <= 1} className="h-10 rounded-full bg-white px-4 text-sm text-slate-600 shadow-[0_1px_2px_rgba(11,35,65,0.06)] transition hover:text-[#0b2341] disabled:cursor-not-allowed disabled:opacity-40">Prev</button>
-              <span className="whitespace-nowrap text-sm text-slate-600">Page {page} / {visibleTotalPages}</span>
-              <button type="button" onClick={() => setPage((current) => Math.min(visibleTotalPages, current + 1))} disabled={page >= visibleTotalPages} className="h-10 rounded-full bg-white px-4 text-sm text-slate-600 shadow-[0_1px_2px_rgba(11,35,65,0.06)] transition hover:text-[#0b2341] disabled:cursor-not-allowed disabled:opacity-40">Next</button>
-            </div>
             {profile?.role === "ADMIN" && <button type="button" onClick={() => { setEditingUser(null); setUserModalOpen(true); }} className="inline-flex h-10 items-center gap-2 rounded-full bg-[#ffd43b] px-4 text-sm font-semibold text-[#0b2341] hover:bg-[#f2c200]"><Plus className="h-4 w-4" />Add user</button>}
           </div>
         </div>
       </div>
 
       {error && (category==="staff" ? profiles.length>0 : rows.length>0) && <div role="alert" className="flex items-center justify-between rounded-lg bg-rose-50 px-4 py-3 text-sm text-rose-700"><span>{error}</span><button type="button" onClick={refreshList} className="underline">Retry</button></div>}
-      <div className={tableUi.shell}>
+      <div className={`${tableUi.shell} relative z-0`}>
         <div ref={attachViewport} {...viewportProps} className="overflow-x-auto">
           <table style={tableStyle} className="min-w-full text-left">{colgroup}
             <thead className={tableUi.thead}>
@@ -257,9 +239,9 @@ function UsersTable() {
                 <tr key={`skeleton-${index}`} className={tableUi.row}>{orderedColumns.map((column) => <td key={column.key} className="px-4 py-3"><div className="h-4 w-3/4 animate-pulse rounded bg-slate-200" /></td>)}</tr>
               )) : error && !(category==="staff" ? profiles.length : rows.length) ? (
                 <tr><td colSpan={category === "staff" ? 4 : 6} role="alert" className="px-4 py-12 text-center text-sm text-rose-700">{error}</td></tr>
-              ) : category === "staff" ? visibleProfiles.length === 0 ? (
+              ) : category === "staff" ? matchingProfiles.length === 0 ? (
                 <tr><td colSpan={4} className="px-4 py-16 text-center text-sm text-slate-400">No admin or staff users found.</td></tr>
-              ) : visibleProfiles.map((profile) => (
+              ) : matchingProfiles.map((profile) => (
                 <tr key={profile.id} className={tableUi.row}>
                   {renderCells(<> <td className="px-4 py-3.5"><div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-[#e6f0f9]">{profile.profile_picture_url ? <img src={profile.profile_picture_url} alt="" className="h-full w-full object-cover" /> : <UserRound aria-hidden="true" className="h-5 w-5 text-[#2678b9]" />}</div><div><div className="text-[13px] font-medium text-[#0b2341]">{profile.full_name}</div><div className="text-xs text-slate-500">{profile.role === "ADMIN" && profile.is_admin ? "Admin" : profile.role === "ADMIN" ? "Administrator" : "Staff"}</div></div></div></td>
                   <td className={tableUi.td}>{managedUsers.find((item) => item.id === profile.id)?.email ?? "—"}</td><td className={tableUi.td}>{profile.role}</td><td className={tableUi.td}>{managedUsers.some((item) => item.id === profile.id) && <button type="button" aria-label={`Edit ${profile.full_name}`} onClick={() => { setEditingUser(managedUsers.find((item) => item.id === profile.id) ?? null); setUserModalOpen(true); }} className={tableUi.iconBtn}><Pencil className="h-4 w-4" /></button>}</td>
