@@ -1,0 +1,779 @@
+{
+  "project": "hdmknewarynwpbrhfgai",
+  "inspection": "2026-10-18 read-only",
+  "foreignKeys": [
+    {
+      "conname": "backload_items_backload_id_fkey",
+      "child": "backload_items",
+      "parent": "backloads",
+      "definition": "FOREIGN KEY (backload_id) REFERENCES backloads(id) ON DELETE CASCADE"
+    },
+    {
+      "conname": "proposed_receipt_backload_trip_fk",
+      "child": "report_receipts",
+      "parent": "backloads",
+      "definition": "FOREIGN KEY (backload_id, trip_id) REFERENCES backloads(id, trip_id) ON UPDATE RESTRICT ON DELETE RESTRICT"
+    },
+    {
+      "conname": "report_receipts_backload_id_fkey",
+      "child": "report_receipts",
+      "parent": "backloads",
+      "definition": "FOREIGN KEY (backload_id) REFERENCES backloads(id)"
+    },
+    {
+      "conname": "proposed_receipt_loading_trip_fk",
+      "child": "report_receipts",
+      "parent": "loading_reports",
+      "definition": "FOREIGN KEY (loading_report_id, trip_id) REFERENCES loading_reports(id, trip_id) ON UPDATE RESTRICT ON DELETE RESTRICT"
+    },
+    {
+      "conname": "report_receipts_loading_report_id_fkey",
+      "child": "report_receipts",
+      "parent": "loading_reports",
+      "definition": "FOREIGN KEY (loading_report_id) REFERENCES loading_reports(id)"
+    },
+    {
+      "conname": "offload_items_offload_id_fkey",
+      "child": "offload_items",
+      "parent": "offloads",
+      "definition": "FOREIGN KEY (offload_id) REFERENCES offloads(id) ON DELETE CASCADE"
+    },
+    {
+      "conname": "proposed_receipt_offload_trip_fk",
+      "child": "report_receipts",
+      "parent": "offloads",
+      "definition": "FOREIGN KEY (offload_id, trip_id) REFERENCES offloads(id, trip_id) ON UPDATE RESTRICT ON DELETE RESTRICT"
+    },
+    {
+      "conname": "report_receipts_offload_id_fkey",
+      "child": "report_receipts",
+      "parent": "offloads",
+      "definition": "FOREIGN KEY (offload_id) REFERENCES offloads(id)"
+    },
+    {
+      "conname": "pod_drive_files_pod_record_id_fkey",
+      "child": "pod_drive_files",
+      "parent": "pod_records",
+      "definition": "FOREIGN KEY (pod_record_id) REFERENCES pod_records(id) ON DELETE SET NULL"
+    },
+    {
+      "conname": "trip_images_pod_record_id_fkey",
+      "child": "trip_images",
+      "parent": "pod_records",
+      "definition": "FOREIGN KEY (pod_record_id) REFERENCES pod_records(id) ON DELETE SET NULL"
+    },
+    {
+      "conname": "backload_items_trip_line_item_id_fkey",
+      "child": "backload_items",
+      "parent": "trip_line_items",
+      "definition": "FOREIGN KEY (trip_line_item_id) REFERENCES trip_line_items(id)"
+    },
+    {
+      "conname": "offload_items_trip_line_item_id_fkey",
+      "child": "offload_items",
+      "parent": "trip_line_items",
+      "definition": "FOREIGN KEY (trip_line_item_id) REFERENCES trip_line_items(id)"
+    },
+    {
+      "conname": "backloads_trip_stop_id_fkey",
+      "child": "backloads",
+      "parent": "trip_stops",
+      "definition": "FOREIGN KEY (trip_stop_id) REFERENCES trip_stops(id) ON UPDATE CASCADE ON DELETE SET NULL"
+    },
+    {
+      "conname": "proposed_backload_stop_trip_fk",
+      "child": "backloads",
+      "parent": "trip_stops",
+      "definition": "FOREIGN KEY (trip_stop_id, trip_id) REFERENCES trip_stops(id, trip_id) ON UPDATE RESTRICT ON DELETE RESTRICT"
+    },
+    {
+      "conname": "demurrages_trip_stop_id_fkey",
+      "child": "demurrages",
+      "parent": "trip_stops",
+      "definition": "FOREIGN KEY (trip_stop_id) REFERENCES trip_stops(id) ON UPDATE CASCADE ON DELETE SET NULL"
+    },
+    {
+      "conname": "documents_trip_stop_id_fkey",
+      "child": "documents",
+      "parent": "trip_stops",
+      "definition": "FOREIGN KEY (trip_stop_id) REFERENCES trip_stops(id) ON UPDATE CASCADE ON DELETE CASCADE"
+    },
+    {
+      "conname": "incidents_trip_stop_id_fkey",
+      "child": "incidents",
+      "parent": "trip_stops",
+      "definition": "FOREIGN KEY (trip_stop_id) REFERENCES trip_stops(id) ON UPDATE CASCADE ON DELETE SET NULL"
+    },
+    {
+      "conname": "offloads_trip_stop_id_fkey",
+      "child": "offloads",
+      "parent": "trip_stops",
+      "definition": "FOREIGN KEY (trip_stop_id) REFERENCES trip_stops(id) ON UPDATE CASCADE ON DELETE SET NULL"
+    },
+    {
+      "conname": "proposed_offload_stop_trip_fk",
+      "child": "offloads",
+      "parent": "trip_stops",
+      "definition": "FOREIGN KEY (trip_stop_id, trip_id) REFERENCES trip_stops(id, trip_id) ON UPDATE RESTRICT ON DELETE RESTRICT"
+    },
+    {
+      "conname": "operations_report_conversions_trip_stop_id_fkey",
+      "child": "operations_report_conversions",
+      "parent": "trip_stops",
+      "definition": "FOREIGN KEY (trip_stop_id) REFERENCES trip_stops(id) ON DELETE RESTRICT"
+    },
+    {
+      "conname": "pod_drive_files_trip_stop_id_fkey",
+      "child": "pod_drive_files",
+      "parent": "trip_stops",
+      "definition": "FOREIGN KEY (trip_stop_id) REFERENCES trip_stops(id) ON DELETE SET NULL"
+    },
+    {
+      "conname": "pod_records_trip_stop_id_fkey",
+      "child": "pod_records",
+      "parent": "trip_stops",
+      "definition": "FOREIGN KEY (trip_stop_id) REFERENCES trip_stops(id) ON DELETE CASCADE"
+    },
+    {
+      "conname": "proposed_receipt_stop_trip_fk",
+      "child": "report_receipts",
+      "parent": "trip_stops",
+      "definition": "FOREIGN KEY (trip_stop_id, trip_id) REFERENCES trip_stops(id, trip_id) ON UPDATE RESTRICT ON DELETE RESTRICT"
+    },
+    {
+      "conname": "report_receipts_trip_stop_id_fkey",
+      "child": "report_receipts",
+      "parent": "trip_stops",
+      "definition": "FOREIGN KEY (trip_stop_id) REFERENCES trip_stops(id)"
+    },
+    {
+      "conname": "store_calls_trip_stop_id_fkey",
+      "child": "store_calls",
+      "parent": "trip_stops",
+      "definition": "FOREIGN KEY (trip_stop_id) REFERENCES trip_stops(id) ON UPDATE CASCADE ON DELETE CASCADE"
+    },
+    {
+      "conname": "trip_events_trip_stop_id_fkey",
+      "child": "trip_events",
+      "parent": "trip_stops",
+      "definition": "FOREIGN KEY (trip_stop_id) REFERENCES trip_stops(id) ON UPDATE CASCADE ON DELETE CASCADE"
+    },
+    {
+      "conname": "trip_images_trip_stop_id_fkey",
+      "child": "trip_images",
+      "parent": "trip_stops",
+      "definition": "FOREIGN KEY (trip_stop_id) REFERENCES trip_stops(id) ON DELETE SET NULL"
+    },
+    {
+      "conname": "trip_line_items_trip_stop_id_fkey",
+      "child": "trip_line_items",
+      "parent": "trip_stops",
+      "definition": "FOREIGN KEY (trip_stop_id) REFERENCES trip_stops(id) ON UPDATE CASCADE ON DELETE CASCADE"
+    },
+    {
+      "conname": "proposed_unloading_report_stop_trip_fk",
+      "child": "unloading_reports",
+      "parent": "trip_stops",
+      "definition": "FOREIGN KEY (trip_stop_id, trip_id) REFERENCES trip_stops(id, trip_id) ON UPDATE RESTRICT ON DELETE RESTRICT"
+    },
+    {
+      "conname": "unloading_reports_trip_stop_id_fkey",
+      "child": "unloading_reports",
+      "parent": "trip_stops",
+      "definition": "FOREIGN KEY (trip_stop_id) REFERENCES trip_stops(id)"
+    },
+    {
+      "conname": "trip_route_cache_assignment_id_fkey",
+      "child": "trip_route_cache",
+      "parent": "trip_truck_assignments",
+      "definition": "FOREIGN KEY (assignment_id) REFERENCES trip_truck_assignments(id) ON DELETE CASCADE"
+    },
+    {
+      "conname": "trip_tracking_locations_assignment_id_fkey",
+      "child": "trip_tracking_locations",
+      "parent": "trip_truck_assignments",
+      "definition": "FOREIGN KEY (assignment_id) REFERENCES trip_truck_assignments(id) ON DELETE CASCADE"
+    },
+    {
+      "conname": "backloads_trip_id_fkey",
+      "child": "backloads",
+      "parent": "trips",
+      "definition": "FOREIGN KEY (trip_id) REFERENCES trips(id) ON UPDATE CASCADE ON DELETE CASCADE"
+    },
+    {
+      "conname": "billings_trip_id_fkey",
+      "child": "billings",
+      "parent": "trips",
+      "definition": "FOREIGN KEY (trip_id) REFERENCES trips(id) ON UPDATE CASCADE ON DELETE CASCADE"
+    },
+    {
+      "conname": "demurrages_trip_id_fkey",
+      "child": "demurrages",
+      "parent": "trips",
+      "definition": "FOREIGN KEY (trip_id) REFERENCES trips(id) ON UPDATE CASCADE ON DELETE CASCADE"
+    },
+    {
+      "conname": "documents_trip_id_fkey",
+      "child": "documents",
+      "parent": "trips",
+      "definition": "FOREIGN KEY (trip_id) REFERENCES trips(id) ON UPDATE CASCADE ON DELETE CASCADE"
+    },
+    {
+      "conname": "incidents_trip_id_fkey",
+      "child": "incidents",
+      "parent": "trips",
+      "definition": "FOREIGN KEY (trip_id) REFERENCES trips(id) ON UPDATE CASCADE ON DELETE CASCADE"
+    },
+    {
+      "conname": "loading_reports_trip_id_fkey",
+      "child": "loading_reports",
+      "parent": "trips",
+      "definition": "FOREIGN KEY (trip_id) REFERENCES trips(id)"
+    },
+    {
+      "conname": "offloads_trip_id_fkey",
+      "child": "offloads",
+      "parent": "trips",
+      "definition": "FOREIGN KEY (trip_id) REFERENCES trips(id) ON UPDATE CASCADE ON DELETE CASCADE"
+    },
+    {
+      "conname": "operations_report_conversions_trip_id_fkey",
+      "child": "operations_report_conversions",
+      "parent": "trips",
+      "definition": "FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE RESTRICT"
+    },
+    {
+      "conname": "payables_trip_id_fkey",
+      "child": "payables",
+      "parent": "trips",
+      "definition": "FOREIGN KEY (trip_id) REFERENCES trips(id) ON UPDATE CASCADE ON DELETE CASCADE"
+    },
+    {
+      "conname": "pod_drive_files_trip_id_fkey",
+      "child": "pod_drive_files",
+      "parent": "trips",
+      "definition": "FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE CASCADE"
+    },
+    {
+      "conname": "pod_records_trip_id_fkey",
+      "child": "pod_records",
+      "parent": "trips",
+      "definition": "FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE CASCADE"
+    },
+    {
+      "conname": "receivables_trip_id_fkey",
+      "child": "receivables",
+      "parent": "trips",
+      "definition": "FOREIGN KEY (trip_id) REFERENCES trips(id) ON UPDATE CASCADE ON DELETE CASCADE"
+    },
+    {
+      "conname": "report_receipts_trip_id_fkey",
+      "child": "report_receipts",
+      "parent": "trips",
+      "definition": "FOREIGN KEY (trip_id) REFERENCES trips(id)"
+    },
+    {
+      "conname": "store_calls_trip_id_fkey",
+      "child": "store_calls",
+      "parent": "trips",
+      "definition": "FOREIGN KEY (trip_id) REFERENCES trips(id) ON UPDATE CASCADE ON DELETE CASCADE"
+    },
+    {
+      "conname": "trip_events_trip_id_fkey",
+      "child": "trip_events",
+      "parent": "trips",
+      "definition": "FOREIGN KEY (trip_id) REFERENCES trips(id) ON UPDATE CASCADE ON DELETE CASCADE"
+    },
+    {
+      "conname": "trip_images_trip_id_fkey",
+      "child": "trip_images",
+      "parent": "trips",
+      "definition": "FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE CASCADE"
+    },
+    {
+      "conname": "trip_line_items_trip_id_fkey",
+      "child": "trip_line_items",
+      "parent": "trips",
+      "definition": "FOREIGN KEY (trip_id) REFERENCES trips(id) ON UPDATE CASCADE ON DELETE CASCADE"
+    },
+    {
+      "conname": "trip_stops_trip_id_fkey",
+      "child": "trip_stops",
+      "parent": "trips",
+      "definition": "FOREIGN KEY (trip_id) REFERENCES trips(id) ON UPDATE CASCADE ON DELETE CASCADE"
+    },
+    {
+      "conname": "trip_truck_assignments_trip_id_fkey",
+      "child": "trip_truck_assignments",
+      "parent": "trips",
+      "definition": "FOREIGN KEY (trip_id) REFERENCES trips(id) ON UPDATE CASCADE ON DELETE CASCADE"
+    },
+    {
+      "conname": "unloading_reports_trip_id_fkey",
+      "child": "unloading_reports",
+      "parent": "trips",
+      "definition": "FOREIGN KEY (trip_id) REFERENCES trips(id)"
+    },
+    {
+      "conname": "proposed_receipt_unloading_identity_fk",
+      "child": "report_receipts",
+      "parent": "unloading_reports",
+      "definition": "FOREIGN KEY (unloading_report_id, trip_stop_id, trip_id) REFERENCES unloading_reports(id, trip_stop_id, trip_id) ON UPDATE RESTRICT ON DELETE RESTRICT"
+    },
+    {
+      "conname": "report_receipts_unloading_report_id_fkey",
+      "child": "report_receipts",
+      "parent": "unloading_reports",
+      "definition": "FOREIGN KEY (unloading_report_id) REFERENCES unloading_reports(id)"
+    }
+  ],
+  "logicalReferences": [
+    {
+      "relname": "admin_notifications",
+      "relkind": "r",
+      "reference_columns": [
+        "reference_id"
+      ]
+    },
+    {
+      "relname": "audit_logs",
+      "relkind": "r",
+      "reference_columns": [
+        "entity_id"
+      ]
+    },
+    {
+      "relname": "backload_items",
+      "relkind": "r",
+      "reference_columns": [
+        "trip_line_item_id"
+      ]
+    },
+    {
+      "relname": "backloads",
+      "relkind": "r",
+      "reference_columns": [
+        "trip_id",
+        "trip_stop_id"
+      ]
+    },
+    {
+      "relname": "billings",
+      "relkind": "r",
+      "reference_columns": [
+        "trip_id"
+      ]
+    },
+    {
+      "relname": "demurrages",
+      "relkind": "r",
+      "reference_columns": [
+        "trip_id",
+        "trip_stop_id"
+      ]
+    },
+    {
+      "relname": "documents",
+      "relkind": "r",
+      "reference_columns": [
+        "trip_id",
+        "trip_stop_id"
+      ]
+    },
+    {
+      "relname": "driver_trip_updates",
+      "relkind": "r",
+      "reference_columns": [
+        "trip_id"
+      ]
+    },
+    {
+      "relname": "flex_audit_events",
+      "relkind": "r",
+      "reference_columns": [
+        "entity_id"
+      ]
+    },
+    {
+      "relname": "flex_rows",
+      "relkind": "r",
+      "reference_columns": [
+        "source_entity_id"
+      ]
+    },
+    {
+      "relname": "incidents",
+      "relkind": "r",
+      "reference_columns": [
+        "trip_id",
+        "trip_stop_id"
+      ]
+    },
+    {
+      "relname": "loading_reports",
+      "relkind": "r",
+      "reference_columns": [
+        "trip_id"
+      ]
+    },
+    {
+      "relname": "offload_deletion_jobs",
+      "relkind": "r",
+      "reference_columns": [
+        "trip_id",
+        "trip_stop_id"
+      ]
+    },
+    {
+      "relname": "offload_items",
+      "relkind": "r",
+      "reference_columns": [
+        "trip_line_item_id"
+      ]
+    },
+    {
+      "relname": "offloads",
+      "relkind": "r",
+      "reference_columns": [
+        "trip_id",
+        "trip_stop_id"
+      ]
+    },
+    {
+      "relname": "operations_report_conversions",
+      "relkind": "r",
+      "reference_columns": [
+        "trip_id",
+        "trip_stop_id"
+      ]
+    },
+    {
+      "relname": "payables",
+      "relkind": "r",
+      "reference_columns": [
+        "trip_id"
+      ]
+    },
+    {
+      "relname": "pod_drive_files",
+      "relkind": "r",
+      "reference_columns": [
+        "trip_id",
+        "trip_stop_id"
+      ]
+    },
+    {
+      "relname": "pod_records",
+      "relkind": "r",
+      "reference_columns": [
+        "trip_id",
+        "trip_stop_id"
+      ]
+    },
+    {
+      "relname": "pod_review_events",
+      "relkind": "r",
+      "reference_columns": [
+        "trip_id",
+        "trip_stop_id"
+      ]
+    },
+    {
+      "relname": "receivables",
+      "relkind": "r",
+      "reference_columns": [
+        "trip_id"
+      ]
+    },
+    {
+      "relname": "report_audit_logs",
+      "relkind": "r",
+      "reference_columns": [
+        "entity_id"
+      ]
+    },
+    {
+      "relname": "report_receipts",
+      "relkind": "r",
+      "reference_columns": [
+        "trip_id",
+        "trip_stop_id"
+      ]
+    },
+    {
+      "relname": "store_calls",
+      "relkind": "r",
+      "reference_columns": [
+        "trip_id",
+        "trip_stop_id"
+      ]
+    },
+    {
+      "relname": "transaction_deletion_jobs",
+      "relkind": "r",
+      "reference_columns": [
+        "trip_id",
+        "trip_stop_id"
+      ]
+    },
+    {
+      "relname": "trip_events",
+      "relkind": "r",
+      "reference_columns": [
+        "trip_id",
+        "trip_stop_id"
+      ]
+    },
+    {
+      "relname": "trip_images",
+      "relkind": "r",
+      "reference_columns": [
+        "trip_id",
+        "trip_stop_id"
+      ]
+    },
+    {
+      "relname": "trip_line_items",
+      "relkind": "r",
+      "reference_columns": [
+        "trip_id",
+        "trip_stop_id"
+      ]
+    },
+    {
+      "relname": "trip_route_cache",
+      "relkind": "r",
+      "reference_columns": [
+        "assignment_id"
+      ]
+    },
+    {
+      "relname": "trip_stops",
+      "relkind": "r",
+      "reference_columns": [
+        "trip_id"
+      ]
+    },
+    {
+      "relname": "trip_tracking_locations",
+      "relkind": "r",
+      "reference_columns": [
+        "assignment_id"
+      ]
+    },
+    {
+      "relname": "trip_truck_assignments",
+      "relkind": "r",
+      "reference_columns": [
+        "trip_id"
+      ]
+    },
+    {
+      "relname": "unloading_reports",
+      "relkind": "r",
+      "reference_columns": [
+        "trip_id",
+        "trip_stop_id"
+      ]
+    },
+    {
+      "relname": "v_dispatch_monitoring",
+      "relkind": "v",
+      "reference_columns": [
+        "trip_id"
+      ]
+    },
+    {
+      "relname": "v_operations_report_page",
+      "relkind": "v",
+      "reference_columns": [
+        "trip_id",
+        "trip_stop_id"
+      ]
+    },
+    {
+      "relname": "v_tms_combined",
+      "relkind": "v",
+      "reference_columns": [
+        "trip_id",
+        "trip_stop_id",
+        "trip_line_item_id"
+      ]
+    },
+    {
+      "relname": "v_transmittal_tracker_page",
+      "relkind": "v",
+      "reference_columns": [
+        "trip_stop_id",
+        "trip_id"
+      ]
+    },
+    {
+      "relname": "vw_combined_report",
+      "relkind": "v",
+      "reference_columns": [
+        "trip_id",
+        "trip_stop_id"
+      ]
+    },
+    {
+      "relname": "vw_dispatch_monitoring",
+      "relkind": "v",
+      "reference_columns": [
+        "trip_id"
+      ]
+    },
+    {
+      "relname": "vw_dispatch_report",
+      "relkind": "v",
+      "reference_columns": [
+        "trip_id",
+        "assignment_id",
+        "trip_stop_id"
+      ]
+    },
+    {
+      "relname": "vw_pod_drive_files",
+      "relkind": "v",
+      "reference_columns": [
+        "trip_id",
+        "trip_stop_id"
+      ]
+    },
+    {
+      "relname": "vw_pod_status_tracker",
+      "relkind": "v",
+      "reference_columns": [
+        "trip_id",
+        "trip_stop_id"
+      ]
+    },
+    {
+      "relname": "vw_store_calling_tracker",
+      "relkind": "v",
+      "reference_columns": [
+        "trip_id",
+        "trip_stop_id"
+      ]
+    },
+    {
+      "relname": "vw_trip_booking",
+      "relkind": "v",
+      "reference_columns": [
+        "trip_id",
+        "trip_stop_id"
+      ]
+    },
+    {
+      "relname": "vw_trip_exceptions",
+      "relkind": "v",
+      "reference_columns": [
+        "trip_id",
+        "trip_stop_id"
+      ]
+    }
+  ],
+  "reviewedTransactionFunctionMd5": "9d11efef4875f0d32256d589db30a9e6",
+  "serviceReadPrivileges": [
+    {
+      "relname": "backload_items",
+      "service_read": false
+    },
+    {
+      "relname": "backloads",
+      "service_read": true
+    },
+    {
+      "relname": "billings",
+      "service_read": true
+    },
+    {
+      "relname": "demurrages",
+      "service_read": true
+    },
+    {
+      "relname": "documents",
+      "service_read": true
+    },
+    {
+      "relname": "flex_cells",
+      "service_read": true
+    },
+    {
+      "relname": "flex_rows",
+      "service_read": true
+    },
+    {
+      "relname": "incidents",
+      "service_read": true
+    },
+    {
+      "relname": "offload_items",
+      "service_read": true
+    },
+    {
+      "relname": "offloads",
+      "service_read": true
+    },
+    {
+      "relname": "operations_report_conversions",
+      "service_read": true
+    },
+    {
+      "relname": "payables",
+      "service_read": true
+    },
+    {
+      "relname": "pod_drive_files",
+      "service_read": false
+    },
+    {
+      "relname": "pod_records",
+      "service_read": false
+    },
+    {
+      "relname": "pod_review_events",
+      "service_read": true
+    },
+    {
+      "relname": "receivables",
+      "service_read": true
+    },
+    {
+      "relname": "report_receipts",
+      "service_read": true
+    },
+    {
+      "relname": "store_calls",
+      "service_read": true
+    },
+    {
+      "relname": "trip_events",
+      "service_read": true
+    },
+    {
+      "relname": "trip_images",
+      "service_read": true
+    },
+    {
+      "relname": "trip_line_items",
+      "service_read": true
+    },
+    {
+      "relname": "trip_route_cache",
+      "service_read": true
+    },
+    {
+      "relname": "trip_stops",
+      "service_read": true
+    },
+    {
+      "relname": "trip_tracking_locations",
+      "service_read": true
+    },
+    {
+      "relname": "trip_truck_assignments",
+      "service_read": true
+    }
+  ]
+}

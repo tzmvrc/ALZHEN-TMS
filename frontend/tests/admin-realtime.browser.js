@@ -27,10 +27,10 @@ async (page) => {
           if(request.method()==="PATCH") {const input=request.postDataJSON();if(input.expected_revision!==layoutRevision) return route.fulfill({status:409,contentType:"application/json",body:JSON.stringify({success:false,message:"Layout changed"})});width=input.width_px;layoutRevision++;}
           const row={table_key:"operations",column_key:"route",width_px:width,revision:layoutRevision}; data=request.method()==="PATCH"?row:[row];
         }
-        if(url.pathname.endsWith("/operations/overview")) {
+        if(url.pathname.endsWith("/operations/page")) {
           const record={id,trip_id:trip,trip_stop_id:stop,reason:"Fixture reason",number_of_boxes:null,comments:remarks,items:[]};
           const row={id:"offload:"+id,source_type:"OFFLOAD",source_record_id:id,trip_id:trip,trip_stop_id:stop,trip_number:"Fixture trip",dispatch_number:"DSP-1",date:"2026-10-15T00:00:00Z",plate_number:"FIXTURE",driver_name:"Fixture Driver",route:"Fixture Route",dr_number:"DR-1",quantity:null,quantity_scope:null,total_cbm:null,report_type:"Offload",report_types:["Offload"],event_type_records:[{id,source_type:"OFFLOAD",event_type:"Offload"}],backload_records:[],offload_records:[record],line_items:[],remarks,reason:"Fixture reason",reported_by:"Fixture User",stop_sequence:1,scope_label:"Fixture transaction",assignment_id:null,loading_report_id:null,unloading_report_id:null,loading_timestamps:null,unloading_timestamps:null};
-          data={trips:[],trip_options:[],stops:[],loading:[],unloading:[],backloads:[],offloads:[record],event_rows:[row]};
+          data={trips:[],trip_options:[],stops:[],loading:[],unloading:[],backloads:[],offloads:[record],event_rows:[row],pagination:{page:1,limit:50,total:1,totalPages:1}};
         }
         if(!["GET","PATCH"].includes(request.method()) || (request.method()==="PATCH"&&!url.pathname.includes("/table-layouts/"))) throw new Error("Unexpected fixture write "+request.method()+" "+url.pathname);
         await route.fulfill({status:200,contentType:"application/json",body:JSON.stringify({success:true,data})});
@@ -55,7 +55,7 @@ async (page) => {
     await roots[0].getByRole("checkbox",{name:"Select row DSP-1",exact:true}).check();
     width=410;layoutRevision++;await emit(["shared_table_column_widths"]);
     await until(async()=>await headerWidth(0)===410&&await headerWidth(1)===410,"Shared layout did not propagate");
-    for(let n=0;n<2;n++) {const finder=roots[n].getByRole("combobox",{name:"Find a column"});await finder.fill("Route");await finder.press("Enter");await finder.blur();}
+    for(let n=0;n<2;n++) {const finder=roots[n].getByRole("combobox",{name:"Search rows or columns"});await finder.fill("Route");await finder.press("ArrowDown");await finder.press("Enter");await finder.blur();}
     await pages[0].waitForTimeout(400);
     const handle=roots[0].getByRole("separator",{name:"Resize Route",exact:true});await handle.scrollIntoViewIfNeeded();const box=await handle.boundingBox();
     await pages[0].mouse.move(box.x+2,box.y+10);await pages[0].mouse.down();await pages[0].mouse.move(box.x+27,box.y+10);
@@ -66,7 +66,7 @@ async (page) => {
     await until(async()=>await headerWidth(0)===width&&await headerWidth(1)===width,"Committed layout did not converge");
     await roots[0].locator('td[title="Edit Remarks"]').click();
     const editor=roots[0].getByRole("textbox",{name:"Edit Remarks",exact:true});await editor.fill("Unsaved draft stays");
-    const overviewCount=n=>calls[n].filter(c=>c.path.endsWith("/operations/overview")).length;
+    const overviewCount=n=>calls[n].filter(c=>c.path.endsWith("/operations/page")).length;
     const before=[overviewCount(0),overviewCount(1)];remarks="Remote update";await emit(["offloads","offload_items","report_receipts"]);
     await until(async()=>overviewCount(1)===before[1]+1,"Source batch did not refresh other session exactly once");await pages[0].waitForTimeout(500);
     if(overviewCount(0)!==before[0]||await editor.inputValue()!=="Unsaved draft stays")throw new Error("Realtime overwrote or refreshed active editor");
@@ -77,7 +77,7 @@ async (page) => {
     const activeChannels=await pages[1].evaluate(()=>window.__channels.filter(c=>!c.removed).length);if(activeChannels!==1)throw new Error("Reconnect duplicated channels");
     const after=overviewCount(1);await pages[1].evaluate(()=>{window.__stopRealtime();window.__startTrucker();});await emit(["offloads"]);await pages[0].waitForTimeout(500);
     if(overviewCount(1)!==after||await pages[1].evaluate(()=>window.__channels.some(c=>!c.removed)))throw new Error("Logout/Trucker isolation failed");
-    return {mockedTwoContexts:true,productionWrites:0,sourceBatchRequests:[1,1],draftPreserved:true,selectionPreserved:true,remoteResizeDeferred:true,reconnectActiveChannels:activeChannels,logoutIsolated:true,requestCounts:calls.map(c=>c.length),overviewRequests:calls.map(c=>c.filter(r=>r.path.endsWith("/operations/overview")).length)};
+    return {mockedTwoContexts:true,productionWrites:0,sourceBatchRequests:[1,1],draftPreserved:true,selectionPreserved:true,remoteResizeDeferred:true,reconnectActiveChannels:activeChannels,logoutIsolated:true,requestCounts:calls.map(c=>c.length),overviewRequests:calls.map(c=>c.filter(r=>r.path.endsWith("/operations/page")).length)};
   } catch(error) {
     const state=[];for(const fixture of pages)state.push(await fixture.evaluate(()=>({channels:window.__channels?.map(c=>({name:c.name,removed:c.removed})),route:document.querySelector('[data-ops-column="route"]')?.getBoundingClientRect().width,active:document.activeElement?.outerHTML.slice(0,220),editor:document.querySelector('td[data-cell-hover-disabled="true"] input,td[data-cell-hover-disabled="true"] textarea,td[data-cell-hover-disabled="true"] [role=combobox]')?.outerHTML.slice(0,200),text:document.querySelector('#realtime-fixture')?.textContent.slice(0,250)})).catch(()=>({})));
     throw new Error(error.message+" "+JSON.stringify({state,calls}));

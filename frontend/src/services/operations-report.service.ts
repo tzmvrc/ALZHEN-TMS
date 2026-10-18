@@ -116,15 +116,19 @@ export async function updateOperationsEventType(token: string, sourceType: Opera
   return response;
 }
 
-export async function deleteOperationsReport(token: string, sourceType: OperationsSourceType, recordId: string) {
-  const response = await unwrap(apiDelete<ApiResponse<{ source_type: OperationsSourceType; record_id: string; cleanup_pending?: boolean; operation_id?: string }>>(`/reports/operations/reports/${sourceType.toLowerCase()}/${encodeURIComponent(recordId)}`, token));
+export async function deleteOperationsReport(token: string, sourceType: OperationsSourceType, recordId: string, password: string) {
+  const response = await unwrap(apiDelete<ApiResponse<{ source_type: OperationsSourceType; record_id: string; cleanup_pending?: boolean; operation_id?: string }>>(`/reports/operations/reports/${sourceType.toLowerCase()}/${encodeURIComponent(recordId)}`, token, {current_password:password}));
   invalidateOperations();
   return response;
 }
-export type OffloadCleanupJob = { id: string; offload_id: string; state: "PENDING_STORAGE"; attempts: number };
-export const fetchPendingOffloadCleanup = (token: string) => unwrap(apiGetCached<ApiResponse<OffloadCleanupJob[]>>(`${ROOT}/offload-cleanup`, token, 5_000));
-export async function retryOffloadImageCleanup(token: string, operationId: string) {
-  const result = await unwrap(apiPost<ApiResponse<{ cleanup_pending: boolean }>>(`${ROOT}/offload-cleanup/${encodeURIComponent(operationId)}/retry`, {}, token));
+export async function deleteOperationsReports(token:string,targets:Array<{source_type:OperationsSourceType;record_id:string}>,password:string){
+ const result=await unwrap(apiPost<ApiResponse<{outcomes:Array<{source_type:OperationsSourceType;record_id:string;success:boolean;message?:string;result?:{cleanup_pending?:boolean;operation_id?:string}}> }>>(`${ROOT}/reports/delete`,{targets,current_password:password},token));
+ invalidateOperations();return result;
+}
+export type OffloadCleanupJob = { id: string; offload_id?: string; backload_id?: string; source_type?: "OFFLOAD"|"BACKLOAD"; state: "PENDING_STORAGE"; attempts: number };
+export const fetchPendingOffloadCleanup = (token: string) => unwrap(apiGetCached<ApiResponse<OffloadCleanupJob[]>>(`${ROOT}/report-cleanup`, token, 5_000));
+export async function retryOffloadImageCleanup(token: string, operationId: string, sourceType: "OFFLOAD"|"BACKLOAD" = "OFFLOAD") {
+  const result = await unwrap(apiPost<ApiResponse<{ cleanup_pending: boolean }>>(`${ROOT}/report-cleanup/${sourceType.toLowerCase()}/${encodeURIComponent(operationId)}/retry`, {}, token));
   invalidateOperations(); return result;
 }
 

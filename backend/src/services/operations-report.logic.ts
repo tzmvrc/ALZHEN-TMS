@@ -488,7 +488,7 @@ export function validateBackloadOffloadInput(value: unknown, requireTrip = false
   const tripId = input.trip_id === undefined && !requireTrip ? undefined : requireReportUuid(input.trip_id, "trip_id");
   const stopId = input.trip_stop_id === undefined ? undefined : input.trip_stop_id === null || input.trip_stop_id === "" ? null : requireReportUuid(input.trip_stop_id, "trip_stop_id");
   const fields: Record<string, unknown> = {};
-  if ("reason" in input) fields.reason = normalizeText(input.reason, "reason");
+  if ("reason" in input) { fields.reason = normalizeText(input.reason, "reason"); if (String(fields.reason ?? "").length > 2000) throw new ApiError("Reason must be at most 2,000 characters.", 400, "INVALID_TEXT"); }
   if ("comments" in input) fields.comments = normalizeText(input.comments, "comments");
   if ("number_of_boxes" in input) {
     const count = input.number_of_boxes;
@@ -498,8 +498,8 @@ export function validateBackloadOffloadInput(value: unknown, requireTrip = false
     else throw new ApiError("number_of_boxes must be a non-negative whole number or empty.", 400, "INVALID_NUMBER");
   }
   if (requireTrip && !Object.keys(fields).length) throw new ApiError("At least one report field is required.", 400, "EMPTY_REPORT");
-  if (requireContent && !Object.values(fields).some((field) => field !== null && field !== "")) {
-    throw new ApiError("Enter a reason, box count, or comment before submitting this report.", 400, "EMPTY_REPORT");
+  if (requireContent && (typeof fields.reason !== "string" || !fields.reason.trim())) {
+    throw new ApiError("Enter a reason before submitting this report.", 400, "EMPTY_REPORT");
   }
   return { tripId, stopId, fields };
 }
@@ -644,6 +644,7 @@ export function buildOperationsEventRows(input: {
       if (args.sourceType === "OFFLOAD") row.offload_records = [args.cargo];
       row.reason = args.cargo.reason ?? null;
       row.remarks = args.sourceType === "OFFLOAD" ? args.cargo.comments ?? null : args.cargo.comments ?? args.cargo.reason ?? null;
+      row.reported_by = args.cargo.reported_by_name ?? null;
       if (args.sourceType === "OFFLOAD") {
         row.date = args.cargo.reported_at ?? args.cargo.report_date ?? args.cargo.created_at ?? null;
         row.reported_by = args.cargo.reported_by_name ?? null;
@@ -684,3 +685,7 @@ export function buildOperationsEventRows(input: {
 }
 
 export const REPORT_TIMESTAMP_FIELDS = { loading: LOADING_FIELDS, unloading: UNLOADING_FIELDS } as const;
+/** Authenticated creation attribution; the editable reported_by delegate is distinct. */
+export function offloadSubmitterId(record:{created_by?:unknown;submitted_by?:unknown;[key:string]:unknown}):string|null{
+  return typeof record.created_by==="string"&&record.created_by?record.created_by:typeof record.submitted_by==="string"&&record.submitted_by?record.submitted_by:null;
+}

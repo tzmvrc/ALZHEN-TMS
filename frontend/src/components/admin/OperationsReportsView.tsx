@@ -1,8 +1,9 @@
+import EditStepNavigation from "./EditStepNavigation";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
 import { MoreVertical } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import {
-  deleteOperationsReport,
+  deleteOperationsReports,
   fetchAssignedOperations,
   fetchOperationsReceipts,
   fetchOperationsOverview,
@@ -98,7 +99,7 @@ function pendingOffloadItemId(reportId: string, sourceItemId: string | null) {
   }
 }
 
-export default function OperationsReportsView({ mode, onOpenTrip }: { mode: Mode; onOpenTrip?: (tripId: string, stopId?: string | null) => void }) {
+export default function OperationsReportsView({ mode, onOpenTrip, refreshVersion = 0 }: { mode: Mode; refreshVersion?: number; onOpenTrip?: (tripId: string, stopId?: string | null) => void }) {
   const { accessToken, profile } = useAuth();
   const [active, setActive] = useState<Kind>("loading");
   const [pageQuery,setPageQuery]=useState<OperationsPageOptions>({page:1,limit:50,search:"",filter:"All",sortBy:"date",sortOrder:"desc"});
@@ -170,6 +171,8 @@ export default function OperationsReportsView({ mode, onOpenTrip }: { mode: Mode
     }
   }, [accessToken, mode, realtimeGate, pageQuery, pageKey, paged]);
   useEffect(() => { realtimeLoad.current = () => { invalidateOperationsReportsCache(); return load(true, false, true); }; }, [load]);
+
+  useEffect(()=>{ if(mode === "trucker" && refreshVersion > 0)realtimeGate.request(); },[mode,refreshVersion,realtimeGate]);
 
   async function openSubmission() {
     setShowSubmission(true);
@@ -527,9 +530,14 @@ export function OperationsEventsTable({ rows, loading, hasLoaded, loadError, tok
   const layout=useMemo(()=>({...designLayout(localLayout,OPERATIONS_COLUMNS.map(c=>c.key),sharedDesign.columns,sharedDesign.loaded),widths:draggingWidth?localLayout.widths:{...(sharedWidths.loaded?{}:localLayout.widths),...sharedWidths.widths}}),[localLayout,sharedDesign.columns,sharedDesign.loaded,draggingWidth,sharedWidths.loaded,sharedWidths.widths]);
   const setLayout=(update:typeof layout|((current:typeof layout)=>typeof layout))=>{const next=typeof update==="function"?update(layout):update;setLayoutState({key:layoutKey,value:next});for(const [key,patch] of Object.entries(designChanges(layout,next)))void sharedDesign.save(key,patch,layout.widths[key]??OPERATIONS_COLUMNS.find(c=>c.key===key)?.width??180);};
   const [rowEditBusy, setRowEditBusy] = useState(false);
+  const [rowEditStep, setRowEditStep] = useState(0);
+  const rowEditBaseline = useRef("");
   const rowEditSaving = useRef(false);
   const [rowEditError, setRowEditError] = useState<string | null>(null);
   const [deleteConfirmation, setDeleteConfirmation] = useState(false);
+  const [deletePassword, setDeletePassword] = useState("");
+  const deletionOwner=useRef({token,profileId});
+  useEffect(()=>{if(deletionOwner.current.token!==token||deletionOwner.current.profileId!==profileId){deletionOwner.current={token,profileId};setDeletePassword("");setDeleteConfirmation(false);setSelectedRowState({datasetKey:"",source:[],ids:new Set()});}},[token,profileId]);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const interaction = useRef<() => boolean>(() => false);
   useEffect(() => {
@@ -547,7 +555,7 @@ export function OperationsEventsTable({ rows, loading, hasLoaded, loadError, tok
   useEffect(() => { if (resizing.current) return; try { localStorage.setItem(layoutKey, JSON.stringify(layout)); } catch { /* layout remains available for this session */ } }, [layout, layoutKey]);
   useEffect(() => () => resizeCleanup.current?.(), []);
 
-  const filters: EventFilter[] = ["All", "Loading", "Unloading", "Backload", "Offload"];
+  const filters: EventFilter[] = ["All", "Backload", "Offload"];
   const columns = layout.order.flatMap((key) => {
     const column = OPERATIONS_COLUMNS.find((item) => item.key === key);
     return column && !layout.hidden.includes(key) ? [{ ...column, width: layout.widths[key] ?? column.width }] : [];
@@ -606,6 +614,11 @@ export function OperationsEventsTable({ rows, loading, hasLoaded, loadError, tok
     if (next.has(rowId)) next.delete(rowId); else next.add(rowId);
     return next;
   });
+  const closeRowEditor = () => {
+    if (rowEditSaving.current || rowEditBusy) return;
+    if (rowEdit && JSON.stringify(rowEdit) !== rowEditBaseline.current && !window.confirm("Discard unsaved report changes?")) return;
+    setRowEdit(null);
+  };
   const editSelectedRow = () => {
     if (selectedRows.size !== 1) return;
     const row = localRows.find((item) => item.id === [...selectedRows][0]);
@@ -615,7 +628,7 @@ export function OperationsEventsTable({ rows, loading, hasLoaded, loadError, tok
       return;
     }
     const offloadRecords = row.offload_records as Array<ScopeReport & { items?: OperationsOffloadItem[] }>;
-    setRowEdit({
+    const draft: OperationsRowEditDraft = {
       row,
       dispatchNumber: row.dispatch_number ?? "",
       deliveryDate: inputTime(row.date),
@@ -633,11 +646,14 @@ export function OperationsEventsTable({ rows, loading, hasLoaded, loadError, tok
         quantity: item.quantity == null ? "" : String(item.quantity),
         totalCbm: item.total_cbm == null ? "" : String(item.total_cbm),
       }))),
-    });
+    };
+    rowEditBaseline.current = JSON.stringify(draft);
+    setRowEdit(draft);
+    setRowEditStep(0);
     setRowEditError(null);
   };
   const deleteSelectedRows = async () => {
-    if (!token || deleteSaving.current || !selectedRows.size) return;
+    if (!token || deleteSaving.current || !selectedRows.size || !deletePassword || selectedRows.size > 20) return;
     const selected = [...selectedRows].map((id) => visibleRows.find((row) => row.id === id)).filter((row): row is OperationsEventRow => Boolean(row));
     const targets = operationsDeleteTargets(visibleRows, selectedRows);
     if (!targets || selected.length !== selectedRows.size) {
@@ -649,7 +665,12 @@ export function OperationsEventsTable({ rows, loading, hasLoaded, loadError, tok
     setDeleteBusy(true);
     setDeleteMessage(null);
     try {
-      const outcome = await deleteConfirmedOperationsReports(true, targets, (sourceType, recordId) => deleteOperationsReport(token, sourceType, recordId));
+      const response = await deleteOperationsReports(token, targets.map(target=>({source_type:target.source_type,record_id:target.record_id})),deletePassword);
+      const outcome = await deleteConfirmedOperationsReports(true, targets, async(sourceType,recordId)=>{
+        const entry=response.outcomes.find(item=>item.source_type===sourceType&&item.record_id===recordId);
+        if(!entry?.success)throw new Error(entry?.message??"The deletion outcome could not be confirmed. Refresh before retrying.");
+        return {source_type:sourceType,record_id:recordId,...entry.result};
+      });
       const deletedIds = new Set(outcome.deletedRowIds);
       const failures = outcome.failures.map(({ target, message }) => `${target.label}: ${message}`);
       setDeleteOutcomes(targets.map((target) => ({ id: target.row_id, label: target.label, message: outcome.failures.find((failure) => failure.target.row_id === target.row_id)?.message ?? (outcome.cleanupPending.some((pending) => pending.target.row_id === target.row_id) ? "Database record deleted; image cleanup pending." : "Permanently deleted.") })));
@@ -665,7 +686,10 @@ export function OperationsEventsTable({ rows, loading, hasLoaded, loadError, tok
       }
       const summary = outcome.cleanupPending.length ? `${deletedIds.size - outcome.cleanupPending.length} report(s) fully deleted. ${outcome.cleanupPending.length} database record(s) deleted with image cleanup pending.` : deletedIds.size ? `${deletedIds.size} of ${selected.length} report${selected.length === 1 ? "" : "s"} deleted.` : "No reports were deleted.";
       setDeleteMessage(failures.length ? `${summary} ${failures.join(" ")}` : summary);
+    } catch(cause) {
+      setDeleteMessage(cause instanceof Error?cause.message:"No deletion was confirmed. Refresh before retrying.");
     } finally {
+      setDeletePassword("");
       setDeleteConfirmation(false);
       deleteSaving.current = false;
       setDeleteBusy(false);
@@ -832,7 +856,7 @@ export function OperationsEventsTable({ rows, loading, hasLoaded, loadError, tok
   const canEdit = (row: OperationsEventRow, field: EditableEventField) => {
     if (field === "dispatch_number") return true;
     if (field === "plate_number" || field === "driver_name") return Boolean(row.assignment_id);
-    if (field === "reported_by") return canManageReports && Boolean(exactOffloadReport(row));
+    if (field === "reported_by") return false; // Original submitter is audit attribution.
     if (field === "remarks") return row.source_type === "LOADING" || row.source_type === "UNLOADING" || Boolean(exactOffloadReport(row));
     if (field === "delivery_date") return row.source_type === "UNLOADING" && Boolean(row.trip_stop_id);
     return false;
@@ -948,10 +972,9 @@ export function OperationsEventsTable({ rows, loading, hasLoaded, loadError, tok
       <div className="flex flex-wrap gap-1" role="group" aria-label="Filter operations reports by type">
         {filters.map((item) => <button key={item} type="button" aria-pressed={filter === item} onClick={() => { setSelectedRows(new Set()); setFilter(item); if (item === "Offload") setExpandedLineItemsRow(null); }} className={"rounded-full px-3 py-1.5 text-xs font-semibold transition " + (filter === item ? "bg-[#0b2341] text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200")}>{item}</button>)}
       </div>
-      <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto"><ColumnFinder tableKey="operations" rowSearch={{value:search,onSearch:value=>{setSelectedRows(new Set());setSearch(value);},placeholder:"Search rows or columns…"}} columns={OPERATIONS_COLUMNS.map(column=>({key:column.key,title:column.label,hidden:layout.hidden.includes(column.key),index:columns.findIndex(item=>item.key===column.key)}))} viewport={viewportRef} getHeader={key=>viewportRef.current?.querySelector<HTMLElement>(`[data-ops-column="${key}"]`)} onReveal={key=>setLayout(current=>({...current,hidden:current.hidden.filter(item=>item!==key)}))} />{canManageReports && selectedRows.size > 0 && <>{selectedRows.size === 1 && <ReportRowActionButton action="edit" disabled={selectedTargets?.length !== 1 || rowEditBusy || deleteBusy || Boolean(editing)} onClick={editSelectedRow} />}<ReportRowActionButton action="delete" disabled={!selectedTargets?.length || rowEditBusy || deleteBusy || Boolean(editing)} onClick={() => { setDeleteMessage(null); setDeleteConfirmation(true); }} /></>}{toolbarActions}</div>
+      <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">{selectedRows.size > 0 && <button type="button" disabled={deleteBusy} onClick={()=>setSelectedRows(new Set())} className="px-2 text-xs underline">Clear selection</button>}<ColumnFinder tableKey="operations" rowSearch={{value:search,onSearch:value=>{setSelectedRows(new Set());setSearch(value);},placeholder:"Search rows or columns…"}} columns={OPERATIONS_COLUMNS.map(column=>({key:column.key,title:column.label,hidden:layout.hidden.includes(column.key),index:columns.findIndex(item=>item.key===column.key)}))} viewport={viewportRef} getHeader={key=>viewportRef.current?.querySelector<HTMLElement>(`[data-ops-column="${key}"]`)} onReveal={key=>setLayout(current=>({...current,hidden:current.hidden.filter(item=>item!==key)}))} />{canManageReports && <><ReportRowActionButton action="edit" disabled={selectedRows.size !== 1 || selectedTargets?.length !== 1 || rowEditBusy || deleteBusy || Boolean(editing)} onClick={editSelectedRow} /><ReportRowActionButton action="delete" disabled={!selectedTargets?.length || rowEditBusy || deleteBusy || Boolean(editing)} onClick={() => { setDeletePassword(""); setDeleteMessage(null); setDeleteConfirmation(true); }} /></>}{toolbarActions}</div>
     </div>
     {loading && hasLoaded && <p role="status" className="text-xs text-slate-500">Refreshing reports…</p>}
-    {selectedRows.size > 0 && <div className="flex flex-wrap items-center gap-2 rounded-xl border border-[#b7d5ed] bg-[#edf6fd] px-3 py-2 text-sm text-[#155b8d]"><span className="mr-1">{selectedRows.size} row{selectedRows.size === 1 ? "" : "s"} selected</span><button type="button" disabled={deleteBusy} onClick={() => setSelectedRows(new Set())} className="px-2 py-1 text-xs font-medium underline disabled:opacity-50">Clear selection</button></div>}
     {deleteMessage && <p role="status" className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">{deleteMessage}</p>}
     {deleteOutcomes.length > 0 && <ul aria-label="Per-report deletion results" className="space-y-1 text-xs text-slate-600">{deleteOutcomes.map((outcome) => <li key={outcome.id}>{outcome.label}: {outcome.message}</li>)}</ul>}
     {visibleRows.length === 0 ? <TableState loading={loading || !hasLoaded} error={loadError ? "Reports could not be loaded. Review the error above and retry." : null} message="No operational report rows available" description={filter === "Offload" && !localRows.some((row) => row.report_types.includes("Offload")) ? "Offload reports will appear here once they are added." : "Try changing the report type or search if you expected to see records."} /> : <div ref={viewportRef} className={REPORT_GRID_VIEWPORT_CLASS}>
@@ -996,7 +1019,7 @@ export function OperationsEventsTable({ rows, loading, hasLoaded, loadError, tok
                     {row.offload_records.length ? offloadItems.map((item) => <OffloadItemFieldEditor key={`${item.report.id}:${item.id}:${item.persisted?.[field] ?? ""}:${field}`} token={token} model={item} field={field} onSaved={onSaved} />) : numberLabel(row[field])}
                   </td>;
                 }
-                case "report_type": return eventRecord ? <EventTypeEditor key={`${eventRecord.source_type}:${eventRecord.id}`} token={token} sourceType={eventRecord.source_type} recordId={eventRecord.id} eventType={eventRecord.event_type} onSaved={onSaved} style={style} className={className} /> : <td key={column.key} style={style} className={className}><span role="alert" className="text-xs text-rose-700">Invalid report identity</span></td>;
+                case "report_type": return eventRecord && ["OFFLOAD", "BACKLOAD"].includes(eventRecord.source_type) ? <td key={column.key} style={style} className={className}>{eventRecord.event_type}</td> : eventRecord ? <EventTypeEditor key={`${eventRecord.source_type}:${eventRecord.id}`} token={token} sourceType={eventRecord.source_type} recordId={eventRecord.id} eventType={eventRecord.event_type} onSaved={onSaved} style={style} className={className} /> : <td key={column.key} style={style} className={className}><span role="alert" className="text-xs text-rose-700">Invalid report identity</span></td>;
                 case "remarks": return renderEditCell(row, "remarks", row.remarks || "—", canEdit(row, "remarks"), "whitespace-normal break-words", style);
                 case "reported_by": return renderEditCell(row, "reported_by", row.reported_by || "—", canEdit(row, "reported_by"), "", style);
                 case "details": return <td key={column.key} data-cell-hover-disabled="true" style={style} className={className}><button type="button" className="whitespace-nowrap text-xs font-semibold text-[#2678b9] underline" onClick={() => setDetailRow(row)}>View Details</button></td>;
@@ -1032,22 +1055,28 @@ export function OperationsEventsTable({ rows, loading, hasLoaded, loadError, tok
     </div>}
     {serverPage&&<footer className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 py-3 text-xs text-slate-600"><span>{serverPage.pagination?.total??0} reports · Page {serverPage.query.page??1} of {serverPage.pagination?.totalPages??1}{serverPage.pending?" · Refreshing…":""} · Selection applies to this page only</span><div className="flex items-center gap-2"><label>Rows <select aria-label="Operations page size" disabled={serverPage.pending||Boolean(editing||rowEdit)} value={serverPage.query.limit??50} onChange={event=>serverPage.onChange({limit:Number(event.target.value),page:1})} className="rounded border border-slate-200 p-1">{[25,50,100].map(size=><option key={size}>{size}</option>)}</select></label><button type="button" disabled={serverPage.pending||Boolean(editing||rowEdit)||Number(serverPage.query.page??1)<=1} onClick={()=>serverPage.onChange({page:Number(serverPage.query.page??1)-1})} className="rounded border px-3 py-1 disabled:opacity-40">Previous</button><button type="button" disabled={serverPage.pending||Boolean(editing||rowEdit)||Number(serverPage.query.page??1)>=(serverPage.pagination?.totalPages??1)} onClick={()=>serverPage.onChange({page:Number(serverPage.query.page??1)+1})} className="rounded border px-3 py-1 disabled:opacity-40">Next</button></div></footer>}
     <HiddenColumnsControl columns={layout.hidden.map((key) => ({ key, title: OPERATIONS_COLUMNS.find((column) => column.key === key)?.label ?? key }))} onRestore={(key) => setLayout((current) => ({ ...current, hidden: current.hidden.filter((item) => item !== key) }))} onRestoreAll={() => setLayout((current) => ({ ...current, hidden: [] }))} />
-    {rowEdit && <div className="fixed inset-0 z-[2000] flex items-start justify-center overflow-y-auto bg-slate-900/20 p-3 backdrop-blur-[2px] sm:items-center sm:p-6" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !rowEditBusy) setRowEdit(null); }}>
-      <section role="dialog" aria-modal="true" aria-labelledby="operations-row-edit-title" className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-lg ring-1 ring-slate-100">
+    {rowEdit && <div className="fixed inset-0 z-[2000] flex items-start justify-center overflow-y-auto bg-slate-900/20 p-3 backdrop-blur-[2px] sm:items-center sm:p-6" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !rowEditBusy) closeRowEditor(); }}>
+      <section onKeyDown={(event) => { if (event.key === "Escape") { event.stopPropagation(); closeRowEditor(); } }} role="dialog" aria-modal="true" aria-labelledby="operations-row-edit-title" className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-lg ring-1 ring-slate-100">
         <header className="border-b border-slate-100 bg-white px-6 py-5 sm:px-8"><h2 id="operations-row-edit-title" className="text-base font-semibold text-slate-800">Edit report row</h2><p className="mt-0.5 text-xs text-slate-400">{rowEdit.dispatchNumber || rowEdit.row.trip_number || rowEdit.row.trip_id}{rowEdit.row.trip_stop_id ? ` · Stop ${rowEdit.row.stop_sequence ?? "—"}` : " · Trip"}</p></header>
-        <div className="grid gap-4 overflow-y-auto bg-white px-6 py-6 sm:grid-cols-2 sm:px-8">
+        <EditStepNavigation steps={["Basic information", "Assignment / Delivery", "Supporting details"]} current={rowEditStep} onChange={setRowEditStep} busy={rowEditBusy} />
+        <div className="overflow-y-auto px-6 py-6 sm:px-8">
+        <div hidden={rowEditStep !== 0}><div className="grid gap-4 sm:grid-cols-2">
           {rowEdit.row.source_type === "OFFLOAD" && canManageReports && <>
             <label className="grid content-start gap-1.5 text-sm font-medium text-slate-700">Report Date (Asia/Manila)<input type="datetime-local" value={rowEdit.reportDate} disabled={rowEditBusy} onChange={(event) => setRowEdit((current) => current ? { ...current, reportDate: event.target.value } : current)} className={inputClass} /></label>
-            <div className="grid content-start gap-1.5 text-sm font-medium text-slate-700">Reported By<OperationsReporterEditor token={token} value={rowEdit.reporter?.id ?? exactOffloadReport(rowEdit.row)?.reported_by_id ?? ""} name={rowEdit.reporter?.name ?? rowEdit.row.reported_by ?? "Name not recorded"} disabled={rowEditBusy} onSelect={(id, name) => setRowEdit((current) => current ? { ...current, reporter: { id, name } } : current)} /></div>
+            <div className="grid content-start gap-1.5 text-sm font-medium text-slate-700">Reported By (original submitter)<p className="rounded-lg border border-slate-200 px-3 py-2 font-normal">{rowEdit.row.reported_by || "Name not recorded"}</p></div>
           </>}
           <label className="grid content-start gap-1.5 text-sm font-medium text-slate-700">Dispatch number<input value={rowEdit.dispatchNumber} disabled={rowEditBusy} onChange={(event) => setRowEdit((current) => current ? { ...current, dispatchNumber: event.target.value } : current)} maxLength={100} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-[#2678b9] focus:ring-2 focus:ring-[#cfe1f1] disabled:opacity-60" /></label>
           {rowEdit.row.source_type === "UNLOADING" && rowEdit.row.trip_stop_id && <label className="grid content-start gap-1.5 text-sm font-medium text-slate-700">Delivery date<input type="datetime-local" value={rowEdit.deliveryDate} disabled={rowEditBusy} onChange={(event) => setRowEdit((current) => current ? { ...current, deliveryDate: event.target.value } : current)} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-[#2678b9] focus:ring-2 focus:ring-[#cfe1f1] disabled:opacity-60" /></label>}
+        </div></div>
+        <div hidden={rowEditStep !== 1}><div className="grid gap-4 sm:grid-cols-2">
           {rowEdit.row.assignment_id && <>
             <label className="grid content-start gap-1.5 text-sm font-medium text-slate-700">Plate number<SearchableRelationshipEditor token={token} kind="trucks" value={rowEdit.truck?.label ?? rowEdit.row.plate_number ?? ""} autoFocus={false} disabled={rowEditBusy} onSelect={(option) => setRowEdit((current) => current ? { ...current, truck: option } : current)} onCommitBlur={() => undefined} onCancel={() => undefined} /></label>
             <label className="grid content-start gap-1.5 text-sm font-medium text-slate-700">Driver<SearchableRelationshipEditor token={token} kind="drivers" value={rowEdit.driver?.label ?? rowEdit.row.driver_name ?? ""} autoFocus={false} disabled={rowEditBusy} onSelect={(option) => setRowEdit((current) => current ? { ...current, driver: option } : current)} onCommitBlur={() => undefined} onCancel={() => undefined} /></label>
           </>}
           {(rowEdit.row.source_type === "LOADING" || rowEdit.row.source_type === "UNLOADING") && <label className="grid content-start gap-1.5 text-sm font-medium text-slate-700 sm:col-span-2">{rowEdit.row.source_type === "LOADING" ? "Trip remarks" : "Stop remarks"}<textarea rows={3} value={rowEdit.remarks} disabled={rowEditBusy} onChange={(event) => setRowEdit((current) => current ? { ...current, remarks: event.target.value } : current)} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-[#2678b9] focus:ring-2 focus:ring-[#cfe1f1] disabled:opacity-60" /></label>}
-          {rowEdit.eventTypes.map((event) => <label key={`${event.source_type}:${event.id}`} className="grid content-start gap-1.5 text-sm font-medium text-slate-700">{event.source_type} Event Type<ReportDropdownEditor label={`${event.source_type} Event Type`} value={event.event_type} displayValue={event.event_type} options={["Loading", "Unloading", "Backload", "Offload"].map((value) => ({ value, label: value }))} autoOpen={false} disabled={rowEditBusy} onSelect={(value) => setRowEdit((current) => current ? { ...current, eventTypes: current.eventTypes.map((item) => item.id === event.id && item.source_type === event.source_type ? { ...item, event_type: value as OperationsEventType } : item) } : current)} /></label>)}
+          {rowEdit.eventTypes.map((event) => <label key={`${event.source_type}:${event.id}`} className="grid content-start gap-1.5 text-sm font-medium text-slate-700">{event.source_type} Event Type<ReportDropdownEditor label={`${event.source_type} Event Type`} value={event.event_type} displayValue={event.event_type} options={["Loading", "Unloading", "Backload", "Offload"].map((value) => ({ value, label: value }))} autoOpen={false} disabled={rowEditBusy || ["OFFLOAD", "BACKLOAD"].includes(event.source_type)} onSelect={(value) => setRowEdit((current) => current ? { ...current, eventTypes: current.eventTypes.map((item) => item.id === event.id && item.source_type === event.source_type ? { ...item, event_type: value as OperationsEventType } : item) } : current)} /></label>)}
+        </div></div>
+        <div hidden={rowEditStep !== 2}><div className="grid gap-4 sm:grid-cols-2">
           {[...rowEdit.backloads.map((record) => ({ record, kind: "backloads" as const })), ...rowEdit.offloads.map((record) => ({ record, kind: "offloads" as const }))].map(({ record, kind }) => <fieldset key={`${kind}:${record.id}`} className="grid gap-3 rounded-xl border border-slate-200 p-3 sm:col-span-2 sm:grid-cols-3"><legend className="px-1 text-xs font-bold text-[#0b2341]">{kind === "backloads" ? "Backload" : "Offload"} report · {record.trip_stop_id ? `Stop ${rowEdit.row.stop_sequence ?? "—"}` : "Whole trip"} · {record.id.slice(0, 8)}</legend>
             <label className="text-xs font-semibold text-slate-600">Reason<input value={record.reason ?? ""} disabled={rowEditBusy} onChange={(event) => setRowEdit((current) => current ? { ...current, [kind]: current[kind].map((item) => item.id === record.id ? { ...item, reason: event.target.value || null } : item) } : current)} className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-normal" /></label>
             <label className="text-xs font-semibold text-slate-600">Number of boxes<input type="number" min="0" step="1" value={record.number_of_boxes ?? ""} disabled={rowEditBusy} onChange={(event) => setRowEdit((current) => current ? { ...current, [kind]: current[kind].map((item) => item.id === record.id ? { ...item, number_of_boxes: event.target.value.trim() === "" ? null : Number(event.target.value) } : item) } : current)} className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-normal" /></label>
@@ -1058,9 +1087,10 @@ export function OperationsEventsTable({ rows, loading, hasLoaded, loadError, tok
             <label className="text-xs font-semibold text-slate-600">Total CBM<input type="number" min="0" step="any" value={draft.totalCbm} disabled={rowEditBusy} onChange={(event) => setRowEdit((current) => current ? { ...current, offloadItems: current.offloadItems.map((item) => item.item.id === draft.item.id ? { ...item, totalCbm: event.target.value } : item) } : current)} className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-normal" /></label>
           </fieldset>)}
           {rowEdit.backloads.length === 0 && rowEdit.offloads.length === 0 && <p className="text-sm text-slate-500 sm:col-span-2">No optional Backload or Offload report is associated with this row.</p>}
+        </div></div>
           {rowEditError && <p role="alert" className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700 sm:col-span-2">{rowEditError}</p>}
         </div>
-        <footer className="flex flex-wrap items-center justify-end gap-2 border-t border-slate-100 bg-white px-6 py-3 sm:px-8"><button type="button" disabled={rowEditBusy} onClick={() => setRowEdit(null)} className="rounded-full px-4 py-2 text-sm font-medium text-slate-500 transition hover:bg-slate-50 hover:text-slate-700 disabled:opacity-50">Cancel</button><button type="button" disabled={rowEditBusy} onClick={() => void saveSelectedRow()} className="rounded-full bg-[#0b2341] px-5 py-2 text-sm font-medium text-white transition hover:bg-[#1d5f94] disabled:cursor-not-allowed disabled:opacity-50">{rowEditBusy ? "Saving…" : "Save changes"}</button></footer>
+        <footer className="flex flex-wrap items-center justify-end gap-2 border-t border-slate-100 bg-white px-6 py-3 sm:px-8"><button type="button" disabled={rowEditBusy || rowEditStep === 0} onClick={() => setRowEditStep(step => step - 1)} className="rounded-full border px-4 py-2 text-sm disabled:opacity-40">Previous</button><button type="button" disabled={rowEditBusy || rowEditStep === 2} onClick={() => setRowEditStep(step => step + 1)} className="rounded-full border px-4 py-2 text-sm disabled:opacity-40">Next</button><button type="button" disabled={rowEditBusy} onClick={closeRowEditor} className="rounded-full px-4 py-2 text-sm font-medium text-slate-500 transition hover:bg-slate-50 hover:text-slate-700 disabled:opacity-50">Cancel</button><button type="button" disabled={rowEditBusy} onClick={() => void saveSelectedRow()} className="rounded-full bg-[#0b2341] px-5 py-2 text-sm font-medium text-white transition hover:bg-[#1d5f94] disabled:cursor-not-allowed disabled:opacity-50">{rowEditBusy ? "Saving…" : "Save changes"}</button></footer>
       </section>
     </div>}
     {deleteConfirmation && <div className="fixed inset-0 z-[2100] flex items-center justify-center bg-[#0b2341]/45 p-4 backdrop-blur-sm" role="presentation">
@@ -1068,7 +1098,8 @@ export function OperationsEventsTable({ rows, loading, hasLoaded, loadError, tok
         <header className="border-b border-slate-100 px-5 py-4"><h2 id="operations-delete-title" className="text-lg font-semibold text-[#0b2341]">Delete selected reports?</h2></header>
         <div className="space-y-3 px-5 py-4 text-sm text-slate-700"><p id="operations-delete-description">Permanently delete {selectedRows.size} selected report record{selectedRows.size === 1 ? "" : "s"}? This cannot be undone. Eligible Offloads include their owned items and receipt images. Protected historical records will be retained, and failures will be reported individually. Other report types retain their existing receipt protections.</p><p>Trips, sibling stops, other reports, POD and Transmittal records will not be deleted. Image cleanup may require a separate retry after database deletion.</p>{deleteMessage && <p role="alert" className="rounded bg-rose-50 p-2 text-rose-800">{deleteMessage}</p>}</div>
         <div className="max-h-40 overflow-y-auto px-5 text-xs text-slate-600">{selectedRows.size ? <ul className="space-y-1">{visibleRows.filter((row) => selectedRows.has(row.id)).map((row) => <li key={row.id}>{row.source_type} · {row.dispatch_number || row.trip_number || "Dispatch unavailable"} · {row.source_record_id}</li>)}</ul> : <p role="alert">The dataset or filter changed. Cancel and select the reports again.</p>}</div>
-        <footer className="flex justify-end gap-2 border-t border-slate-100 px-5 py-4"><button type="button" disabled={deleteBusy} onClick={() => setDeleteConfirmation(false)} className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 disabled:opacity-50">Cancel</button><button type="button" disabled={deleteBusy || selectedRows.size === 0} onClick={() => void deleteSelectedRows()} className="rounded-md bg-rose-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">{deleteBusy ? "Deleting…" : `Delete ${selectedRows.size} report${selectedRows.size === 1 ? "" : "s"}`}</button></footer>
+        <label className="block px-5 pb-4 text-sm font-medium">Current account password<input autoFocus type="password" autoComplete="current-password" value={deletePassword} disabled={deleteBusy} onChange={event=>setDeletePassword(event.target.value)} className="mt-1 w-full rounded border border-slate-300 p-2" /></label>{selectedRows.size>20&&<p role="alert" className="px-5 text-sm text-rose-700">Select at most 20 reports per confirmation.</p>}
+        <footer className="flex justify-end gap-2 border-t border-slate-100 px-5 py-4"><button type="button" disabled={deleteBusy} onClick={() => { setDeletePassword(""); setDeleteConfirmation(false); }} className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 disabled:opacity-50">Cancel</button><button type="button" disabled={deleteBusy || !deletePassword || selectedRows.size === 0 || selectedRows.size > 20} onClick={() => void deleteSelectedRows()} className="rounded-md bg-rose-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">{deleteBusy ? "Deleting…" : `Delete ${selectedRows.size} report${selectedRows.size === 1 ? "" : "s"}`}</button></footer>
       </section>
     </div>}
     {openColumnMenu && (() => { const column = OPERATIONS_COLUMNS.find((item) => item.key === openColumnMenu.key); if (!column) return null; return <ReportColumnActionsMenu title={column.label} position={openColumnMenu} onClose={() => setOpenColumnMenu(null)} sortActions={column.sortable ? (["asc", "desc"] as const).map((direction) => ({ label: direction === "asc" ? "Sort ascending" as const : "Sort descending" as const, active: sort.key === column.key && sort.direction === direction, onClick: () => setSort({ key: column.key as EventSortKey, direction }) })) : undefined} pinned={Boolean(layout.pins[column.key])} onTogglePin={() => togglePin(column.key)} onEditColumn={() => setEditingColumnColor(column.key)} canHide={column.key !== "details" && columns.length > 1} onHide={() => setLayout((current) => ({ ...current, hidden: [...current.hidden, column.key], pins: Object.fromEntries(Object.entries(current.pins).filter(([key]) => key !== column.key)) }))} />; })()}

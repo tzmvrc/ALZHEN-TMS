@@ -1,3 +1,4 @@
+import ReportTripDialog from "../../components/admin/ReportTripDialog";
 import LocationSharing from "../../components/admin/LocationSharing";
 import {pdfIntakeAvailable,prepareDriverPdf} from "../../services/pdf-intake.service";
 import {validatePodUpload} from "../../services/pod-upload-validation";
@@ -207,6 +208,8 @@ export default function DriverPortal() {
   const [statusSaving, setStatusSaving] = useState(false);
   const [podUploading, setPodUploading] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
+  const [reportsVersion,setReportsVersion]=useState(0);
+  const [reportOwner, setReportOwner] = useState<string | null>(null);
   const [portalTab, setPortalTab] = useState<"trips" | "reports">("trips");
   const [drNumber, setDrNumber] = useState("");
   const [reloadCount, setReloadCount] = useState(0);
@@ -1027,6 +1030,7 @@ export default function DriverPortal() {
       </header>
 
       <main className={`mx-auto max-w-2xl space-y-4 px-4 pt-5 ${showStartBar ? "pb-44" : "pb-10"}`}>
+        <button type="button" disabled={busy || !accessToken} onClick={() => setReportOwner(profile?.id ?? null)} className="min-h-11 w-full rounded-xl bg-[#0b2341] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Report Trip</button>
         <div className="flex items-center gap-2">
           <div role="tablist" aria-label="Driver sections" className="grid flex-1 grid-cols-2 rounded-xl bg-slate-200/60 p-1 text-sm font-semibold">
             {([["trips", "My trip"], ["reports", "Activity reports"]] as const).map(([key, label]) => (
@@ -1052,7 +1056,7 @@ export default function DriverPortal() {
 
         {portalTab === "reports" ? (
           <section className={`${cardClass} p-4 sm:p-5`}>
-            <OperationsReportsView mode="trucker" />
+            <OperationsReportsView mode="trucker" refreshVersion={reportsVersion} />
           </section>
         ) : (
           <>
@@ -1110,6 +1114,7 @@ export default function DriverPortal() {
         </div>
       )}
 
+      {reportOwner && reportOwner === profile?.id && accessToken && <ReportTripDialog key={accessToken} token={accessToken} onSubmitted={() => setReportsVersion(current=>current+1)} onClose={() => setReportOwner(null)} onComplete={message => { setReportOwner(null); addToast({ title: message, variant: "success" }); }} />}
       <ConfirmDialog
         open={showLogoutConfirm}
         title="Log out?"

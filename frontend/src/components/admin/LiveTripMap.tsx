@@ -20,10 +20,10 @@ import type { TripEvent, TripRecord } from "../../services/trip.service";
 
 const MAPBOX_ACCESS_TOKEN = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN?.trim();
 const RoadRoutingPanel = lazy(()=>import("./RoadRoutingPanel"));
-export default function LiveTripMap(props:Parameters<typeof RecordedTripMap>[0]){
+export default function LiveTripMap(props:Parameters<typeof RecordedTripMap>[0]&{unified?:boolean}){
  const [view,setView]=useState<"roads"|"events">("roads");
  const ids=props.focusTripId?[props.focusTripId]:[...new Set([...props.tracks.map(t=>t.trip.id),...(props.tripLocationRoutes??[]).map(t=>t.tripId)].filter((id):id is string=>typeof id==="string"))];
- return <div><div className="flex gap-2 p-2"><button className="rounded border px-3 py-1 text-sm" aria-pressed={view==="roads"} onClick={()=>setView("roads")}>Road routes</button><button className="rounded border px-3 py-1 text-sm" aria-pressed={view==="events"} onClick={()=>setView("events")}>Recorded events</button></div>{view==="roads"?<Suspense fallback={<div className="animate-pulse bg-slate-100 p-6">Loading map…</div>}><RoadRoutingPanel tripIds={ids} height={props.height}/></Suspense>:<RecordedTripMap {...props}/>}</div>;
+ return <div>{!props.unified&&<div className="flex gap-2 p-2"><button className="rounded border px-3 py-1 text-sm" aria-pressed={view==="roads"} onClick={()=>setView("roads")}>Road routes</button><button className="rounded border px-3 py-1 text-sm" aria-pressed={view==="events"} onClick={()=>setView("events")}>Recorded events</button></div>}{props.unified||view==="roads"?<Suspense fallback={<div className="animate-pulse bg-slate-100 p-6">Loading map…</div>}><RoadRoutingPanel tripIds={ids} height={props.height} demoFallback={props.unified}/></Suspense>:<RecordedTripMap {...props}/>}</div>;
 }
 /* Light base map, desaturated by the CSS filter below so the navy route stands out.
    Mapbox raster tiles are 512px, so the TileLayer uses tileSize 512 and zoomOffset -1. */

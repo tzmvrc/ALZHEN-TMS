@@ -9,21 +9,24 @@ async (page) => {
     await fixture.route("**/api/**", async (route) => {
       const request = route.request(), url = new URL(request.url());
       calls.push({ method: request.method(), path: url.pathname });
-      if (url.pathname.endsWith("/offload-cleanup")) return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true, data: [...pendingCleanup.values()] }) });
-      if (url.pathname.includes("/offload-cleanup/") && request.method() === "POST") { pendingCleanup.clear(); return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true, data: { cleanup_pending: false } }) }); }
+      if (url.pathname.endsWith("/report-cleanup")) return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true, data: [...pendingCleanup.values()] }) });
+      if (url.pathname.includes("/report-cleanup/") && request.method() === "POST") { pendingCleanup.clear(); return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true, data: { cleanup_pending: false } }) }); }
       if (url.pathname.includes("/table-layouts/")) {
         if (request.method() === "PATCH") { const input = request.postDataJSON(), column = url.pathname.split("/").pop(); const row = { column_key: column, width_px: input.width_px, revision: input.expected_revision + 1 }; widths.set(column, row); return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true, data: row }) }); }
         return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true, data: [...widths.values()] }) });
       }
-      if (request.method() === "DELETE") {
-        const id = url.pathname.split("/").pop();
-        if (!["123e4567-e89b-42d3-a456-000000000001", "123e4567-e89b-42d3-a456-000000000002", "123e4567-e89b-42d3-a456-000000000003"].includes(id)) throw new Error("Unexpected delete identity");
-        if (id.endsWith("2")) return route.fulfill({ status: 409, contentType: "application/json", body: JSON.stringify({ success: false, message: "This protected historical report cannot be deleted." }) });
-        deleted.push(id);
-        await fixture.evaluate((id) => window.__fixtureDeleted.add(id), id);
-        const operationId = "123e4567-e89b-42d3-a456-000000000099";
-        if (id.endsWith("3")) pendingCleanup.set(operationId,{ id: operationId, offload_id: id, state: "PENDING_STORAGE", attempts: 1 });
-        return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true, data: { record_id: id, source_type: "OFFLOAD", cleanup_pending: id.endsWith("3"), operation_id: operationId } }) });
+      if(url.pathname.endsWith("/operations/reports/delete")){
+        const input=request.postDataJSON();if(input.current_password!=="fixture-password")throw Error("Missing current-user password");
+        const outcomes=[];
+        for(const target of input.targets){
+          const id=target.record_id;
+          if(id.endsWith("2")){outcomes.push({...target,success:false,message:"This protected historical report cannot be deleted."});continue;}
+          deleted.push(id);await fixture.evaluate(id=>window.__fixtureDeleted.add(id),id);
+          const operationId="123e4567-e89b-42d3-a456-000000000099";
+          if(id.endsWith("3"))pendingCleanup.set(operationId,{id:operationId,offload_id:id,state:"PENDING_STORAGE",attempts:1});
+          outcomes.push({...target,success:true,result:{record_id:id,source_type:"OFFLOAD",cleanup_pending:id.endsWith("3"),operation_id:operationId}});
+        }
+        return route.fulfill({status:200,contentType:"application/json",body:JSON.stringify({success:true,data:{outcomes}})});
       }
       return route.fulfill({ status: url.pathname.includes("/auth/") ? 401 : 200, contentType: "application/json", body: JSON.stringify({ success: !url.pathname.includes("/auth/"), data: [], message: "Fixture session only" }) });
     });
@@ -67,13 +70,26 @@ async (page) => {
     if (JSON.stringify(originalOrder) !== JSON.stringify(afterOrder)) throw new Error("Column Finder changed rows");
     await root.getByRole("button", { name: "Clear search", exact: true }).click();
     const edit = root.getByRole("button", { name: "Edit selected row", exact: true }), remove = root.getByRole("button", { name: "Delete selected reports", exact: true });
-    if (await edit.count() !== 0 || await remove.count() !== 0) throw new Error("Toolbar actions must be hidden without checked rows");
+    if (!await edit.isDisabled() || !await remove.isDisabled()) throw new Error("Toolbar actions must be disabled without checked rows");
     await root.getByRole("checkbox", { name: "Select row DSP-FIXTURE-1", exact: true }).check();
     await root.getByRole("checkbox", { name: "Select row DSP-FIXTURE-2", exact: true }).check();
-    if (await edit.count() !== 0 || await remove.count() !== 1) throw new Error("Multiple selection must hide Edit and retain Delete");
+    if (!await edit.isDisabled() || await remove.isDisabled()) throw new Error("Multiple selection must disable Edit and retain Delete");
     await root.getByRole("checkbox", { name: "Select row DSP-FIXTURE-2", exact: true }).uncheck();
     await edit.click();
     await root.getByRole("dialog", { name: "Edit report row" }).waitFor();
+    const editor=root.getByRole("dialog",{name:"Edit report row"});
+    const date=editor.getByLabel("Report Date (Asia/Manila)",{exact:true}), originalDate=await date.inputValue();
+    await date.fill("2026-10-18T10:30");
+    await editor.getByRole("button",{name:"Next",exact:true}).click();
+    await editor.getByRole("button",{name:"Next",exact:true}).click();
+    if(!await editor.getByRole("button",{name:"Save changes",exact:true}).isVisible())throw Error("Save unavailable on supporting step");
+    await editor.getByRole("button",{name:"Previous",exact:true}).click();
+    await editor.getByRole("button",{name:"Previous",exact:true}).click();
+    if(await date.inputValue()!=="2026-10-18T10:30")throw Error("Step navigation lost draft");
+    fixture.once("dialog",d=>d.dismiss());await editor.getByRole("button",{name:"Cancel",exact:true}).click();
+    if(!await editor.isVisible())throw Error("Discard cancellation lost draft");
+    await date.fill(originalDate);
+
     await root.getByRole("dialog", { name: "Edit report row" }).getByRole("button", { name: "Cancel", exact: true }).click();
     await remove.click();
     await root.getByRole("alertdialog").getByText("123e4567-e89b-42d3-a456-000000000001", { exact: false }).waitFor();
@@ -81,30 +97,36 @@ async (page) => {
     if (deleted.length) throw new Error("Cancel deleted a report");
     const search = finder;
     await search.fill("no-match"); await search.press("Enter");
-    if (await remove.count()) throw new Error("Hidden selection retained actions");
+    if (!await remove.isDisabled()) throw new Error("Hidden selection retained actions");
     await search.fill(""); await search.press("Enter");
-    if (await remove.count()) throw new Error("Old selection resurrected");
+    if (!await remove.isDisabled()) throw new Error("Old selection resurrected");
     await root.getByRole("checkbox", { name: "Select row DSP-FIXTURE-1", exact: true }).check();
     await fixture.evaluate(() => window.__fixtureRefresh());
     await fixture.waitForTimeout(50);
     if (await remove.count() !== 1 || !await root.getByRole("checkbox", { name: "Select row DSP-FIXTURE-1", exact: true }).isChecked()) throw new Error("Same-identity refresh discarded a valid selection");
     await root.getByRole("checkbox", { name: "Select row DSP-FIXTURE-1", exact: true }).check();
     await remove.click();
+    if(!await root.getByRole("alertdialog").getByRole("button", {name:"Delete 1 report",exact:true}).isDisabled())throw Error("Password must be required");
+    await root.getByLabel("Current account password").fill("fixture-password");
     await root.getByRole("alertdialog").getByRole("button", { name: "Delete 1 report", exact: true }).click();
     await root.getByText("1 of 1 report deleted.", { exact: true }).waitFor();
-    if (await remove.count() || deleted.length !== 1 || deleted[0].endsWith("2")) throw new Error("Delete scope/reset failed");
+    if (!await remove.isDisabled() || deleted.length !== 1 || deleted[0].endsWith("2")) throw new Error("Delete scope/reset failed");
     await root.getByRole("checkbox", { name: "Select row DSP-FIXTURE-2", exact: true }).check();
     await remove.click();
+    if(!await root.getByRole("alertdialog").getByRole("button", {name:"Delete 1 report",exact:true}).isDisabled())throw Error("Password must be required");
+    await root.getByLabel("Current account password").fill("fixture-password");
     await root.getByRole("alertdialog").getByRole("button", { name: "Delete 1 report", exact: true }).click();
     await root.getByRole("status").filter({ hasText: /protected historical report/ }).waitFor();
     if (!await root.getByRole("checkbox", { name: "Select row DSP-FIXTURE-2", exact: true }).isVisible()) throw new Error("Protected row vanished");
     await root.getByRole("button", { name: "Clear selection", exact: true }).click();
     await root.getByRole("checkbox", { name: "Select row DSP-FIXTURE-3", exact: true }).check();
     await remove.click();
+    if(!await root.getByRole("alertdialog").getByRole("button", {name:"Delete 1 report",exact:true}).isDisabled())throw Error("Password must be required");
+    await root.getByLabel("Current account password").fill("fixture-password");
     await root.getByRole("alertdialog").getByRole("button", { name: "Delete 1 report", exact: true }).click();
-    await root.getByRole("region", { name: "Pending Offload image cleanup" }).waitFor();
+    await root.getByRole("region", { name: "Pending report image cleanup" }).waitFor();
     await root.getByRole("button", { name: "Retry image cleanup", exact: true }).click();
-    await root.getByRole("region", { name: "Pending Offload image cleanup" }).waitFor({ state: "detached" });
+    await root.getByRole("region", { name: "Pending report image cleanup" }).waitFor({ state: "detached" });
     const handle = root.getByRole("separator", { name: "Resize Date", exact: true });
     await handle.scrollIntoViewIfNeeded();
     const box = await handle.boundingBox();

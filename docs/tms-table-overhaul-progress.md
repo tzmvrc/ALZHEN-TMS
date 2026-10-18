@@ -3187,3 +3187,219 @@ commit or push. Approved SQL file remains byte-for-byte unchanged.
 STOPPED after migration verification. Next steps require separate explicit approval
 for warehouse-coordinate edits, provider credentials/budget and controlled planned
 route activation. Do not reapply the planned migration or enable flags automatically.
+
+
+## October 18 ? Phase 2C: tab caches, report UX, attribution, safe deletion proposals and unified map
+
+See `docs/phase-2c-progress.md` for architecture/FK graph, all 11 requirement statuses, exact proposal checksums, measured fixture request counts, test evidence, file groups and resume gates.
+
+Implemented per-tab bounded preload (auth/login no longer starts 23 unrelated requests), React Activity retained Home/Trips/Reports and internal report panels, cached section metadata/skeletons, POD sidebar removal, compact report toolbars, All/Backload/Offload filters, stepped report editors and Save at every Trips step. Home history download is bounded (latest100 previews, total counts from DB); event/image enrichment queues are bounded. Offload display resolves original creator/submitter rather than delegated reporter; unknown history is not backfilled.
+
+Combined Admin deletion has impact preview and a fail-closed disabled endpoint. Proposed `2026_11_07_proposed_whole_trip_deletion.sql` reuses existing retention/cleanup RPCs in one outer atomic transaction; no unsafe fallback. It is NOT APPLIED. Creator search/sort proposal `2026_11_06_proposed_operations_creator_attribution.sql` is also NOT APPLIED. Tracker Delete is disabled with explanation because completed-stop projections cannot be removed by deleting POD; lifecycle policy is needed.
+
+Home uses one Mapbox interface, existing planned/remaining cached geometry, and ten explicitly synthetic Philippine demo trips only if no usable real routes exist. Mock polylines are not verified Directions data. No mixed real/demo records, provider calls, route generation or demo persistence. Live coordinate readiness:7 warehouses(1valid/6missing),8 stores(8valid),2 of6 active trips blocked by missing warehouse coordinates; cache0. Warehouse editor remains non-persistent.
+
+Tests: backend167/167, frontend83/83; TypeScript and both builds pass. Isolated browser tests cover report retention, stepped editors, stop ownership, cache navigation, physical Offload deletion, disabled whole-trip confirmation/double-click, ten GL routes and demo-to-real replacement, Trip Details route/refresh, Users cache, Tracker pages/reference export and milestone edits. Disposable PG18 verifies creator search125records and whole-trip multi-stop/rollback/financial protection/concurrent retries. No live writes/tests. Five changed-file lint errors match exact HEAD baseline; no new lint regressions. Existing Vite large chunks remain.
+
+Supabase inspection SELECT-only; no live migration, Storage/publication/grant/data changes. Flags unchanged:tracking=false,planned unset(defaultfalse),PDF=false,PODreview=true. Whole-trip-delete unset(defaultfalse). No commit/push/deploy.
+
+Resume: obtain separate exact SQL approvals and Tracker removal policy; keep destructive feature disabled; then controlled authenticated navigation/realtime/performance acceptance. Phase2C is not fully accepted while these blockers remain. Do not rerun completed Phase2B migrations or previous DR333 decisions.
+
+
+## October 18 ? Phase 2C.1 SQL review and unified Combined/Tracker whole-trip deletion
+
+See `docs/phase-2c1-sql-deletion-review.md` for disk checksums/sizes, catalog compatibility, permissions, rollback, all25 requested test categories and approvals. Live read-only FK/logical-reference inventory is in `docs/phase-2c1-database-catalog.json`.
+
+Confirmed user decision: Tracker Delete means the whole parent trip, exactly like Combined. Both now use one validated parent-ID resolver, API/cache client, confirmation dialog, Admin-only backend service and atomic RPC/cleanup architecture. Multiple stops and identical DR labels never substitute for parent identity. No Tracker-only or POD-only deletion is implemented.
+
+Creator SQL remains byte-for-byte unchanged (FD644E...); disposable contract comparison confirms creator-only projection,28 columns/ACL unchanged and idempotency. Whole-trip SQL is revised and requires new approval: adds a service-only Admin count-preview RPC because service_role cannot directly SELECT POD/Drive/backload-item tables, stronger image ownership checks, bounded counts and minimal audit summary in existing private cleanup journals. Existing transaction RPC definition remains unchanged.
+
+New dependency discovered: driver_trip_updates has45 rows,0orphans,8 legacy POD attachment references and no parent FK. Separate proposed `2026_11_08_proposed_driver_update_parent.sql` adds a NOT VALID RESTRICT FK, preserves historical rows and prevents new orphan writes. It must be separately approved before revised whole-trip SQL. Whole-trip deletion removes eligible exact-trip driver updates atomically and blocks legacy attachments; old stop-only last-stop calls can fail safely under that new FK. This compatibility impact is explicitly documented. No migration was applied.
+
+Tests: backend169/169,frontend85/85; both TypeScript/builds pass, existing Vite chunk warnings. Browser fixtures verify Combined and Tracker exact parent selection, deduplication, shared dialog, blocked confirmation/cancel, Staff restrictions and simulated successful cache refresh. Disposable PG covers operational children, POD/transmittal flex data, tracking cascades, financial/history/document/shared-image/driver-POD blockers, atomic rollback, orphan protection, retained audit, exact cleanup jobs, idempotency and two-client concurrent deletion. Two existing Tracker lint errors remain; no new regression.
+
+Flags unchanged: WHOLE_TRIP_DELETE_ENABLED unset(defaultfalse),TRACKING_ENABLED=false,PLANNED_ROUTES_ENABLED unset(defaultfalse),POD_PDF_ENABLED=false,POD_REVIEW_ENABLED=true. No live data/Storage writes, schema/grant/RLS/publication changes, GPS/provider calls, commit,push or deploy.
+
+Resume only after separate exact SQL approvals (creator independently; driver FK before revised whole-trip RPC), post-install verification with deletion still disabled, then separate controlled activation/recovery acceptance authorization. Do not apply the prior whole-trip checksum or reuse DR333 for testing.
+
+## October 18 — Phase 2C.2 final driver-parent and last-stop compatibility
+
+See `docs/phase-2c2-deletion-compatibility.md` for the complete compatibility report,
+original/final disk SHA-256 values, installation order, recovery and approval gates.
+**Verdict: SAFE TO APPROVE the revised proposals; nothing applied or activated.**
+
+Read-only target verification: MCP/backend/expected project all
+`hdmknewarynwpbrhfgai`; migration history ends at `20261017124148 planned_routes`.
+All three proposals remain unapplied; new RPCs/FK absent. Original live transaction
+RPC MD5 unchanged (`9d11efef4875f0d32256d589db30a9e6`). Driver history currently
+46 rows,6 parents,0orphans,8 legacy POD references; no stop ID or parent FK.
+Private RLS/service-only boundaries, existing secure signals and bucket preserved.
+
+Reproduced the original RESTRICT regression in disposable PG18: existing RPC
+removes the parent after its last stop but never resolved driver history. Revised
+driver-parent proposal now installs RESTRICT and a compatible existing RPC in one
+transaction. It retains eligible trip-level history until parent removal, blocks
+legacy attachments/shared references, journals IDs/count and explicitly cleans up
+eligible updates before deleting the parent. All existing ownership, financial,
+conversion, exact-Storage, role and idempotency guards remain. No CASCADE shortcut.
+Whole-trip proposal delegates driver cleanup to that same path and requires its
+exact normalized definition fingerprint. No duplicate deletion architecture.
+
+Final proposal checksums (separate approval required):
+- creator06 unchanged: `FD644E23536967C313DD8E1FCAE319B50C7606D811E66C27D39597B96AD5F8CC`
+- driver08 revised: `9DCB55827F469F6E173239E189F814222291B7718B612252EEBF6C84AFAE3D09`
+- whole07 revised: `5790AA11C3D64E7888C1DA4F48BE7F1C8736C9DFAA84612F887843DD788CDE76`
+
+Disposable verification: original regression1case; compatible last-stop15cases;
+driver/deleter races3cases with actual lock barriers; installation-drift3cases;
+whole-trip relationship/retention/atomic rollback suite; two independent concurrent
+whole-trip callers with matching2job acknowledgements; repeated install preserves
+12modeled data hashes and existing owner/ACL/arguments/security/searchpath; creator
+28-column/ACL contract and125row three-role attribution/search/sort checks pass.
+Not every production trigger, column or financial ledger is modeled.
+
+Final tests: backend169/169,frontend85/85; both TypeScript/builds pass. Initial
+backend run168/169 hit PDF rendering's15s budget during simultaneous builds/browser
+load; full quieter rerun169/169 passed, PDFtest~3.1s; no weakened limits/code changes.
+Eleven isolated browser regressions pass, including existing stop deletion,
+Combined/Tracker shared confirmation, exact parents/deduplication, cached views,
+milestones, routing, mapdemo and secure draft-safe realtime. Targeted lint retains
+only2previous Tracker errors; new CJS syntax checks and Git diff checks pass.
+Existing Vite large chunks and Git line-ending notices remain.
+
+No live SQL writes/migrations, operational/Storage deletion, RLS/grant/publication
+change, GPS/Mapbox/Gemini request, deployment,commit orpush. DR333 untouched. Flags
+remain tracking=false,planned unset(defaultfalse),PDF=false,PODreview=true;
+whole-trip-delete unset(defaultfalse). No application source or flag changed.
+
+Exact resume: review and separately approve final creator06 -> revised driver08
+(FK + compatible existing stop RPC together) -> revised whole07. Re-preflight and
+post-install SELECT checks must preserve rows and permissions, with whole-trip
+deletion still disabled. Any activation/authenticated write acceptance needs
+separate approval and approved records, backups and cleanup monitoring. Never
+restore the old stop RPC while leaving the restrictive FK installed. STOP here.
+
+## October 18 — Phase 2C.3 approved SQL installed; password-confirmed bulk deletion
+
+User explicitly waived installation backup verification and accepted that risk.
+No verified recovery point is claimed. Project MCP/backend both hdmknewarynwpbrhfgai.
+Exact approved hashes rechecked from disk, unchanged; applied sequentially once:
+creator `20261018065149`, compatible driver-parent `20261018065157`, whole-trip
+`20261018065228`. See `docs/phase-2c3-installation-password-confirmation.md` for exact
+filenames/hashes, catalog/body/ACL evidence, safety and remaining activation gates.
+Do not reapply these migrations.
+
+After each application, read-only checks passed: creator28-column contract/ACL;
+RESTRICT NOT VALID FK and compatible last-stop RPC; service-only Admin preview and
+whole-trip RPCs. All22 operational count/content hashes and existing RLS/policies/
+table grants/noninternal triggers/publications unchanged. Driver updates46,
+orphans0,attachments8; no deletion jobs. Actual service-role read-only impact
+returns28 count fields and can_delete=false (activation block).
+
+Combined/Tracker share current-page bulk selection, row/unique-parent counts,
+physical-ID deduplication, same dialog/backend/atomic RPC and cache reconciliation.
+Approved maximum20 unique trips per batch is explicit; never silently truncated.
+New password confirmation uses request-local non-persisting Supabase Auth client,
+server-derived identity, local temporary-session revocation and original session/
+role recheck. Frozen exact batch + one POST; no reusable verification token. Five
+attempts/Admin/15minutes, overlapping requests blocked; shared Redis supported,
+multi-worker without shared limiter fails closed. Password never enters audit,
+SQL, socket, URLs, logs or browser Storage; input clears on all outcomes/account
+changes. Success toast waits for backend; pending files show warning. Selection
+clears; Combined page1/Tracker final-page recovery and shared invalidations reused.
+
+Final tests backend178/178,frontend87/87; TS/builds pass. Nine isolated browser
+fixtures and fresh disposable PG rollback/retention/last-stop/concurrency suites
+pass. New targeted lint clean; expanded touched-file set retains3 baseline errors
+(Tracker2,existing Toast hook export1). Existing Vite chunks/CRLF notices remain.
+Live verification is read-only metadata/impact only; no live Auth password or
+deletion acceptance claimed. Redis multi-replica rate protocol mocked.
+
+No operational/Storage deletion, destructive production tests, unapproved SQL,
+GPS/provider calls, deployment,commit orpush. DR333 untouched. Flags unchanged:
+whole-trip-delete unset/defaultfalse;trackingfalse;plannedunset/defaultfalse;
+PDFfalse;PODreviewtrue. No feature activated.
+
+Resume only after separate authorization for activation and approved-account/test
+record acceptance, HTTPS/shared-limiter configuration and recovery/cleanup
+monitoring. Do not use DR333; do not repeat migrations or enable flags automatically.
+
+## October 18 — Phase 2C.4 non-destructive acceptance
+
+Verdict **READY FOR ACTIVATION REVIEW**, not production acceptance or activation.
+Full evidence/gates: `docs/phase-2c4-deletion-acceptance.md`. Installed2C.3 migration
+IDs/definitions/grants verified read-only, no SQL applied. Actual service-role
+SELECT-only preview deduplicates parent IDs, returns28count fields and
+can_delete=false. No live deletion/Auth-password/Storage write tests performed.
+
+Narrow UI fixes: shared account/role/bearer-scoped pending deletion selection for
+Combined/Tracker (no resurrection on account return); keyboard focus retained in
+busy dialog with disabled controls. Existing row/page selection and caches preserved.
+
+Final backend187/187,frontend87/87,TS/builds pass;10isolated browser fixtures pass.
+New Auth outage/timeout/revocation, original-client isolation, feature-gate race,
+Redis shared budget/concurrency/TTL/stale release/outage tests pass. Redis protocol
+is mocked: local Redis unset, deployment template unset, Compose one worker. Actual
+shared Redis + dedicated-account/provider refresh-session acceptance remain gates.
+
+Fresh disposable PG full retention/financial/attachment/rollback/last-stop suite,
+20/21-parent boundary and preview purity, concurrent submission/deletion tests pass;
+owned cluster stopped. New lint clean;2existing Tracker lint errors and existing
+Vite chunks/CRLF notices remain. Git diff/index checks pass.
+
+Policy boundary explicitly retained: existing Admin/Staff transaction deletion can
+remove a last-stop/empty parent under its prior reviewed policy; Offload deletion
+also remains separate. No alternate call site bypasses the new Admin/password/
+flag-protected bulk RPC. A global password/Admin rule for all older deletion
+workflows would require separate policy review; it was not silently introduced.
+
+No live operational/Storage modifications, migration, permissions/publication change,
+feature activation, GPS/Mapbox/Gemini, commit,push ordeploy. DR333 untouched. Whole-
+trip/tracking/planned/PDF flags remain false/unset;PODreviewtrue. Stop for review;
+do not request or execute activation automatically.
+
+
+## Phase 2C.5 ? Offload/Backload reporting (October 18, 2026)
+
+See `docs/phase-2c5-offload-backload-reporting.md` for the full impact report,
+proposal checksums, changed files and acceptance boundaries.
+
+Added the Trucker Dashboard Report Trip modal using the shared Operations form,
+assignment-scoped searchable dispatch/stop choices, required reason, image previews,
+multiple uploads and partial-upload retry. Admin DR-based Offload creation remains.
+Backload creation now stores trusted original creator/submission metadata; immutable
+creator fields survive later Admin edits. Offload original-creator pagination mapping
+remains installed. Backload displayed attribution is enriched, but dataset-wide name
+search/sort awaits proposed migration 09.
+
+Admin/Staff record deletion now requires the initiating account's current password,
+using request-local Supabase Auth and the existing shared limiter/session rechecks.
+The immutable batch holds up to twenty deduplicated physical report identities;
+individual protected outcomes remain explicit. Whole-trip deletion is still Admin-only
+and disabled. Shared cargo cleanup engine supports Offload's installed journal and
+Backload's proposed journal/RPC; attached Backload deletion fails closed until proposal
+10 is approved. Generic pending-cleanup/retry routes and notice cover both types.
+
+READ-ONLY live impact: Offloads=0, Backloads=0, Offload items/receipts/conversion refs=0.
+Exact Offload target IDs=[], affected trips/stops/dispatches=[], eligible Storage=0.
+One private report-receipts object has no Offload/Backload receipt references; ownership
+is unresolved and it is explicitly excluded/untouched. No cleanup approval is actionable
+against the currently empty target set. DR333 and all operational data preserved.
+
+Tests: backend193/193, frontend87/87; five isolated browser fixtures pass (including
+102-row Operations pagination and mobile two-type Trucker submission). Disposable PG
+Offload/Backload deletion and creator/global-search/sort/28-column contract suites pass;
+owned cluster stopped. TypeScript/builds and changed-file frontend lint pass. Existing
+Vite chunk-size/CRLF notices remain. No authenticated live writes or provider password
+acceptance claimed. Existing Redis/provider acceptance limitations remain.
+
+Pending only, NOT APPLIED: 2026_11_09_proposed_backload_creator_attribution.sql
+SHA D420DA31A42335FD05E03F62ED3E4F9F3DAB969956DCE9F9B8A21415BE3A7333;
+2026_11_10_proposed_backload_deletion_cleanup.sql
+SHA 9CC29592B7379FDC2605D138476BBA9B039B76734C6F28AD23B48096AC520980.
+No bucket/publication change required; existing authorized change signals reused.
+No live writes, Storage mutation, migration, feature activation, providers, deployment,
+commit or push. Resume with separate proposal review/approval and then controlled,
+explicitly authorized Admin/Trucker submission acceptance. Do not enable whole-trip
+deletion or clean up the unowned object. Lost-response creation idempotency and concurrent
+Backload image-count enforcement remain limitations, not new guarantees.

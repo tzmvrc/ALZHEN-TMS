@@ -1,3 +1,4 @@
+import { withCurrentUserPassword, type DeletionCredentials } from "./deletion-password.service.js";
 import { operationsPageRequest, parseOperationsPageQuery } from "./operations-pagination.js";
 import { randomUUID } from "node:crypto";
 import { supabaseAdmin } from "../config/supabase.js";
@@ -5,7 +6,7 @@ import { imageMime } from "../models/clientwebsite.validation.js";
 import { ApiError } from "../utils/api-response.js";
 import { getTripRoutes } from "./trip-route.service.js";
 import { splitOffloadDetails } from "./offload-details.logic.js";
-import { deleteOffloadPermanently } from "./offload-deletion.service.js";
+import { deleteOffloadPermanently, deleteBackloadPermanently } from "./offload-deletion.service.js";
 import { buildIlikeOrFilter } from "../utils/postgrest-search.js";
 import { consumeReportReadRows, reportReadPageSize } from "./report-read-budget.js";
 import {
@@ -19,6 +20,7 @@ import {
   assertStopBelongsToTrip,
   assertTripAssignment,
   buildOperationsEventRows,
+  offloadSubmitterId,
   filterConvertedReportSources,
   validateOperationsReportConversion,
   validateOperationsEventSubmission,
@@ -38,8 +40,8 @@ import {
 const LOADING_SELECT = "id, trip_id, warehouse_arrival_at, loading_start_at, loading_finished_at";
 const UNLOADING_SELECT = "id, trip_id, trip_stop_id";
 const STOP_SELECT = "*";
-const BACKLOAD_SELECT = "id, trip_id, trip_stop_id, reason, number_of_boxes, comments";
-const OFFLOAD_SELECT = `${BACKLOAD_SELECT}, reported_at, reported_by, report_date, created_by, submitted_by, created_at`;
+const BACKLOAD_SELECT = "id, trip_id, trip_stop_id, reason, number_of_boxes, comments, created_by, submitted_by, submitted_at, created_at";
+const OFFLOAD_SELECT = `${BACKLOAD_SELECT}, reported_at, reported_by, report_date`;
 const OPERATIONAL_TRIP_SELECT = "id, trip_number, dispatch_number, status, loading_date, estimated_delivery_date, warehouse_id, remarks, archived_at";
 const RECEIPT_BUCKET = "report-receipts";
 const MAX_RECEIPT_BYTES = 5 * 1024 * 1024;
@@ -214,7 +216,7 @@ async function buildEventRows(collections: Awaited<ReturnType<typeof readReportC
     readByForeignIds<Record<string, unknown>>("trucks", "id, plate_number", "id", truckIds),
     readByForeignIds<Record<string, unknown>>("drivers", "id, profile_id, first_name, last_name", "id", driverIds),
   ]);
-  const profileIds = [...new Set([...drivers.map((driver) => driver.profile_id), ...collections.offloads.flatMap((report) => [report.reported_by, report.created_by, report.submitted_by])].filter((id): id is string => typeof id === "string"))];
+  const profileIds = [...new Set([...drivers.map((driver) => driver.profile_id), ...[...collections.offloads, ...collections.backloads].flatMap((report) => [report.reported_by, report.created_by, report.submitted_by])].filter((id): id is string => typeof id === "string"))];
   const profiles = await readByForeignIds<Record<string, unknown>>("profiles", "id, first_name, last_name", "id", profileIds);
   const truckById = new Map(trucks.map((row) => [String(row.id), row]));
   const profileById = new Map(profiles.map((row) => [String(row.id), row]));
@@ -239,9 +241,15 @@ async function buildEventRows(collections: Awaited<ReturnType<typeof readReportC
     lineItems: lineItems as Parameters<typeof buildOperationsEventRows>[0]["lineItems"],
     loading: collections.loading as Parameters<typeof buildOperationsEventRows>[0]["loading"],
     unloading: collections.unloading as Parameters<typeof buildOperationsEventRows>[0]["unloading"],
-    backloads: collections.backloads as Parameters<typeof buildOperationsEventRows>[0]["backloads"],
+    backloads: collections.backloads.map((report) => {
+      // Original authenticated creator, never delegate/reported-on-behalf-of user.
+      const reporterId = offloadSubmitterId(report);
+      const name = (id: unknown) => { const profile = typeof id === "string" ? profileById.get(id) : undefined; return [profile?.first_name, profile?.last_name].filter(Boolean).join(" ").trim() || null; };
+      return { ...report, reported_by_id: reporterId ?? null, reported_by_name: name(reporterId), creator_name: name(report.created_by) };
+    }) as Parameters<typeof buildOperationsEventRows>[0]["backloads"],
     offloads: collections.offloads.map((report) => {
-      const reporterId = report.reported_by ?? report.created_by ?? report.submitted_by;
+      // Original authenticated creator, never delegate/reported-on-behalf-of user.
+      const reporterId = offloadSubmitterId(report);
       const name = (id: unknown) => { const profile = typeof id === "string" ? profileById.get(id) : undefined; return [profile?.first_name, profile?.last_name].filter(Boolean).join(" ").trim() || null; };
       return { ...report, reported_by_id: reporterId ?? null, reported_by_name: name(reporterId), creator_name: name(report.created_by) };
     }) as Parameters<typeof buildOperationsEventRows>[0]["offloads"],
@@ -341,7 +349,7 @@ export async function getOperationsPage(actor: ReportActor, input: Record<string
     const row = byId.get(`${identity.source_type}:${identity.source_record_id}`);
     // A concurrent deletion/conversion may remove a selected source. Never replace
     // it with a sibling or a different physical type; the next refresh reconciles.
-    return row ? [{...row, dr_number:identity.dr_number,quantity:identity.quantity,total_cbm:identity.total_cbm,route:identity.route,date:identity.date,reported_by:identity.reported_by}] : [];
+    return row ? [{...row, dr_number:identity.dr_number,quantity:identity.quantity,total_cbm:identity.total_cbm,route:identity.route,date:identity.date,reported_by:["OFFLOAD", "BACKLOAD"].includes(identity.source_type) ? row.reported_by : identity.reported_by}] : [];
   });
   return {...collections,...built,event_rows,pagination:{page:options.page,limit:options.limit,total:count,totalPages:Math.max(1,Math.ceil(count/options.limit))}};
 }
@@ -534,23 +542,7 @@ export async function submitOperationsEvent(actor: ReportActor, input: unknown) 
   }
   await assertActorTripAccess(actor, trip);
 
-  const target = EVENT_REPORT_TABLE[submission.eventType];
-  await assertNewReportTransactionActive(await getTrip(actor, trip.id), stopId);
-  const now = new Date().toISOString();
-  const { data, error } = await supabaseAdmin.from(target.table).insert({
-    trip_id: trip.id,
-    trip_stop_id: stopId,
-    event_type: submission.eventType === "BACKLOAD" ? "Backload" : "Offload",
-    reason: submission.remarks,
-    comments: null,
-    created_by: actor.profileId,
-    submitted_by: actor.profileId,
-    submitted_at: now,
-  }).select("*").single();
-  if (error?.code === "42703" || /event_type.*does not exist/i.test(error?.message ?? "")) {
-    throw new ApiError("Event Type persistence requires the approved Operations Reports migration.", 503, "OPERATIONS_EVENT_TYPE_SCHEMA_PENDING");
-  }
-  if (error) throwDb(error, `submit ${submission.eventType.toLowerCase()}`);
+  const data = await createBackload(actor, { trip_id: trip.id, trip_stop_id: stopId, reason: submission.remarks });
   return { event_type: submission.eventType, dispatch_number: submission.dispatchNumber, report: data };
 }
 
@@ -562,6 +554,7 @@ export async function updateOperationsEventType(actor: ReportActor, sourceTypeVa
   if (!(sourceType in EVENT_TYPE_TABLE)) throw new ApiError("source_type must identify a Loading, Unloading, Backload, or Offload report.", 400, "INVALID_SOURCE_TYPE");
   const id = requireReportUuid(recordIdValue, "report_id");
   const eventType = validateOperationsEventType(input);
+  if (["BACKLOAD", "OFFLOAD"].includes(sourceType) && eventType.toUpperCase() !== sourceType) throw new ApiError("Offload and Backload report types cannot be relabeled after submission.",409,"REPORT_TYPE_IMMUTABLE");
   const table = EVENT_TYPE_TABLE[sourceType];
   const { data: current, error: readError } = await (supabaseAdmin.from(table) as any)
     .select("*").eq("id", id).maybeSingle();
@@ -586,7 +579,7 @@ export async function updateOperationsEventType(actor: ReportActor, sourceTypeVa
 /** Delete one exact physical report. Linked receipts block deletion so their
  * private storage objects and metadata remain intact. Backload/Offload items
  * follow the verified parent-owned ON DELETE CASCADE relationship. */
-export async function deleteOperationsReport(actor: ReportActor, sourceTypeValue: unknown, recordIdValue: unknown) {
+async function deleteReportRecord(actor: ReportActor, sourceTypeValue: unknown, recordIdValue: unknown) {
   assertOperationsManagementRole(actor);
   const identity = validateOperationsReportSourceIdentity(sourceTypeValue, recordIdValue);
   if (identity.source_type === "OFFLOAD") return deleteOffloadPermanently(actor, identity.record_id);
@@ -611,6 +604,7 @@ export async function deleteOperationsReport(actor: ReportActor, sourceTypeValue
   }
   if (receiptResult.error) throwDb(receiptResult.error, "check report receipts");
   if ((receiptResult.count ?? 0) > 0) {
+    if(identity.source_type === "BACKLOAD")return deleteBackloadPermanently(actor,identity.record_id);
     throw new ApiError("This report cannot be deleted because its receipt images must be retained. Open View Details to review the attachments. No report or image was deleted.", 409, "REPORT_RECEIPTS_PROTECTED");
   }
 
@@ -743,7 +737,7 @@ export async function createBackload(actor: ReportActor, input: unknown) {
   const parsed = validateBackloadOffloadInput(input, true, true);
   const trip = await validateReportScope(actor, parsed.tripId!, parsed.stopId);
   await assertNewReportTransactionActive(trip, parsed.stopId);
-  const { data, error } = await supabaseAdmin.from("backloads").insert({ trip_id: trip.id, trip_stop_id: parsed.stopId ?? null, ...parsed.fields }).select(BACKLOAD_SELECT).single();
+  const { data, error } = await supabaseAdmin.from("backloads").insert({ trip_id: trip.id, trip_stop_id: parsed.stopId ?? null, ...parsed.fields, created_by: actor.profileId, submitted_by: actor.profileId, submitted_at: new Date().toISOString(), event_type: "Backload" }).select(BACKLOAD_SELECT).single();
   if (error) throwDb(error, "create backload");
   return data;
 }
@@ -942,4 +936,33 @@ export async function updateOffload(actor: ReportActor, recordId: string, input:
     throwDb(error, "create Offload item");
   }
   return { report: savedReport, item: data };
+}
+
+/** One fresh password confirmation is bound to this immutable, bounded record batch. */
+export function createOperationsReportDeleter(verify=withCurrentUserPassword){
+ return async function deleteBatch(actor: ReportActor, input: unknown, credentials: DeletionCredentials) {
+  assertOperationsManagementRole(actor);
+  if(!Array.isArray(input)||!input.length||input.length>20) throw new ApiError("Select between 1 and 20 report records.",400,"INVALID_REPORT_BATCH");
+  const targets=Object.freeze([...new Map(input.map(value=>{
+    if(!value||typeof value!=="object")throw new ApiError("Invalid report selection.",400,"INVALID_REPORT_BATCH");
+    const row=value as Record<string,unknown>,identity=validateOperationsReportSourceIdentity(row.source_type,row.record_id);
+    return [`${identity.source_type}:${identity.record_id}`,Object.freeze(identity)] as const;
+  })).values()]);
+  const owner=Object.freeze({...actor});
+  return verify({id:owner.profileId,role:owner.role},credentials,async()=>{
+    const outcomes=[];
+    for(const target of targets){
+      try{outcomes.push({...target,success:true as const,result:await deleteReportRecord(owner,target.source_type,target.record_id)});}
+      catch(error){if(!(error instanceof ApiError))throw error;outcomes.push({...target,success:false as const,message:error.message,code:error.code});}
+    }
+    return {outcomes};
+  });
+}
+}
+export const deleteOperationsReports=createOperationsReportDeleter();
+export async function deleteOperationsReport(actor: ReportActor, sourceType:unknown, recordId:unknown, credentials:DeletionCredentials={password:undefined,accessToken:"",appSessionId:null}){
+ const response=await deleteOperationsReports(actor,[{source_type:sourceType,record_id:recordId}],credentials);
+ const outcome=response.outcomes[0];
+ if(!outcome.success)throw new ApiError(outcome.message??"Report deletion failed.",409,outcome.code);
+ return outcome.result;
 }

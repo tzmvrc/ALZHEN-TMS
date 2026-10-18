@@ -28,9 +28,9 @@ async(page)=>{
   await root.getByRole('checkbox',{name:'Select row Store 1',exact:true}).check();
   const nav=root.locator('footer[aria-label="Tracker pagination"]');
   await root.getByRole('button',{name:'Edit selected row',exact:true}).click();
-  const dialog=root.getByRole('dialog');await dialog.getByLabel('Remarks',{exact:true}).fill('Unsaved fixture draft');
+  const dialog=root.getByRole('dialog');await dialog.getByRole('button',{name:'Next',exact:true}).click();await dialog.getByLabel('Remarks',{exact:true}).fill('Unsaved fixture draft');
   if(!await nav.getByRole('button',{name:'Next',exact:true}).isDisabled())throw Error('Page navigation allowed an unsaved modal draft');
-  await dialog.getByRole('button',{name:'Cancel',exact:true}).click();
+  p.once('dialog',d=>d.accept());await dialog.getByRole('button',{name:'Cancel',exact:true}).click();
   await nav.getByRole('button',{name:'Next',exact:true}).click();await root.getByRole('checkbox',{name:'Select row Store 51',exact:true}).waitFor();
   if(await root.getByRole('checkbox',{name:'Select row Store 51',exact:true}).isChecked())throw Error('Selection leaked across pages');
   const navigationStart=Date.now();await nav.getByRole('button',{name:'Previous',exact:true}).click();await root.getByRole('checkbox',{name:'Select row Store 1',exact:true}).waitFor();

@@ -3,7 +3,6 @@ import {ApiError} from "../utils/api-response.js";
 import {isValidUuid} from "../utils/validation.js";
 import {destinationFingerprint} from "./tracking.logic.js";
 import {trackingTestScope} from "./tracking-test-scope.js";
-import {plannedRoutesEnabled} from "./planned-route-runtime.service.js";
 
 type Row=Record<string,unknown>;
 export function coordinatePair(lat:unknown,lng:unknown){
@@ -40,14 +39,14 @@ export async function readRoadRouting(actor:{id:string;role:string},tripIds:stri
   read("trucks","id,plate_number","id",ids(assignments,"truck_id"),251),
   read("drivers","id,profile_id,first_name,last_name","id",ids(assignments,"driver_id"),251),
   read("trip_tracking_locations","assignment_id,profile_id,latitude,longitude,accuracy_meters,captured_at,enabled","assignment_id",ids(assignments,"id"),251),
-  read("trip_route_cache","assignment_id,destination_fingerprint,route_geometry,calculated_at,distance_meters,duration_seconds,last_error_code"+(plannedRoutesEnabled()?",planned_fingerprint,planned_geometry,planned_calculated_at,planned_expires_at,planned_distance_meters,planned_duration_seconds,planned_error":""),"assignment_id",ids(assignments,"id"),251),
+  read("trip_route_cache","assignment_id,destination_fingerprint,route_geometry,calculated_at,distance_meters,duration_seconds,last_error_code,planned_fingerprint,planned_geometry,planned_calculated_at,planned_expires_at,planned_distance_meters,planned_duration_seconds,planned_error","assignment_id",ids(assignments,"id"),251),
  ]);
  const scope=trackingTestScope(),contexts=new Map<string,Row>(),plannedContexts=new Map<string,Row>();
  // Only cached assignments need the existing exact context check. Bounded pairs,
  // no split writes or broad snapshot; old context must never be presented as current.
  for(let i=0;i<caches.length;i+=2)await Promise.all(caches.slice(i,i+2).map(async cache=>{
   if(cache.route_geometry){const {data,error}=await db.rpc("tracking_route_context_v1",{p_assignment:cache.assignment_id,p_lock:false});if(!error&&data)contexts.set(String(cache.assignment_id),data);}
-  if(plannedRoutesEnabled()&&cache.planned_geometry){const planned=await db.rpc("planned_route_context_v1",{p_assignment:cache.assignment_id,p_lock:false});if(!planned.error&&planned.data)plannedContexts.set(String(cache.assignment_id),planned.data);}
+  if(cache.planned_geometry){const planned=await db.rpc("planned_route_context_v1",{p_assignment:cache.assignment_id,p_lock:false});if(!planned.error&&planned.data)plannedContexts.set(String(cache.assignment_id),planned.data);}
  }));
  return trips.flatMap(trip=>{
   const warehouse=warehouses.find(w=>w.id===trip.warehouse_id);
@@ -68,7 +67,7 @@ export async function readRoadRouting(actor:{id:string;role:string},tripIds:stri
     plateNumber:truck?.plate_number??null,driverName:[driver?.first_name,driver?.last_name].filter(Boolean).join(" ")||null,
     warehouse:{id:trip.warehouse_id??null,name:String(warehouse?.name??"Warehouse unavailable"),point:coordinatePair(warehouse?.latitude,warehouse?.longitude)},stops:ordered,
     position:location&&coordinatePair(location.latitude,location.longitude)?{...coordinatePair(location.latitude,location.longitude)!,capturedAt:location.captured_at,accuracyMeters:location.accuracy_meters}:null,
-    plannedCache:plannedRoutesEnabled()&&cache?.planned_geometry?{mode:"planned",matchesContext:plannedMatches,geometry:cache.planned_geometry,calculatedAt:cache.planned_calculated_at,expiresAt:cache.planned_expires_at,distanceMeters:cache.planned_distance_meters,durationSeconds:cache.planned_duration_seconds,error:cache.planned_error?"Last planned refresh failed":null}:null,
+    plannedCache:cache?.planned_geometry?{mode:"planned",matchesContext:plannedMatches,geometry:cache.planned_geometry,calculatedAt:cache.planned_calculated_at,expiresAt:cache.planned_expires_at,distanceMeters:cache.planned_distance_meters,durationSeconds:cache.planned_duration_seconds,error:cache.planned_error?"Last planned refresh failed":null}:null,
     cache:cache?{mode:"remaining",matchesContext:cacheMatches,geometry:cache.route_geometry,calculatedAt:cache.calculated_at,distanceMeters:cache.distance_meters,durationSeconds:cache.duration_seconds,error:cache.last_error_code?"Last route refresh failed":null}:null};
   });
  });

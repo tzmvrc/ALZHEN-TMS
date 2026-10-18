@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { Link2Off, LoaderCircle, Table2 } from "lucide-react";
+import { Link2Off, Table2 } from "lucide-react";
 import FlexibleTablesView from "../../pages/Admin/views/FlexibleTablesView";
 import { subscribeToAdminRealtime } from "../../services/realtime.service";
 import { useDeferredRealtimeRefresh } from "./useDeferredRealtimeRefresh";
 import {
   disconnectFlexibleTableFromSection,
   listSectionFlexibleTables,
+  getCachedSectionFlexibleTables,invalidateSectionFlexibleTables,
   type FlexSectionKey,
   type FlexTable,
 } from "../../services/flexible-table.service";
@@ -22,15 +23,16 @@ type Props = {
 const tabClass = "max-w-[15rem] shrink-0 truncate border-b-2 px-3 py-2 text-xs font-semibold transition";
 
 export default function FlexibleTableSectionTabs({ sectionKey, sectionLabel, accessToken, role, children, hideSectionTab = false }: Props) {
-  const [connected, setConnected] = useState<FlexTable[]>([]);
+  const cached=accessToken?getCachedSectionFlexibleTables(accessToken,sectionKey):null;
+  const [connected, setConnected] = useState<FlexTable[]>(cached??[]);
   const [activeTableId, setActiveTableId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!cached);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
   const reload = useCallback(async (quiet = false) => {
     if (!accessToken) { setConnected([]); setLoading(false); return; }
-    if (!quiet) setLoading(true);
+    if (!quiet && !getCachedSectionFlexibleTables(accessToken,sectionKey)) setLoading(true);
     setError("");
     try {
       const rows = await listSectionFlexibleTables(accessToken, sectionKey);
@@ -40,7 +42,7 @@ export default function FlexibleTableSectionTabs({ sectionKey, sectionLabel, acc
       setError(cause instanceof Error ? cause.message : "Unable to load connected tables.");
     } finally { if (!quiet) setLoading(false); }
   }, [accessToken, sectionKey]);
-  const realtimeGate = useDeferredRealtimeRefresh(() => reload(true), busy);
+  const realtimeGate = useDeferredRealtimeRefresh(() => {invalidateSectionFlexibleTables(sectionKey);return reload(true);}, busy);
   useEffect(() => subscribeToAdminRealtime((event) => {
     const tables = event.kind === "batch" ? event.tables : event.kind === "change" ? [event.payload.table] : event.kind === "recovered" ? [event.table] : [];
     if (event.kind === "resume" || tables.some((table) => ["flex_tables", "flex_table_permissions", "profiles"].includes(table))) realtimeGate.request();
@@ -56,6 +58,7 @@ export default function FlexibleTableSectionTabs({ sectionKey, sectionLabel, acc
     setBusy(true); setError("");
     try {
       await disconnectFlexibleTableFromSection(accessToken, sectionKey, table.id);
+      invalidateSectionFlexibleTables(sectionKey);
       if (activeTableId === table.id) setActiveTableId(null);
       await reload();
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Unable to disconnect this table."); }
@@ -76,7 +79,7 @@ export default function FlexibleTableSectionTabs({ sectionKey, sectionLabel, acc
         </div>)}
       </div>
     </div>}
-    {loading && <p role="status" className="flex items-center gap-2 text-xs text-slate-500"><LoaderCircle className="h-3.5 w-3.5 animate-spin" />Loading section tables…</p>}
+    {loading && <div aria-label="Loading connected table tabs" className="h-8 w-40 animate-pulse rounded bg-slate-100" />}
     {error && <div role="alert" className="flex items-center justify-between rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800"><span>{error}</span><button type="button" title="Retry loading connected tables" aria-label="Retry loading connected tables" className="underline" onClick={() => void reload()}>Retry</button></div>}
     {activeTableId ? <FlexibleTablesView key={activeTableId} accessToken={accessToken} role={role} embeddedTableId={activeTableId} onExit={() => { setActiveTableId(null); void reload(); }} /> : children}
 

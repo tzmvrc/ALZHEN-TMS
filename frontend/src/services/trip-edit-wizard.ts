@@ -1,6 +1,7 @@
 import type { ReportEditDefinition } from "./report-editing.config";
 
 export const TRIP_EDIT_STEPS = ["Trip Info", "Assignment", "Delivery / DR", "Review"] as const;
+export const REPORT_EDIT_STEPS=["Basic information","Assignments","Delivery / Supporting details"] as const;
 type Field = { value: string; originalValue: string; relationshipId?: string; originalRelationshipId?: string; definition: ReportEditDefinition };
 export function tripEditFieldStep(definition: ReportEditDefinition): number {
   if (definition.sourceEntity === "assignment" || definition.sourceField === "truck_allocated_by") return 1;

@@ -24,6 +24,8 @@ router.get("/operations/page", authMiddleware, requireRole("ADMIN", "STAFF"), op
 router.get("/operations/overview", authMiddleware, operationsReportController.getOverview);
 router.get("/operations/reporters", authMiddleware, requireRole("ADMIN", "STAFF"), operationsReportController.getReporters);
 router.get("/operations/offload-transactions", authMiddleware, operationsReportController.getOffloadTransactions);
+router.get("/operations/report-cleanup", authMiddleware, requireRole("ADMIN", "STAFF"), operationsReportController.getPendingReportCleanup);
+router.post("/operations/report-cleanup/:sourceType/:operationId/retry", authMiddleware, requireRole("ADMIN", "STAFF"), operationsReportController.retryReportCleanup);
 router.get("/operations/offload-cleanup", authMiddleware, requireRole("ADMIN", "STAFF"), operationsReportController.getPendingCleanup);
 router.post("/operations/offload-cleanup/:operationId/retry", authMiddleware, requireRole("ADMIN", "STAFF"), operationsReportController.retryCleanup);
 router.get("/operations/assigned", authMiddleware, operationsReportController.getAssigned);
@@ -36,6 +38,7 @@ router.patch("/operations/backloads/:recordId", authMiddleware, operationsReport
 router.post("/operations/offloads", authMiddleware, operationsReportController.createOffload);
 router.patch("/operations/offloads/:recordId", authMiddleware, operationsReportController.updateOffload);
 router.patch("/operations/types/:sourceType/:recordId", authMiddleware, operationsReportController.updateEventType);
+router.post("/operations/reports/delete", authMiddleware, requireRole("ADMIN", "STAFF"), operationsReportController.deleteReports);
 router.delete("/operations/reports/:sourceType/:recordId", authMiddleware, operationsReportController.deleteReport);
 router.post("/operations/conversions", authMiddleware, operationsReportController.convertReport);
 router.post("/operations/events", authMiddleware, operationsReportController.submitEvent);

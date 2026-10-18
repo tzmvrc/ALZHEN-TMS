@@ -1,3 +1,4 @@
+import { reportBelongsToTrip } from "../../../services/trip-identity";
 // src/pages/Admin/views/OverviewView.tsx
 import { useEffect, useRef, useState } from "react";
 import {
@@ -12,6 +13,7 @@ import { useRequests } from "../../../components/admin/requestsStore";
 import type { DispatchRecord } from "../../../types/dashboard";
 import { useAuth } from "../../../context/AuthContext";
 import { ApiError } from "../../../services/api.service";
+import {settledBackgroundPreload} from "../../../services/background-preload";
 import { fetchTripEvents, fetchTrips, type TripEvent, type TripPage } from "../../../services/trip.service";
 import { fetchTripImages } from "../../../services/trip-image.service";
 import { subscribeToAdminRealtime } from "../../../services/realtime.service";
@@ -188,10 +190,7 @@ function toFleetRow(
 ): DispatchRecord {
   const rawStatus = textValue(trip.status, "Unknown");
   const dispatchNumber = textValue(trip.dispatch_number ?? trip.id, "Trip");
-  const bookingDetails = bookingRows.filter(
-    (row) => textValue(row.trip_id ?? row._trip_id) === textValue(trip.id) ||
-      String(row.dispatch_number ?? "") === dispatchNumber,
-  );
+  const bookingDetails = bookingRows.filter((row) => reportBelongsToTrip(row, trip.id));
   const warehouse = textValue(
     bookingDetails.find((row) => row.warehouse_name)?.warehouse_name ??
       bookingDetails.find((row) => row.warehouse_code)?.warehouse_code,
@@ -384,12 +383,12 @@ export default function OverviewView({
     let active = true;
     void (async () => {
       try {
-        const firstPage = await fetchTrips(accessToken, { limit: 100, archiveScope: "active" });
+        const [firstPage,inProgressPage,completedPage] = await Promise.all([
+          fetchTrips(accessToken,{limit:100,archiveScope:"active"}),
+          fetchTrips(accessToken,{limit:1,status:"IN_PROGRESS",archiveScope:"active"}),
+          fetchTrips(accessToken,{limit:1,status:"COMPLETED",archiveScope:"active"}),
+        ]);
         const allTrips = { ...firstPage, rows: [...firstPage.rows] };
-        for (let page = 2; page <= allTrips.pagination.totalPages; page += 1) {
-          const next = await fetchTrips(accessToken, { limit: 100, page, archiveScope: "active" });
-          allTrips.rows.push(...next.rows);
-        }
         let bookingRows: ReportRow[] = [];
         let bookingUnavailable = false;
         try {
@@ -407,10 +406,6 @@ export default function OverviewView({
             bookingOptions,
           );
           bookingRows = [...bookingPage.rows];
-          for (let page = 2; page <= bookingPage.pagination.totalPages; page += 1) {
-            const next = await fetchReportPage("dispatch-monitoring", accessToken, { ...bookingOptions, page });
-            bookingRows.push(...next.rows);
-          }
           const visibleTripIds = new Set(allTrips.rows.map((trip) => textValue(trip.id)));
           bookingRows = bookingRows.filter((row) => visibleTripIds.has(textValue(row.trip_id ?? row._trip_id)));
         } catch (cause) {
@@ -422,22 +417,24 @@ export default function OverviewView({
             typeof trip.id === "string" && trip.id.length > 0,
         );
         const activeStopIds = new Set(bookingRows.map((row) => textValue(row.trip_stop_id ?? row._trip_stop_id)).filter(Boolean));
+        if(active)setSnapshot(previous=>previous??{recent:allTrips.rows,photoUrls:{},tracks:tripsWithIds.map(trip=>({trip,events:[]})),events:[],bookingRows,eventsUnavailable:false,bookingUnavailable,total:allTrips.pagination.total,inProgress:inProgressPage.pagination.total,completed:completedPage.pagination.total,fetchedAt:Date.now()});
         const [eventResults, photoResults] = await Promise.all([
-          Promise.allSettled(
-            tripsWithIds.map(async (trip) => ({
+          settledBackgroundPreload(
+            tripsWithIds.map((trip) => async()=>({
               trip,
               events: (await fetchTripEvents(accessToken, trip.id)).filter(
                 (event) => !event.trip_stop_id || (!bookingUnavailable && activeStopIds.has(event.trip_stop_id)),
               ),
-            })),
+            })),2,()=>active,
           ),
-          Promise.allSettled(
-            tripsWithIds.map(async (trip) => ({
+          settledBackgroundPreload(
+            tripsWithIds.map((trip) => async()=>({
               tripId: trip.id,
               images: await fetchTripImages(accessToken, trip.id),
-            })),
+            })),2,()=>active,
           ),
         ]);
+        if(!active)return;
         const authFailure = eventResults.find(
           (result) =>
             result.status === "rejected" &&
@@ -482,8 +479,8 @@ export default function OverviewView({
           ),
           bookingUnavailable,
           total: allTrips.pagination.total,
-          inProgress: allTrips.rows.filter((trip) => trip.status === "IN_PROGRESS").length,
-          completed: allTrips.rows.filter((trip) => fleetStatus(trip.status) === "Completed").length,
+          inProgress: inProgressPage.pagination.total,
+          completed: completedPage.pagination.total,
           fetchedAt: Date.now(),
         });
       } catch (cause) {
@@ -772,6 +769,7 @@ export default function OverviewView({
           </div>
         </header>
         {error && snapshot && <div role="status" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">Dashboard refresh failed: {error} <button type="button" className="ml-2 underline" onClick={() => setReloadCount((count) => count + 1)}>Retry</button></div>}
+        {snapshot&&snapshot.total>snapshot.recent.length&&<p className="text-xs text-slate-500">Showing the latest {snapshot.recent.length} active trips in charts and previews; headline totals cover all active trips.</p>}
 
         <div className="space-y-4">
         {/* Top row: the 4 stat cards only */}
@@ -831,6 +829,7 @@ export default function OverviewView({
 
           <div className="min-w-0 xl:col-span-4 xl:row-span-2">
             <LiveTripMap
+              unified
               tracks={activeTracks}
               locationIds={activeMapLocationIds}
               tripLocationRoutes={activeMapRoutes}

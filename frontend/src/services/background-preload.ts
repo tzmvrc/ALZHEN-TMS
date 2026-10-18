@@ -9,3 +9,8 @@ export async function runBackgroundPreload(tasks: readonly (() => Promise<unknow
     }
   }));
 }
+export async function settledBackgroundPreload<T>(tasks:readonly (()=>Promise<T>)[],concurrency:number,isCurrent:()=>boolean):Promise<PromiseSettledResult<T>[]> {
+  const results:PromiseSettledResult<T>[]=[];
+  await runBackgroundPreload(tasks.map((task,index)=>async()=>{try{results[index]={status:"fulfilled",value:await task()};}catch(reason){results[index]={status:"rejected",reason};}}),concurrency,isCurrent);
+  return results;
+}

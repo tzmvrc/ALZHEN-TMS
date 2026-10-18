@@ -4,6 +4,7 @@ import TransmittalTrackerView from "./TransmittalTrackerView";
 import SlidingSegmentedControl from "./SlidingSegmentedControl";
 import OperationsReportsView from "./OperationsReportsView";
 import { REPORTS } from "../../services/report.service";
+import RetainedFeature from "./RetainedFeature";
 
 type Props = ComponentProps<typeof ReportDataView>;
 
@@ -36,11 +37,11 @@ export default function ReportsWorkspace(props: Props) {
           </p>
         )}
       </header>
-      <div role="tabpanel" hidden={activeTab !== "reports"}>
+      <RetainedFeature active={activeTab === "reports"}><div role="tabpanel">
         <ReportDataView {...props} pageTitle={undefined} pageSubtitle={undefined} toolbarLeading={tabs} />
-      </div>
-      {activeTab === "transmittal" && <div role="tabpanel" className="space-y-3">{tabs}<TransmittalTrackerView /></div>}
-      {activeTab === "operations" && <div role="tabpanel" className="space-y-3">{tabs}<OperationsReportsView mode="management" onOpenTrip={props.onOpenTrip} /></div>}
+      </div></RetainedFeature>
+      <RetainedFeature active={activeTab === "transmittal"}><div role="tabpanel" className="space-y-3">{tabs}<TransmittalTrackerView /></div></RetainedFeature>
+      <RetainedFeature active={activeTab === "operations"}><div role="tabpanel" className="space-y-3">{tabs}<OperationsReportsView mode="management" onOpenTrip={props.onOpenTrip} /></div></RetainedFeature>
     </section>
   );
 }

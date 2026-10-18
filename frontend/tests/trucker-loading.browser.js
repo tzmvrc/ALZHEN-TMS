@@ -9,6 +9,7 @@ async(page)=>{
   await fixture.route('**/api/**',async route=>{
    if(route.request().method()!=='GET')throw Error('Unexpected fixture mutation');
    let data=[];
+   if(new URL(route.request().url()).pathname.startsWith("/api/notifications"))data={notifications:[],unread_count:0};
    if(new URL(route.request().url()).pathname==='/api/truckers/me/trips') {
     reads++;await new Promise(resolve=>setTimeout(resolve,150));
     if(fail)return route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({success:false,message:'Fixture offline'})});

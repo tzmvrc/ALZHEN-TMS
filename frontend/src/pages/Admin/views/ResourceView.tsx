@@ -450,66 +450,7 @@ export default function ResourceView({
           />
         </>
       )}
-      {id === "dispatch-monitoring" && (
-        <ReportsWorkspace
-          initialReport="dispatch-monitoring"
-          pageTitle={barTitle}
-          pageSubtitle={barSubtitle}
-          notificationTarget={notificationTarget}
-          onOpenTrip={openTrip}
-          onReportScopeChange={onReportScopeChange}
-        />
-      )}
-      {id === "store-calling" && (
-        <ReportsWorkspace
-          initialReport="store-calling"
-          pageTitle={barTitle}
-          pageSubtitle={barSubtitle}
-          notificationTarget={notificationTarget}
-          onOpenTrip={openTrip}
-          onReportScopeChange={onReportScopeChange}
-        />
-      )}
-      {id === "reports" && (
-        <ReportsWorkspace
-          initialReport="combined"
-          pageTitle={barTitle}
-          pageSubtitle={barSubtitle}
-          notificationTarget={notificationTarget}
-          onOpenTrip={openTrip}
-          onReportScopeChange={onReportScopeChange}
-        />
-      )}
-      {id === "combined" && (
-        <ReportsWorkspace
-          initialReport="combined"
-          pageTitle={barTitle}
-          pageSubtitle={barSubtitle}
-          notificationTarget={notificationTarget}
-          onOpenTrip={openTrip}
-          onReportScopeChange={onReportScopeChange}
-        />
-      )}
-      {id === "dispatch" && (
-        <ReportsWorkspace
-          initialReport="dispatch"
-          pageTitle={barTitle}
-          pageSubtitle={barSubtitle}
-          notificationTarget={notificationTarget}
-          onOpenTrip={openTrip}
-          onReportScopeChange={onReportScopeChange}
-        />
-      )}
-      {id === "trip-booking" && (
-        <ReportsWorkspace
-          initialReport="trip-booking"
-          pageTitle={barTitle}
-          pageSubtitle={barSubtitle}
-          notificationTarget={notificationTarget}
-          onOpenTrip={openTrip}
-          onReportScopeChange={onReportScopeChange}
-        />
-      )}
+      {isReportsScope && <ReportsWorkspace initialReport={id === "reports" ? "combined" : id as "combined" | "dispatch-monitoring" | "dispatch" | "trip-booking" | "store-calling"} pageTitle={barTitle} pageSubtitle={barSubtitle} notificationTarget={notificationTarget} onOpenTrip={openTrip} onReportScopeChange={onReportScopeChange} />}
       {id === "truckers" && <TruckersView />}
       {id === "cash-tracker" && (
         <>

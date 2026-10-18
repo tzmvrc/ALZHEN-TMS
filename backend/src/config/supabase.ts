@@ -48,3 +48,11 @@ export const supabaseAuth = createClient(supabaseUrl, supabaseAnonKey, {
     detectSessionInUrl: false,
   },
 });
+
+/** Request-local password confirmation. Never mutate the shared login client. */
+export function createPasswordVerificationClient() {
+  return createClient(supabaseUrl!, supabaseAnonKey!, {
+    auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false },
+    global: { fetch: (input, init) => fetch(input, { ...init, signal: AbortSignal.timeout(8000) }) },
+  });
+}

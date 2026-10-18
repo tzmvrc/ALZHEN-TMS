@@ -2,7 +2,7 @@ import type { Request, Response } from "express";
 import { ApiError, sendError, sendSuccess } from "../utils/api-response.js";
 import * as service from "../services/operations-report.service.js";
 import { withReportReadBudget } from "../services/report-read-budget.js";
-import { listPendingOffloadCleanup, retryOffloadCleanup } from "../services/offload-deletion.service.js";
+import { listPendingOffloadCleanup, retryOffloadCleanup, listPendingBackloadCleanup, retryBackloadCleanup } from "../services/offload-deletion.service.js";
 
 function actor(req: Request) {
   const session = req.appSession;
@@ -40,7 +40,13 @@ export const updateBackload = (req: Request, res: Response) => respond(res, () =
 export const createOffload = (req: Request, res: Response) => respond(res, () => service.createOffload(actor(req), req.body), "Offload created successfully", 201);
 export const updateOffload = (req: Request, res: Response) => respond(res, () => service.updateOffload(actor(req), param(req, "recordId"), req.body), "Offload updated successfully");
 export const updateEventType = (req: Request, res: Response) => respond(res, () => service.updateOperationsEventType(actor(req), param(req, "sourceType"), param(req, "recordId"), req.body), "Event Type updated successfully");
-export const deleteReport = (req: Request, res: Response) => respond(res, () => service.deleteOperationsReport(actor(req), param(req, "sourceType"), param(req, "recordId")), "Operational report deletion outcome retrieved");
+function deletionCredentials(req:Request){
+ const password=req.body?.current_password;
+ if(req.body)delete req.body.current_password;
+ return {password,accessToken:req.headers.authorization?.replace(/^Bearer\s+/i,"").trim()??"",appSessionId:req.appSession?.sessionId??null};
+}
+export const deleteReport = (req:Request,res:Response)=>respond(res,()=>service.deleteOperationsReport(actor(req),param(req,"sourceType"),param(req,"recordId"),deletionCredentials(req)),"Operational report deletion outcome retrieved");
+export const deleteReports = (req:Request,res:Response)=>respond(res,()=>service.deleteOperationsReports(actor(req),req.body?.targets,deletionCredentials(req)),"Operational report deletion outcomes retrieved");
 export const convertReport = (req: Request, res: Response) => respond(res, () => service.convertOperationsReport(actor(req), req.body), "Operational report converted successfully");
 export const submitEvent = (req: Request, res: Response) => respond(res, () => service.submitOperationsEvent(actor(req), req.body), "Operational event submitted successfully", 201);
 export const uploadReceipt = (req: Request, res: Response) => respond(res, () => {
@@ -51,3 +57,13 @@ export const uploadReceipt = (req: Request, res: Response) => respond(res, () =>
   return service.uploadOperationsReceipt(actor(req), param(req, "eventType"), param(req, "recordId"), req.body, String(req.headers["content-type"] ?? ""), fileName);
 }, "Operational report image uploaded successfully", 201);
 export const listReceipts = (req: Request, res: Response) => respond(res, () => service.listOperationsReceipts(actor(req), param(req, "eventType"), param(req, "recordId")), "Operational report images retrieved successfully");
+
+export const getPendingReportCleanup=(req:Request,res:Response)=>respond(res,async()=>{
+ const owner=actor(req),[offloads,backloads]=await Promise.all([listPendingOffloadCleanup(owner),listPendingBackloadCleanup(owner)]);
+ return [...offloads.map(row=>({...row,source_type:"OFFLOAD"})),...backloads.map(row=>({...row,source_type:"BACKLOAD"}))];
+},"Pending report image cleanup retrieved");
+export const retryReportCleanup=(req:Request,res:Response)=>respond(res,()=>{
+ const source=param(req,"sourceType").toUpperCase();
+ if(!["OFFLOAD","BACKLOAD"].includes(source))throw new ApiError("Invalid cleanup report type.",400,"INVALID_SOURCE_TYPE");
+ return (source==="OFFLOAD"?retryOffloadCleanup:retryBackloadCleanup)(actor(req),param(req,"operationId"));
+},"Report image cleanup outcome retrieved");

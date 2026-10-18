@@ -18,6 +18,11 @@ export function roadView(row:RoadTrip,mode:RoadMode,now=Date.now()){
  const status=missing??(!compatible?(cache?.mode===mode?"Route inputs changed — cached road withheld":"No cached road route for this mode"):!geometry?"Road geometry unavailable":cache?.error?cache.error:stale?"Cached route is stale":"Cached road route");
  return {stops,origin:validPoint(origin)?origin:null,cache:compatible?cache:null,geometry,stale,status,positionStale:!!row.position&&(!Number.isFinite(Date.parse(row.position.capturedAt))||now-Date.parse(row.position.capturedAt)>120000)};
 }
+export function roadDisplayView(row:RoadTrip,mode:RoadMode|"auto",now=Date.now()){
+ if(mode!=="auto")return roadView(row,mode,now);
+ const planned=roadView(row,"planned",now),remaining=roadView(row,"remaining",now);
+ return planned.geometry?planned:remaining.geometry?remaining:planned;
+}
 export function roadEndpoint(ids:string[]){return `/tracking/roads?trip_ids=${encodeURIComponent([...new Set(ids)].sort().join(","))}`;}
 export async function fetchRoadTrips(token:string,ids:string[]){
  if(!ids.length)return [];

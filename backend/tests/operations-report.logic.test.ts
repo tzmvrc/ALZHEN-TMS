@@ -278,7 +278,8 @@ test("loading retry keeps one trip row and stop saves remain isolated", async ()
   process.env.SUPABASE_SERVICE_ROLE_KEY = "isolated-test";
   process.env.SUPABASE_ANON_KEY = "isolated-test";
   const { supabaseAdmin } = await import("../src/config/supabase.js");
-  const service = await import("../src/services/operations-report.service.js");
+  const {mockDeleteOperationsReport}=await import("./fixtures/mock-report-deletion.js");
+  const service = {...await import("../src/services/operations-report.service.js"),deleteOperationsReport:mockDeleteOperationsReport};
   const tripA = "523e4567-e89b-42d3-a456-426614174000";
   const otherTrip = "623e4567-e89b-42d3-a456-426614174000";
   const stop1 = "723e4567-e89b-42d3-a456-426614174000";
@@ -296,7 +297,7 @@ test("loading retry keeps one trip row and stop saves remain isolated", async ()
       { id: otherStop, trip_id: otherTrip, stop_sequence: 1, dispatch_number: "DP-2", arrival_time: null, start_unloading_time: null, finish_unloading_time: null },
     ],
     drivers: [{ id: driverId, profile_id: trucker.profileId, first_name: "Current", last_name: "Driver" }],
-    profiles: [{ id: trucker.profileId, role: "TRUCKER", first_name: "Current", last_name: "Driver" }, { id: "923e4567-e89b-42d3-a456-426614174000", role: "ADMIN" }],
+    profiles: [{ id: trucker.profileId, role: "TRUCKER", first_name: "Current", last_name: "Driver" }, { id: "923e4567-e89b-42d3-a456-426614174000", role: "ADMIN", first_name: "Fixture", last_name: "Admin" }],
     trucks: [{ id: "b23e4567-e89b-42d3-a456-426614174000", plate_number: "CURRENT-123" }],
     trip_truck_assignments: [
       { id: "c23e4567-e89b-42d3-a456-426614174000", trip_id: tripA, driver_id: driverId, truck_id: "b23e4567-e89b-42d3-a456-426614174000", assignment_type: "PRIMARY", unassigned_at: null },
@@ -318,6 +319,7 @@ test("loading retry keeps one trip row and stop saves remain isolated", async ()
       tables.offloads = tables.offloads.filter((row) => row.id !== parent.id);
       return { data: { id: generatedUuid(), offload_id: parent.id, trip_id: parent.trip_id, trip_stop_id: parent.trip_stop_id, state: "COMPLETE", storage_paths: [], attempts: 0 }, error: null };
     }
+    if(name==="delete_backload_with_cleanup_v1")return {data:null,error:{code:"PGRST202"}};
     assert.equal(name, "create_offload_with_item_v1");
     const report = { id: generatedUuid(), event_type: "Offload", ...input.p_report };
     tables.offloads.push(report);
@@ -427,18 +429,29 @@ test("loading retry keeps one trip row and stop saves remain isolated", async ()
     assert.equal(submitted.report.created_by, trucker.profileId);
     assert.equal(submitted.report.submitted_by, trucker.profileId);
     assert.equal(tables.backloads.length, 1);
+    for(const submitter of [admin,trucker]){
+      const created=await serviceTrucker.createBackload(submitter,{trip_id:tripA,trip_stop_id:stop1,reason:"Attribution test"});
+      assert.equal(created.created_by,submitter.profileId);assert.equal(created.submitted_by,submitter.profileId);
+      const projection=await serviceTrucker.getTripOperations(admin,tripA);
+      assert.equal(projection.event_rows.find(row=>row.source_record_id===created.id)?.reported_by,submitter.role==="ADMIN"?"Fixture Admin":"Current Driver");
+      await serviceTrucker.updateBackload(admin,String(created.id),{trip_id:tripA,trip_stop_id:stop1,reason:"Edited by Admin"});
+      assert.equal(tables.backloads.find(row=>row.id===created.id)?.created_by,submitter.profileId);
+      await assert.rejects(serviceTrucker.updateBackload(admin,String(created.id),{trip_id:tripA,created_by:admin.profileId}),/Unsupported/);
+      tables.backloads.splice(tables.backloads.findIndex(row=>row.id===created.id),1);
+    }
     const backloadPhysicalId = String(submitted.report.id);
-    const classified = await service.updateOperationsEventType(admin, "BACKLOAD", backloadPhysicalId, { event_type: "Offload" });
+    await assert.rejects(service.updateOperationsEventType(admin, "BACKLOAD", backloadPhysicalId, { event_type: "Offload" }), /cannot be relabeled/);
+    const classified = await service.updateOperationsEventType(admin, "BACKLOAD", backloadPhysicalId, { event_type: "Backload" });
     assert.equal(classified.id, backloadPhysicalId);
     assert.equal(tables.backloads.length, 1, "classification edits leave the report in its existing physical table");
-    assert.equal(tables.backloads[0].event_type, "Offload", "only the classification field is changed");
+    assert.equal(tables.backloads[0].event_type, "Backload", "only the classification field is changed");
     assert.equal(tables.backloads[0].trip_stop_id, stop1, "report stop relationship remains intact");
     assert.equal(tables.backloads[0].reason, "Return damaged items", "report details remain intact");
     const refreshedRow = buildOperationsEventRows({
       trips: [tables.trips[0] as any], stops: [tables.trip_stops[0] as any], lineItems: [], loading: [], unloading: [],
       backloads: tables.backloads as any, offloads: [], routes: new Map(), vehicles: new Map(),
     }).find((row) => row.trip_stop_id === stop1)!;
-    assert.deepEqual(refreshedRow.event_type_records, [{ id: backloadPhysicalId, source_type: "BACKLOAD", event_type: "Offload" }], "a subsequent overview projection retains the saved type on the same physical report ID");
+    assert.deepEqual(refreshedRow.event_type_records, [{ id: backloadPhysicalId, source_type: "BACKLOAD", event_type: "Backload" }], "a subsequent overview projection retains the saved type on the same physical report ID");
     await assert.rejects(serviceTrucker.submitOperationsEvent(trucker, { dispatch_number: "DP-1", event_type: "OFFLOAD", remarks: "Wrong item was received" }), /DR Number/);
     tables.trip_stops[0].dr_number = "DR-1";
     const submittedOffload = await serviceTrucker.submitOperationsEvent(trucker, {

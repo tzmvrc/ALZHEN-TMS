@@ -10,7 +10,6 @@ import ConfirmDialog from "../../components/ui/ConfirmDialog";
 import { useAuth } from "../../context/AuthContext";
 import {
   BarChart3,
-  FileText,
   Inbox,
   LayoutDashboard,
   Truck,
@@ -43,6 +42,8 @@ import {
   type RealtimePayload,
 } from "../../services/realtime.service";
 import { usePendingRequestCount } from "../../components/admin/requestsStore";
+import RetainedFeature from "../../components/admin/RetainedFeature";
+import {preloadAdminPageData} from "../../services/admin-preload.service";
 
 export interface DashboardPageProps {
   data?: DashboardData;
@@ -126,6 +127,11 @@ export default function DashboardPage({
     | "trip-booking"
     | "store-calling"
   >("combined");
+  useEffect(()=>{
+    if(!accessToken||!profile)return;
+    const feature=activeId==="overview"?"home":activeId==="trips"||activeId.startsWith("trip-detail:")?"trips":activeId==="reports"?"reports":undefined;
+    void preloadAdminPageData(accessToken,profile.role,feature,reportView);
+  },[accessToken,profile,activeId,reportView]);
   const [billingView, setBillingView] = useState<
     "rates-fuel" | "invoices" | "payables" | "cash-tracker"
   >("invoices");
@@ -417,7 +423,6 @@ export default function DashboardPage({
       },
       { id: "trips", label: "Trips", icon: <Truck className="h-4 w-4" /> },
       { id: "truckers", label: "Users", icon: <Users className="h-4 w-4" /> },
-      { id: "pod", label: "POD", icon: <FileText className="h-4 w-4" /> },
       {
         id: "reports",
         label: "Reports",
@@ -614,8 +619,7 @@ export default function DashboardPage({
 
         <main className="min-h-[calc(100vh-5.5rem)] w-full px-3 pb-6 pt-4 sm:px-5 lg:px-7">
           <div className="mx-auto min-h-[calc(100vh-7rem)] w-full max-w-[1680px] rounded-[1.75rem] p-4 sm:p-5 lg:p-6">
-            <div
-              hidden={!showOverview}
+            <RetainedFeature key={`home:${profile?.id}:${profile?.role}`} active={showOverview}><div
               className={showOverview ? "page-enter" : "hidden"}
             >
               <h1 className="sr-only">Operations overview</h1>
@@ -627,7 +631,9 @@ export default function DashboardPage({
                 }
                 onMetricNavigate={handleMetricNavigate}
               />
-            </div>
+            </div></RetainedFeature>
+            <RetainedFeature key={`trips:${profile?.id}:${profile?.role}`} active={!isClientWebsite&&activeId==="trips"}><ResourceView id={tripView} data={filteredData} onNavigate={handleNavigate}/></RetainedFeature>
+            <RetainedFeature key={`reports:${profile?.id}:${profile?.role}`} active={!isClientWebsite&&activeId==="reports"}><ResourceView id={reportView} data={filteredData} onNavigate={handleNavigate} notificationTarget={notificationTarget} onReportScopeChange={next=>{setReportView(next);setActiveId("reports");}}/></RetainedFeature>
             <div key={`${workspace}:${activeId}:${clientTab}`} className="page-enter" hidden={showOverview}>
               {isClientWebsite ? (
                 <ClientWebsiteWorkspace
@@ -665,11 +671,7 @@ export default function DashboardPage({
                   />
                 ) : null
               ) : activeId === "trips" ? (
-                <ResourceView
-                  id={tripView}
-                  data={filteredData}
-                  onNavigate={handleNavigate}
-                />
+                null
               ) : activeId === "truckers" ? (
                 <ResourceView
                   id="truckers"
@@ -683,16 +685,7 @@ export default function DashboardPage({
                   onNavigate={handleNavigate}
                 />
               ) : activeId === "reports" ? (
-                <ResourceView
-                  id={reportView}
-                  data={filteredData}
-                  onNavigate={handleNavigate}
-                  notificationTarget={notificationTarget}
-                  onReportScopeChange={(next) => {
-                    setReportView(next);
-                    setActiveId("reports");
-                  }}
-                />
+                null
               ) : activeId === "billing" ? (
                 <ResourceView
                   id={billingView}

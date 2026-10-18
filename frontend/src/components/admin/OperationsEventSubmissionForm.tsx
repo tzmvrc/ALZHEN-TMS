@@ -24,6 +24,7 @@ type PendingReceiptUpload = { eventType: "BACKLOAD" | "OFFLOAD"; recordId: strin
 
 type Props = {
   token: string;
+  assignedDispatch?: boolean;
   tripOptions: OperationsTripOption[];
   tripsLoading: boolean;
   tripsError?: string | null;
@@ -32,7 +33,7 @@ type Props = {
   onCancel?: () => void;
 };
 
-export default function OperationsEventSubmissionForm({ token, tripOptions, tripsLoading, tripsError, onSubmitted, onComplete, onCancel }: Props) {
+export default function OperationsEventSubmissionForm({ token, assignedDispatch = false, tripOptions, tripsLoading, tripsError, onSubmitted, onComplete, onCancel }: Props) {
   const { profile } = useAuth();
   const canManage = ["ADMIN", "STAFF"].includes(profile?.role ?? "");
   const [reportedAt, setReportedAt] = useState(() => manilaDateTime());
@@ -55,7 +56,7 @@ export default function OperationsEventSubmissionForm({ token, tripOptions, trip
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
   const submitGuard = useRef(false);
-  const choices = useMemo(() => eventType === "OFFLOAD" ? drTransaction ? [offloadTransactionChoice(drTransaction)] : [] : buildOperationsTripChoices(tripOptions), [tripOptions, eventType, drTransaction]);
+  const choices = useMemo(() => eventType === "OFFLOAD" && !assignedDispatch ? drTransaction ? [offloadTransactionChoice(drTransaction)] : [] : buildOperationsTripChoices(tripOptions), [tripOptions, eventType, drTransaction, assignedDispatch]);
   const selectedChoice = findOperationsTripChoice(choices, tripId);
   const selectedTrip = selectedChoice?.trip ?? null;
   const submitting = busy || Boolean(pendingUpload);
@@ -204,7 +205,7 @@ export default function OperationsEventSubmissionForm({ token, tripOptions, trip
   return <form onSubmit={(event) => void submit(event)} role="dialog" aria-modal="true" aria-labelledby="operations-add-report-title" className="flex max-h-[92vh] flex-col overflow-hidden rounded-2xl bg-white shadow-lg ring-1 ring-slate-100">
     <header className="flex items-center justify-between gap-3 border-b border-slate-100 bg-white px-6 py-5 sm:px-8">
       <div>
-        <h2 id="operations-add-report-title" className="text-base font-semibold text-slate-800">Add {eventType === "OFFLOAD" ? "Offload" : "Backload"} report</h2>
+        <h2 id="operations-add-report-title" className="text-base font-semibold text-slate-800">{assignedDispatch ? "Report Trip" : `Add ${eventType === "OFFLOAD" ? "Offload" : "Backload"} report`}</h2>
         <p className="mt-0.5 text-xs text-slate-400">{eventType === "OFFLOAD" ? "Choose a delivery by DR Number and enter the report details." : "Choose an existing trip and enter the report details."}</p>
       </div>
       {onCancel && <button type="button" onClick={onCancel} disabled={submitting} aria-label="Close" className="rounded-full p-2 text-slate-400 transition hover:bg-slate-50 hover:text-slate-600 disabled:opacity-50"><X className="h-4 w-4" /></button>}
@@ -217,7 +218,7 @@ export default function OperationsEventSubmissionForm({ token, tripOptions, trip
           <p className="mt-0.5 text-xs text-slate-400">Trip and assignment details are read-only and come from existing TMS records.</p>
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
-          {eventType === "OFFLOAD" ? <div className="text-xs font-semibold text-slate-600 sm:col-span-2">DR Number <span className="text-rose-600">*</span><div className="mt-1"><OffloadDrSelector token={token} value={drTransaction} disabled={submitting} onSelect={(row) => { setDrTransaction(row); setTripId(row.id); setQuantity(row.quantity == null ? "" : String(row.quantity)); setTotalCbm(row.total_cbm == null ? "" : String(row.total_cbm)); setError(""); }} /></div></div> : <div className="text-xs font-semibold text-slate-600 sm:col-span-2">Dispatch Number <span className="text-rose-600">*</span>
+          {eventType === "OFFLOAD" && !assignedDispatch ? <div className="text-xs font-semibold text-slate-600 sm:col-span-2">DR Number <span className="text-rose-600">*</span><div className="mt-1"><OffloadDrSelector token={token} value={drTransaction} disabled={submitting} onSelect={(row) => { setDrTransaction(row); setTripId(row.id); setQuantity(row.quantity == null ? "" : String(row.quantity)); setTotalCbm(row.total_cbm == null ? "" : String(row.total_cbm)); setError(""); }} /></div></div> : <div className="text-xs font-semibold text-slate-600 sm:col-span-2">Dispatch Number <span className="text-rose-600">*</span>
             <div className="mt-1"><ReportDropdownEditor label="Dispatch Number" value={tripId} displayValue={selectedChoice?.label ?? ""} options={choices.filter((choice) => choice.selectable).map((choice) => ({ value: choice.id, label: choice.label }))} autoOpen={false} popoverZIndex={2200} showStoredValue={false} loading={tripsLoading} error={tripsError ?? undefined} disabled={submitting || tripsLoading || Boolean(tripsError)} onSelect={(id) => { setTripId(id); const values = selectedTransactionValues(findOperationsTripChoice(choices, id)); setQuantity(values.quantity); setTotalCbm(values.totalCbm); setError(""); }} /></div>
             <span className={`mt-1 block font-normal ${tripsError ? "text-rose-700" : "text-slate-400"}`} role={tripsError ? "alert" : undefined}>{tripListMessage}</span>
           </div>}
@@ -278,7 +279,7 @@ export default function OperationsEventSubmissionForm({ token, tripOptions, trip
       {onCancel && <button type="button" onClick={onCancel} disabled={submitting} className={cancelClass}>Cancel</button>}
       {pendingUpload
         ? <button className={buttonClass} type="button" onClick={() => void retryReceiptUpload()} disabled={busy}>{busy ? "Uploading…" : "Retry receipt upload"}</button>
-        : <button className={buttonClass} type="submit" disabled={submitting || !selectedChoice?.selectable || (eventType === "BACKLOAD" && (tripsLoading || Boolean(tripsError))) || !reason.trim() || files.length > maximumImages}>{busy ? "Saving…" : "Add Report"}</button>}
+        : <button className={buttonClass} type="submit" disabled={submitting || !selectedChoice?.selectable || (eventType === "BACKLOAD" && (tripsLoading || Boolean(tripsError))) || !reason.trim() || files.length > maximumImages}>{busy ? "Saving…" : assignedDispatch ? "Submit Report" : "Add Report"}</button>}
     </footer>
   </form>;
 }

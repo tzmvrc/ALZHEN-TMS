@@ -7,7 +7,7 @@ const uuid = (n: number) => `123e4567-e89b-42d3-a456-${String(n).padStart(12, "0
 
 test("actual delete service preserves protected reports, targets physical IDs and handles dependency races", async () => {
   const { supabaseAdmin } = await import("../src/config/supabase.js");
-  const { deleteOperationsReport } = await import("../src/services/operations-report.service.js");
+  const { mockDeleteOperationsReport: deleteOperationsReport } = await import("./fixtures/mock-report-deletion.js");
   const actor = { profileId: uuid(1), role: "ADMIN" };
   const trip = uuid(2), stop = uuid(3), offload = uuid(4), sibling = uuid(5);
   const tables: Record<string, Array<Record<string, any>>> = {

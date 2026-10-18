@@ -1,3 +1,5 @@
+import {useWholeTripSelection} from "../../hooks/useWholeTripSelection";
+import {selectedParentTripIds,selectedParentTripCount} from "../../services/whole-trip-deletion";
 import { updateLoadingReport } from "../../services/operations-report.service";
 import {isTripTimeField,tripTimeDisplay,manilaDateTime,saveTripTime} from "../../services/trip-time";
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ClipboardEvent as ReactClipboardEvent, type CSSProperties, type MouseEvent, type ReactNode } from "react";
@@ -30,7 +32,8 @@ import {
 import type ExcelJS from "exceljs";
 import { useAuth } from "../../context/AuthContext";
 import TableState from "./TableState";
-import { TRIP_EDIT_STEPS, tripEditFieldStep, tripEditFieldChanged, validateTripEditField } from "../../services/trip-edit-wizard";
+import { TRIP_EDIT_STEPS, REPORT_EDIT_STEPS, tripEditFieldStep, tripEditFieldChanged, validateTripEditField } from "../../services/trip-edit-wizard";
+import WholeTripDeletionDialog from "./WholeTripDeletionDialog";
 import FlexibleTableSectionTabs from "./FlexibleTableSectionTabs";
 import { ApiError, invalidateApiCache } from "../../services/api.service";
 import {
@@ -409,12 +412,14 @@ const ReportSelectionToolbar = memo(function ReportSelectionToolbar({
   columns,
   onEdit,
   onDeleteTransaction,
+  onDeleteTrips,
 }: {
   reportKey: ReportKey;
   rows: ReportRow[];
   columns: ReportColumn[];
   onEdit: () => void;
   onDeleteTransaction?: (row: ReportRow) => void;
+  onDeleteTrips?: (rows:ReportRow[])=>void;
 }) {
   useSyncExternalStore(reportSelection.subscribe, reportSelection.revision, reportSelection.revision);
   const keys = reportSelection.getKeys(reportKey);
@@ -422,7 +427,8 @@ const ReportSelectionToolbar = memo(function ReportSelectionToolbar({
   const row = rows.find((candidate) => getReportRowKey(reportKey, candidate) === keys[0]);
   const hasEditableFields = Boolean(row && columns.some((column) => getEditableCellTarget(row, column.key, reportKey)));
   const canEdit = keys.length === 1 && Boolean(row) && hasEditableFields;
-  return <><ReportRowActionButton action="edit" disabled={!canEdit} onClick={onEdit} />{onDeleteTransaction && <ReportRowActionButton action="delete" disabled={keys.length !== 1 || !row} label="Permanently delete selected transaction" onClick={() => { if (row) onDeleteTransaction(row); }} />}</>;
+  const selected=keys.map(key=>rows.find(candidate=>getReportRowKey(reportKey,candidate)===key));
+  return <><span className="text-xs text-slate-500">{keys.length} selected rows ? {selectedParentTripCount(selected) ?? "Unavailable"} unique trips ? current page{(selectedParentTripCount(selected)??0)>20?" (maximum 20 trips per batch)":""}</span><button type="button" className="px-2 text-xs underline" onClick={()=>reportSelection.clear(reportKey)}>Clear selection</button><ReportRowActionButton action="edit" disabled={!canEdit} onClick={onEdit} />{onDeleteTransaction && <ReportRowActionButton action="delete" disabled={keys.length !== 1 || !row} label="Permanently delete selected transaction" onClick={() => { if (row) onDeleteTransaction(row); }} />}{onDeleteTrips&&<ReportRowActionButton action="delete" label="Permanently delete selected trips" disabled={!selectedParentTripIds(selected)} onClick={()=>onDeleteTrips(selected.filter((r):r is ReportRow=>Boolean(r)))}/>}</>;
 });
 
 function rowText(row: ReportRow, ...keys: string[]): string {
@@ -1084,12 +1090,15 @@ export default function ReportDataView({
   }[]>([]);
   const [editModalRecord, setEditModalRecord] = useState<ReportRow | null>(null);
   const [editModalOpen, setEditModalOpen] = useState(false);
+  const {tripIds:wholeTripIds,setTripIds:setWholeTripIds}=useWholeTripSelection(`${profile?.id??""}:${profile?.role??""}:${accessToken??""}`);
+  const [wholeTripRowCount,setWholeTripRowCount]=useState(0);
+  const editSteps=transactionView?TRIP_EDIT_STEPS:REPORT_EDIT_STEPS;
   const [editModalBusy, setEditModalBusy] = useState(false);
   const [editModalError, setEditModalError] = useState("");
   const [tripEditStep, setTripEditStep] = useState(0);
   const tripEditHeading = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
-    if (transactionView && editModalOpen) tripEditHeading.current?.focus();
+    if (editModalOpen) tripEditHeading.current?.focus();
   }, [transactionView, editModalOpen, tripEditStep]);
   const [deleteTarget, setDeleteTarget] = useState<ReportRow | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
@@ -2200,12 +2209,15 @@ export default function ReportDataView({
   }
 
 
+  function closeRowEdit() {
+    if (editModalBusy) return;
+    if (editModalFields.some(({cell})=>tripEditFieldChanged(cell)) && !window.confirm("Discard unsaved row changes?")) return;
+    setEditModalOpen(false);
+  }
   async function saveSelectedRowEdits() {
     if (editModalBusy) return;
-    if (transactionView) {
-      const invalid = editModalFields.map(({ cell }) => validateTripEditField(cell)).find(Boolean);
-      if (invalid) { setEditModalError(invalid); return; }
-    }
+    const invalid = editModalFields.map(({ cell }) => validateTripEditField(cell)).find(Boolean);
+    if (invalid) { setEditModalError(invalid); return; }
     setEditModalBusy(true);
     setEditModalError("");
     let nextFields = editModalFields;
@@ -2922,6 +2934,7 @@ export default function ReportDataView({
             reportKey={reportKey}
             rows={displayedRows}
             columns={columns}
+            onDeleteTrips={!transactionView&&reportKey==="combined"&&profile?.role==="ADMIN"?selected=>{const ids=selectedParentTripIds(selected);if(ids){setWholeTripRowCount(selected.length);setWholeTripIds(ids);}}:undefined}
             onDeleteTransaction={transactionView ? (row) => { setDeleteTarget(row); setDeleteError(""); } : undefined}
             onEdit={openSelectedRowEditor} />
         </div>
@@ -3080,6 +3093,7 @@ export default function ReportDataView({
         </div>
       )}
 
+      {wholeTripIds&&accessToken&&<WholeTripDeletionDialog token={accessToken} tripIds={wholeTripIds} selectedRowCount={wholeTripRowCount} onClose={()=>setWholeTripIds(null)} onDeleted={()=>{reportSelection.clear(reportKey);setPage(1);setRetryVersion(v=>v+1);}}/>}
       {transactionView && accessToken && <TransactionCleanupNotice key={accessToken} token={accessToken} version={retryVersion} />}
       {deleteTarget && <div className="fixed inset-0 z-[2100] flex items-center justify-center bg-slate-900/30 p-4 backdrop-blur-sm">
         <section role="alertdialog" aria-modal="true" aria-labelledby="transaction-delete-title" aria-describedby="transaction-delete-description" className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
@@ -3092,18 +3106,18 @@ export default function ReportDataView({
       </div>}
       {editModalOpen && editModalRecord && (
         <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-slate-900/20 p-4 backdrop-blur-[2px]" onMouseDown={(event) => {
-          if (event.target === event.currentTarget && !editModalBusy) setEditModalOpen(false);
+          if (event.target === event.currentTarget) closeRowEdit();
         }}>
-          <section role="dialog" aria-modal="true" aria-labelledby="report-row-edit-title" className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+          <section role="dialog" aria-modal="true" aria-labelledby="report-row-edit-title" onKeyDown={event=>{if(event.key==="Escape"){event.stopPropagation();closeRowEdit();}}} className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
             <header className="border-b border-slate-100 px-5 py-4">
-              <h2 id="report-row-edit-title" ref={tripEditHeading} tabIndex={-1} className="text-lg font-semibold text-[#0b2341] outline-none">{transactionView ? `Edit transaction · ${TRIP_EDIT_STEPS[tripEditStep]}` : "Edit report row"}</h2>
+              <h2 id="report-row-edit-title" ref={tripEditHeading} tabIndex={-1} className="text-lg font-semibold text-[#0b2341] outline-none">{transactionView ? `Edit transaction · ${TRIP_EDIT_STEPS[tripEditStep]}` : `Edit report row · ${editSteps[tripEditStep]}`}</h2>
               <p className="mt-1 text-sm text-slate-500">{REPORTS[reportKey].title} · {rowText(editModalRecord, "dispatch_number", "trip_number", "store_call_id") || "Selected record"}</p>
             </header>
-            {transactionView && <ol aria-label="Trip edit progress" className="grid grid-cols-2 gap-2 border-b border-slate-100 bg-slate-50 px-5 py-3 sm:grid-cols-4">{TRIP_EDIT_STEPS.map((label, index) => <li key={label} aria-current={index === tripEditStep ? "step" : undefined}><button type="button" disabled={editModalBusy || index > tripEditStep} onClick={() => { setTripEditStep(index); setEditModalError(""); }} className={`w-full rounded-lg px-2 py-2 text-left text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9] disabled:cursor-not-allowed ${index === tripEditStep ? "bg-[#0b2341] text-white" : index < tripEditStep ? "bg-emerald-50 text-emerald-700" : "text-slate-400"}`}>{index < tripEditStep ? "✓" : index + 1} {label}</button></li>)}</ol>}
+            {<ol aria-label={transactionView ? "Trip edit progress" : "Report edit progress"} className="grid grid-cols-2 gap-2 border-b border-slate-100 bg-slate-50 px-5 py-3 sm:grid-cols-4">{editSteps.map((label, index) => <li key={label} aria-current={index === tripEditStep ? "step" : undefined}><button type="button" disabled={editModalBusy || index > tripEditStep} onClick={() => { setTripEditStep(index); setEditModalError(""); }} className={`w-full rounded-lg px-2 py-2 text-left text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9] disabled:cursor-not-allowed ${index === tripEditStep ? "bg-[#0b2341] text-white" : index < tripEditStep ? "bg-emerald-50 text-emerald-700" : "text-slate-400"}`}>{index < tripEditStep ? "✓" : index + 1} {label}</button></li>)}</ol>}
             <div className="grid gap-4 overflow-y-auto p-5 sm:grid-cols-2">
               {transactionView && tripEditStep === 1 && <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900 sm:col-span-2">Truck and driver assignments are shared by the other transactions on this physical trip.</p>}
               {transactionView && tripEditStep === 3 && <div className="sm:col-span-2"><h3 className="mb-3 text-sm font-semibold text-slate-700">Review pending changes</h3>{editModalFields.filter(({ cell }) => tripEditFieldChanged(cell)).length === 0 ? <p className="text-sm text-slate-500">No changes.</p> : <dl className="grid gap-3 sm:grid-cols-2">{editModalFields.filter(({ cell }) => tripEditFieldChanged(cell)).map(({ column, cell }) => <div key={cell.field} className="rounded-lg border border-slate-100 p-3"><dt className="text-xs font-semibold text-slate-500">{column.title}</dt><dd className="mt-1 whitespace-pre-wrap break-words text-sm text-slate-800">{cell.value || "Blank"}{["trip", "assignment"].includes(cell.definition.sourceEntity) && <span className="ml-2 text-xs text-amber-700">Shared {cell.definition.sourceEntity}</span>}</dd></div>)}</dl>}</div>}
-              {editModalFields.filter(({ cell }) => !transactionView || tripEditStep < 3 && tripEditFieldStep(cell.definition) === tripEditStep).map(({ column, cell }) => {
+              {editModalFields.filter(({ cell }) => (!transactionView || tripEditStep < 3) && tripEditFieldStep(cell.definition) === tripEditStep).map(({ column, cell }) => {
                 const saving = editModalBusy || cellSaveInFlight.current;
                 const fieldKey = cell.definition.dropdownField;
                 const choices = cell.definition.editor === "boolean"
@@ -3163,13 +3177,13 @@ export default function ReportDataView({
             </div>
             {editModalError && <p role="alert" className="mx-5 mb-3 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{editModalError}</p>}
             <footer className="flex justify-end gap-2 border-t border-slate-100 px-5 py-4">
-              <button type="button" disabled={editModalBusy} onClick={() => setEditModalOpen(false)} className="rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50">Cancel</button>
-              {transactionView && tripEditStep > 0 && <button type="button" disabled={editModalBusy} onClick={() => { setTripEditStep((step) => step - 1); setEditModalError(""); }} className="rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50">Back</button>}
-              {transactionView && tripEditStep < 3 ? <button type="button" disabled={editModalBusy} onClick={() => {
+              <button type="button" disabled={editModalBusy} onClick={closeRowEdit} className="rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50">Cancel</button>
+              {<button type="button" disabled={editModalBusy || tripEditStep === 0} onClick={() => { setTripEditStep((step) => step - 1); setEditModalError(""); }} className="rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50">Previous</button>}
+              {tripEditStep < editSteps.length - 1 && <button type="button" disabled={editModalBusy} onClick={() => {
                 const invalid = editModalFields.filter(({ cell }) => tripEditFieldStep(cell.definition) === tripEditStep).map(({ cell }) => validateTripEditField(cell)).find(Boolean);
                 if (invalid) { setEditModalError(invalid); return; }
                 setTripEditStep((step) => step + 1); setEditModalError("");
-              }} className="rounded-full bg-[#ffd43b] px-4 py-2 text-sm font-semibold text-[#0b2341] hover:bg-[#f2c200] disabled:opacity-50">Next</button> : <button type="button" disabled={editModalBusy || editModalFields.length === 0} onClick={() => void saveSelectedRowEdits()} className="rounded-full bg-[#ffd43b] px-4 py-2 text-sm font-semibold text-[#0b2341] hover:bg-[#f2c200] disabled:opacity-50">{editModalBusy ? "Saving…" : "Save changes"}</button>}
+              }} className="rounded-full bg-[#ffd43b] px-4 py-2 text-sm font-semibold text-[#0b2341] hover:bg-[#f2c200] disabled:opacity-50">Next</button>}<button type="button" disabled={editModalBusy || editModalFields.length === 0} onClick={() => void saveSelectedRowEdits()} className="rounded-full bg-[#ffd43b] px-4 py-2 text-sm font-semibold text-[#0b2341] hover:bg-[#f2c200] disabled:opacity-50">{editModalBusy ? "Saving…" : "Save changes"}</button>
             </footer>
           </section>
         </div>

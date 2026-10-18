@@ -14,7 +14,7 @@ test("bounded warmup and navigation share in-flight data; deletion invalidates O
     assert.strictEqual(getCachedOperations("owner"), preload); assert.equal(getCachedOperations("other-user"), null);
     const options = getInitialReportPageOptions("combined");
     const combined = await fetchReportPage("combined", "owner", options);
-    await deleteOperationsReport("owner", "OFFLOAD", "physical-id");
+    await deleteOperationsReport("owner", "OFFLOAD", "physical-id", "fixture-password");
     assert.equal(getCachedOperations("owner"), null);
     assert.strictEqual(getCachedReportPage("combined", "owner", options), combined);
     await fetchOperationsOverview("owner"); assert.equal(urls.filter((url) => url.includes("/operations/overview")).length, 2);

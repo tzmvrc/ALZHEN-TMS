@@ -1,4 +1,3 @@
-import { getCachedMasterData,fetchMasterData } from "../src/services/master-data.service.ts";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { cancelAdminPreload, preloadAdminPageData } from "../src/services/admin-preload.service.ts";
@@ -7,7 +6,7 @@ import { REPORTS, clearReportPageCache, fetchReportPage, getCachedReportPage, ge
 import { fetchOperationsOverview, getCachedOperations } from "../src/services/operations-report.service.ts";
 import { fetchTransmittalTracker, getCachedTransmittalTracker } from "../src/services/transmittal-tracker.service.ts";
 
-test("login schedules every configured report in the page cache and deduplicates repeat login/navigation", async () => {
+test("login does not preload unrelated tabs; Reports warms shared caches with concurrent request deduplication", async () => {
   const original = globalThis.fetch;
   cancelAdminPreload(); clearApiCache(); clearReportPageCache();
   const urls: string[] = [];let activeRequests=0,maxConcurrentRequests=0;const warmupStart=performance.now();
@@ -21,8 +20,11 @@ test("login schedules every configured report in the page cache and deduplicates
   try {
     await preloadAdminPageData("admin-test", "ADMIN");
     await preloadAdminPageData("admin-test", "ADMIN");
+    assert.equal(urls.length,0,"login starts no unrelated feature requests");
+    await Promise.all(Array.from({length:10},()=>fetchReportPage("combined","admin-test",getInitialReportPageOptions("combined"))));
+    await preloadAdminPageData("admin-test","ADMIN","reports");
     const keys = Object.keys(REPORTS) as Array<keyof typeof REPORTS>;
-    for (let attempt = 0; attempt < 100 && (keys.some((key) => !getCachedReportPage(key, "admin-test", getInitialReportPageOptions(key))) || !getCachedOperations("admin-test") || !getCachedTransmittalTracker("admin-test") || !getCachedMasterData("admin-test","stores")); attempt++) {
+    for (let attempt = 0; attempt < 100 && (keys.some((key) => !getCachedReportPage(key, "admin-test", getInitialReportPageOptions(key))) || !getCachedOperations("admin-test") || !getCachedTransmittalTracker("admin-test")); attempt++) {
       await new Promise((resolve) => setTimeout(resolve, 5));
     }
     for (const key of keys) {
@@ -30,18 +32,18 @@ test("login schedules every configured report in the page cache and deduplicates
       const dataRequests = urls.filter((url) => new URL(url).pathname === `/api/reports/${key}` && !url.includes("active_transactions"));
       assert.equal(dataRequests.length, 1, `${key} initial data requested once`);
     }
-    assert.ok(urls.some((url) => url.includes("active_transactions=true") && url.includes("archive_scope=active")), "Trips' active transaction query is warmed separately");
+    assert.ok(!urls.some(url=>url.includes("/trips?")||url.includes("/master-data/")),"Reports does not preload Home or management data");
     assert.ok(getCachedOperations("admin-test")); assert.ok(getCachedTransmittalTracker("admin-test"));
     assert.equal(urls.filter((url) => url.includes("/operations/overview?preload=true")).length, 1);
     assert.equal(urls.filter((url) => url.includes("/transmittal-tracker?search=&preload=true")).length, 1);
-    assert.equal(urls.length, 23, "7 report datasets plus shared lookups, Trips queries and three bounded management pages");
+    assert.equal(urls.length,16,"five standard report datasets plus shared references, Operations and Tracker only");
     const warmupMs=Math.round(performance.now()-warmupStart);const beforeNavigation = urls.length;
     for (const key of keys) await fetchReportPage(key, "admin-test", getInitialReportPageOptions(key));
     await fetchOperationsOverview("admin-test"); await fetchTransmittalTracker("admin-test");
-    for(const resource of ["warehouses","trucks","stores"] as const)await fetchMasterData("admin-test",resource,"",1);
+
     assert.equal(urls.length, beforeNavigation, "opening all seven prefetched report datasets adds zero requests");
     assert.ok(maxConcurrentRequests<=4,"two queued tasks have at most two report requests each");
-    console.log(JSON.stringify({mockedPreload:true,initialRequests:beforeNavigation,maxConcurrentRequests,warmupMs,navigationAdditionalRequests:urls.length-beforeNavigation}));
+    console.log(JSON.stringify({mockedPreload:true,baselineLoginPreloads:23,loginPreloads:0,reportsWarmupRequests:beforeNavigation,maxConcurrentRequests,warmupMs,navigationAdditionalRequests:urls.length-beforeNavigation}));
     cancelAdminPreload(); clearApiCache(); clearReportPageCache(); urls.length = 0;
     await preloadAdminPageData("trucker-test", "TRUCKER");
     assert.equal(urls.length, 0, "restricted sessions schedule no admin requests");

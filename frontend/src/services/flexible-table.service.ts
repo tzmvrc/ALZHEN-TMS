@@ -1,4 +1,4 @@
-import { apiDelete, apiGet, apiPatch, apiPost, type ApiResponse } from "./api.service";
+import { apiDelete, apiGet,apiGetCached,getCachedApiResponse,invalidateApiCache, apiPatch, apiPost, type ApiResponse } from "./api.service";
 
 export type FlexValueType = "TEXT" | "NUMBER" | "DATE" | "DATETIME" | "BOOLEAN";
 export type FlexInputMode = "TEXT" | "DROPDOWN" | "NUMBER" | "DATE" | "DATETIME" | "BOOLEAN";
@@ -21,9 +21,17 @@ async function getData<T>(promise: Promise<ApiResponse<T>>) {
 const path = (tableId: string) => `/flexible-tables/${encodeURIComponent(tableId)}`;
 export const listFlexibleTables = (token: string) => getData(apiGet<ApiResponse<FlexTable[]>>("/flexible-tables", token));
 const sectionPath = (sectionKey: FlexSectionKey) => `/flexible-tables/sections/${encodeURIComponent(sectionKey)}/tables`;
-export const listSectionFlexibleTables = (token: string, sectionKey: FlexSectionKey) => getData(apiGet<ApiResponse<FlexTable[]>>(sectionPath(sectionKey), token));
-export const connectFlexibleTableToSection = (token: string, sectionKey: FlexSectionKey, tableId: string) => getData(apiPost<ApiResponse<FlexTable>>(sectionPath(sectionKey), { table_id: tableId }, token));
-export const disconnectFlexibleTableFromSection = (token: string, sectionKey: FlexSectionKey, tableId: string) => getData(apiDelete<ApiResponse<FlexTable>>(`${sectionPath(sectionKey)}/${encodeURIComponent(tableId)}`, token));
+export const getCachedSectionFlexibleTables=(token:string,sectionKey:FlexSectionKey)=>getCachedApiResponse<ApiResponse<FlexTable[]>>(sectionPath(sectionKey),token,300000)?.data??null;
+export const invalidateSectionFlexibleTables=(sectionKey:FlexSectionKey)=>invalidateApiCache(sectionPath(sectionKey));
+export const listSectionFlexibleTables = (token: string, sectionKey: FlexSectionKey) => getData(apiGetCached<ApiResponse<FlexTable[]>>(sectionPath(sectionKey), token,30000));
+export const connectFlexibleTableToSection = async (token: string, sectionKey: FlexSectionKey, tableId: string) => {
+  const result = await getData(apiPost<ApiResponse<FlexTable>>(sectionPath(sectionKey), { table_id: tableId }, token));
+  invalidateSectionFlexibleTables(sectionKey); return result;
+};
+export const disconnectFlexibleTableFromSection = async (token: string, sectionKey: FlexSectionKey, tableId: string) => {
+  const result = await getData(apiDelete<ApiResponse<FlexTable>>(`${sectionPath(sectionKey)}/${encodeURIComponent(tableId)}`, token));
+  invalidateSectionFlexibleTables(sectionKey); return result;
+};
 export const createFlexibleTable = (token: string, name: string) => getData(apiPost<ApiResponse<FlexTable>>("/flexible-tables", { name }, token));
 export const getFlexibleTable = (token: string, id: string) => getData(apiGet<ApiResponse<FlexTableData>>(path(id), token));
 export const renameFlexibleTable = (token: string, id: string, name: string, expected_version: number) => getData(apiPatch<ApiResponse<FlexTable>>(path(id), { name, expected_version }, token));

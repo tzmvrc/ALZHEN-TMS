@@ -1,5 +1,4 @@
 import {
-  createContext,
   useContext,
   useEffect,
   useMemo,
@@ -14,6 +13,7 @@ import {
   TriangleAlert,
   X,
 } from "lucide-react";
+import {ToastContext} from "./toast-context";
 
 export type ToastVariant = "success" | "error" | "info" | "warning";
 
@@ -24,13 +24,6 @@ export type ToastItem = {
   variant: ToastVariant;
   duration?: number;
 };
-
-type ToastContextValue = {
-  addToast: (toast: Omit<ToastItem, "id">) => void;
-  dismissToast: (id: number) => void;
-};
-
-const ToastContext = createContext<ToastContextValue | undefined>(undefined);
 
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);

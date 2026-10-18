@@ -18,16 +18,16 @@ export default function OffloadCleanupNotice({ token, enabled, version }: { toke
     if (guard.current) return;
     guard.current = true; setBusy(id);
     try {
-      const result = await retryOffloadImageCleanup(token, id);
+      const result = await retryOffloadImageCleanup(token, id, rows.find(job=>job.id===id)?.source_type??"OFFLOAD");
       setState((current) => ({ token, rows: result.cleanup_pending ? current.rows : current.rows.filter((job) => job.id !== id), error: result.cleanup_pending ? "The report is deleted, but image cleanup is still pending. Retry later or ask an administrator to review storage ownership." : "" }));
       if (!result.cleanup_pending) setReload((current) => current + 1);
     } catch (cause) { setState((current) => ({ ...current, error: cause instanceof Error ? cause.message : "Image cleanup could not be confirmed." })); }
     finally { guard.current = false; setBusy(null); }
   }
   if (!enabled || (!rows.length && !error)) return null;
-  return <section aria-label="Pending Offload image cleanup" className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+  return <section aria-label="Pending report image cleanup" className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
     {rows.length > 0 && <p>These reports were permanently deleted. Their image cleanup is not complete:</p>}
-    {rows.map((job) => <div key={job.id} className="flex flex-wrap items-center justify-between gap-2"><span>Offload {job.offload_id}</span><button type="button" disabled={Boolean(busy)} className="rounded border border-amber-300 px-2 py-1 font-semibold disabled:opacity-50" onClick={() => void retry(job.id)}>{busy === job.id ? "Cleaning images…" : "Retry image cleanup"}</button></div>)}
+    {rows.map((job) => <div key={job.id} className="flex flex-wrap items-center justify-between gap-2"><span>{job.source_type === "BACKLOAD" ? "Backload" : "Offload"} {job.offload_id ?? job.backload_id}</span><button type="button" disabled={Boolean(busy)} className="rounded border border-amber-300 px-2 py-1 font-semibold disabled:opacity-50" onClick={() => void retry(job.id)}>{busy === job.id ? "Cleaning images…" : "Retry image cleanup"}</button></div>)}
     {error && <p role="alert">{error} <button type="button" disabled={Boolean(busy)} className="underline" onClick={() => { invalidateOperationsReportsCache(); setReload((current) => current + 1); }}>Refresh cleanup status</button></p>}
   </section>;
 }
