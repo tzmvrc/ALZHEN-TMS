@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { X } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
+import { ApiError } from "../../services/api.service";
 import OperationsReporterEditor from "./OperationsReporterEditor";
 import { manilaDateTime, manilaDateTimeToIso, optionalOffloadNumber, selectedTransactionValues } from "../../services/offload-form.logic";
 import {
@@ -56,10 +57,13 @@ export default function OperationsEventSubmissionForm({ token, assignedDispatch 
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
   const submitGuard = useRef(false);
+  const requestId = useRef<string | null>(null);
+  const uploadIds = useRef(new WeakMap<File, string>());
+  const [uncertainSubmission, setUncertainSubmission] = useState(false);
   const choices = useMemo(() => eventType === "OFFLOAD" && !assignedDispatch ? drTransaction ? [offloadTransactionChoice(drTransaction)] : [] : buildOperationsTripChoices(tripOptions), [tripOptions, eventType, drTransaction, assignedDispatch]);
   const selectedChoice = findOperationsTripChoice(choices, tripId);
   const selectedTrip = selectedChoice?.trip ?? null;
-  const submitting = busy || Boolean(pendingUpload);
+  const submitting = busy || Boolean(pendingUpload) || uncertainSubmission;
   const maximumImages = eventType === "OFFLOAD" ? MAX_OFFLOAD_IMAGES : 20;
 
   async function refreshReports() {
@@ -75,7 +79,10 @@ export default function OperationsEventSubmissionForm({ token, assignedDispatch 
     for (let index = 0; index < pending.files.length; index += 1) {
       try {
         setStatus(`Uploading image ${index + 1} of ${pending.files.length}…`);
-        await uploadOperationsReceipt(token, pending.eventType, pending.recordId, pending.files[index]);
+        const file = pending.files[index];
+        let uploadId = uploadIds.current.get(file);
+        if (!uploadId) { uploadId = crypto.randomUUID(); uploadIds.current.set(file, uploadId); }
+        await uploadOperationsReceipt(token, pending.eventType, pending.recordId, file, uploadId);
       } catch (cause) {
         setPendingUpload({ ...pending, files: pending.files.slice(index) });
         setError(cause instanceof Error ? cause.message : "Unable to upload the receipt.");
@@ -148,7 +155,9 @@ export default function OperationsEventSubmissionForm({ token, assignedDispatch 
     setStatus("Submitting report…");
     let created;
     try {
+      requestId.current ??= crypto.randomUUID();
       created = await createScopedReport(token, eventType === "OFFLOAD" ? "offloads" : "backloads", {
+        request_id: requestId.current,
         trip_id: trip.id,
         trip_stop_id: choice.stopId,
         reason: normalizedReason,
@@ -158,11 +167,15 @@ export default function OperationsEventSubmissionForm({ token, assignedDispatch 
       });
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : `Unable to create the ${eventType.toLowerCase()} report.`);
-      setStatus("");
+      const rejectedBeforeWrite = cause instanceof ApiError && [400, 401, 403, 404].includes(cause.status);
+      if (rejectedBeforeWrite) requestId.current = null;
+      setUncertainSubmission(!rejectedBeforeWrite);
+      setStatus(rejectedBeforeWrite ? "" : "The response was not confirmed. Retry this same submission; its request ID prevents a duplicate report.");
       submitGuard.current = false;
       setBusy(false);
       return;
     }
+    setUncertainSubmission(false);
 
     if (files.length === 0) {
       setStatus("Report submitted.");
@@ -276,10 +289,10 @@ export default function OperationsEventSubmissionForm({ token, assignedDispatch 
     </div>
 
     <footer className="flex justify-end gap-2 border-t border-slate-100 bg-white px-6 py-4 sm:px-8">
-      {onCancel && <button type="button" onClick={onCancel} disabled={submitting} className={cancelClass}>Cancel</button>}
+      {onCancel && <button type="button" onClick={() => { if (!uncertainSubmission || window.confirm("This submission may already be saved. Leaving discards its retry state. Check the report list before submitting another report.")) onCancel(); }} disabled={busy || Boolean(pendingUpload)} className={cancelClass}>Cancel</button>}
       {pendingUpload
         ? <button className={buttonClass} type="button" onClick={() => void retryReceiptUpload()} disabled={busy}>{busy ? "Uploading…" : "Retry receipt upload"}</button>
-        : <button className={buttonClass} type="submit" disabled={submitting || !selectedChoice?.selectable || (eventType === "BACKLOAD" && (tripsLoading || Boolean(tripsError))) || !reason.trim() || files.length > maximumImages}>{busy ? "Saving…" : assignedDispatch ? "Submit Report" : "Add Report"}</button>}
+        : <button className={buttonClass} type="submit" disabled={busy || !selectedChoice?.selectable || (eventType === "BACKLOAD" && (tripsLoading || Boolean(tripsError))) || !reason.trim() || files.length > maximumImages}>{busy ? "Saving…" : uncertainSubmission ? "Retry same submission" : assignedDispatch ? "Submit Report" : "Add Report"}</button>}
     </footer>
   </form>;
 }

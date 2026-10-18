@@ -3403,3 +3403,115 @@ commit or push. Resume with separate proposal review/approval and then controlle
 explicitly authorized Admin/Trucker submission acceptance. Do not enable whole-trip
 deletion or clean up the unowned object. Lost-response creation idempotency and concurrent
 Backload image-count enforcement remain limitations, not new guarantees.
+
+
+## Phase 2C.6 ? Installed reporting migrations and local deletion activation (October 18, 2026)
+
+See `docs/phase-2c6-autonomous-completion.md` for exact evidence, role boundaries,
+checksums, recovery instructions and limitations. This supersedes the Phase2C.5
+pending-approval status for the following two unchanged files only:
+
+- 2026_11_09_proposed_backload_creator_attribution.sql -> 20261018084339,
+  SHA D420DA31A42335FD05E03F62ED3E4F9F3DAB969956DCE9F9B8A21415BE3A7333.
+- 2026_11_10_proposed_backload_deletion_cleanup.sql -> 20261018084357,
+  SHA 9CC29592B7379FDC2605D138476BBA9B039B76734C6F28AD23B48096AC520980.
+
+Both installed once into hdmknewarynwpbrhfgai after fresh disposable tests and live
+preflight. Creator view retains28-column/type/ACL contract; Backload original creator
+now supports database-wide search/sort. Backload deletion always uses its private,
+service-only atomic journal RPC, including reports without images. Existing RPC
+fingerprints, browser access restrictions, RLS/publications and private5MiB bucket
+remain unchanged. No additional SQL/Storage/Realtime change required.
+
+Closed the legacy transaction/last-stop password bypass using the current-user
+verification guard, immutable actor/trip/stop scope, updated client/dialog and HTTP
+tests. Existing Admin/Staff transaction permission retained; Combined/Tracker whole-
+trip deletion stays Admin-only. Five attempts/15min and shared Redis fail-closed
+behavior preserved; invalid worker counts now fail closed too.
+
+Owner-authorized LOCAL activation: WHOLE_TRIP_DELETE_ENABLED=true,WEB_CONCURRENCY=1
+in ignored backend.env; actual process restarted and startup/runtime authenticated
+capabilities verified. Hosting remains postponed: no production deployment or remote
+runtime activation claimed. Tracking/PDFfalse,plannedunset/defaultfalse,PODreviewtrue.
+Rollback: whole-trip flagfalse and restart local backend; retain journals.
+
+REAL Admin authentication-only acceptance passed: password verified with isolated
+Supabase Auth client; original user and provider-session identity survived refresh;
+password cleared; Socket.IO connected. Authenticated capabilities returned enabled,
+max20,password-required. Read-only impact exposed a real legacy-POD retention blocker
+and disabled deletion correctly. No live deletion endpoint/RPC was exercised.
+Local-only acceptance route is excluded from production and rejects remote clients.
+
+Tests: backend197/197,frontend88/88; seven isolated browser fixtures; fresh disposable
+migration/creator/cleanup/whole-trip/last-stop/financial/20-vs21/rollback tests,2whole-
+trip callers and3driver-writer races pass. TypeScript/builds/changed frontend lint
+and Git checks pass. Existing Vite chunk warnings remain. Disposable PG cluster stopped.
+
+Final MCP read-back after reconnection: trips7,stops8,lineitems9,POD1,images9;
+Offload0,Backload0,billing/payable/receivable0;orphans0;Backloadjobs0;whole-trip
+journalmarkers0. Private receipt object1 remains untouched. No operational writes,
+DR333 edits, Storage mutation, GPS/provider calls, deployment,commit or push. Only
+approved DDL and authorized Auth/session verification occurred.
+
+Next: separately scoped live Trucker submission/image and destructive acceptance if
+requested; no production test records were created. Production hosting/Redis remains
+future deployment work. Lost-response creation idempotency and simultaneous Backload
+image-count enforcement remain documented limits. Do not rerun installed migrations.
+
+## Phase 2C.7 — Integration reliability checkpoint (October 19, 2026)
+
+Full evidence: `docs/phase-2c7-integration-reliability.md`.
+
+Completed:
+
+- Durable actor/request idempotency for Offload/Backload HTTP submissions; unchanged
+  retry keys and frozen uncertain form content prevent lost-response duplicates.
+- Independent image keys, SHA-256 validation and PENDING metadata reservations
+  before private Storage writes; READY replays avoid further Storage requests.
+- Atomic five/twenty image capacity with Backload parent locking, including pending
+  slots. Twenty-two simultaneous Backload requests accept twenty and reject two.
+- Original uploader can resume a persisted pending image from report details using
+  the original file. Pending images have clear states and no invalid signed URL.
+- Pending uploads protect report, whole-trip and last-stop deletion/conversion;
+  whole-trip preview exposes the blocker and database rollback remains atomic.
+- Locked trip-state/assignment recheck closes a concurrent Trucker submission race.
+  Creator mapping, shared controls, passwords, caching and drafts are preserved.
+
+Installed under Phase 2C.7 authorization, project `hdmknewarynwpbrhfgai`:
+
+| File | SHA-256 | Supabase version |
+| --- | --- | --- |
+| `2026_11_11_operations_submission_reliability.sql` | `D51501003DCDE09227B4E441B9F87ECA5F48F6A2C9AD22F772076781179C91EB` | `20261018160856` |
+| `2026_11_12_operations_submission_terminal_guard.sql` | `DD54CB8B726D676657A90DB3BC34CD79B46B62994E18A3A183D5AC1BFD5B2E35` | `20261018161115` |
+
+Each installed once, definitions match disposable PostgreSQL. New retry journal is
+private/RLS enabled; new RPCs are service-only invokers with fixed search paths.
+Only receipt status/received-time column UPDATE was added for the service role.
+Existing browser grants, RLS policies, Storage settings and Realtime publications
+are unchanged. Original destructive RPC fingerprints are unchanged.
+
+Verification: **202/202 backend**, **88/88 frontend**, **11 isolated browser
+fixtures**; TypeScript, builds, changed frontend-file lint and diff checks pass.
+Disposable SQL covers attribution/search/sort, record-only cleanup/retention,
+20/21-parent boundaries, real concurrent submissions/uploads/deletions, multi-stop
+isolation, pending rollback, terminal states, service grants and guarded recovery.
+Existing Vite chunk warning remains. Runner/setup mistakes were fixed and rerun;
+the full report distinguishes those from product failures.
+
+Live before/after counts unchanged: 7 trips, 8 stops, 9 line items, 1 POD, 9 trip
+images, zero Offloads/Backloads/report receipts/financial rows, 42 existing Storage
+object rows, zero whole-trip audit markers. New retry journal is empty. No live
+business mutation/deletion, Storage upload/deletion, DR333 test, paid provider
+request, GPS/route/PDF activation, deployment, commit or push occurred.
+
+Local whole-trip deletion stays enabled, single backend worker; tracking/planned
+routes/PDF remain false/default false, POD review true. The backend was restarted
+to load the implementation. Real multi-replica Redis remains future acceptance.
+
+Resume point: controlled live submission/attribution/upload acceptance needs fresh
+dedicated sessions (the old Admin session hit the unchanged midnight Manila rule)
+and an explicitly designated disposable trip/stop/image scope. Do not reuse DR333
+or delete existing operational data. No further database change is currently
+required. Do not rerun migrations 11/12. Pending uploads must be recovered, not
+silently expired; lost original files or revoked uploader access require reviewed
+operator recovery. The tested rollback proposal refuses nonempty retry evidence.

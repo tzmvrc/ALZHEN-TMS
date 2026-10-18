@@ -397,10 +397,10 @@ export async function apiDelete<T>(
   );
 }
 
-export async function apiPostFile<T>(endpoint: string, file: File, token?: string): Promise<T> {
+export async function apiPostFile<T>(endpoint: string, file: File, token?: string, requestId?: string): Promise<T> {
   return request<T>(endpoint, {
     method: "POST",
     body: file,
-    headers: { "Content-Type": file.type, "X-File-Name": encodeURIComponent(file.name) },
+    headers: { "Content-Type": file.type, "X-File-Name": encodeURIComponent(file.name), ...(requestId ? { "X-Upload-Request-Id": requestId } : {}) },
   }, token);
 }

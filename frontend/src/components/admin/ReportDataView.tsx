@@ -1103,6 +1103,9 @@ export default function ReportDataView({
   const [deleteTarget, setDeleteTarget] = useState<ReportRow | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState("");
+  const [transactionPassword,setTransactionPassword]=useState("");
+  const transactionOwner=useRef(`${profile?.id??""}:${profile?.role??""}:${accessToken??""}`);
+  useEffect(()=>{const owner=`${profile?.id??""}:${profile?.role??""}:${accessToken??""}`;if(transactionOwner.current!==owner){transactionOwner.current=owner;setTransactionPassword("");setDeleteTarget(null);}},[accessToken,profile?.id,profile?.role]);
   const deleteRequest = useRef(false);
   const [pagination, setPagination] = useState<Pagination | null>(null);
   const [page, setPage] = useState(1);
@@ -2139,17 +2142,17 @@ export default function ReportDataView({
   }
 
   async function confirmTransactionDeletion() {
-    if (!deleteTarget || !accessToken || deleteRequest.current) return;
+    if (!deleteTarget || !accessToken || deleteRequest.current || !transactionPassword) return;
     if (cellSaveInFlight.current) { setDeleteError("Wait for the current cell save to finish, then retry."); return; }
     const tripId = deleteTarget.trip_id;
     const stopId = deleteTarget.trip_stop_id ?? deleteTarget._trip_stop_id;
     if (typeof tripId !== "string" || (stopId != null && typeof stopId !== "string")) { setDeleteError("This row is missing its transaction identity."); return; }
     deleteRequest.current = true; setDeleteBusy(true); setDeleteError("");
     try {
-      await deleteTransaction(accessToken, tripId, typeof stopId === "string" ? stopId : null);
+      await deleteTransaction(accessToken, tripId, typeof stopId === "string" ? stopId : null,transactionPassword);
       setDeleteTarget(null); reportSelection.clear(reportKey); setRetryVersion((current) => current + 1);
     } catch (cause) { setDeleteError(cause instanceof Error ? cause.message : "Deletion could not be confirmed. Retry this same transaction."); }
-    finally { deleteRequest.current = false; setDeleteBusy(false); }
+    finally { setTransactionPassword("");deleteRequest.current = false; setDeleteBusy(false); }
   }
 
   function openSelectedRowEditor() {
@@ -3099,9 +3102,10 @@ export default function ReportDataView({
         <section role="alertdialog" aria-modal="true" aria-labelledby="transaction-delete-title" aria-describedby="transaction-delete-description" className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
           <h2 id="transaction-delete-title" className="text-lg font-semibold text-[#0b2341]">Permanently delete transaction?</h2>
           <p className="mt-2 text-sm font-semibold text-slate-700">{rowText(deleteTarget, "transaction_dr_number", "dr_number", "dispatch_number", "transaction_number")} · {rowText(deleteTarget, "store_name", "customer_name")}</p>
+          <label className="mt-3 block text-sm font-medium">Current account password<input type="password" autoComplete="current-password" value={transactionPassword} disabled={deleteBusy} onChange={event=>setTransactionPassword(event.target.value)} className="mt-1 w-full rounded border border-slate-300 p-2" /></label>
           <p id="transaction-delete-description" className="mt-3 text-sm text-slate-600">This permanently deletes this transaction, its exclusively owned reports, items and eligible images. Sibling transactions and shared assignments remain. Protected history or financial records block deletion. Image cleanup may remain pending and can be retried. This cannot be undone.</p>
           {deleteError && <p role="alert" className="mt-3 text-sm text-rose-700">{deleteError}</p>}
-          <footer className="mt-5 flex justify-end gap-2"><button type="button" disabled={deleteBusy} onClick={() => setDeleteTarget(null)} className="rounded-full px-4 py-2 text-sm text-slate-600 disabled:opacity-50">Cancel</button><button type="button" disabled={deleteBusy} onClick={() => void confirmTransactionDeletion()} className="rounded-full bg-[#0b2341] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{deleteBusy ? "Saving…" : "Permanently delete"}</button></footer>
+          <footer className="mt-5 flex justify-end gap-2"><button type="button" disabled={deleteBusy} onClick={() => {setTransactionPassword("");setDeleteTarget(null);}} className="rounded-full px-4 py-2 text-sm text-slate-600 disabled:opacity-50">Cancel</button><button type="button" disabled={deleteBusy || !transactionPassword} onClick={() => void confirmTransactionDeletion()} className="rounded-full bg-[#0b2341] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{deleteBusy ? "Saving…" : "Permanently delete"}</button></footer>
         </section>
       </div>}
       {editModalOpen && editModalRecord && (

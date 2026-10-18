@@ -7,7 +7,8 @@ const id = (n: number) => `123e4567-e89b-42d3-a456-${String(n).padStart(12, "0")
 
 test("transaction service validates exact scope, retries owned images, and reports committed deletion separately from cleanup", async () => {
   const { supabaseAdmin } = await import("../src/config/supabase.js");
-  const service = await import("../src/services/transaction-deletion.service.js");
+  const module = await import("../src/services/transaction-deletion.service.js");
+  const service = {...module,deleteTransaction:module.createTransactionDeleter(async(_owner,_credentials,commit)=>commit())};
   const actor = { id: id(1), role: "ADMIN" };
   const job = { id: id(2), transaction_id: id(4), trip_id: id(3), trip_stop_id: id(4), state: "PENDING_STORAGE", attempts: 0,
     storage_objects: [{ bucket: "report-receipts", path: `operations/${id(3)}/offload/${id(5)}/${id(6)}.png` }], snapshot: { private: true } };
@@ -73,4 +74,14 @@ test("transaction service validates exact scope, retries owned images, and repor
   } finally {
     supabaseAdmin.rpc = original.rpc; supabaseAdmin.from = original.from; supabaseAdmin.storage.from = original.storage;
   }
+});
+
+test("the actual transaction deleter never reaches the database without current-user credentials",async()=>{
+ const {supabaseAdmin}=await import("../src/config/supabase.js");
+ const {deleteTransaction}=await import("../src/services/transaction-deletion.service.js");
+ const old=supabaseAdmin.rpc;let calls=0;supabaseAdmin.rpc=(async()=>{calls++;throw Error("Must not call RPC");}) as typeof old;
+ try{
+  for(const stop of [null,id(4)])await assert.rejects(deleteTransaction({id:id(1),role:"ADMIN"},id(3),stop),/current account password/);
+  assert.equal(calls,0);
+ }finally{supabaseAdmin.rpc=old;}
 });

@@ -1,3 +1,4 @@
+import {withCurrentUserPassword,type DeletionCredentials} from "./deletion-password.service.js";
 import { supabaseAdmin } from "../config/supabase.js";
 import { ApiError } from "../utils/api-response.js";
 import { requireUuid } from "./flexible-table.validation.js";
@@ -43,7 +44,7 @@ function cleanOnce(job: Job) {
   if (!running.has(job.id)) running.set(job.id, clean(job).finally(() => { running.delete(job.id); }));
   return running.get(job.id)!;
 }
-export async function deleteTransaction(actor: Actor, tripInput: unknown, stopInput: unknown) {
+async function deleteConfirmedTransaction(actor: Actor, tripInput: unknown, stopInput: unknown) {
   authorize(actor);
   const trip = requireUuid(tripInput, "trip_id"), stop = stopInput == null ? null : requireUuid(stopInput, "trip_stop_id");
   const { data, error } = await supabaseAdmin.rpc("delete_transaction_with_cleanup_v1", { p_trip_id: trip, p_stop_id: stop, p_actor_id: requireUuid(actor.id, "actor_id") });
@@ -74,3 +75,13 @@ export async function retryTransactionCleanup(actor: Actor, input: unknown) {
   if (!data) throw new ApiError("Cleanup operation not found.", 404, "CLEANUP_NOT_FOUND");
   return cleanOnce(data as Job);
 }
+
+/** Last-stop/empty-parent deletion is never reachable without fresh current-user authentication. */
+export function createTransactionDeleter(verify=withCurrentUserPassword){
+ return async(actor:Actor,tripInput:unknown,stopInput:unknown,credentials:DeletionCredentials={password:undefined,accessToken:"",appSessionId:null})=>{
+  authorize(actor);
+  const owner=Object.freeze({...actor}),trip=requireUuid(tripInput,"trip_id"),stop=stopInput==null?null:requireUuid(stopInput,"trip_stop_id");
+  return verify(owner,credentials,()=>deleteConfirmedTransaction(owner,trip,stop));
+ };
+}
+export const deleteTransaction=createTransactionDeleter();

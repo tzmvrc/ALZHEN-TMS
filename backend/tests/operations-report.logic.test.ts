@@ -311,7 +311,7 @@ test("loading retry keeps one trip row and stop saves remain isolated", async ()
   const originalRpc = supabaseAdmin.rpc;
   let generatedId = 0;
   const generatedUuid = () => `f23e4567-e89b-42d3-a456-${String(++generatedId).padStart(12, "0")}`;
-  (supabaseAdmin as any).rpc = async (name: string, input: { p_report: Record<string, unknown>; p_item: Record<string, unknown>; p_offload_id?: string }) => {
+  (supabaseAdmin as any).rpc = async (name: string, input: { p_report: Record<string, unknown>; p_item: Record<string, unknown>; p_offload_id?: string; p_type?: string; p_actor?: string; p_record?: string; p_request?: string; p_name?: string; p_mime?: string; p_size?: number; p_sha256?: string }) => {
     if (name === "delete_offload_with_cleanup_v1") {
       const parent = tables.offloads.find((row) => row.id === input.p_offload_id);
       if (!parent) return { data: null, error: { code: "P0002" } };
@@ -320,8 +320,22 @@ test("loading retry keeps one trip row and stop saves remain isolated", async ()
       return { data: { id: generatedUuid(), offload_id: parent.id, trip_id: parent.trip_id, trip_stop_id: parent.trip_stop_id, state: "COMPLETE", storage_paths: [], attempts: 0 }, error: null };
     }
     if(name==="delete_backload_with_cleanup_v1")return {data:null,error:{code:"PGRST202"}};
-    assert.equal(name, "create_offload_with_item_v1");
-    const report = { id: generatedUuid(), event_type: "Offload", ...input.p_report };
+    if (name === "reserve_operations_receipt_v1") {
+      const parent = tables[input.p_type === "OFFLOAD" ? "offloads" : "backloads"].find(row => row.id === input.p_record)!;
+      const receipts = tables.report_receipts.filter(row => row[input.p_type === "OFFLOAD" ? "offload_id" : "backload_id"] === parent.id);
+      if (receipts.length >= (input.p_type === "OFFLOAD" ? 5 : 20)) return {data:null,error:{code:"23514",message:"report images limit"}};
+      const row = {id:generatedUuid(),trip_id:parent.trip_id,trip_stop_id:parent.trip_stop_id,[input.p_type === "OFFLOAD" ? "offload_id" : "backload_id"]:parent.id,storage_path:`mock/${input.p_request}`,file_name:input.p_name,mime_type:input.p_mime,file_size_bytes:input.p_size,uploaded_by:input.p_actor,upload_request_id:input.p_request,upload_status:"PENDING"};
+      tables.report_receipts.push(row); return {data:row,error:null};
+    }
+    if(name === "complete_operations_receipt_v1") {
+      const row=tables.report_receipts.find(row => row.upload_request_id === input.p_request)!;row.upload_status="READY";return {data:row,error:null};
+    }
+    assert.equal(name, "submit_operations_report_v1");
+    if(input.p_type === "BACKLOAD") {
+      const row = {id:generatedUuid(),event_type:"Backload",...input.p_report,created_by:input.p_actor,submitted_by:input.p_actor};
+      tables.backloads.push(row); return {data:row,error:null};
+    }
+    const report = { id: generatedUuid(), event_type: "Offload", ...input.p_report, created_by:input.p_actor,submitted_by:input.p_actor };
     tables.offloads.push(report);
     return { data: report, error: null };
   };
@@ -516,7 +530,7 @@ test("loading retry keeps one trip row and stop saves remain isolated", async ()
     assert.equal(offloadReceipts.length, 5, "all five images are linked to the exact Offload report");
     assert.ok(offloadReceipts.every((row) => row.trip_id === tripA && row.trip_stop_id === stop2), "image scope retains the exact transaction");
     const beforeSixthUpload = uploadedPaths.length;
-    await assert.rejects(service.uploadOperationsReceipt(admin, "OFFLOAD", String(scopedOffload.id), image, "image/png", "sixth.png"), /up to 5 images/);
+    await assert.rejects(service.uploadOperationsReceipt(admin, "OFFLOAD", String(scopedOffload.id), image, "image/png", "sixth.png"), /image limit/);
     assert.equal(uploadedPaths.length, beforeSixthUpload, "a rejected sixth image does not create a storage object");
     assert.equal(tables.report_receipts.filter((row) => row.offload_id === scopedOffload.id).length, 5);
     await assert.rejects(service.createOffload(admin, { trip_id: tripA, trip_stop_id: null, reason: "Whole trip", number_of_boxes: null, comments: null }), /DR Number/, "new Offloads require an exact DR transaction; existing trip-level reports are untouched");

@@ -6,6 +6,7 @@ import {
   deleteOperationsReports,
   fetchAssignedOperations,
   fetchOperationsReceipts,
+  uploadOperationsReceipt,
   fetchOperationsOverview,
   OPERATIONS_PAGINATION_ENABLED,
   type OperationsPageOptions,
@@ -381,6 +382,8 @@ function Empty({ text }: { text: string }) { return <div className="rounded-xl b
 function OperationsReceiptGallery({ token, kind, recordId }: { token: string; kind: Kind; recordId: string }) {
   const [result, setResult] = useState<{ scope: string; receipts: OperationsReceipt[]; error: string | null } | null>(null);
   const [attempt, setAttempt] = useState(0);
+  const [resuming, setResuming] = useState(false);
+  const [resumeError, setResumeError] = useState("");
   const receiptType: OperationsReceiptEventType = kind === "loading" ? "LOADING" : kind === "unloading" ? "UNLOADING" : kind === "backloads" ? "BACKLOAD" : "OFFLOAD";
   const scope = `${token}:${receiptType}:${recordId}:${attempt}`;
   useEffect(() => {
@@ -392,7 +395,23 @@ function OperationsReceiptGallery({ token, kind, recordId }: { token: string; ki
   }, [receiptType, recordId, token, scope]);
   if (result?.scope !== scope) return <p role="status" className="mt-2 text-xs text-slate-500">Loading report images…</p>;
   if (result.error) return <p role="alert" className="mt-2 text-xs text-rose-700">Images could not be loaded: {result.error} <button type="button" className="font-semibold underline" onClick={() => setAttempt((value) => value + 1)}>Retry images</button></p>;
-  return <ReportImageGallery images={result.receipts} />;
+  return <><ReportImageGallery images={result.receipts} />
+    {result.receipts.filter(receipt => receipt.upload_status === "PENDING" && receipt.upload_request_id).map(receipt => <label key={receipt.id} className="mt-2 block text-xs text-amber-800">
+      Resume {receipt.file_name} with the original file
+      <input type="file" accept="image/jpeg,image/png,image/webp" disabled={resuming} onChange={event => {
+        const file = event.target.files?.[0]; event.target.value = "";
+        if (!file || !receipt.upload_request_id || (receiptType !== "OFFLOAD" && receiptType !== "BACKLOAD")) return;
+        if (file.name !== receipt.file_name) { setResumeError("Choose the original image with its original filename."); return; }
+        setResuming(true); setResumeError("");
+        void uploadOperationsReceipt(token, receiptType, recordId, file, receipt.upload_request_id)
+          .then(() => setAttempt(value => value + 1))
+          .catch(error => setResumeError(error instanceof Error ? error.message : "Unable to resume image upload."))
+          .finally(() => setResuming(false));
+      }} className="mt-1 block max-w-full" />
+    </label>)}
+    {resuming && <p role="status" className="mt-2 text-xs text-slate-500">Recovering image upload…</p>}
+    {resumeError && <p role="alert" className="mt-2 text-xs text-rose-700">{resumeError}</p>}
+  </>;
 }
 
 function OffloadItemFieldEditor({ token, model, field, onSaved }: { token: string; model: OffloadInlineItem; field: "quantity" | "total_cbm"; onSaved: () => void | Promise<void> }) {

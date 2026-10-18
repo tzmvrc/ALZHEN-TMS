@@ -40,9 +40,10 @@ export async function archiveTransaction(token: string, tripId: string, stopId: 
 
 export type TransactionDeletion = { operation_id: string; transaction_id: string; trip_id: string; trip_stop_id: string | null; cleanup_pending: boolean };
 export type TransactionCleanup = { id: string; transaction_id: string; trip_id: string; trip_stop_id: string | null };
-export async function deleteTransaction(token: string, tripId: string, stopId: string | null) {
+export async function deleteTransaction(token: string, tripId: string, stopId: string | null, currentPassword: string) {
+  if(!currentPassword)throw new Error("Enter your current account password.");
   const path = `/trips/${encodeURIComponent(tripId)}${stopId ? `/stops/${encodeURIComponent(stopId)}` : ""}`;
-  const response = await apiDelete<ApiResponse<TransactionDeletion>>(path, token);
+  const response = await apiDelete<ApiResponse<TransactionDeletion>>(path, token, {current_password:currentPassword});
   if (!response.success || !response.data) throw new Error(response.message ?? "Deletion could not be confirmed. Retry the same transaction.");
   invalidateTripRelatedCache();
   return response.data;

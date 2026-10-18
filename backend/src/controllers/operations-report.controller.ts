@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 import { ApiError, sendError, sendSuccess } from "../utils/api-response.js";
 import * as service from "../services/operations-report.service.js";
+import { requireReportUuid } from "../services/operations-report.logic.js";
 import { withReportReadBudget } from "../services/report-read-budget.js";
 import { listPendingOffloadCleanup, retryOffloadCleanup, listPendingBackloadCleanup, retryBackloadCleanup } from "../services/offload-deletion.service.js";
 
@@ -35,9 +36,13 @@ export const getTripDetails = (req: Request, res: Response) => respond(res, () =
 export const updateLoading = (req: Request, res: Response) => respond(res, () => service.saveLoadingReport(actor(req), param(req, "tripId"), req.body, param(req, "recordId")), "Loading report updated successfully");
 export const saveLoading = (req: Request, res: Response) => respond(res, () => service.saveLoadingReport(actor(req), param(req, "tripId"), req.body), "Loading report saved successfully");
 export const saveUnloading = (req: Request, res: Response) => respond(res, () => service.saveUnloadingReport(actor(req), param(req, "tripId"), param(req, "stopId"), req.body), "Unloading report saved successfully");
-export const createBackload = (req: Request, res: Response) => respond(res, () => service.createBackload(actor(req), req.body), "Backload created successfully", 201);
+function submissionBody(req: Request) {
+  requireReportUuid(req.body?.request_id, "request_id");
+  return req.body;
+}
+export const createBackload = (req: Request, res: Response) => respond(res, () => service.createBackload(actor(req), submissionBody(req)), "Backload created successfully", 201);
 export const updateBackload = (req: Request, res: Response) => respond(res, () => service.updateBackload(actor(req), param(req, "recordId"), req.body), "Backload updated successfully");
-export const createOffload = (req: Request, res: Response) => respond(res, () => service.createOffload(actor(req), req.body), "Offload created successfully", 201);
+export const createOffload = (req: Request, res: Response) => respond(res, () => service.createOffload(actor(req), submissionBody(req)), "Offload created successfully", 201);
 export const updateOffload = (req: Request, res: Response) => respond(res, () => service.updateOffload(actor(req), param(req, "recordId"), req.body), "Offload updated successfully");
 export const updateEventType = (req: Request, res: Response) => respond(res, () => service.updateOperationsEventType(actor(req), param(req, "sourceType"), param(req, "recordId"), req.body), "Event Type updated successfully");
 function deletionCredentials(req:Request){
@@ -48,13 +53,14 @@ function deletionCredentials(req:Request){
 export const deleteReport = (req:Request,res:Response)=>respond(res,()=>service.deleteOperationsReport(actor(req),param(req,"sourceType"),param(req,"recordId"),deletionCredentials(req)),"Operational report deletion outcome retrieved");
 export const deleteReports = (req:Request,res:Response)=>respond(res,()=>service.deleteOperationsReports(actor(req),req.body?.targets,deletionCredentials(req)),"Operational report deletion outcomes retrieved");
 export const convertReport = (req: Request, res: Response) => respond(res, () => service.convertOperationsReport(actor(req), req.body), "Operational report converted successfully");
-export const submitEvent = (req: Request, res: Response) => respond(res, () => service.submitOperationsEvent(actor(req), req.body), "Operational event submitted successfully", 201);
+export const submitEvent = (req: Request, res: Response) => respond(res, () => service.submitOperationsEvent(actor(req), submissionBody(req)), "Operational event submitted successfully", 201);
 export const uploadReceipt = (req: Request, res: Response) => respond(res, () => {
   if (!Buffer.isBuffer(req.body)) throw new ApiError("Choose a JPEG, PNG, or WebP image up to 5 MB.", 400, "INVALID_IMAGE");
   let fileName = String(req.headers["x-file-name"] ?? "");
   try { fileName = decodeURIComponent(fileName); }
   catch { throw new ApiError("Invalid image filename.", 400, "INVALID_IMAGE_NAME"); }
-  return service.uploadOperationsReceipt(actor(req), param(req, "eventType"), param(req, "recordId"), req.body, String(req.headers["content-type"] ?? ""), fileName);
+  const requestId = requireReportUuid(req.get("X-Upload-Request-Id"), "upload_request_id");
+  return service.uploadOperationsReceipt(actor(req), param(req, "eventType"), param(req, "recordId"), req.body, String(req.headers["content-type"] ?? ""), fileName, requestId);
 }, "Operational report image uploaded successfully", 201);
 export const listReceipts = (req: Request, res: Response) => respond(res, () => service.listOperationsReceipts(actor(req), param(req, "eventType"), param(req, "recordId")), "Operational report images retrieved successfully");
 

@@ -8,6 +8,8 @@ export function createDeletionConfirmationLimit(now=Date.now,redisFactory=create
  const attempts=new Map<string,{count:number;until:number}>(),active=new Set<string>();
  let redis:ReturnType<typeof createClient>|undefined,connecting:Promise<unknown>|undefined;
  return async(id:string):Promise<()=>Promise<void>>=>{
+  const workers=Number(process.env.WEB_CONCURRENCY??1);
+  if(!Number.isSafeInteger(workers)||workers<1)throw new ApiError("Deletion worker topology is invalid. Nothing was deleted.",503,"DELETE_CONFIRM_LIMIT_UNAVAILABLE");
   if(process.env.SOCKET_REDIS_URL){
    try {
     if(!redis){redis=redisFactory({url:process.env.SOCKET_REDIS_URL,socket:{connectTimeout:3000,reconnectStrategy:false}});redis.on("error",()=>{});connecting=redis.connect();}
@@ -20,7 +22,7 @@ export function createDeletionConfirmationLimit(now=Date.now,redisFactory=create
     return async()=>{try{await client.eval("if redis.call('GET',KEYS[1])==ARGV[1] then return redis.call('DEL',KEYS[1]) end return 0",{keys:[`${key}:active`],arguments:[lease]});}catch{/* Lease expires; never replay a confirmed mutation. */}};
    } catch(e){if(e instanceof ApiError)throw e;throw new ApiError("Deletion verification rate protection is unavailable. Nothing was deleted.",503,"DELETE_CONFIRM_LIMIT_UNAVAILABLE");}
   }
-  if(Number(process.env.WEB_CONCURRENCY??1)>1)throw new ApiError("Shared rate protection is required for multi-instance deletion.",503,"DELETE_CONFIRM_LIMIT_UNAVAILABLE");
+  if(workers>1)throw new ApiError("Shared rate protection is required for multi-instance deletion.",503,"DELETE_CONFIRM_LIMIT_UNAVAILABLE");
   const time=now();for(const [key,value] of attempts)if(value.until<=time)attempts.delete(key);
   if(active.has(id))throw new ApiError("A deletion confirmation is already processing for this Admin.",409,"DELETE_CONFIRM_BUSY");
   const value=attempts.get(id)??{count:0,until:time+windowMs};

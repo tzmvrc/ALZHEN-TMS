@@ -27,8 +27,10 @@ async function deletionResponse(req: Request, res: Response, mode: "delete" | "p
   try {
     if (!req.appSession) throw new ApiError("Authentication required.", 401, "AUTHENTICATION_REQUIRED");
     const actor = { id: req.appSession.profileId, role: req.appSession.role };
+    const password=req.body?.current_password;
+    if(mode === "delete" && req.body)delete req.body.current_password;
     const data = mode === "version" ? await transactionDeletionVersion(actor) : mode === "pending" ? await listTransactionCleanup(actor) : mode === "retry" ? await retryTransactionCleanup(actor, param(req, "operationId"))
-      : await deleteTransaction(actor, param(req, "id"), param(req, "stopId"));
+      : await deleteTransaction(actor, param(req, "id"), param(req, "stopId"),{password,accessToken:req.headers.authorization?.replace(/^Bearer\s+/i,"").trim()??"",appSessionId:req.appSession.sessionId??null});
     return sendSuccess(res, 200, "Transaction deletion outcome retrieved", data);
   } catch (error) {
     if (error instanceof ApiError) return sendError(res, error.statusCode, error.message, error.code);

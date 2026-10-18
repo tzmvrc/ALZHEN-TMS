@@ -9,7 +9,7 @@ export default function ReportImageGallery({ images }: { images: readonly Report
   const [activeId, setActiveId] = useState<string | null>(null);
   const [failedThumbnails, setFailedThumbnails] = useState<Record<string, boolean>>({});
   const dialogRef = useRef<HTMLElement>(null);
-  const active = images.find((image) => image.id === activeId);
+  const active = images.find((image) => image.id === activeId && image.signed_url);
   const open = Boolean(active);
   const move = (direction: number) => setActiveId((current) => {
     const index = images.findIndex((image) => image.id === current);
@@ -54,8 +54,8 @@ export default function ReportImageGallery({ images }: { images: readonly Report
   if (!images.length) return null;
   return <>
     <div className="mt-3 flex flex-wrap gap-2" aria-label="Report images">
-      {images.map((image) => <button key={image.id} type="button" onClick={() => setActiveId(image.id)} aria-label={`Preview ${image.file_name}`} className="block w-24 overflow-hidden rounded-lg border border-slate-200 bg-slate-50 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9]">
-        {failedThumbnails[image.signed_url] ? <span className="flex h-20 items-center p-2 text-xs text-rose-700">Preview unavailable</span> : <img src={image.signed_url} alt={image.file_name} loading="lazy" onError={() => setFailedThumbnails((current) => ({ ...current, [image.signed_url]: true }))} className="h-20 w-full object-cover" />}
+      {images.map((image) => <button key={image.id} type="button" disabled={!image.signed_url} onClick={() => setActiveId(image.id)} aria-label={`Preview ${image.file_name}`} className="block w-24 overflow-hidden rounded-lg border border-slate-200 bg-slate-50 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9]">
+        {!image.signed_url ? <span className="flex h-20 items-center p-2 text-xs text-amber-700">Upload incomplete. Retry the original image.</span> : failedThumbnails[image.signed_url] ? <span className="flex h-20 items-center p-2 text-xs text-rose-700">Preview unavailable</span> : <img src={image.signed_url} alt={image.file_name} loading="lazy" onError={() => setFailedThumbnails((current) => ({ ...current, [image.signed_url]: true }))} className="h-20 w-full object-cover" />}
         <span className="block truncate px-2 py-1 text-[10px] text-slate-600">{image.file_name}</span>
       </button>)}
     </div>

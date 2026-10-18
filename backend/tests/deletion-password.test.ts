@@ -130,3 +130,9 @@ test("record deletion rejects another account's identity and roles changed durin
  await assert.rejects(check(actor,f.credentials(),f.commit),/password could not be verified/);
  assert.equal(f.state.commits,0);
 });
+
+test("invalid worker topology cannot silently select an uncoordinated deletion limiter",async()=>{
+ const prior=process.env.WEB_CONCURRENCY;
+ try{for(const value of ["invalid","0","-1","1.5"]){process.env.WEB_CONCURRENCY=value;await assert.rejects(createDeletionConfirmationLimit()(id),/topology is invalid/);}}
+ finally{if(prior===undefined)delete process.env.WEB_CONCURRENCY;else process.env.WEB_CONCURRENCY=prior;}
+});

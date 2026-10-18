@@ -77,7 +77,7 @@ test("actual Offload service creates exact stop snapshots atomically and validat
     } }; return chain;
   };
   (supabaseAdmin as any).rpc = async (name: string, input: any) => {
-    assert.equal(name, "create_offload_with_item_v1");
+    assert.equal(name, "submit_operations_report_v1");
     if (fail) return { data: null, error: { code: "XX000", message: "atomic write failed" } };
     writes.push({ rpc: name, ...input }); return { data: { id: id(60), ...input.p_report }, error: null };
   };
@@ -108,7 +108,7 @@ test("actual Offload service creates exact stop snapshots atomically and validat
     fail = true;
     await assert.rejects(service.updateOffload(actor, reports[0].id, { trip_id: trip.id, comments: "Failed draft" }), /Unable to update offload/);
     assert.equal(reports[0].comments, "New remark");
-    await assert.rejects(service.createOffload(actor, values), /Unable to create offload/);
+    await assert.rejects(service.createOffload(actor, values), /Unable to save the report/);
     assert.equal(reports.length, 1, "failed creation never inserts a parent through a second service request");
   } finally { (supabaseAdmin as any).from = original; (supabaseAdmin as any).rpc = originalRpc; }
 });

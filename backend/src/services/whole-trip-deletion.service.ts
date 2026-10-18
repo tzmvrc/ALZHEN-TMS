@@ -16,7 +16,10 @@ export async function wholeTripImpact(actor:{id:string;role:string},input:unknow
  if(error)throw new ApiError(error.code==="42883"||error.code==="PGRST202"?"Whole-trip impact requires the separately approved preview/deletion migration.":"Impact counts are unavailable. Nothing may be deleted.",503,"WHOLE_TRIP_IMPACT");
  if(!data||!Array.isArray(data.trips)||data.trips.length!==ids.length||data.trips.some((trip:{id:string})=>!ids.includes(trip.id))||ids.some(id=>!data.trips.some((trip:{id:string})=>trip.id===id))||!data.counts||WHOLE_TRIP_IMPACT_COUNTS.some(key=>typeof data.counts[key]!=="number")||!Array.isArray(data.blockers)||data.blockers.some((value:unknown)=>typeof value!=="string")||Object.values(data.counts).some(count=>typeof count!=="number"||!Number.isSafeInteger(count)||count<0))throw new ApiError("Impact counts are unavailable. Nothing may be deleted.",503,"WHOLE_TRIP_IMPACT");
  const blockers:string[]=[...data.blockers];
- if(process.env.WHOLE_TRIP_DELETE_ENABLED!=="true")blockers.push("Whole-trip deletion requires the separately approved RPC migration and activation.");
+ const pending=await db.from("report_receipts").select("id",{count:"exact",head:true}).in("trip_id",ids).eq("upload_status","PENDING");
+ if(pending.error)throw new ApiError("Image-upload retention checks are unavailable. Nothing may be deleted.",503,"WHOLE_TRIP_IMPACT");
+ if((pending.count??0)>0)blockers.push("An image upload is incomplete. Recover the original upload before deleting this trip.");
+ if(process.env.WHOLE_TRIP_DELETE_ENABLED!=="true")blockers.push("Whole-trip deletion is disabled in this backend runtime.");
  return {trips:data.trips,counts:data.counts,blockers,can_delete:blockers.length===0};
 }
 export function createWholeTripDeleter(verify=withDeletionPassword){return async function deleteWholeTrips(actor:{id:string;role:string},input:unknown,credentials?:DeletionCredentials){

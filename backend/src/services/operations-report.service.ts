@@ -1,6 +1,7 @@
 import { withCurrentUserPassword, type DeletionCredentials } from "./deletion-password.service.js";
 import { operationsPageRequest, parseOperationsPageQuery } from "./operations-pagination.js";
 import { randomUUID } from "node:crypto";
+import { submissionRequest, submitReportOnce, uploadReceiptOnce } from "./operations-submission.service.js";
 import { supabaseAdmin } from "../config/supabase.js";
 import { imageMime } from "../models/clientwebsite.validation.js";
 import { ApiError } from "../utils/api-response.js";
@@ -45,8 +46,6 @@ const OFFLOAD_SELECT = `${BACKLOAD_SELECT}, reported_at, reported_by, report_dat
 const OPERATIONAL_TRIP_SELECT = "id, trip_number, dispatch_number, status, loading_date, estimated_delivery_date, warehouse_id, remarks, archived_at";
 const RECEIPT_BUCKET = "report-receipts";
 const MAX_RECEIPT_BYTES = 5 * 1024 * 1024;
-const MAX_RECEIPTS_PER_REPORT = 20;
-const MAX_OFFLOAD_RECEIPTS = 5;
 const RECEIPT_IMAGE_TYPES = {
   "image/jpeg": "jpg",
   "image/png": "png",
@@ -54,7 +53,7 @@ const RECEIPT_IMAGE_TYPES = {
 } as const;
 
 // report_receipts and the private report-receipts bucket are the verified live
-// storage contract. Uploads are compensated if their metadata insert fails.
+// storage contract. Durable metadata reservations precede all Storage writes.
 
 type Trip = { id: string; trip_number: string | number | null; dispatch_number: string | null; status: string | null; loading_date?: string | null; estimated_delivery_date?: string | null; warehouse_id?: string | null; remarks?: string | null; archived_at?: string | null };
 type Stop = { id: string; trip_id: string; stop_sequence: number | null; dispatch_number?: string | null; store_id?: string | null; customer_id?: string | null; delivery_status?: string | null; departure_time?: string | null; arrival_time: string | null; start_unloading_time: string | null; finish_unloading_time: string | null; remarks?: string | null; archived_at?: string | null };
@@ -503,10 +502,12 @@ function parseReceiptEventType(value: string): OperationsReceiptType {
  * exact stop dispatch is rejected rather than guessed. */
 export async function submitOperationsEvent(actor: ReportActor, input: unknown) {
   assertReportRole(actor);
+  const request = submissionRequest(input);
+  input = request.body;
   if (input && typeof input === "object" && !Array.isArray(input) && String((input as Record<string, unknown>).event_type).trim().toUpperCase() === "OFFLOAD") {
     const body = input as Record<string, unknown>;
     if (!body.trip_id || !body.trip_stop_id) throw new ApiError("Select a delivery transaction by DR Number; dispatch-only Offload submission is no longer supported.", 400, "OFFLOAD_DR_REQUIRED");
-    const report = await createOffload(actor, { trip_id: body.trip_id, trip_stop_id: body.trip_stop_id, reason: body.remarks });
+    const report = await createOffload(actor, { trip_id: body.trip_id, trip_stop_id: body.trip_stop_id, reason: body.remarks, request_id: request.requestId });
     return { event_type: "OFFLOAD" as const, dispatch_number: null, report };
   }
   const submission = validateOperationsEventSubmission(input);
@@ -542,7 +543,7 @@ export async function submitOperationsEvent(actor: ReportActor, input: unknown) 
   }
   await assertActorTripAccess(actor, trip);
 
-  const data = await createBackload(actor, { trip_id: trip.id, trip_stop_id: stopId, reason: submission.remarks });
+  const data = await createBackload(actor, { trip_id: trip.id, trip_stop_id: stopId, reason: submission.remarks, request_id: request.requestId });
   return { event_type: submission.eventType, dispatch_number: submission.dispatchNumber, report: data };
 }
 
@@ -583,6 +584,7 @@ async function deleteReportRecord(actor: ReportActor, sourceTypeValue: unknown, 
   assertOperationsManagementRole(actor);
   const identity = validateOperationsReportSourceIdentity(sourceTypeValue, recordIdValue);
   if (identity.source_type === "OFFLOAD") return deleteOffloadPermanently(actor, identity.record_id);
+  if (identity.source_type === "BACKLOAD") return deleteBackloadPermanently(actor, identity.record_id);
   const target = EVENT_REPORT_TABLE[identity.source_type];
   const { data: report, error: readError } = await (supabaseAdmin.from(target.table) as any)
     .select("id, trip_id, trip_stop_id").eq("id", identity.record_id).maybeSingle();
@@ -604,7 +606,6 @@ async function deleteReportRecord(actor: ReportActor, sourceTypeValue: unknown, 
   }
   if (receiptResult.error) throwDb(receiptResult.error, "check report receipts");
   if ((receiptResult.count ?? 0) > 0) {
-    if(identity.source_type === "BACKLOAD")return deleteBackloadPermanently(actor,identity.record_id);
     throw new ApiError("This report cannot be deleted because its receipt images must be retained. Open View Details to review the attachments. No report or image was deleted.", 409, "REPORT_RECEIPTS_PROTECTED");
   }
 
@@ -654,67 +655,34 @@ export async function uploadOperationsReceipt(
   bytes: Buffer,
   contentType: string,
   originalName: string,
+  requestId?: string,
 ) {
   const eventType = parseEventType(eventTypeValue);
-  const { target, report, trip } = await getEventReportForActor(actor, eventType, recordId);
+  const { report } = await getEventReportForActor(actor, eventType, recordId);
   const mimeType = validateReceiptImage(bytes, contentType);
-  const { count, error: countError } = await supabaseAdmin.from("report_receipts")
-    .select("id", { count: "exact", head: true })
-    .eq(target.receiptColumn, report.id);
-  if (countError) throwDb(countError, "check report image limit");
-  const maximumReceipts = eventType === "OFFLOAD" ? MAX_OFFLOAD_RECEIPTS : MAX_RECEIPTS_PER_REPORT;
-  if ((count ?? 0) >= maximumReceipts) {
-    throw new ApiError(`A report can have up to ${maximumReceipts} images.`, 409, "REPORT_IMAGE_LIMIT");
-  }
-
   const fileName = originalName.trim().replace(/[\\/\0\r\n]/g, "").slice(0, 255)
     || `report-image.${RECEIPT_IMAGE_TYPES[mimeType]}`;
-  const storagePath = `operations/${trip.id}/${eventType.toLowerCase()}/${report.id}/${randomUUID()}.${RECEIPT_IMAGE_TYPES[mimeType]}`;
-  const { error: uploadError } = await supabaseAdmin.storage.from(RECEIPT_BUCKET)
-    .upload(storagePath, bytes, { contentType: mimeType, upsert: false });
-  if (uploadError) {
-    console.error("Operations report image upload failed:", { message: uploadError.message, statusCode: uploadError.statusCode });
-    throw new ApiError("Unable to upload the report image.", 502, "REPORT_IMAGE_UPLOAD_FAILED");
-  }
+  return uploadReceiptOnce(actor, eventType, report.id, bytes, mimeType, fileName, requestId);
 
-  const receiptValues = {
-    trip_id: trip.id,
-    trip_stop_id: report.trip_stop_id,
-    [target.receiptColumn]: report.id,
-    storage_path: storagePath,
-    file_name: fileName,
-    mime_type: mimeType,
-    file_size_bytes: bytes.length,
-    uploaded_by: actor.profileId,
-    received_at: new Date().toISOString(),
-  };
-  const { data, error } = await supabaseAdmin.from("report_receipts")
-    .insert(receiptValues)
-    .select("id, trip_id, trip_stop_id, file_name, mime_type, file_size_bytes, uploaded_by, received_at, created_at")
-    .single();
-  if (error || !data) {
-    const { error: cleanupError } = await supabaseAdmin.storage.from(RECEIPT_BUCKET).remove([storagePath]);
-    if (cleanupError) console.error("Operations report image cleanup failed:", { message: cleanupError.message });
-    if (error?.code === "23514" && /five images/i.test(error.message ?? "")) throw new ApiError("An Offload supports at most five images. Refresh the existing receipts before retrying.", 409, "REPORT_IMAGE_LIMIT");
-    if (error) throwDb(error, "save report image metadata");
-    throw new ApiError("Unable to save report image metadata.", 502, "REPORT_IMAGE_METADATA_FAILED");
-  }
-  return data;
 }
 
 export async function listOperationsReceipts(actor: ReportActor, eventTypeValue: string, recordId: string) {
   const eventType = parseReceiptEventType(eventTypeValue);
   const { target, report } = await getEventReportForActor(actor, eventType, recordId);
   const { data, error } = await supabaseAdmin.from("report_receipts")
-    .select("id, storage_path, file_name, mime_type, file_size_bytes, uploaded_by, received_at, created_at")
+    .select("id, storage_path, file_name, mime_type, file_size_bytes, uploaded_by, received_at, created_at, upload_status, upload_request_id")
     .eq(target.receiptColumn, report.id)
     .order("created_at", { ascending: true });
   if (error) throwDb(error, "read report images");
   return Promise.all((data ?? []).map(async (receipt) => {
+    if (receipt.upload_status === "PENDING") {
+      const { storage_path: _path, upload_request_id, ...pending } = receipt;
+      return { ...pending, signed_url: "", ...(receipt.uploaded_by === actor.profileId ? { upload_request_id } : {}) };
+    }
     const { data: signed, error: signedError } = await supabaseAdmin.storage.from(RECEIPT_BUCKET)
       .createSignedUrl(receipt.storage_path, 60 * 60);
     if (signedError || !signed?.signedUrl) throw new ApiError("Unable to create a secure report image link.", 502, "REPORT_IMAGE_LINK_FAILED");
-    const { storage_path: _privatePath, ...safeReceipt } = receipt;
+    const { storage_path: _privatePath, upload_request_id: _requestId, ...safeReceipt } = receipt;
     return { ...safeReceipt, signed_url: signed.signedUrl };
   }));
 }
@@ -734,12 +702,11 @@ async function assertReportSourceNotConverted(sourceType: "LOADING" | "UNLOADING
 }
 
 export async function createBackload(actor: ReportActor, input: unknown) {
-  const parsed = validateBackloadOffloadInput(input, true, true);
+  const { body, requestId = randomUUID() } = submissionRequest(input);
+  const parsed = validateBackloadOffloadInput(body, true, true);
   const trip = await validateReportScope(actor, parsed.tripId!, parsed.stopId);
   await assertNewReportTransactionActive(trip, parsed.stopId);
-  const { data, error } = await supabaseAdmin.from("backloads").insert({ trip_id: trip.id, trip_stop_id: parsed.stopId ?? null, ...parsed.fields, created_by: actor.profileId, submitted_by: actor.profileId, submitted_at: new Date().toISOString(), event_type: "Backload" }).select(BACKLOAD_SELECT).single();
-  if (error) throwDb(error, "create backload");
-  return data;
+  return submitReportOnce(actor, requestId, "BACKLOAD", body, { trip_id: trip.id, trip_stop_id: parsed.stopId ?? null, ...parsed.fields });
 }
 
 export async function updateBackload(actor: ReportActor, recordId: string, input: unknown) {
@@ -757,7 +724,8 @@ export async function updateBackload(actor: ReportActor, recordId: string, input
 
 export async function createOffload(actor: ReportActor, input: unknown) {
   assertReportRole(actor);
-  const { body, metadata } = splitOffloadDetails(input, actor, true);
+  const { body: payload, requestId = randomUUID() } = submissionRequest(input);
+  const { body, metadata } = splitOffloadDetails(payload, actor, true);
   const quantity = body.quantity, totalCbm = body.total_cbm;
   delete body.quantity; delete body.total_cbm;
   const parsed = validateBackloadOffloadInput(body, true, true);
@@ -771,12 +739,9 @@ export async function createOffload(actor: ReportActor, input: unknown) {
   const item = validateOperationsOffloadItemUpdate({ id: randomUUID(), trip_line_item_id: null,
     quantity: quantity === undefined ? stop?.quantity ?? null : quantity,
     total_cbm: totalCbm === undefined ? stop?.total_cbm ?? null : totalCbm });
-  const { data, error } = await supabaseAdmin.rpc("create_offload_with_item_v1", {
-    p_report: { trip_id: trip.id, trip_stop_id: parsed.stopId ?? null, ...parsed.fields, ...metadata },
-    p_item: { quantity: item.quantity, total_cbm: item.total_cbm },
-  });
-  if (error) throwDb(error, "create offload");
-  return data;
+  return submitReportOnce(actor, requestId, "OFFLOAD", payload,
+    { trip_id: trip.id, trip_stop_id: parsed.stopId ?? null, ...parsed.fields, ...metadata },
+    { quantity: item.quantity, total_cbm: item.total_cbm });
 }
 
 export async function searchOffloadTransactions(actor: ReportActor, search: string, page = 1) {

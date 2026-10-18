@@ -13,10 +13,11 @@ test("whole-trip deletion deduplicates physical IDs, is Admin-only and cannot us
 
 test("impact uses the narrow Admin RPC, preserves private table grants and fails closed",async()=>{
  const {supabaseAdmin:db}=await import("../src/config/supabase.js"),{wholeTripImpact,WHOLE_TRIP_IMPACT_COUNTS}=await import("../src/services/whole-trip-deletion.service.js");
- const trip="00000000-0000-4000-8000-000000000001",actor={id:trip,role:"ADMIN"},original=db.rpc,flag=process.env.WHOLE_TRIP_DELETE_ENABLED;
- let missing=false,calls=0;
+ const trip="00000000-0000-4000-8000-000000000001",actor={id:trip,role:"ADMIN"},original=db.rpc,originalFrom=db.from,flag=process.env.WHOLE_TRIP_DELETE_ENABLED;
+ let missing=false,calls=0,pending=0;
+ db.from=(()=>{const q={select(){return q},in(){return q},eq:async()=>({count:pending,error:null})};return q;}) as typeof originalFrom;
  db.rpc=(async(name:string,args:unknown)=>{calls++;assert.equal(name,"preview_whole_trip_deletion_v1");assert.deepEqual(args,{p_trip_ids:[trip],p_actor_id:trip});return {data:{trips:[{id:trip,dispatch_number:"TEST"}],counts:{...Object.fromEntries(WHOLE_TRIP_IMPACT_COUNTS.map(key=>[key,0])),trip_stops:3,billings:missing?null:1},blockers:["Billing records require accounting review."]},error:null};}) as typeof original;
- try{delete process.env.WHOLE_TRIP_DELETE_ENABLED;const result=await wholeTripImpact(actor,[trip,trip]);assert.equal(result.counts.trip_stops,3);assert.equal(result.can_delete,false);assert.match(result.blockers.join(" "),/accounting/);assert.equal(calls,1);missing=true;await assert.rejects(wholeTripImpact(actor,[trip]),/counts are unavailable/);}finally{db.rpc=original;if(flag===undefined)delete process.env.WHOLE_TRIP_DELETE_ENABLED;else process.env.WHOLE_TRIP_DELETE_ENABLED=flag;}
+ try{delete process.env.WHOLE_TRIP_DELETE_ENABLED;const result=await wholeTripImpact(actor,[trip,trip]);assert.equal(result.counts.trip_stops,3);assert.equal(result.can_delete,false);assert.match(result.blockers.join(" "),/accounting/);assert.equal(calls,1);pending=1;assert.match((await wholeTripImpact(actor,[trip])).blockers.join(" "),/upload is incomplete/);missing=true;await assert.rejects(wholeTripImpact(actor,[trip]),/counts are unavailable/);}finally{db.rpc=original;db.from=originalFrom;if(flag===undefined)delete process.env.WHOLE_TRIP_DELETE_ENABLED;else process.env.WHOLE_TRIP_DELETE_ENABLED=flag;}
 });
 
 test("whole-trip acknowledgement retries durable exact Storage cleanup without false completion",async()=>{

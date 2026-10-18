@@ -19,7 +19,7 @@ export type OperationsLineItem = { id: string; trip_id: string; trip_stop_id: st
 export type OperationsEventType = "Loading" | "Unloading" | "Backload" | "Offload";
 export type OperationsSourceType = "LOADING" | "UNLOADING" | "BACKLOAD" | "OFFLOAD";
 export type OperationsEventRow = { id: string; source_type: OperationsSourceType; source_record_id: string; loading_report_id: string | null; unloading_report_id: string | null; assignment_id: string | null; trip_id: string; trip_stop_id: string | null; trip_number: string | number | null; dispatch_number: string | null; date: string | null; plate_number: string | null; driver_name: string | null; route: string | null; dr_number: string | null; quantity: number | null; quantity_scope: "Trip total" | "Stop total" | "Boxes" | null; total_cbm: number | null; report_type: OperationsEventType; report_types: OperationsEventType[]; event_type_records: Array<{ id: string; source_type: OperationsSourceType; event_type: OperationsEventType }>; backload_records: OperationsCargoEntry[]; offload_records: OperationsCargoEntry[]; line_items: OperationsLineItem[]; loading_timestamps: Pick<LoadingReport, "warehouse_arrival_at" | "loading_start_at" | "loading_finished_at"> | null; unloading_timestamps: Pick<OperationsStop, "arrival_time" | "start_unloading_time" | "finish_unloading_time"> | null; remarks: string | null; reason: string | null; reported_by: string | null; stop_sequence: number | null; scope_label: string };
-export type OperationsReceipt = { id: string; file_name: string; mime_type: string; file_size_bytes: number; signed_url: string; received_at: string | null; created_at: string | null };
+export type OperationsReceipt = { id: string; file_name: string; mime_type: string; file_size_bytes: number; signed_url: string; received_at: string | null; created_at: string | null; upload_status?: "PENDING" | "READY"; upload_request_id?: string };
 export type OperationsReceiptEventType = "LOADING" | "UNLOADING" | "BACKLOAD" | "OFFLOAD";
 export type OperationsReceiptUpload = { id: string; trip_id: string; trip_stop_id: string | null; file_name: string; mime_type: string; file_size_bytes: number; uploaded_by: string; received_at: string | null; created_at: string | null };
 export type OperationsReportData = { trips: OperationsTrip[]; trip_options: OperationsTripOption[]; stops: OperationsStop[]; loading: LoadingReport[]; unloading: UnloadingReport[]; backloads: ScopeReport[]; offloads: ScopeReport[]; event_rows: OperationsEventRow[]; pagination?: {page:number;limit:number;total:number;totalPages:number} };
@@ -82,7 +82,7 @@ export async function saveUnloadingReport(token: string, tripId: string, stopId:
   return response;
 }
 
-export async function createScopedReport(token: string, kind: "backloads" | "offloads", values: Omit<ScopeReport, "id"> & { quantity?: number | null; total_cbm?: number | null }) {
+export async function createScopedReport(token: string, kind: "backloads" | "offloads", values: Omit<ScopeReport, "id"> & { request_id: string; quantity?: number | null; total_cbm?: number | null }) {
   const response = await unwrap(apiPost<ApiResponse<ScopeReport>>(`${ROOT}/${kind}`, values, token));
   invalidateOperations();
   return response;
@@ -104,7 +104,7 @@ export async function updateOffloadItem(token: string, report: ScopeReport, item
   return response;
 }
 
-export async function submitOperationsEvent(token: string, values: { dispatch_number: string; event_type: "BACKLOAD"; remarks: string } | { trip_id: string; trip_stop_id: string; event_type: "OFFLOAD"; remarks: string }) {
+export async function submitOperationsEvent(token: string, values: ({ dispatch_number: string; event_type: "BACKLOAD"; remarks: string } | { trip_id: string; trip_stop_id: string; event_type: "OFFLOAD"; remarks: string }) & { request_id: string }) {
   const response = await unwrap(apiPost<ApiResponse<{ event_type: "BACKLOAD" | "OFFLOAD"; dispatch_number: string | null; report: ScopeReport }>>(`${ROOT}/events`, values, token));
   invalidateOperations();
   return response;
@@ -132,8 +132,8 @@ export async function retryOffloadImageCleanup(token: string, operationId: strin
   invalidateOperations(); return result;
 }
 
-export async function uploadOperationsReceipt(token: string, eventType: "BACKLOAD" | "OFFLOAD", recordId: string, file: File) {
-  const response = await unwrap(apiPostFile<ApiResponse<OperationsReceiptUpload>>(`${ROOT}/${eventType.toLowerCase()}/${encodeURIComponent(recordId)}/receipts`, file, token));
+export async function uploadOperationsReceipt(token: string, eventType: "BACKLOAD" | "OFFLOAD", recordId: string, file: File, requestId: string) {
+  const response = await unwrap(apiPostFile<ApiResponse<OperationsReceiptUpload>>(`${ROOT}/${eventType.toLowerCase()}/${encodeURIComponent(recordId)}/receipts`, file, token, requestId));
   invalidateOperations();
   return response;
 }
