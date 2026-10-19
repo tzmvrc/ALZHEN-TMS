@@ -199,7 +199,10 @@ function resolveViewNames(definition: ReportDefinition) {
   return [];
 }
 
-async function attachOperationalRecordIds(rows: Record<string, unknown>[]) {
+async function attachOperationalRecordIds(
+  rows: Record<string, unknown>[],
+  fallbackMissingDispatchNumber = false,
+) {
   // Copy internal IDs with underscore prefix to standard field names for frontend compatibility
   for (const row of rows) {
     const aliases: Record<string, string> = {
@@ -231,7 +234,13 @@ async function attachOperationalRecordIds(rows: Record<string, unknown>[]) {
   }
 
   const tripIds = [...new Set(rows
-    .filter((row) => row.trip_stop_id == null && row._trip_stop_id == null)
+    .filter((row) => {
+      const hasTripId = typeof row.trip_id === "string";
+      const hasNoStop = row.trip_stop_id == null && row._trip_stop_id == null;
+      const hasNoDispatchNumber =
+        typeof row.dispatch_number !== "string" || !row.dispatch_number.trim();
+      return hasTripId && (hasNoStop || (fallbackMissingDispatchNumber && hasNoDispatchNumber));
+    })
     .map((row) => row.trip_id).filter((id): id is string => typeof id === "string"))];
   if (tripIds.length) {
     const { data: trips, error } = await supabaseAdmin.from("trips")
@@ -239,10 +248,18 @@ async function attachOperationalRecordIds(rows: Record<string, unknown>[]) {
     if (error) throw new ApiError("Unable to load saved trip references", 500, "TRIP_REFERENCE_QUERY_FAILED");
     const tripById = new Map((trips ?? []).map((trip) => [String(trip.id), trip]));
     for (const row of rows) {
-      // Stop identifiers are authoritative even when blank. Replacing them with
-      // parent-trip values makes confirmed stop edits appear to revert on refresh.
-      if (row.trip_stop_id != null || row._trip_stop_id != null) continue;
       const trip = tripById.get(String(row.trip_id));
+      if (
+        fallbackMissingDispatchNumber &&
+        (typeof row.dispatch_number !== "string" || !row.dispatch_number.trim()) &&
+        typeof trip?.dispatch_number === "string" &&
+        trip.dispatch_number.trim()
+      ) {
+        row.dispatch_number = trip.dispatch_number;
+      }
+      // Preserve stop-level edits; only the missing dispatch reference falls
+      // back to the parent trip.
+      if (row.trip_stop_id != null || row._trip_stop_id != null) continue;
       if (!trip) continue;
       if (typeof trip.dispatch_number === "string") {
         row.dispatch_number = trip.dispatch_number;
@@ -656,7 +673,7 @@ export async function getReportData(
         }
       }
       const enriched = ["combined", "dispatch", "dispatch-monitoring", "trip-booking", "store-calling"].includes(key)
-        ? await attachOperationalRecordIds(rows)
+        ? await attachOperationalRecordIds(rows, key === "dispatch-monitoring")
         : rows;
       if (["combined", "dispatch", "dispatch-monitoring"].includes(key)) {
         await attachLoadingMilestones(enriched);

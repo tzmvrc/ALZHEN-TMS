@@ -20,7 +20,7 @@ import type { TripEvent, TripRecord } from "../../services/trip.service";
 
 const MAPBOX_ACCESS_TOKEN = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN?.trim();
 const RoadRoutingPanel = lazy(()=>import("./RoadRoutingPanel"));
-export default function LiveTripMap(props: Parameters<typeof RecordedTripMap>[0] & { unified?: boolean }) {
+export default function LiveTripMap(props: Parameters<typeof RecordedTripMap>[0] & { unified?: boolean; demo?: boolean }) {
   const [view, setView] = useState<"roads" | "events">("roads");
   const ids = props.focusTripId
     ? [props.focusTripId]
@@ -68,7 +68,7 @@ export default function LiveTripMap(props: Parameters<typeof RecordedTripMap>[0]
             />
           }
         >
-          <RoadRoutingPanel tripIds={ids} height={props.height} demoFallback={props.unified} />
+          <RoadRoutingPanel tripIds={ids} height={props.height} demoFallback={props.unified || props.demo} focusKey={props.focusTripId} compact={Boolean(props.demo && !props.unified && props.focusTripId)} />
         </Suspense>
       ) : (
         <RecordedTripMap {...props} />

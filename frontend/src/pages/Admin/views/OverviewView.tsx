@@ -30,12 +30,11 @@ import {
   FleetListCard,
   PendingRequestsCard,
   SpotlightTrips,
-  TripStatusRing,
 } from "../../../components/admin/OverviewCards";
 import FleetAnalytics, {
   type FlowRow,
 } from "../../../components/admin/FleetAnalytics";
-import OverviewCalendarCard from "../../../components/admin/OverviewCalendarCard";
+import OverviewMiniCalendar from "../../../components/admin/OverviewMiniCalendar";
 import PayablesMiniTable from "../../../components/admin/PayablesMiniTable";
 import type { RegionTrip } from "../../../components/admin/RegionComparison";
 import {
@@ -239,78 +238,99 @@ function toFleetRow(
 
 // --- New Sub-components for the redesigned layout ---
 
-/** Tiny bar chart: the last bar (today) is the navy accent. */
-function MiniBars({ values }: { values: number[] }) {
-  const recent = values.slice(-6);
-  const padded = [...Array(6 - recent.length).fill(0), ...recent] as number[];
-  const max = Math.max(...padded, 1);
+const clampPercent = (value: number) => Math.min(Math.max(value, 0), 100);
+
+/** Ring gauge with the percentage in the middle. */
+function RingGauge({ percent, color = "#2678b9" }: { percent: number; color?: string }) {
+  const value = clampPercent(percent);
   return (
-    <div aria-hidden="true" className="flex h-11 w-[4.25rem] items-end justify-between gap-1">
-      {padded.map((value, index) => (
-        <span
-          key={index}
-          className={`w-2 rounded-full ${index === padded.length - 1 ? "bg-[#0b2341]" : "bg-[#d3deec]"}`}
-          style={{ height: `${Math.max((value / max) * 100, 14)}%` }}
+    <div
+      role="img"
+      aria-label={`${value}%`}
+      className="relative flex h-[60px] w-[60px] items-center justify-center">
+      <svg aria-hidden="true" viewBox="0 0 60 60" className="absolute inset-0 -rotate-90">
+        <circle cx="30" cy="30" r="24" fill="none" stroke="#e3eaf2" strokeWidth="6" />
+        <circle
+          cx="30"
+          cy="30"
+          r="24"
+          fill="none"
+          stroke={color}
+          strokeWidth="6"
+          strokeLinecap="round"
+          pathLength={100}
+          strokeDasharray={`${value} 100`}
         />
-      ))}
+      </svg>
+      <span className="relative text-[12px] font-semibold tabular-nums text-[#0b2341]">{value}%</span>
     </div>
   );
 }
 
-/** Tiny ring showing a share of all trips. */
-function MiniRing({ percent, color = "#0b2341" }: { percent: number; color?: string }) {
-  const radius = 17;
-  const circumference = 2 * Math.PI * radius;
-  const clamped = Math.min(Math.max(percent, 0), 100);
+/** Semicircle gauge with the percentage underneath the arc. */
+function ArcGauge({ percent, color = "#0b2341" }: { percent: number; color?: string }) {
+  const value = clampPercent(percent);
   return (
-    <svg aria-hidden="true" viewBox="0 0 44 44" className="h-11 w-11">
-      <circle cx="22" cy="22" r={radius} fill="none" stroke="#e8edf3" strokeWidth="5" />
-      <circle
-        cx="22"
-        cy="22"
-        r={radius}
-        fill="none"
-        stroke={color}
-        strokeWidth="5"
-        strokeLinecap="round"
-        strokeDasharray={`${(clamped / 100) * circumference} ${circumference}`}
-        transform="rotate(-90 22 22)"
-      />
-    </svg>
+    <div role="img" aria-label={`${value}%`} className="relative h-[46px] w-[76px]">
+      <svg aria-hidden="true" viewBox="0 0 76 46" className="absolute inset-0">
+        <path d="M 8 40 A 30 30 0 0 1 68 40" fill="none" stroke="#e3eaf2" strokeWidth="7" strokeLinecap="round" />
+        <path
+          d="M 8 40 A 30 30 0 0 1 68 40"
+          fill="none"
+          stroke={color}
+          strokeWidth="7"
+          strokeLinecap="round"
+          pathLength={100}
+          strokeDasharray={`${value} 100`}
+        />
+      </svg>
+      <span className="absolute inset-x-0 bottom-0 text-center text-[12px] font-semibold tabular-nums text-[#0b2341]">
+        {value}%
+      </span>
+    </div>
   );
 }
 
-/** Stat card: navy icon circle, big figure, quiet note and a tiny chart on the right. */
+/** A single tall rounded bar. */
+function PillBar() {
+  return <span aria-hidden="true" className="block h-14 w-2.5 rounded-full bg-[#2678b9]" />;
+}
+
+/** A glowing status dot. */
+function StatusDot({ tone }: { tone: "amber" | "green" }) {
+  const color = tone === "amber" ? "bg-[#ffd43b] ring-[#ffd43b]/30" : "bg-emerald-400 ring-emerald-400/30";
+  return <span aria-hidden="true" className={`block h-4 w-4 rounded-full ring-[6px] ${color}`} />;
+}
+
+/** Stat card: navy icon circle, label, big figure, quiet note, and a small visual on the right. */
 function KpiCard({
   title,
   value,
   note,
   icon,
-  chart,
-  alert = false,
+  visual,
 }: {
   title: string;
   value: string;
   note: string;
   icon: React.ReactNode;
-  chart: React.ReactNode;
-  alert?: boolean;
+  visual: React.ReactNode;
 }) {
   return (
-    <div className="flex min-w-0 items-center gap-3.5 rounded-[28px] bg-white px-5 py-4 ring-1 ring-slate-900/[0.04] shadow-[0_1px_2px_rgba(11,35,65,0.03)]">
+    <div className="flex min-w-0 items-center gap-4 rounded-[28px] bg-white px-5 py-5 ring-1 ring-slate-900/[0.04] shadow-[0_1px_2px_rgba(11,35,65,0.03)]">
       <span
         aria-hidden="true"
-        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#0b2341] text-white [&>svg]:h-5 [&>svg]:w-5">
+        className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#0b2341] text-white [&>svg]:h-5 [&>svg]:w-5">
         {icon}
       </span>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-[12px] font-medium text-slate-500">{title}</p>
-        <p className="mt-0.5 text-[30px] font-semibold leading-none tracking-tight tabular-nums text-[#0b2341]">
+        <p className="truncate text-[13px] font-semibold text-slate-600">{title}</p>
+        <p className="mt-0.5 text-[28px] font-semibold leading-tight tracking-tight tabular-nums text-[#0b2341]">
           {value}
         </p>
-        <p className={`mt-1 truncate text-[11px] ${alert ? "font-medium text-amber-600" : "text-slate-400"}`}>{note}</p>
+        <p className="truncate text-[11px] text-slate-400">{note}</p>
       </div>
-      <div className="shrink-0">{chart}</div>
+      <div className="shrink-0">{visual}</div>
     </div>
   );
 }
@@ -329,15 +349,16 @@ function OverviewSkeleton() {
         <div className={`${block} h-8 w-8 rounded-full`} />
       </header>
       <section aria-hidden="true" className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {Array.from({ length: 4 }, (_, index) => <div key={index} className="h-[126px] rounded-2xl border border-slate-200 bg-white p-4"><div className={`${block} h-3 w-24`} /><div className={`${block} mt-4 h-8 w-20`} /><div className={`${block} mt-3 h-3 w-32`} /></div>)}
+        {Array.from({ length: 4 }, (_, index) => <div key={index} className={`${block} h-[108px] rounded-[28px]`} />)}
       </section>
       <div aria-hidden="true" className={`${block} h-[116px] w-full`} />
-      <section aria-hidden="true" className="grid grid-cols-1 gap-4 xl:grid-cols-12 xl:grid-rows-[340px_430px]">
-        <div className={`${block} min-h-[260px] xl:col-span-3`} />
-        <div className={`${block} min-h-[260px] xl:col-span-5`} />
-        <div className={`${block} min-h-[360px] xl:col-span-4 xl:row-span-2`} />
-        <div className={`${block} min-h-[300px] xl:col-span-3`} />
-        <div className={`${block} min-h-[300px] xl:col-span-5`} />
+      <section aria-hidden="true" className="grid grid-cols-1 gap-4 xl:h-[720px] xl:grid-cols-12">
+        <div className="flex flex-col gap-4 xl:col-span-3">
+          <div className={`${block} h-[250px]`} />
+          <div className={`${block} min-h-[300px] flex-1`} />
+        </div>
+        <div className={`${block} min-h-[420px] xl:col-span-4`} />
+        <div className={`${block} min-h-[360px] xl:col-span-5`} />
       </section>
       <div aria-hidden="true" className={`${block} min-h-[360px] w-full`} />
       <section aria-hidden="true" className="grid grid-cols-1 gap-4 xl:grid-cols-12">
@@ -686,19 +707,11 @@ export default function OverviewView({
     ];
   });
 
-  const tripsPerDay = Object.entries(
-    (snapshot?.recent ?? []).reduce<Record<string, number>>((counts, trip) => {
-      const day = textValue(trip.loading_date ?? trip.created_at).slice(0, 10);
-      if (day) counts[day] = (counts[day] ?? 0) + 1;
-      return counts;
-    }, {}),
-  )
-    .sort(([first], [second]) => first.localeCompare(second))
-    .slice(-6)
-    .map(([, count]) => count);
   const inProgressTrips = snapshot?.inProgress ?? 0;
   const completedTrips = snapshot?.completed ?? 0;
-  const otherTrips = Math.max(totalTrips - inProgressTrips - completedTrips - delayedTrips, 0);
+  const deliveryDates = activeTrips
+    .map((trip) => textValue(trip.estimated_delivery_date).slice(0, 10))
+    .filter((day) => /^\d{4}-\d{2}-\d{2}$/.test(day));
 
   const regionTrips: RegionTrip[] = [];
   let unlocatedTrips = 0;
@@ -772,94 +785,90 @@ export default function OverviewView({
         {snapshot&&snapshot.total>snapshot.recent.length&&<p className="text-xs text-slate-500">Showing the latest {snapshot.recent.length} active trips in charts and previews; headline totals cover all active trips.</p>}
 
         <div className="space-y-4">
-        {/* Top row: the 4 stat cards only */}
+        {/* Summary cards */}
         <section aria-label="Fleet summary" className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <KpiCard
             title="Total trips"
             value={snapshot ? totalTrips.toLocaleString() : "…"}
             note="Non-archived trips"
             icon={<Truck />}
-            chart={<MiniBars values={tripsPerDay} />}
+            visual={<PillBar />}
           />
           <KpiCard
             title="In transit"
             value={snapshot ? inProgressTrips.toLocaleString() : "…"}
             note={`${pctOfTrips(inProgressTrips)}% of trips`}
             icon={<Package />}
-            chart={<MiniRing percent={pctOfTrips(inProgressTrips)} />}
+            visual={<RingGauge percent={pctOfTrips(inProgressTrips)} />}
           />
           <KpiCard
             title="Completed"
             value={snapshot ? completedTrips.toLocaleString() : "…"}
             note={`${pctOfTrips(completedTrips)}% of trips`}
             icon={<CheckCircle2 />}
-            chart={<MiniRing percent={pctOfTrips(completedTrips)} />}
+            visual={<ArcGauge percent={pctOfTrips(completedTrips)} />}
           />
           <KpiCard
             title="Delayed"
             value={snapshot ? delayedTrips.toLocaleString() : "…"}
             note={delayedTrips > 0 ? "Needs follow-up" : "On schedule"}
-            alert={delayedTrips > 0}
             icon={<Clock />}
-            chart={<MiniRing percent={pctOfTrips(delayedTrips)} color="#f59e0b" />}
+            visual={<StatusDot tone={delayedTrips > 0 ? "amber" : "green"} />}
           />
         </section>
 
-        {/* Spotlight Trips (Attention Card) */}
+        {/* Trips that need attention */}
         <SpotlightTrips rows={fleetRows} onViewTrip={onOpenTrip} />
 
-        {/* Bento grid: requests + status | activity + fleet | map */}
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-12 xl:grid-rows-[minmax(340px,auto)_minmax(430px,auto)]">
-          <div className="relative flex min-w-0 xl:col-span-3">
-          <PendingRequestsCard
-            className="h-full w-full"
-            requests={pendingRequests}
-            onReview={(id) => {
-              selectRequest(id);
-              onMetricNavigate?.("requests");
-            }}
-            onViewAll={() => onMetricNavigate?.("requests")}
-          />
-          </div>
-
-          <OverviewCalendarCard
-            className="xl:col-span-5 xl:min-h-0"
-            onOpenCalendar={() => onMetricNavigate?.("calendar")}
-          />
-
-          <div className="min-w-0 xl:col-span-4 xl:row-span-2">
-            <LiveTripMap
-              unified
-              tracks={activeTracks}
-              locationIds={activeMapLocationIds}
-              tripLocationRoutes={activeMapRoutes}
-              focusTripId={focusedTripId && activeTripIds.has(focusedTripId) ? focusedTripId : null}
-              eventLoadError={snapshot?.eventsUnavailable ?? false}
-              height={380}
-              fillHeight
+        {/* Left panel: requests + mini calendar | active fleet | live trip map.
+            One fixed-height row: all three columns share the same top and bottom edge,
+            and the fleet list and live trip card scroll inside their own box. */}
+        <div className="grid grid-cols-1 gap-4 xl:h-[720px] xl:grid-cols-12">
+          <div className="flex min-h-0 min-w-0 flex-col gap-4 xl:col-span-3">
+            <PendingRequestsCard
+              className="h-[340px] shrink-0 xl:h-auto xl:min-h-0 xl:flex-1"
+              requests={pendingRequests}
+              onReview={(id) => {
+                selectRequest(id);
+                onMetricNavigate?.("requests");
+              }}
+              onViewAll={() => onMetricNavigate?.("requests")}
+            />
+            <OverviewMiniCalendar
+              className="shrink-0"
+              markedDates={deliveryDates}
+              markedLabel="deliveries"
+              onOpenCalendar={() => onMetricNavigate?.("calendar")}
             />
           </div>
 
-          <TripStatusRing
-            className="min-h-[380px] xl:col-span-3 xl:min-h-0"
-            total={totalTrips}
-            segments={[
-              { label: "Completed", value: completedTrips, color: "#0b2341" },
-              { label: "In transit", value: inProgressTrips, color: "#4f7bb0" },
-              { label: "Delayed", value: delayedTrips, color: "#f59e0b" },
-              { label: "Other", value: otherTrips, color: "#cbd5e1" },
-            ]}
-          />
+          <div className="relative h-[520px] min-w-0 xl:col-span-4 xl:h-auto">
+            <div className="absolute inset-0 overflow-y-auto overscroll-contain rounded-[28px]">
+              <FleetListCard
+                rows={fleetPhotoRows}
+                selectedTripId={focusedTripId}
+                onSelectTrip={(tripId) =>
+                  setFocusedTripId((current) => (current === tripId ? null : tripId))
+                }
+                onViewTrip={onOpenTrip}
+                className="w-full min-h-full"
+              />
+            </div>
+          </div>
 
-          <FleetListCard
-            rows={fleetPhotoRows}
-            selectedTripId={focusedTripId}
-            onSelectTrip={(tripId) =>
-              setFocusedTripId((current) => (current === tripId ? null : tripId))
-            }
-            onViewTrip={onOpenTrip}
-            className="xl:col-span-5"
-          />
+          <div className="relative h-[620px] min-w-0 xl:col-span-5 xl:h-auto">
+            <div className="absolute inset-0 overflow-y-auto overscroll-contain rounded-[28px]">
+              <LiveTripMap
+                unified
+                tracks={activeTracks}
+                locationIds={activeMapLocationIds}
+                tripLocationRoutes={activeMapRoutes}
+                focusTripId={focusedTripId && activeTripIds.has(focusedTripId) ? focusedTripId : null}
+                eventLoadError={snapshot?.eventsUnavailable ?? false}
+                height={320}
+              />
+            </div>
+          </div>
         </div>
         {snapshot?.bookingUnavailable && (
           <p className="px-2 text-xs text-amber-800">

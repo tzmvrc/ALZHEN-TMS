@@ -1,6 +1,6 @@
 // src/components/admin/OverviewCards.tsx
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { AlertTriangle, ArrowUpRight, CheckCircle2, ChevronLeft, ChevronRight, MapPin, RefreshCw, Users } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, CheckCircle2, ChevronRight, MapPin, MoreHorizontal, RefreshCw, Users } from "lucide-react";
 import type { DispatchRecord } from "../../types/dashboard";
 import type { ReportRow } from "../../services/report.service";
 import type { DispatchRequest } from "../../types/requests";
@@ -289,10 +289,25 @@ const ATTENTION_CSS = `
 
 function attentionTone(status: DispatchRecord["status"]) {
   if (status === "Delayed")
-    return { label: "Delayed", dot: "bg-amber-500", chip: "bg-amber-50 text-amber-700" };
+    return {
+      label: "Delayed",
+      dot: "bg-amber-500",
+      text: "text-amber-700",
+      card: "bg-gradient-to-r from-amber-100 via-amber-50/70 to-white ring-amber-200/70 hover:ring-amber-300",
+    };
   if (status === "In Progress")
-    return { label: "In transit", dot: "bg-sky-500", chip: "bg-sky-50 text-sky-700" };
-  return { label: "Check", dot: "bg-slate-400", chip: "bg-slate-100 text-slate-600" };
+    return {
+      label: "In transit",
+      dot: "bg-sky-500",
+      text: "text-sky-700",
+      card: "bg-gradient-to-r from-sky-100 via-sky-50/70 to-white ring-sky-200/70 hover:ring-sky-300",
+    };
+  return {
+    label: "Check",
+    dot: "bg-slate-400",
+    text: "text-slate-600",
+    card: "bg-gradient-to-r from-slate-100 via-slate-50/70 to-white ring-slate-200/80 hover:ring-slate-300",
+  };
 }
 
 function AttentionItem({
@@ -310,10 +325,10 @@ function AttentionItem({
       type="button"
       tabIndex={duplicate ? -1 : 0}
       onClick={() => onViewTrip?.(trip.id)}
-      className="flex shrink-0 items-center gap-3 rounded-2xl bg-[#f2f6fa] py-2.5 pl-3 pr-4 text-left transition-colors hover:bg-[#e6f0f9] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9]"
+      className={`flex shrink-0 items-center gap-3 rounded-2xl py-2.5 pl-3 pr-4 text-left ring-1 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9] ${tone.card}`}
     >
-      <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold ${tone.chip}`}>
-        <span className={`h-1.5 w-1.5 rounded-full ${tone.dot}`} />
+      <span className={`inline-flex items-center gap-1.5 px-1 py-1 text-[10px] font-semibold ${tone.text}`}>
+        <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${tone.dot}`} />
         {trip.statusText ?? tone.label}
       </span>
       <span className="min-w-0">
@@ -324,7 +339,7 @@ function AttentionItem({
           {trip.origin} → {trip.destination}
         </span>
       </span>
-      <span className="hidden border-l border-slate-200 pl-3 sm:block">
+      <span className="hidden border-l border-slate-900/10 pl-3 sm:block">
         <span className="block whitespace-nowrap text-[11px] font-medium text-slate-700">
           {trip.driver || "Unassigned"}
         </span>
@@ -351,7 +366,9 @@ export function SpotlightTrips({
     ...rows.filter((trip) => trip.status === "Other"),
     ...rows.filter((trip) => trip.status === "In Progress"),
   ];
-  const duration = Math.max(items.length * 10, 36);
+  /* Repeat the cards so one loop is always wider than the bar. The loop has the same gap at its seam as between any two cards. */
+  const repeats = Math.max(1, Math.ceil(8 / Math.max(items.length, 1)));
+  const duration = Math.max(items.length * repeats * 10, 36);
 
   return (
     <section
@@ -392,16 +409,18 @@ export function SpotlightTrips({
               <div
                 key={copy}
                 aria-hidden={copy === 1 ? true : undefined}
-                className="flex min-w-[100cqw] shrink-0 items-center gap-3 pl-6 pr-3"
+                className="flex shrink-0 items-center gap-3 pr-3"
               >
-                {items.map((trip) => (
-                  <AttentionItem
-                    key={`${copy}-${trip.id}`}
-                    trip={trip}
-                    onViewTrip={onViewTrip}
-                    duplicate={copy === 1}
-                  />
-                ))}
+                {Array.from({ length: repeats }, (_, repeat) =>
+                  items.map((trip) => (
+                    <AttentionItem
+                      key={`${copy}-${repeat}-${trip.id}`}
+                      trip={trip}
+                      onViewTrip={onViewTrip}
+                      duplicate={copy === 1 || repeat > 0}
+                    />
+                  )),
+                )}
               </div>
             ))}
           </div>
@@ -438,6 +457,7 @@ export function FleetListCard({
   className?: string;
 }) {
   const [tab, setTab] = useState<FleetTab>("all");
+  const [menuOpen, setMenuOpen] = useState(false);
   const [savedPhotos, setSavedPhotos] = useState<ReadonlyMap<string, string>>(() => new Map());
   const truckPhotos = useMemo(
     () => assignFleetTruckCutouts(rows.map((trip) => trip.id), savedPhotos),
@@ -474,27 +494,59 @@ export function FleetListCard({
 
   return (
     <section className={`${surface.card} flex min-h-0 flex-col overflow-hidden p-5 ${className}`}>
-      <h2 className={`${surface.heading} mb-3`}>Active fleet</h2>
       <div
-        className="mb-4 flex gap-1 overflow-x-auto rounded-full bg-[#f5f7fa] p-1"
-        role="tablist"
+        className="relative mb-4 flex items-center gap-2"
+        onBlur={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setMenuOpen(false);
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") setMenuOpen(false);
+        }}
       >
-        {tabs.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            role="tab"
-            aria-selected={tab === t.id}
-            onClick={() => setTab(t.id)}
-            className={`shrink-0 rounded-full px-3 py-1.5 text-[11px] font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0b2341]/40 ${
-              tab === t.id
-                ? "bg-[#0b2341] text-white"
-                : "text-slate-500 hover:text-[#0b2341]"
-            }`}
+        <h2 className={surface.heading}>Active fleet</h2>
+        {tab !== "all" && (
+          <span className="rounded-full bg-[#f5f7fa] px-2.5 py-1 text-[10px] font-semibold text-[#0b2341]">
+            {tabs.find((t) => t.id === tab)?.label}
+          </span>
+        )}
+        <button
+          type="button"
+          aria-label="Filter by status"
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
+          onClick={() => setMenuOpen((open) => !open)}
+          className={`ml-auto inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0b2341]/40 ${
+            menuOpen ? "bg-[#0b2341] text-white" : "bg-[#f5f7fa] text-slate-500 hover:text-[#0b2341]"
+          }`}
+        >
+          <MoreHorizontal aria-hidden="true" className="h-4 w-4" strokeWidth={3} />
+        </button>
+        {menuOpen && (
+          <div
+            role="menu"
+            aria-label="Filter fleet by status"
+            className="absolute right-0 top-10 z-20 w-48 rounded-2xl bg-white p-1.5 shadow-lg ring-1 ring-slate-900/10"
           >
-            {t.label} <span className="opacity-60">{t.count}</span>
-          </button>
-        ))}
+            {tabs.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                role="menuitemradio"
+                aria-checked={tab === t.id}
+                onClick={() => {
+                  setTab(t.id);
+                  setMenuOpen(false);
+                }}
+                className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-[12px] font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0b2341]/40 ${
+                  tab === t.id ? "bg-[#0b2341] text-white" : "text-slate-600 hover:bg-[#f5f7fa]"
+                }`}
+              >
+                <span>{t.label}</span>
+                <span className="tabular-nums opacity-60">{t.count}</span>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {visible.length === 0 ? (
@@ -780,14 +832,11 @@ export function PendingRequestsCard({
   onViewAll?: () => void;
   className?: string;
 }) {
-  const [activeIndex, setActiveIndex] = useState(0);
-
-  const cards = requests
+  const list = requests
     .slice()
-    .sort((a, b) => Date.parse(b.receivedAt) - Date.parse(a.receivedAt))
-    .slice(0, 8);
+    .sort((a, b) => Date.parse(b.receivedAt) - Date.parse(a.receivedAt));
 
-  if (cards.length === 0) {
+  if (list.length === 0) {
     return (
       <section
         aria-label="Requests to approve"
@@ -805,99 +854,68 @@ export function PendingRequestsCard({
     );
   }
 
-  const total = cards.length;
-  const active = activeIndex % total;
-  const go = (step: number) => setActiveIndex((current) => (current + step + total) % total);
-  const request = cards[active];
-  const qty = request.items.reduce((sum, item) => sum + item.qty, 0);
-  const lines = request.items.length;
-  const stats = [
-    { label: "Lines", value: String(lines) },
-    { label: "Pieces", value: String(qty) },
-    { label: "Amount", value: request.amount || "—" },
-  ];
-  const pagerBtn =
-    "inline-flex h-7 w-7 items-center justify-center rounded-full bg-[#f5f7fa] text-slate-500 transition hover:text-[#0b2341] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0b2341]/40 disabled:opacity-30";
-
   return (
     <section
       aria-label="Requests to approve"
       className={`${surface.card} flex min-h-0 min-w-0 flex-col p-5 ${className}`}
-      onKeyDown={(event) => {
-        if (event.key === "ArrowRight") go(1);
-        if (event.key === "ArrowLeft") go(-1);
-      }}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h2 className={surface.heading}>Email requests</h2>
-          <p className="mt-0.5 truncate text-[11px] text-slate-400">
-            {total} to approve · {timeAgo(request.receivedAt)}
-          </p>
-        </div>
-        <div className="flex shrink-0 items-center gap-1" aria-live="polite">
-          <button type="button" onClick={() => go(-1)} disabled={total < 2} aria-label="Previous request" className={pagerBtn}>
-            <ChevronLeft aria-hidden="true" className="h-4 w-4" />
-          </button>
-          <span className="min-w-[2.25rem] text-center text-[11px] tabular-nums text-slate-400">
-            {active + 1} / {total}
-          </span>
-          <button type="button" onClick={() => go(1)} disabled={total < 2} aria-label="Next request" className={pagerBtn}>
-            <ChevronRight aria-hidden="true" className="h-4 w-4" />
-          </button>
-        </div>
-      </div>
-
-      <div className="mt-4 flex items-center gap-2">
-        <p className="min-w-0 truncate text-[22px] font-semibold tracking-tight text-[#0b2341]">{request.reference}</p>
-        <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold ${regionTagClass(request.region)}`}>
-          {request.region}
-        </span>
-      </div>
-      <p className="mt-0.5 truncate text-[11px] text-slate-400">{request.warehouse || request.courier || "Warehouse not set"}</p>
-
-      <dl className="mt-2 grid grid-cols-3 gap-2">
-        {stats.map((stat) => (
-          <div key={stat.label} className="min-w-0 rounded-2xl bg-[#f5f7fa] px-2 py-2.5 text-center">
-            <dd className="truncate text-[13px] font-semibold text-[#0b2341]">{stat.value}</dd>
-            <dt className="mt-0.5 text-[10px] text-slate-400">{stat.label}</dt>
-          </div>
-        ))}
-      </dl>
-
-      <div className="mt-auto pt-4">
-        <p className="mb-2 text-[13px] font-semibold text-[#0b2341]">Sender</p>
-        <div className="flex items-center gap-3">
-          <span
-            aria-hidden="true"
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#e6f0f9] text-[12px] font-bold text-[#0b2341]"
-          >
-            {senderInitials(request.fromEmail)}
-          </span>
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-[13px] font-semibold text-[#0b2341]">{request.fromName || request.fromEmail}</p>
-            <p className="truncate text-[11px] text-slate-400">{request.fromEmail}</p>
-          </div>
-          <button
-            type="button"
-            onClick={() => onReview?.(request.id)}
-            aria-label={`Review request ${request.reference} from ${request.fromEmail}`}
-            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#0b2341] text-white transition hover:bg-[#17365f] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0b2341]/40 focus-visible:ring-offset-2"
-          >
-            <ArrowUpRight aria-hidden="true" className="h-5 w-5" />
-          </button>
+          <p className="mt-0.5 truncate text-[11px] text-slate-400">{list.length} to approve</p>
         </div>
         {onViewAll && (
           <button
             type="button"
             onClick={onViewAll}
-            className="mt-3 inline-flex items-center gap-1 text-[11px] font-medium text-slate-400 transition hover:text-[#0b2341] focus:outline-none focus-visible:underline"
+            className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-[#f5f7fa] py-1 pl-2.5 pr-1.5 text-[11px] font-medium text-slate-500 transition hover:text-[#0b2341] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0b2341]/40"
           >
-            View all requests
-            <ChevronRight aria-hidden="true" className="h-3 w-3" />
+            View all
+            <ChevronRight aria-hidden="true" className="h-3.5 w-3.5" />
           </button>
         )}
       </div>
+
+      <ul className="-mx-2 mt-3 min-h-0 flex-1 space-y-0.5 overflow-y-auto overscroll-contain px-2">
+        {list.map((request) => {
+          const qty = request.items.reduce((sum, item) => sum + item.qty, 0);
+          const lines = request.items.length;
+          return (
+            <li key={request.id}>
+              <button
+                type="button"
+                onClick={() => onReview?.(request.id)}
+                aria-label={`Review request ${request.reference} from ${request.fromEmail}`}
+                className="flex w-full items-center gap-3 rounded-2xl p-2 text-left transition hover:bg-[#f5f7fa] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0b2341]/40"
+              >
+                <span
+                  aria-hidden="true"
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#e6f0f9] text-[11px] font-bold text-[#0b2341]"
+                >
+                  {senderInitials(request.fromEmail)}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-center gap-1.5">
+                    <span className="truncate text-[13px] font-semibold text-[#0b2341]">{request.reference}</span>
+                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-semibold ${regionTagClass(request.region)}`}>
+                      {request.region}
+                    </span>
+                  </span>
+                  <span className="mt-0.5 block truncate text-[11px] text-slate-400">
+                    {request.fromName || request.fromEmail} · {timeAgo(request.receivedAt)}
+                  </span>
+                </span>
+                <span className="shrink-0 text-right">
+                  <span className="block text-[12px] font-semibold tabular-nums text-[#0b2341]">{request.amount || "—"}</span>
+                  <span className="block text-[10px] text-slate-400">
+                    {lines} {lines === 1 ? "line" : "lines"} · {qty} pcs
+                  </span>
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
     </section>
   );
 }

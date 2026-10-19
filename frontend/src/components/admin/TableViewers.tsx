@@ -1,21 +1,46 @@
 import {useEffect,useRef,useState,useSyncExternalStore} from "react";
 import {collaborationSnapshot,subscribeCollaboration,joinCollaborationRoom,type TableViewer} from "../../services/collaboration.service";
 
-export function ViewerAvatar({user}:{user:TableViewer}){
+type AnimatedViewer={user:TableViewer;animation:"enter"|"leave"|null};
+const noViewers:TableViewer[]=[];
+
+export function ViewerAvatar({user,animation=null}:{user:TableViewer;animation?:"enter"|"leave"|null}){
  const [failed,setFailed]=useState(false);
- return <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-white bg-slate-100 text-xs font-semibold" style={{color:user.color}}>{user.avatarUrl&&!failed?<img src={user.avatarUrl} alt="" referrerPolicy="no-referrer" onError={()=>setFailed(true)} className="h-full w-full object-cover"/>:user.name.trim().slice(0,1).toLocaleUpperCase()||"?"}</span>;
+ return <span className={`relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 text-xs font-semibold ${animation==="enter"?"viewer-pop-in":animation==="leave"?"viewer-pop-out":""}`} style={{color:user.color,borderColor:user.color,backgroundColor:`color-mix(in srgb, ${user.color} 18%, white)`}}>
+  <span className="absolute inset-0 flex items-center justify-center overflow-hidden rounded-full">{user.avatarUrl&&!failed?<img src={user.avatarUrl} alt="" referrerPolicy="no-referrer" onError={()=>setFailed(true)} className="h-full w-full object-cover"/>:user.name.trim().slice(0,1).toLocaleUpperCase()||"?"}</span>
+  {animation&&<span aria-hidden="true" className={`viewer-confetti ${animation==="leave"?"viewer-confetti-out":""}`}>{Array.from({length:8},(_,index)=><i key={index}/>)}</span>}
+ </span>;
 }
 export default function TableViewers({table}:{table:string}){
  const snapshot=useSyncExternalStore(subscribeCollaboration,collaborationSnapshot,collaborationSnapshot);
  useEffect(()=>joinCollaborationRoom("table",table),[table]);
- return snapshot.connected?<ViewerGroup key={table} users={snapshot.viewers?.[table]??[]}/>:null;
+ return snapshot.connected?<ViewerGroup key={table} users={snapshot.viewers?.[table]??noViewers}/>:null;
 }
 export function ViewerGroup({users}:{users:TableViewer[]}){
  const [open,setOpen]=useState(false),root=useRef<HTMLDivElement>(null);
+ const [animatedUsers,setAnimatedUsers]=useState<AnimatedViewer[]>(()=>users.map(user=>({user,animation:null})));
+ useEffect(()=>{
+  const timer=setTimeout(()=>setAnimatedUsers(current=>{
+    const currentById=new Map(current.map(viewer=>[viewer.user.userId,viewer]));
+    const next:AnimatedViewer[]=users.map(user=>{
+     const previous=currentById.get(user.userId);
+     currentById.delete(user.userId);
+     return {user,animation:previous?(previous.animation==="leave"?"enter":previous.animation):"enter"};
+    });
+    for(const viewer of currentById.values())next.push({...viewer,animation:"leave"});
+    return next;
+   }),0);
+  return()=>clearTimeout(timer);
+ },[users]);
+ useEffect(()=>{
+  if(!animatedUsers.some(viewer=>viewer.animation))return;
+  const timer=setTimeout(()=>setAnimatedUsers(current=>current.flatMap(viewer=>viewer.animation==="leave"?[]:[{...viewer,animation:null}])),620);
+  return()=>clearTimeout(timer);
+ },[animatedUsers]);
  useEffect(()=>{if(!open)return;const outside=(e:PointerEvent)=>{if(!root.current?.contains(e.target as Node))setOpen(false);};document.addEventListener("pointerdown",outside);return()=>document.removeEventListener("pointerdown",outside);},[open]);
- if(!users.length)return null;
+ if(!users.length&&!animatedUsers.length)return null;
  return <div ref={root} className="relative shrink-0" onKeyDown={e=>{if(e.key==="Escape"){setOpen(false);root.current?.querySelector<HTMLButtonElement>("button")?.focus();}}}>
-  <button type="button" aria-label={`${users.length} people viewing this table`} aria-expanded={open} aria-haspopup="dialog" title="People viewing this table" onClick={()=>setOpen(v=>!v)} className="flex -space-x-2 rounded-full p-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400">{users.slice(0,3).map(user=><ViewerAvatar key={`${user.userId}:${user.avatarUrl}`} user={user}/>)}{users.length>3&&<span className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-slate-200 text-xs font-semibold text-slate-700">+{users.length-3}</span>}</button>
-  {open&&<div role="dialog" aria-label="People viewing this table" className="absolute left-0 top-full z-[160] mt-2 max-h-64 w-60 overflow-auto rounded-xl border border-slate-200 bg-white p-2 shadow-lg">{users.map(user=><div key={user.userId} className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-slate-800"><ViewerAvatar key={`${user.userId}:${user.avatarUrl}`} user={user}/><span className="truncate">{user.name}</span></div>)}</div>}
+  <button type="button" aria-label={`${users.length} people viewing this table`} aria-expanded={open} aria-haspopup="dialog" title="People viewing this table" onClick={()=>setOpen(v=>!v)} className="flex -space-x-2 rounded-full p-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400">{animatedUsers.slice(0,3).map(({user,animation})=><ViewerAvatar key={user.userId} user={user} animation={animation}/>)}{users.length>3&&<span className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-slate-300 bg-slate-200 text-xs font-semibold text-slate-700">+{users.length-3}</span>}</button>
+  {open&&<div role="dialog" aria-label="People viewing this table" className="absolute left-0 top-full z-[160] mt-2 max-h-64 w-60 overflow-auto rounded-xl border border-slate-200 bg-white p-2 shadow-lg">{animatedUsers.map(({user,animation})=><div key={user.userId} className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-slate-800"><ViewerAvatar user={user} animation={animation}/><span className="truncate">{user.name}</span></div>)}</div>}
  </div>;
 }

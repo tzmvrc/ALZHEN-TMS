@@ -188,6 +188,97 @@ select {
   animation: toast-out 180ms ease-in forwards;
 }
 
+@keyframes viewer-pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.45);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes viewer-pop-out {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.45);
+  }
+}
+
+.viewer-pop-in {
+  animation: viewer-pop-in 260ms cubic-bezier(0.2, 1.5, 0.5, 1) both;
+}
+
+.viewer-pop-out {
+  animation: viewer-pop-out 480ms ease-in both;
+  pointer-events: none;
+}
+
+.viewer-confetti {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  pointer-events: none;
+}
+
+.viewer-confetti i {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 4px;
+  height: 6px;
+  border-radius: 1px;
+  background: currentColor;
+  opacity: 0;
+  animation: viewer-confetti-burst 560ms cubic-bezier(0.16, 0.75, 0.3, 1) both;
+}
+
+.viewer-confetti i:nth-child(1) { --burst-x: -19px; --burst-y: -14px; }
+.viewer-confetti i:nth-child(2) { --burst-x: -10px; --burst-y: -21px; }
+.viewer-confetti i:nth-child(3) { --burst-x: 2px; --burst-y: -23px; }
+.viewer-confetti i:nth-child(4) { --burst-x: 17px; --burst-y: -15px; }
+.viewer-confetti i:nth-child(5) { --burst-x: 21px; --burst-y: 2px; }
+.viewer-confetti i:nth-child(6) { --burst-x: 12px; --burst-y: 18px; }
+.viewer-confetti i:nth-child(7) { --burst-x: -7px; --burst-y: 21px; }
+.viewer-confetti i:nth-child(8) { --burst-x: -21px; --burst-y: 9px; }
+
+.viewer-confetti i:nth-child(even) {
+  width: 3px;
+  height: 4px;
+  border-radius: 50%;
+}
+
+.viewer-confetti-out i {
+  animation-direction: reverse;
+}
+
+@keyframes viewer-confetti-burst {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.2);
+  }
+  15% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(calc(-50% + var(--burst-x)), calc(-50% + var(--burst-y))) rotate(160deg) scale(0.75);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .viewer-pop-in,
+  .viewer-pop-out,
+  .viewer-confetti i {
+    animation-duration: 1ms;
+  }
+}
+
 ::selection {
   color: #1d4ed8;
   background: #dbeafe;

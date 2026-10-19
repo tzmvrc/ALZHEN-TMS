@@ -548,7 +548,7 @@ function AddTripButton({ onCreated }: { onCreated: (reference: string) => void }
     addToast({
       variant: "success",
       title: "Trip saved",
-      description: `${reference} was saved to the database. The table is showing this dispatch reference.`,
+      description: `${reference} was saved to the database. The Trips table is refreshing for this dispatch.`,
     });
   };
 

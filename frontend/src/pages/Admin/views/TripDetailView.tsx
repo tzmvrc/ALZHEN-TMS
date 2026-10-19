@@ -2,15 +2,15 @@ import { useDeferredRealtimeRefresh } from "../../../components/admin/useDeferre
 import { useEffect,useLayoutEffect,useRef, useState, type ReactNode } from "react";
 import {
   ArrowLeft,
+  Boxes,
   Check,
   ChevronLeft,
   ChevronRight,
   Clock,
   Eye,
-  History,
   ImagePlus,
   Images,
-  ListChecks,
+  MapPin,
   Package,
   Trash2,
   Truck,
@@ -125,11 +125,21 @@ function statusTone(status: unknown) {
   return { pill: "bg-slate-100 text-slate-600", dot: "bg-slate-400" };
 }
 
-function StatusPill({ status, fallback = "Not recorded" }: { status: unknown; fallback?: string }) {
+function StatusPill({
+  status,
+  fallback = "Not recorded",
+  onDark = false,
+}: {
+  status: unknown;
+  fallback?: string;
+  onDark?: boolean;
+}) {
   const tone = statusTone(status);
   return (
     <span
-      className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold ${tone.pill}`}
+      className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold ${
+        onDark ? "bg-white/10 text-white ring-1 ring-inset ring-white/20" : tone.pill
+      }`}
     >
       <span className={`h-1.5 w-1.5 rounded-full ${tone.dot}`} />
       {valueText(status, fallback).replaceAll("_", " ")}
@@ -172,7 +182,7 @@ function CardHeader({
   );
 }
 
-function ProductPhotoThumb({ src }: { src: string | null }) {
+function ProductPhotoThumb({ src, className = "h-14 w-14" }: { src: string | null; className?: string }) {
   const [failed, setFailed] = useState(false);
   if (!src || failed) {
     return <Package aria-hidden="true" className="h-5 w-5 text-slate-300" />;
@@ -182,7 +192,7 @@ function ProductPhotoThumb({ src }: { src: string | null }) {
       src={src}
       alt=""
       loading="lazy"
-      className="h-14 w-14 rounded-xl bg-[#f2f6fa] object-cover"
+      className={`${className} rounded-xl bg-[#f2f6fa] object-cover`}
       onError={() => setFailed(true)}
     />
   );
@@ -306,7 +316,7 @@ function TripGallery({
   };
 
   return (
-    <div className={`${surface.card} flex h-full flex-col p-5`}>
+    <div className={`${surface.card} flex flex-col p-5`}>
       <CardHeader
         icon={<Images />}
         title="Trip photos"
@@ -330,7 +340,7 @@ function TripGallery({
           ) : undefined
         }
       />
-      <div className="relative mt-4 aspect-[16/10] overflow-hidden rounded-2xl bg-slate-100">
+      <div className={`relative mt-4 overflow-hidden rounded-2xl bg-slate-100 ${photos.length > 0 ? "aspect-[16/10]" : "min-h-[8rem] flex-1"}`}>
         {photos.length > 0 ? (
           <>
             <img
@@ -420,69 +430,133 @@ function TripGallery({
 }
 
 /* ------------------------------------------------------------------ */
-/* Load gauge                                                          */
+/* Vehicle card                                                        */
 /* ------------------------------------------------------------------ */
-function LoadGauge({ percentage }: { percentage: number }) {
-  const radius = 60;
-  const stroke = 12;
-  const circumference = Math.PI * radius;
-  const offset = circumference - (percentage / 100) * circumference;
-  const color = percentage > 90 ? "#ef4444" : percentage > 70 ? "#f59e0b" : "#2678b9";
+const TRUCK_SLOTS = 12;
 
+/* ------------------------------------------------------------------ */
+/* Bento building blocks                                               */
+/* ------------------------------------------------------------------ */
+function MiniBars({ values }: { values: number[] }) {
+  const max = Math.max(...values, 1);
+  const peak = values.length ? values.indexOf(Math.max(...values)) : -1;
+  const bars = values.length ? values : [3, 5, 4, 6, 3, 5];
   return (
-    <div className="relative flex flex-col items-center justify-center">
-      <svg width="160" height="90" viewBox="0 0 160 90" className="overflow-visible" aria-hidden="true">
-        <path d="M 20 80 A 60 60 0 0 1 140 80" fill="none" stroke="#e2e8f0" strokeWidth={stroke} strokeLinecap="round" />
-        <path
-          d="M 20 80 A 60 60 0 0 1 140 80"
-          fill="none"
-          stroke={color}
-          strokeWidth={stroke}
-          strokeLinecap="round"
-          strokeDasharray={circumference}
-          strokeDashoffset={offset}
-          className="transition-[stroke-dashoffset] duration-1000 ease-out"
+    <div aria-hidden="true" className="flex h-14 items-end gap-1.5">
+      {bars.map((value, index) => (
+        <span
+          key={index}
+          className={`w-2.5 rounded-full ${
+            !values.length ? "bg-slate-100" : index === peak ? "bg-[#2678b9]" : "bg-[#d7e6f5]"
+          }`}
+          style={{ height: `${Math.max(16, (value / (values.length ? max : 6)) * 100)}%` }}
         />
-      </svg>
-      <div className="absolute bottom-0 flex flex-col items-center">
-        <span className="text-3xl font-bold tabular-nums text-[#0b2341]">{percentage}%</span>
-        <span className="text-[10px] font-medium text-slate-500">Loaded</span>
+      ))}
+    </div>
+  );
+}
+
+function SegmentMeter({ percent, segments = 12 }: { percent: number; segments?: number }) {
+  const filled = Math.round((percent / 100) * segments);
+  return (
+    <div aria-hidden="true" className="flex h-14 items-end gap-1">
+      {Array.from({ length: segments }, (_, index) => (
+        <span
+          key={index}
+          className={`w-1.5 rounded-full ${index < filled ? "bg-[#2678b9]" : "bg-[#e3ecf5]"}`}
+          style={{ height: `${35 + (index / (segments - 1)) * 65}%` }}
+        />
+      ))}
+    </div>
+  );
+}
+
+function StopDots({ stops, nextIndex }: { stops: TripChildRecord[]; nextIndex: number }) {
+  const shown = stops.slice(0, 8);
+  return (
+    <div aria-hidden="true" className="flex items-center">
+      {shown.map((stop, index) => (
+        <span key={index} className="flex items-center">
+          {index > 0 && <span className="h-px w-3 bg-slate-200" />}
+          <span
+            className={`h-3 w-3 rounded-full ${
+              stopIsDone(stop)
+                ? "bg-[#2678b9]"
+                : index === nextIndex
+                  ? "bg-[#ffd43b] ring-4 ring-[#fff3b8]"
+                  : "bg-[#d7e6f5]"
+            }`}
+          />
+        </span>
+      ))}
+      {stops.length > shown.length && (
+        <span className="ml-1.5 text-[10px] font-semibold text-slate-400">+{stops.length - shown.length}</span>
+      )}
+    </div>
+  );
+}
+
+function KpiCard({
+  icon,
+  label,
+  value,
+  sub,
+  chart,
+}: {
+  icon: ReactNode;
+  label: string;
+  value: string;
+  sub?: string;
+  chart?: ReactNode;
+}) {
+  return (
+    <div className={`${surface.card} flex items-center gap-4 px-5 py-4`}>
+      <span
+        aria-hidden="true"
+        className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#0b2341] text-white [&>svg]:h-5 [&>svg]:w-5"
+      >
+        {icon}
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium text-slate-500">{label}</p>
+        <p className="mt-0.5 truncate text-3xl font-semibold leading-tight tabular-nums text-[#0b2341]">{value}</p>
+        {sub && <p className="mt-0.5 truncate text-[11px] text-slate-400" title={sub}>{sub}</p>}
       </div>
+      {chart && <div className="hidden shrink-0 xl:block">{chart}</div>}
     </div>
   );
 }
 
 /* ------------------------------------------------------------------ */
-/* Vehicle card                                                        */
+/* Vehicle & load (one minimal card)                                   */
 /* ------------------------------------------------------------------ */
-const TRUCK_SLOTS = 12;
-
-function VehicleCard({
+function VehicleLoadCard({
   plate,
   status,
   cargoRows,
   selectedItem,
   onSelectItem,
+  loadPercentage,
   truckCapacityCbm,
   totalCbm,
+  className = "",
 }: {
   plate: string;
   status: unknown;
   cargoRows: Record<string, unknown>[];
   selectedItem: Record<string, unknown> | null;
   onSelectItem: (item: Record<string, unknown>) => void;
+  loadPercentage: number;
   truckCapacityCbm: number | null;
   totalCbm: number;
+  className?: string;
 }) {
   const slots = Array.from({ length: TRUCK_SLOTS }, (_, i) => cargoRows[i] ?? null);
   const remainingCbm = truckCapacityCbm !== null ? Math.max(0, truckCapacityCbm - totalCbm) : null;
-  const loadPercentage =
-    truckCapacityCbm !== null && truckCapacityCbm > 0
-      ? Math.min(100, Math.round((totalCbm / truckCapacityCbm) * 100))
-      : 0;
+  const barColor = loadPercentage > 90 ? "#ef4444" : loadPercentage > 70 ? "#f59e0b" : "#2678b9";
 
   return (
-    <div className={`${surface.card} flex h-full flex-col p-5`}>
+    <section className={`${surface.card} flex min-w-0 flex-col p-4 ${className}`}>
       <CardHeader
         icon={<Truck />}
         title="Vehicle & load"
@@ -497,81 +571,90 @@ function VehicleCard({
         }
       />
 
-      <div className="mt-4 grid flex-1 gap-4 md:grid-cols-[minmax(0,1fr)_190px]">
-        <div className="flex min-w-0 flex-col justify-center">
-          <div className="relative w-full overflow-hidden rounded-2xl bg-[#f8fafc] p-2">
-            <img src={truckBg} alt="Delivery truck side view" className="h-auto w-full object-contain" />
-            <div className="absolute bottom-[40%] left-[28%] right-[4%] top-[20%] grid grid-cols-6 grid-rows-2 gap-1 p-3">
-              {slots.map((item, index) => {
-                const isSelected = Boolean(selectedItem && item && selectedItem.id === item.id);
-                const itemName = item
-                  ? valueText(item.product_name ?? item.item_name ?? `Item ${index + 1}`)
-                  : "";
-                const itemCbm = item?.cbm;
-                const itemCbmLabel =
-                  itemCbm === null || itemCbm === undefined || itemCbm === ""
-                    ? "CBM not set"
+      <div className="mt-3 grid items-center gap-4 sm:grid-cols-2">
+      <div className="relative mx-auto w-full max-w-[320px] overflow-hidden rounded-2xl bg-[#f8fafc] p-1.5">
+        <img src={truckBg} alt="Delivery truck side view" className="h-auto w-full object-contain" />
+        <div className="absolute bottom-[40%] left-[28%] right-[4%] top-[20%] grid grid-cols-6 grid-rows-2 gap-0.5 p-1">
+          {slots.map((item, index) => {
+            const isSelected = Boolean(selectedItem && item && selectedItem.id === item.id);
+            const itemName = item ? valueText(item.product_name ?? item.item_name ?? `Item ${index + 1}`) : "";
+            const itemCbm = item?.cbm;
+            const itemCbmLabel =
+              itemCbm === null || itemCbm === undefined || itemCbm === ""
+                ? "CBM not set"
+                : Number.isFinite(Number(itemCbm))
+                  ? `${formatNumber(Number(itemCbm))} CBM`
+                  : `${String(itemCbm)} CBM`;
+            const base =
+              "relative flex flex-col items-center justify-center rounded-[4px] border text-[9px] font-medium transition-all";
+            if (!item) {
+              return (
+                <div key={index} className={`${base} border-dashed border-slate-300/70 bg-white/60`}>
+                  <span className="text-slate-300">+</span>
+                </div>
+              );
+            }
+            return (
+              <button
+                key={index}
+                type="button"
+                onClick={() => onSelectItem(item)}
+                aria-pressed={isSelected}
+                aria-label={`Select ${itemName}`}
+                title={`${itemName} · ${itemCbmLabel}`}
+                className={`${base} cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9] ${
+                  isSelected
+                    ? "border-blue-500 bg-blue-50 ring-1 ring-blue-400"
+                    : "border-slate-300 bg-white/95 hover:border-slate-400"
+                }`}
+              >
+                <Package aria-hidden="true" className="h-3 w-3 text-[#2678b9]" />
+                <span className="text-[7px] leading-none tabular-nums text-slate-500">
+                  {itemCbm === null || itemCbm === undefined || itemCbm === ""
+                    ? "—"
                     : Number.isFinite(Number(itemCbm))
-                      ? `${formatNumber(Number(itemCbm))} CBM`
-                      : `${String(itemCbm)} CBM`;
-                const base =
-                  "relative flex flex-col items-center justify-center rounded-md border text-[9px] font-medium transition-all";
-                if (!item) {
-                  return (
-                    <div key={index} className={`${base} border-dashed border-slate-300/70 bg-white/60`}>
-                      <span className="text-slate-300">+</span>
-                    </div>
-                  );
-                }
-                return (
-                  <button
-                    key={index}
-                    type="button"
-                    onClick={() => onSelectItem(item)}
-                    aria-pressed={isSelected}
-                    aria-label={`Select ${itemName}`}
-                    className={`${base} cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9] ${
-                      isSelected
-                        ? "border-blue-500 bg-blue-50 ring-1 ring-blue-400"
-                        : "border-slate-300 bg-white/95 hover:border-slate-400"
-                    }`}
-                  >
-                    <span className="line-clamp-2 text-center leading-tight">{itemName}</span>
-                    <span className="text-[8px] text-slate-500">{itemCbmLabel}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-          <p className="mt-2 text-center text-[11px] text-slate-400">
-            {cargoRows.length} cargo line{cargoRows.length === 1 ? "" : "s"}
-            {cargoRows.length > TRUCK_SLOTS && <> · showing {TRUCK_SLOTS} of {cargoRows.length}</>}
-          </p>
+                      ? formatNumber(Number(itemCbm))
+                      : String(itemCbm)}
+                </span>
+              </button>
+            );
+          })}
         </div>
-
-        <div className="flex min-w-0 flex-col gap-3">
-          <div className="flex justify-center rounded-2xl bg-[#f2f6fa] px-3 pb-3 pt-4">
-            <LoadGauge percentage={loadPercentage} />
+      </div>
+        <div className="min-w-0">
+          <div className="flex items-baseline justify-between gap-2">
+            <span className="text-2xl font-bold tabular-nums text-[#0b2341]">{loadPercentage}%</span>
+            <span className="text-[11px] text-slate-500">loaded</span>
           </div>
-          <dl className="grid gap-2">
+          <div
+            role="progressbar"
+            aria-label="Truck load"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={loadPercentage}
+            className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-slate-200"
+          >
+            <div
+              className="h-full rounded-full transition-[width] duration-700 ease-out"
+              style={{ width: `${loadPercentage}%`, backgroundColor: barColor }}
+            />
+          </div>
+          <dl className="mt-2.5 grid grid-cols-3 gap-1.5">
             {[
-              ["Max CBM", truckCapacityCbm !== null ? formatNumber(truckCapacityCbm) : "—"],
-              ["Load CBM", formatNumber(totalCbm)],
-              ["Remaining", remainingCbm !== null ? formatNumber(remainingCbm) : "—"],
+              ["Max", truckCapacityCbm !== null ? formatNumber(truckCapacityCbm) : "—"],
+              ["Load", formatNumber(totalCbm)],
+              ["Left", remainingCbm !== null ? formatNumber(remainingCbm) : "—"],
             ].map(([label, value]) => (
-              <div key={label} className="flex items-baseline justify-between gap-2 rounded-xl border border-slate-200/80 px-3 py-2">
-                <dt className="text-[11px] text-slate-500">{label}</dt>
-                <dd className="text-sm font-bold tabular-nums text-[#0b2341]">{value}</dd>
+              <div key={label} className="min-w-0 rounded-lg bg-[#f2f6fa] px-2 py-1 text-center">
+                <dd className="truncate text-xs font-bold tabular-nums text-[#0b2341]">{value}</dd>
+                <dt className="truncate text-[10px] text-slate-400">{label} CBM</dt>
               </div>
             ))}
           </dl>
-        </div>
-      </div>
-
-      <div className="mt-4 rounded-2xl bg-[#f2f6fa] px-4 py-3 text-xs">
+      <div className="mt-2.5 rounded-lg bg-[#f2f6fa] px-2.5 py-1.5 text-[11px]">
         {selectedItem ? (
-          <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-            <p className="min-w-0 truncate text-sm font-semibold text-[#0b2341]">
+          <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5">
+            <p className="min-w-0 truncate font-semibold text-[#0b2341]">
               {valueText(selectedItem.product_name ?? selectedItem.item_name)}
             </p>
             <p className="text-slate-500">
@@ -579,10 +662,15 @@ function VehicleCard({
             </p>
           </div>
         ) : (
-          <p className="text-slate-500">Select a cargo slot on the truck to see its details.</p>
+          <p className="text-slate-500">
+            {cargoRows.length} cargo line{cargoRows.length === 1 ? "" : "s"}
+            {cargoRows.length > TRUCK_SLOTS && <> (showing {TRUCK_SLOTS})</>} · select a slot for details
+          </p>
         )}
       </div>
-    </div>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -590,8 +678,7 @@ function VehicleCard({
 /* Main view                                                           */
 /* ------------------------------------------------------------------ */
 function TripDetailSkeleton({ onBack }: { onBack: () => void }) {
-  const block = "animate-pulse rounded-2xl bg-slate-200/80";
-  const card = `${surface.card} p-5`;
+  const block = "animate-pulse rounded-3xl bg-slate-200/80";
 
   return (
     <div aria-label="Loading trip details" aria-busy="true" className="w-full space-y-4">
@@ -601,30 +688,21 @@ function TripDetailSkeleton({ onBack }: { onBack: () => void }) {
         </button>
       </header>
 
-      <section aria-hidden="true" className={`${card} grid gap-6 xl:grid-cols-12`}>
-        <div className="space-y-4 xl:col-span-5">
-          <div className={`${block} h-3 w-24`} />
-          <div className={`${block} h-8 w-56`} />
-          <div className={`${block} h-2 w-full`} />
-          <div className={`${block} h-4 w-4/5`} />
-        </div>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 xl:col-span-7">
-          {Array.from({ length: 8 }, (_, index) => <div key={index} className={`${block} h-16`} />)}
-        </div>
-      </section>
-
-      <section aria-hidden="true" className="grid grid-cols-1 gap-4 xl:h-[480px] xl:grid-cols-12">
-        <div className={`${block} min-h-[300px] xl:col-span-8`} />
-        <div className={`${card} space-y-4 xl:col-span-4`}>
-          <div className={`${block} h-9 w-full rounded-full`} />
-          {Array.from({ length: 4 }, (_, index) => <div key={index} className="flex gap-3"><div className={`${block} h-8 w-8 rounded-full`} /><div className="flex-1 space-y-2"><div className={`${block} h-3 w-3/4`} /><div className={`${block} h-3 w-1/2`} /></div></div>)}
-        </div>
+      <section aria-hidden="true" className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        {Array.from({ length: 3 }, (_, index) => <div key={index} className={`${block} h-24`} />)}
       </section>
 
       <section aria-hidden="true" className="grid grid-cols-1 gap-4 xl:grid-cols-12">
-        <div className={`${block} min-h-[320px] xl:col-span-7`} />
-        <div className={`${block} min-h-[320px] xl:col-span-5`} />
+        <div className="space-y-4 xl:col-span-5">
+          <div className={`${block} min-h-[260px]`} />
+          <div className={`${block} min-h-[300px]`} />
+        </div>
+        <div className={`${block} min-h-[560px] xl:col-span-7`} />
+        <div className={`${block} min-h-[240px] xl:col-span-7`} />
+        <div className={`${block} min-h-[240px] xl:col-span-5`} />
       </section>
+
+      <section aria-hidden="true" className={`${block} min-h-[260px]`} />
       <span className="sr-only">Loading trip details</span>
     </div>
   );
@@ -658,7 +736,7 @@ export default function TripDetailView({
   const [photoProduct, setPhotoProduct] = useState<{ id: string; name: string } | null>(null);
   const [viewProduct, setViewProduct] = useState<Record<string, unknown> | null>(null);
   const [productPhotoOverrides, setProductPhotoOverrides] = useState<Record<string, string | null>>({});
-  const [sidePanel, setSidePanel] = useState<"stops" | "activity">("stops");
+  const [sidePanel, setSidePanel] = useState<"products" | "stops" | "activity">("products");
   const requestKey = `${accessToken ?? "no-session"}:${tripId}:${retry}`;
   const realtimeGate = useDeferredRealtimeRefresh(() => { invalidateTripCache(tripId); setRetry((value) => value + 1); }, Boolean(selectedCargoItem || photoProduct || viewProduct));
 
@@ -932,22 +1010,45 @@ export default function TripDetailView({
   const timelineEvents = orderedEvents.slice().reverse();
   const nextStopIndex = stops.findIndex((stop) => !stopIsDone(stop));
   const company = getBookingValue(reportRows, "trucking_company");
-  const detailFacts: Array<{ label: string; value: string; sub?: string }> = [
-    { label: "Driver", value: driverName, sub: company !== "Not recorded" ? company : undefined },
-    { label: "Vehicle", value: plate },
-    { label: "Loading date", value: shortDate(trip?.loading_date) },
-    { label: "Est. delivery", value: shortDate(trip?.estimated_delivery_date) },
-  ];
-  const cargoFacts: Array<{ label: string; value: string }> = [
-    { label: "Items", value: placeholder ?? String(lineItemCount) },
-    { label: "Quantity", value: placeholder ?? formatNumber(totalQty) },
-    { label: "Total CBM", value: placeholder ?? formatNumber(totalCbm) },
-    { label: "Events", value: placeholder ?? String(orderedEvents.length) },
-  ];
   const sideTabs = [
-    { key: "stops" as const, label: "Stops", count: stops.length, Icon: ListChecks },
-    { key: "activity" as const, label: "Activity", count: orderedEvents.length, Icon: History },
+    { key: "products" as const, label: "Products", count: productRows.length },
+    { key: "stops" as const, label: "Stops", count: stops.length },
+    { key: "activity" as const, label: "Activity", count: orderedEvents.length },
   ];
+  const tripNumber = valueText(trip?.trip_number, "");
+  const nextStop = nextStopIndex >= 0 ? stops[nextStopIndex] : null;
+  const nextStopName = nextStop
+    ? valueText(rowsForStop(String(nextStop.id ?? ""))[0]?.store_name, "Store not recorded")
+    : null;
+  const capacity = detail?.truckCapacityCbm ?? null;
+  const loadPct = capacity !== null && capacity > 0 ? Math.min(100, Math.round((totalCbm / capacity) * 100)) : 0;
+  const driverInitials =
+    driverName === "Not recorded"
+      ? "?"
+      : driverName
+          .split(/\s+/)
+          .filter(Boolean)
+          .slice(0, 2)
+          .map((part) => part[0]?.toUpperCase() ?? "")
+          .join("") || "?";
+  const recentEvents = orderedEvents.slice(-4);
+  const itemQtyBars = productRows.slice(0, 8).map((row) => {
+    const n = Number(row.quantity);
+    return Number.isFinite(n) ? n : 0;
+  });
+  const timeText = (value: unknown): string => {
+    if (typeof value !== "string" || !value) return "";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "";
+    return date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  };
+  const photoFor = (row: Record<string, unknown>): string | null => {
+    const id = String(row.product_id ?? row._product_id ?? "");
+    if (Object.hasOwn(productPhotoOverrides, id)) return productPhotoOverrides[id];
+    return typeof row.product_photo_url === "string" ? row.product_photo_url : null;
+  };
+  const stopItemCount = (stopId: string) =>
+    productRows.filter((row) => String(row.trip_stop_id ?? row._trip_stop_id ?? "") === stopId).length;
 
   return (
     <div className="space-y-4">
@@ -963,6 +1064,11 @@ export default function TripDetailView({
           <ArrowLeft aria-hidden="true" className="h-4 w-4" />
           Back to trips
         </button>
+        <nav aria-label="Breadcrumb" className="hidden min-w-0 items-center gap-1.5 text-xs text-slate-400 sm:flex">
+          <span>Trips</span>
+          <ChevronRight aria-hidden="true" className="h-3 w-3 shrink-0" />
+          <span className="truncate font-semibold text-[#0b2341]">{dispatchNumber}</span>
+        </nav>
       </header>
 
       {detail && detail.sectionErrors.length > 0 && (
@@ -977,85 +1083,251 @@ export default function TripDetailView({
         </p>
       )}
 
-      {/* Summary: what trip is this, where is it at, who is driving, how much is on board */}
-      <section className={`${surface.card} p-5 sm:p-6`}>
-        <div className="grid gap-6 xl:grid-cols-12 xl:gap-8">
-          <div className="min-w-0 xl:col-span-5">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">
-              Trip {valueText(trip?.trip_number)}
-            </p>
-            <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-2">
-              <h1 className="min-w-0 truncate text-2xl font-bold tracking-tight text-[#0b2341]">{dispatchNumber}</h1>
-              <StatusPill status={trip?.status} fallback="Loading" />
-            </div>
+      {/* KPI row: the numbers that matter most */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <KpiCard
+          icon={<Package />}
+          label="Items"
+          value={placeholder ?? String(lineItemCount)}
+          sub={placeholder ? undefined : `${formatNumber(totalQty)} units on board`}
+          chart={<MiniBars values={itemQtyBars} />}
+        />
+        <KpiCard
+          icon={<Boxes />}
+          label="Total CBM"
+          value={placeholder ?? formatNumber(totalCbm)}
+          sub={placeholder ? undefined : capacity !== null && capacity > 0 ? `${loadPct}% of ${formatNumber(capacity)} CBM` : "Truck capacity not set"}
+          chart={<SegmentMeter percent={loadPct} />}
+        />
+        <KpiCard
+          icon={<MapPin />}
+          label="Stops"
+          value={placeholder ?? `${doneStops}/${stops.length}`}
+          sub={
+            placeholder
+              ? undefined
+              : nextStopName
+                ? `Next · ${nextStopName}`
+                : stops.length
+                  ? "All stops completed"
+                  : "No stops recorded"
+          }
+          chart={<StopDots stops={stops} nextIndex={nextStopIndex} />}
+        />
+      </div>
 
-            <ul className="mt-5 space-y-3 text-sm">
-              <li className="flex items-start gap-3">
-                <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full border-2 border-[#0b2341] bg-white" />
-                <span className="min-w-0">
-                  <span className="block text-[11px] text-slate-400">From</span>
-                  <span className="break-words text-slate-700">{originName}</span>
-                </span>
-              </li>
-              <li className="flex items-start gap-3">
-                <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-[#2678b9]" />
-                <span className="min-w-0">
-                  <span className="block text-[11px] text-slate-400">To</span>
-                  <span className="line-clamp-2 break-words text-slate-700">{destinationText}</span>
-                </span>
-              </li>
-            </ul>
+      {/* Left: trip details + operations accordion. Right: live trip map. */}
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-12 xl:items-start">
+        <div className="flex min-w-0 flex-col gap-4 xl:col-span-5">
+        {/* Trip details */}
+        <section className={`${surface.card} flex min-w-0 flex-col p-5`}>
+          <h2 className="text-lg font-semibold text-[#0b2341]">Trip details</h2>
+          <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+            <span>{tripNumber ? `Trip ${tripNumber}` : "Trip"}</span>
+            <span aria-hidden="true" className="text-slate-300">|</span>
+            <StatusPill status={trip?.status} fallback="Loading" />
+          </div>
 
-            <div className="mt-5">
-              <div className="mb-1.5 flex items-baseline justify-between gap-3 text-xs">
-                <span className="font-medium text-slate-600">
-                  {placeholder ?? `${doneStops} of ${stops.length} stops completed`}
-                </span>
-                <span className="font-bold tabular-nums text-[#0b2341]">{placeholder ?? `${progress}%`}</span>
+          <dl className="mt-4 grid grid-cols-3 gap-2">
+            {[
+              ["Loading", shortDate(trip?.loading_date)],
+              ["Delivery", shortDate(trip?.estimated_delivery_date)],
+              ["Events", placeholder ?? String(orderedEvents.length)],
+            ].map(([label, value]) => (
+              <div key={label} className="min-w-0 rounded-2xl border border-slate-200/80 px-3 py-2.5">
+                <dd className="truncate text-sm font-semibold tabular-nums text-[#0b2341]">{value}</dd>
+                <dt className="truncate text-[10px] text-slate-400">{label}</dt>
               </div>
-              <div className="h-2 overflow-hidden rounded-full bg-[#e6f0f9]">
-                <div
-                  className="h-full rounded-full bg-[#ffd43b] transition-all duration-500"
-                  style={{ width: `${progress}%` }}
-                />
+            ))}
+          </dl>
+
+          <div className="mt-5">
+            <p className="text-xs font-semibold text-[#0b2341]">Driver</p>
+            <div className="mt-2 flex items-center gap-3">
+              <span
+                aria-hidden="true"
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#e6f0f9] text-sm font-bold text-[#2678b9]"
+              >
+                {driverInitials}
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold text-[#0b2341]" title={driverName}>{driverName}</p>
+                <p className="truncate text-xs text-slate-500">
+                  {company !== "Not recorded" ? company : "Company not recorded"}
+                </p>
               </div>
             </div>
           </div>
 
-          <dl className="grid min-w-0 grid-cols-2 gap-3 sm:grid-cols-4 xl:col-span-7 xl:grid-rows-2">
-            {detailFacts.map(({ label, value, sub }) => (
-              <div key={label} className="min-w-0 rounded-2xl bg-[#f2f6fa] px-4 py-3">
-                <dt className="text-[11px] font-medium text-slate-500">{label}</dt>
-                <dd className="mt-1 truncate text-sm font-semibold text-[#0b2341]" title={value}>{value}</dd>
-                {sub && <p className="mt-0.5 truncate text-[11px] text-slate-400" title={sub}>{sub}</p>}
-              </div>
-            ))}
-            {cargoFacts.map(({ label, value }) => (
-              <div key={label} className="min-w-0 rounded-2xl border border-slate-200/80 px-4 py-3">
-                <dt className="text-[11px] font-medium text-slate-500">{label}</dt>
-                <dd className="mt-1 text-xl font-bold leading-none tabular-nums text-[#0b2341]">{value}</dd>
-              </div>
-            ))}
-          </dl>
+          <div className="mt-4 flex items-center gap-3 rounded-2xl bg-[#f2f6fa] px-3.5 py-3">
+            <Truck aria-hidden="true" className="h-4 w-4 shrink-0 text-[#2678b9]" />
+            <span className="min-w-0 flex-1">
+              <span className="block text-[10px] text-slate-400">Vehicle</span>
+              <span className="block truncate text-sm font-semibold text-[#0b2341]">{plate}</span>
+            </span>
+          </div>
+
+          {Boolean(trip?.remarks) && (
+            <p className="mt-4 rounded-2xl bg-[#fff9e0] px-3.5 py-3 text-xs text-[#6b5300]">
+              {String(trip?.remarks)}
+            </p>
+          )}
+        </section>
+
+          {/* Loading, unloading, backload & offload (accordion lives inside OperationsTimeline) */}
+          <section className={`${surface.card} min-w-0 p-5`}>
+      <OperationsTimeline
+        tripId={tripId}
+        loading={detail?.operations.loading ?? []}
+        stops={stops.map((stop, index) => {
+          const stopId = String(stop.id ?? "");
+          const timeline = detail?.operations.stops.find((item) => item.id === stopId);
+          return {
+            id: stopId || String(index),
+            label: `Stop ${String(stop.stop_sequence ?? index + 1)}`,
+            storeName: valueText(rowsForStop(stopId)[0]?.store_name, "Store not recorded"),
+            arrival: timeline?.arrival_time,
+            start: timeline?.start_unloading_time,
+            finish: timeline?.finish_unloading_time,
+            remarks: typeof timeline?.remarks === "string" && timeline.remarks ? timeline.remarks : null,
+          };
+        })}
+        backloads={detail?.operations.backloads ?? []}
+        offloads={detail?.operations.offloads ?? []}
+        stopLabel={(stopId) => stopLabels[stopId] ?? null}
+        error={detail?.sectionErrors.find((message) => message.startsWith("Operational reports:")) ?? null}
+      />
+          </section>
         </div>
 
-        {Boolean(trip?.remarks) && (
-          <p className={`${surface.inner} mt-5 px-4 py-3 text-xs text-slate-600`}>
-            {String(trip?.remarks)}
-          </p>
-        )}
-      </section>
+        {/* Live trip map: stays in view while the accordion scrolls */}
+        <section className={`${surface.card} min-w-0 p-3 xl:sticky xl:top-4 xl:col-span-7`}>
+          <LiveTripMap
+            demo
+            tracks={mapTrack}
+            locationIds={mapLocationIds}
+            tripLocationRoutes={mapLocationRoutes}
+            focusTripId={tripId}
+            eventLoadError={false}
+            height={600}
+          />
+        </section>
+      </div>
 
-      {/* Where is it now: live map | stops + activity */}
+      {/* Route & progress | vehicle & load */}
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
-        <div className="min-w-0 xl:col-span-8">
-          <LiveTripMap tracks={mapTrack} locationIds={mapLocationIds} tripLocationRoutes={mapLocationRoutes} focusTripId={tripId} eventLoadError={false} height={440} fillHeight />
-        </div>
+        {/* Route & progress */}
+        <section className={`${surface.card} flex min-w-0 flex-col p-5 xl:col-span-7`}>
+          <h2 className="text-lg font-semibold text-[#0b2341]">Route &amp; progress</h2>
+          <div className="mt-3 grid flex-1 gap-3 sm:grid-cols-2">
+            <div className="flex min-w-0 flex-col justify-between rounded-3xl bg-[linear-gradient(145deg,#0b2341_0%,#12395f_55%,#1a4f80_100%)] p-4 text-white">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <p className="text-[10px] font-medium uppercase tracking-wide text-white/50">From</p>
+                  <p className="mt-0.5 line-clamp-2 break-words text-sm font-semibold leading-snug">{originName}</p>
+                </div>
+                <div className="min-w-0 flex-1 text-right">
+                  <p className="text-[10px] font-medium uppercase tracking-wide text-white/50">To</p>
+                  <p className="mt-0.5 line-clamp-2 break-words text-sm font-semibold leading-snug">{destinationText}</p>
+                </div>
+              </div>
+              <div aria-hidden="true" className="my-4 flex items-center justify-center text-[#ffd43b]">
+                <Truck className="h-12 w-12" strokeWidth={1.25} />
+              </div>
+              <div>
+                <div
+                  role="progressbar"
+                  aria-label="Trip progress"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={progress}
+                  className="relative h-1 rounded-full bg-white/20"
+                >
+                  <div className="absolute inset-y-0 left-0 rounded-full bg-[#ffd43b] transition-all duration-500" style={{ width: `${progress}%` }} />
+                  <span
+                    className="absolute top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white ring-4 ring-white/20 transition-all duration-500"
+                    style={{ left: `${progress}%` }}
+                  />
+                </div>
+                <div className="mt-2.5 flex justify-between text-[10px] text-white/60">
+                  <span>{placeholder ?? `${doneStops} of ${stops.length} stops`}</span>
+                  <span className="font-semibold text-[#ffd43b]">{placeholder ?? `${progress}%`}</span>
+                </div>
+              </div>
+            </div>
 
-        <section className={`${surface.card} relative min-w-0 xl:col-span-4`}>
-          <div className="flex max-h-[520px] min-h-[320px] flex-col p-5 xl:absolute xl:inset-0 xl:max-h-none">
-          <div role="tablist" aria-label="Stops and activity" className="flex shrink-0 items-center gap-1 rounded-full bg-[#eef3f8] p-1">
-            {sideTabs.map(({ key, label, count, Icon }) => {
+            <div className="min-w-0 rounded-3xl border border-slate-200/80 p-4">
+              <p className="truncate text-lg font-semibold text-[#0b2341]" title={dispatchNumber}>
+                {dispatchNumber}
+              </p>
+              {recentEvents.length === 0 ? (
+                <p className="mt-4 text-xs text-slate-500">{placeholder ?? "No events recorded yet."}</p>
+              ) : (
+                <ol className="mt-4 space-y-3.5">
+                  {recentEvents.map((event, index) => {
+                    const latest = index === recentEvents.length - 1;
+                    return (
+                      <li key={event.id} className="flex items-start gap-2.5">
+                        <span
+                          aria-hidden="true"
+                          className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${
+                            latest ? "bg-[#2678b9] ring-4 ring-[#e6f0f9]" : "border border-slate-300 bg-white"
+                          }`}
+                        />
+                        <div className="flex min-w-0 flex-1 items-baseline justify-between gap-2">
+                          <p className={`truncate text-xs capitalize ${latest ? "font-semibold text-[#0b2341]" : "text-slate-500"}`}>
+                            {event.event_type.replaceAll("_", " ").toLowerCase()}
+                          </p>
+                          <p className="shrink-0 text-[11px] tabular-nums text-slate-400">{timeText(event.event_time)}</p>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ol>
+              )}
+            </div>
+          </div>
+
+          <div className="mt-3 flex items-center gap-3 rounded-2xl bg-[#f2f6fa] px-4 py-3">
+            <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true" className="shrink-0 -rotate-90">
+              <circle cx="12" cy="12" r="9" fill="none" stroke="#dbe7f3" strokeWidth="3" />
+              <circle
+                cx="12"
+                cy="12"
+                r="9"
+                fill="none"
+                stroke="#2678b9"
+                strokeWidth="3"
+                strokeLinecap="round"
+                strokeDasharray={56.55}
+                strokeDashoffset={56.55 * (1 - progress / 100)}
+              />
+            </svg>
+            <span className="text-sm font-semibold text-[#0b2341]">{placeholder ?? `${progress}% Completed`}</span>
+            <span className="ml-auto text-xs text-slate-500">
+              Deliveries {placeholder ?? `${doneStops}/${stops.length}`}
+            </span>
+          </div>
+        </section>
+
+        <VehicleLoadCard
+          className="xl:col-span-5"
+          plate={plate}
+          status={trip?.status}
+          cargoRows={cargoRows}
+          selectedItem={selectedCargoItem}
+          onSelectItem={setSelectedCargoItem}
+          loadPercentage={loadPct}
+          truckCapacityCbm={capacity}
+          totalCbm={totalCbm}
+        />
+      </div>
+
+      {/* Products / stops / activity beside trip photos */}
+      <div className="grid grid-cols-1 items-stretch gap-4 xl:grid-cols-12">
+        <section className={`${surface.card} flex max-h-[640px] min-w-0 flex-col p-4 xl:col-span-7`}>
+          <div role="tablist" aria-label="Products, stops and activity" className="flex shrink-0 items-center gap-1 rounded-full bg-[#eef3f8] p-1">
+            {sideTabs.map(({ key, label, count }) => {
               const isActive = sidePanel === key;
               return (
                 <button
@@ -1064,13 +1336,12 @@ export default function TripDetailView({
                   role="tab"
                   aria-selected={isActive}
                   onClick={() => setSidePanel(key)}
-                  className={`inline-flex flex-1 items-center justify-center gap-2 rounded-full px-3 py-2 text-xs font-semibold transition-colors ${
+                  className={`inline-flex flex-1 items-center justify-center gap-1.5 rounded-full px-2 py-2 text-xs font-semibold transition-colors ${
                     isActive
                       ? "bg-white text-[#0b2341] shadow-[0_2px_8px_-2px_rgba(11,35,65,0.2)]"
                       : "text-slate-500 hover:text-[#0b2341]"
                   }`}
                 >
-                  <Icon aria-hidden="true" className="h-3.5 w-3.5" />
                   {label}
                   <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums ${isActive ? "bg-[#0b2341] text-white" : "bg-white text-slate-500"}`}>
                     {count}
@@ -1080,18 +1351,102 @@ export default function TripDetailView({
             })}
           </div>
 
-          {sidePanel === "stops" ? (
-            stops.length === 0 ? (
-              <p className="py-10 text-center text-sm text-slate-500">
+          {sidePanel === "products" && (
+            <div role="tabpanel" className="mt-3 flex min-h-0 flex-1 flex-col">
+              {activeStopId && (
+                <div className="mb-2 flex shrink-0 items-center justify-between gap-2 rounded-xl bg-[#fff6d1] px-3 py-2 text-[11px] text-[#6b5300]">
+                  <span className="min-w-0 truncate">Showing {stopLabels[activeStopId] ?? "selected stop"}</span>
+                  <button
+                    type="button"
+                    onClick={() => { setStopSelectionChanged(true); setSelectedStop(null); }}
+                    className="shrink-0 font-semibold underline"
+                  >
+                    Show all
+                  </button>
+                </div>
+              )}
+              {visibleRows.length === 0 ? (
+                <p className="py-8 text-center text-sm text-slate-500">
+                  {placeholder ?? (activeStopId ? "No products recorded for this stop." : "No products recorded for this trip.")}
+                </p>
+              ) : (
+                <ul className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
+                  {visibleRows.map((row, index) => {
+                    const productId = String(row.product_id ?? row._product_id ?? "");
+                    const photoUrl = photoFor(row);
+                    const productName = valueText(row.product_name, "Product not recorded");
+                    const sku = row.sku ?? row.model_code;
+                    return (
+                      <li
+                        key={String(row.trip_line_item_id ?? row.id ?? `${tripId}-panel-item-${index}`)}
+                        className="flex items-center gap-3 rounded-2xl bg-[#f7f9fc] p-2.5"
+                      >
+                        <span className="group relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white">
+                          <ProductPhotoThumb key={`${productId}:${photoUrl ?? "empty"}`} src={photoUrl} />
+                          {productId && (
+                            <button
+                              type="button"
+                              onClick={() => setPhotoProduct({ id: productId, name: productName })}
+                              aria-label={`${photoUrl ? "Change" : "Upload"} photo for ${productName}`}
+                              title={photoUrl ? "Change product photo" : "Upload product photo"}
+                              className="invisible absolute inset-0 flex flex-col items-center justify-center gap-0.5 bg-[#0b2341]/65 text-[9px] font-semibold leading-none text-white opacity-0 transition hover:bg-[#0b2341]/75 focus-visible:visible focus-visible:opacity-100 group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100 [@media(hover:none)]:visible [@media(hover:none)]:opacity-100"
+                            >
+                              <ImagePlus aria-hidden="true" className="h-4 w-4" />
+                              {photoUrl ? "Change" : "Upload"}
+                            </button>
+                          )}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <button
+                            type="button"
+                            onClick={() => setViewProduct(row)}
+                            aria-label={`View appliance details for ${productName}`}
+                            className="block max-w-full truncate rounded text-left text-[13px] font-semibold text-[#0b2341] transition-colors hover:text-[#2678b9] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9]"
+                          >
+                            {productName}
+                          </button>
+                          <p className="mt-0.5 truncate text-[11px] text-slate-500">
+                            {valueText(row.store_name, "Store not recorded")}
+                            {row.dr_number ? ` · DR ${String(row.dr_number)}` : ""}
+                          </p>
+                          <div className="mt-1.5 flex items-center gap-2">
+                            <StatusPill status={row.delivery_status} fallback="Pending" />
+                            {sku ? <span className="truncate text-[10px] text-slate-400">{String(sku)}</span> : null}
+                          </div>
+                        </div>
+                        <div className="shrink-0 text-right">
+                          <p className="text-sm font-bold tabular-nums text-[#0b2341]">×{valueText(row.quantity, "—")}</p>
+                          <p className="text-[11px] tabular-nums text-slate-500">{valueText(row.cbm, "—")} CBM</p>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+              {visibleRows.length > 0 && (
+                <p className="mt-3 flex shrink-0 items-center gap-2 text-[11px] text-slate-500">
+                  <Package aria-hidden="true" className="h-3.5 w-3.5 text-[#2678b9]" />
+                  {visibleRows.length} {visibleRows.length === 1 ? "line" : "lines"} ·{" "}
+                  {formatNumber(sumOf(visibleRows, "quantity"))} units · {formatNumber(sumOf(visibleRows, "cbm"))} CBM
+                </p>
+              )}
+            </div>
+          )}
+
+          {sidePanel === "stops" &&
+            (stops.length === 0 ? (
+              <p className="py-8 text-center text-sm text-slate-500">
                 {placeholder ?? "No stops recorded for this trip."}
               </p>
             ) : (
               <ul role="tabpanel" className="mt-3 min-h-0 flex-1 divide-y divide-slate-100 overflow-y-auto pr-1">
                 {stops.map((stop, index) => {
                   const key = stopKey(stop, index);
-                  const match = rowsForStop(String(stop.id ?? ""))[0] ?? {};
+                  const stopId = String(stop.id ?? "");
+                  const match = rowsForStop(stopId)[0] ?? {};
                   const done = stopIsDone(stop);
                   const isNext = index === nextStopIndex;
+                  const itemCount = stopItemCount(stopId);
                   return (
                     <li key={String(stop.id ?? stop.trip_stop_id ?? `${tripId}-${index}`)} className="flex items-start gap-3 py-3">
                       <span
@@ -1126,211 +1481,54 @@ export default function TripDetailView({
                           </span>
                           <StatusPill status={stop.delivery_status ?? match.delivery_status} fallback="Pending" />
                         </div>
+                        {itemCount > 0 && stopId && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setStopSelectionChanged(true);
+                              setSelectedStop(stopId);
+                              setSidePanel("products");
+                            }}
+                            className="mt-2 text-[11px] font-semibold text-[#2678b9] hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9]"
+                          >
+                            View {itemCount} {itemCount === 1 ? "product" : "products"}
+                          </button>
+                        )}
                       </div>
                     </li>
                   );
                 })}
               </ul>
-            )
-          ) : timelineEvents.length === 0 ? (
-            <p className="py-10 text-center text-sm text-slate-500">No events recorded.</p>
-          ) : (
-            <ol role="tabpanel" className="relative ml-2 mt-5 min-h-0 flex-1 overflow-y-auto border-l-2 border-[#ffd43b]/70 pl-5 pr-1">
-              {timelineEvents.map((event, index) => (
-                <li key={event.id} className="relative mb-5 last:mb-0">
-                  <span
-                    className={`timeline-dot absolute -left-[28px] top-1 h-3 w-3 rounded-full border-2 border-white ${
-                      index === 0 ? "bg-[#ffd43b] text-[#ffd43b]" : "bg-[#2678b9] text-[#2678b9]"
-                    }`}
-                  />
-                  <p className="text-sm font-semibold capitalize text-[#0b2341]">
-                    {event.event_type.replaceAll("_", " ").toLowerCase()}
-                  </p>
-                  <p className="mt-0.5 text-[11px] font-medium text-slate-400">
-                    {dateText(event.event_time, true)}
-                  </p>
-                  {event.notes && <p className="mt-1 text-xs text-slate-600">{event.notes}</p>}
-                </li>
-              ))}
-            </ol>
-          )}
-          </div>
-        </section>
-      </div>
+            ))}
 
-      {/* Load & photos: reference detail, below the live picture */}
-      <div className="grid grid-cols-1 items-stretch gap-4 xl:grid-cols-12">
-        <div className="min-w-0 xl:col-span-7">
-          <VehicleCard
-            plate={plate}
-            status={trip?.status}
-            cargoRows={cargoRows}
-            selectedItem={selectedCargoItem}
-            onSelectItem={setSelectedCargoItem}
-            truckCapacityCbm={detail?.truckCapacityCbm ?? null}
-            totalCbm={totalCbm}
-          />
-        </div>
-        <div className="min-w-0 xl:col-span-5">
+          {sidePanel === "activity" &&
+            (timelineEvents.length === 0 ? (
+              <p className="py-8 text-center text-sm text-slate-500">No events recorded.</p>
+            ) : (
+              <ol role="tabpanel" className="relative ml-2 mt-5 min-h-0 flex-1 overflow-y-auto border-l-2 border-[#ffd43b]/70 pl-5 pr-1">
+                {timelineEvents.map((event, index) => (
+                  <li key={event.id} className="relative mb-5 last:mb-0">
+                    <span
+                      className={`timeline-dot absolute -left-[28px] top-1 h-3 w-3 rounded-full border-2 border-white ${
+                        index === 0 ? "bg-[#ffd43b] text-[#ffd43b]" : "bg-[#2678b9] text-[#2678b9]"
+                      }`}
+                    />
+                    <p className="text-sm font-semibold capitalize text-[#0b2341]">
+                      {event.event_type.replaceAll("_", " ").toLowerCase()}
+                    </p>
+                    <p className="mt-0.5 text-[11px] font-medium text-slate-400">
+                      {dateText(event.event_time, true)}
+                    </p>
+                    {event.notes && <p className="mt-1 text-xs text-slate-600">{event.notes}</p>}
+                  </li>
+                ))}
+              </ol>
+            ))}
+        </section>
+        <div className="flex min-w-0 flex-col xl:col-span-5 [&>div]:flex-1">
           <TripGallery key={tripId} plate={plate} tripId={tripId} accessToken={accessToken} />
         </div>
       </div>
-
-      {/* Operational report history is loaded through the authenticated,
-          trip-scoped API so each stop remains independently identified. */}
-      <section className={`${surface.card} min-w-0 p-5`}>
-        <OperationsTimeline
-          tripId={tripId}
-          loading={detail?.operations.loading ?? []}
-          stops={stops.map((stop, index) => {
-            const stopId = String(stop.id ?? "");
-            const timeline = detail?.operations.stops.find((item) => item.id === stopId);
-            return {
-              id: stopId || String(index),
-              label: `Stop ${String(stop.stop_sequence ?? index + 1)}`,
-              storeName: valueText(rowsForStop(stopId)[0]?.store_name, "Store not recorded"),
-              arrival: timeline?.arrival_time,
-              start: timeline?.start_unloading_time,
-              finish: timeline?.finish_unloading_time,
-              remarks: typeof timeline?.remarks === "string" && timeline.remarks ? timeline.remarks : null,
-            };
-          })}
-          backloads={detail?.operations.backloads ?? []}
-          offloads={detail?.operations.offloads ?? []}
-          stopLabel={(stopId) => stopLabels[stopId] ?? null}
-          error={detail?.sectionErrors.find((message) => message.startsWith("Operational reports:")) ?? null}
-        />
-      </section>
-
-      {/* Products */}
-      <section className={`${surface.card} min-w-0 overflow-hidden`}>
-        <header className="flex flex-col gap-3 px-5 pb-3 pt-5 lg:flex-row lg:items-center lg:justify-between">
-          <CardHeader
-            icon={<Package />}
-            title="Products"
-            right={
-              <span className="rounded-full bg-[#0b2341] px-2 py-0.5 text-[10px] font-semibold tabular-nums text-white">
-                {productRows.length}
-              </span>
-            }
-          />
-          <div
-            role="group"
-            aria-label="Filter products by stop"
-            className="flex max-w-full items-center gap-1 overflow-x-auto rounded-full bg-[#eef3f8] p-1"
-          >
-            {[
-              { key: null as string | null, label: "All" },
-              ...stops.map((stop, index) => ({ key: String(stop.id ?? `stop-${index}`), label: `Stop ${stopKey(stop, index)}` })),
-            ].map(({ key, label }) => {
-              const count = key === null ? productRows.length : productRows.filter(
-                (row) => String(row.trip_stop_id ?? row._trip_stop_id ?? "") === key,
-              ).length;
-              const isActive = activeStopId === key;
-              return (
-                <button
-                  key={label}
-                  type="button"
-                  aria-pressed={isActive}
-                  onClick={() => { setStopSelectionChanged(true); setSelectedStop(key); }}
-                  className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[11px] font-semibold transition-colors ${
-                    isActive
-                      ? "bg-white text-[#0b2341] shadow-[0_2px_8px_-2px_rgba(11,35,65,0.2)]"
-                      : "text-slate-500 hover:text-[#0b2341]"
-                  }`}
-                >
-                  {label}
-                  <span className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold leading-none text-white ring-2 ring-white">
-                    {count}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </header>
-        <div className="overflow-x-auto bg-[#f2f6fa] px-3 pb-3">
-          <table className="w-full min-w-[820px] border-separate border-spacing-y-2 text-left text-xs">
-            <thead className="text-[11px] font-semibold text-slate-500">
-              <tr>
-                <th className="px-4 pb-1 pt-3">Product</th>
-                <th className="px-4 pb-1 pt-3">SKU / Model</th>
-                <th className="px-4 pb-1 pt-3">Store</th>
-                <th className="px-4 pb-1 pt-3">DR number</th>
-                <th className="px-4 pb-1 pt-3 text-right">Quantity</th>
-                <th className="px-4 pb-1 pt-3 text-right">CBM</th>
-                <th className="px-4 pb-1 pt-3 text-right">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {visibleRows.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="rounded-2xl bg-white px-4 py-8 text-center text-sm text-slate-500">
-                    {activeStopId ? "No products recorded for this stop." : "No product rows available."}
-                  </td>
-                </tr>
-              ) : (
-                visibleRows.map((row, index) => {
-                  const productId = String(row.product_id ?? row._product_id ?? "");
-                  const productName = valueText(row.product_name, "Product not recorded");
-                  const photoUrl = Object.hasOwn(productPhotoOverrides, productId)
-                    ? productPhotoOverrides[productId]
-                    : typeof row.product_photo_url === "string"
-                      ? row.product_photo_url
-                      : null;
-                  return (
-                    <tr
-                      key={String(row.trip_line_item_id ?? row.id ?? `${tripId}-item-${index}`)}
-                      className="bg-white shadow-[0_1px_2px_rgba(11,35,65,0.04)]"
-                    >
-                      <td className="rounded-l-2xl px-4 py-3.5 font-semibold text-[#0b2341]">
-                        <div className="flex min-w-0 items-center gap-3">
-                          <span className="group relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[#f2f6fa]">
-                            <ProductPhotoThumb key={`${productId}:${photoUrl ?? "empty"}`} src={photoUrl} />
-                            {productId && (
-                              <button
-                                type="button"
-                                onClick={() => setPhotoProduct({ id: productId, name: productName })}
-                                aria-label={`${photoUrl ? "Change" : "Upload"} photo for ${productName}`}
-                                title={photoUrl ? "Change product photo" : "Upload product photo"}
-                                className="invisible absolute inset-0 flex flex-col items-center justify-center gap-0.5 bg-[#0b2341]/65 text-[9px] font-semibold leading-none text-white opacity-0 transition hover:bg-[#0b2341]/75 focus-visible:visible focus-visible:opacity-100 group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100 [@media(hover:none)]:visible [@media(hover:none)]:opacity-100"
-                              >
-                                <ImagePlus aria-hidden="true" className="h-4 w-4" />
-                                {photoUrl ? "Change" : "Upload"}
-                              </button>
-                            )}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => setViewProduct(row)}
-                            aria-label={`View appliance details for ${productName}`}
-                            className="min-w-0 flex-1 rounded-lg px-1 py-1 text-left font-semibold text-[#0b2341] transition-colors hover:text-[#2678b9] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9]"
-                          >
-                            {productName}
-                          </button>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3.5 text-slate-600">{valueText(row.sku ?? row.model_code)}</td>
-                      <td className="px-4 py-3.5 text-slate-600">{valueText(row.store_name)}</td>
-                      <td className="px-4 py-3.5 text-slate-700">{valueText(row.dr_number)}</td>
-                      <td className="px-4 py-3.5 text-right tabular-nums text-slate-700">{valueText(row.quantity)}</td>
-                      <td className="px-4 py-3.5 text-right tabular-nums text-slate-700">{valueText(row.cbm)}</td>
-                      <td className="rounded-r-2xl px-4 py-3.5 text-right">
-                        <StatusPill status={row.delivery_status} fallback="Pending" />
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-        <footer className="flex items-center gap-2 px-5 py-3 text-[11px] text-slate-500">
-          <Package aria-hidden="true" className="h-3.5 w-3.5 text-[#2678b9]" />
-          {visibleRows.length} {visibleRows.length === 1 ? "line" : "lines"} ·{" "}
-          {formatNumber(sumOf(visibleRows, "quantity"))} units · {formatNumber(sumOf(visibleRows, "cbm"))} CBM
-        </footer>
-      </section>
-
       {/* Delivery receipts (OCR text for admin review) */}
       <ReceiptReviewCard tripId={tripId} accessToken={accessToken} stopLabels={stopLabels} refreshKey={retry + receiptTick} />
 

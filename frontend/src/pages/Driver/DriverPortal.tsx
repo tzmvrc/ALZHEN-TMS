@@ -2,7 +2,7 @@ import ReportTripDialog from "../../components/admin/ReportTripDialog";
 import LocationSharing from "../../components/admin/LocationSharing";
 import {pdfIntakeAvailable,prepareDriverPdf} from "../../services/pdf-intake.service";
 import {validatePodUpload} from "../../services/pod-upload-validation";
-import { useCallback, useEffect, useRef, useState,useSyncExternalStore, type ChangeEvent, type ReactNode } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState,useSyncExternalStore, type ChangeEvent, type ReactNode } from "react";
 import {collaborationSnapshot,subscribeCollaboration,subscribeCollaborationEvents,joinCollaborationRoom} from "../../services/collaboration.service";
 import {
   AlertCircle,
@@ -13,6 +13,8 @@ import {
   Check,
   CheckCircle2,
   ChevronDown,
+  ClipboardList,
+  Flag,
   Clock,
   LoaderCircle,
   LogOut,
@@ -113,6 +115,20 @@ function getStepIndex(trip: DriverAssignedTrip | null, stop?: DriverAssignedStop
 const isDelivered = (trip: DriverAssignedTrip | null, stop: DriverAssignedStop) =>
   getStepIndex(trip, stop) === deliverySteps.length - 1;
 
+/* A trip is finished once every stop is delivered (or the trip itself is marked complete).
+   Finished trips leave "My trip" and live in the Activity reports tab as history. */
+const isTripDone = (trip: DriverAssignedTrip) => {
+  if (/COMPLETED|DELIVERED|FINISHED/.test(String(trip.status ?? "").toUpperCase())) return true;
+  return trip.stops.length > 0 && trip.stops.every((stop) => isDelivered(trip, stop));
+};
+
+const completedAt = (trip: DriverAssignedTrip) =>
+  trip.stops
+    .map((stop) => stop.finish_unloading_time)
+    .filter((value): value is string => Boolean(value))
+    .sort()
+    .pop() ?? trip.driver_updated_at ?? trip.estimated_delivery_date ?? null;
+
 const tripTitle = (trip: DriverAssignedTrip) =>
   trip.dispatch_number || (trip.trip_number ? `Trip ${trip.trip_number}` : "Assigned trip");
 
@@ -145,7 +161,20 @@ const stopDrNumber = (stop: DriverAssignedStop | null | undefined) =>
 /* Small presentational pieces                                         */
 /* ------------------------------------------------------------------ */
 
-const cardClass = "rounded-2xl border border-slate-200 bg-white shadow-sm";
+const DriverRouteMap = lazy(() => import("../../components/admin/DriverRouteMap"));
+
+/* Same glass-pill look as the admin top bar (SidebarNav). */
+const pillSurface =
+  "border border-white/80 bg-white/80 shadow-[0_8px_24px_-8px_rgba(15,23,42,0.12)] backdrop-blur-xl";
+const iconButton = `flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-slate-600 transition-colors duration-200 hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900/30 disabled:opacity-50 ${pillSurface}`;
+/* TruckerNotifications renders its own button; restyle its trigger and panel to match without touching its logic. */
+const bellTrigger =
+  "[&>button]:h-11 [&>button]:w-11 [&>button]:rounded-full [&>button]:border-white/80 [&>button]:bg-white/80 [&>button]:text-slate-600 [&>button]:shadow-[0_8px_24px_-8px_rgba(15,23,42,0.12)] [&>button]:backdrop-blur-xl " +
+  "[&>div>button:first-child]:h-11 [&>div>button:first-child]:w-11 [&>div>button:first-child]:rounded-full [&>div>button:first-child]:border-white/80 [&>div>button:first-child]:bg-white/80 [&>div>button:first-child]:text-slate-600 [&>div>button:first-child]:shadow-[0_8px_24px_-8px_rgba(15,23,42,0.12)] [&>div>button:first-child]:backdrop-blur-xl";
+const bellPanel =
+  "[&>div>div]:rounded-2xl [&>div>div]:border-slate-200/80 [&>div>div]:bg-white [&>div>div]:shadow-[0_24px_48px_-12px_rgba(15,23,42,0.22)]";
+
+const cardClass = "rounded-3xl bg-white shadow-sm ring-1 ring-slate-900/5";
 
 function StatusPill({ tone, children }: { tone: "blue" | "green" | "slate" | "amber"; children: ReactNode }) {
   const tones = {
@@ -190,6 +219,52 @@ function ProductList({ stop }: { stop: DriverAssignedStop }) {
   );
 }
 
+function HistoryCard({ trip }: { trip: DriverAssignedTrip }) {
+  const cbm = trip.stops.reduce((sum, stop) => sum + stopCbm(stop), 0);
+  return (
+    <li className="overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-slate-900/5">
+      <details className="group">
+        <summary className="flex cursor-pointer list-none items-center gap-3 p-4 [&::-webkit-details-marker]:hidden">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
+            <CheckCircle2 aria-hidden="true" className="h-5 w-5" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate font-semibold">{tripTitle(trip)}</span>
+            <span className="block truncate text-xs text-slate-500">
+              {formatDate(completedAt(trip))}
+              {trip.plate_number ? ` · ${trip.plate_number}` : ""} · {trip.stops.length} {trip.stops.length === 1 ? "stop" : "stops"}
+            </span>
+          </span>
+          <StatusPill tone="green">Completed</StatusPill>
+          <ChevronDown aria-hidden="true" className="h-4 w-4 shrink-0 text-slate-400 transition group-open:rotate-180" />
+        </summary>
+        <div className="space-y-3 border-t border-slate-100 p-4">
+          <div className="grid grid-cols-2 gap-2">
+            <InfoTile icon={<Building2 className="h-4 w-4" />} label="Picked up at" value={trip.origin || "Not recorded"} />
+            <InfoTile icon={<Package className="h-4 w-4" />} label="Cargo" value={formatCbm(cbm)} />
+          </div>
+          <ol className="divide-y divide-slate-100">
+            {trip.stops.map((stop, index) => (
+              <li key={stop.id} className="flex items-start gap-3 py-2.5">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
+                  <Check aria-hidden="true" className="h-3.5 w-3.5" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-semibold">{stop.store_name || `Stop ${index + 1}`}</span>
+                  <span className="block truncate text-xs text-slate-500">
+                    {stopDrNumber(stop) ? `DR ${stopDrNumber(stop)}` : "No DR number"}
+                    {formatTime(stop.finish_unloading_time) ? ` · Delivered ${formatTime(stop.finish_unloading_time)}` : ""}
+                  </span>
+                </span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      </details>
+    </li>
+  );
+}
+
 /* ------------------------------------------------------------------ */
 /* Portal                                                              */
 /* ------------------------------------------------------------------ */
@@ -211,6 +286,7 @@ export default function DriverPortal() {
   const [reportsVersion,setReportsVersion]=useState(0);
   const [reportOwner, setReportOwner] = useState<string | null>(null);
   const [portalTab, setPortalTab] = useState<"trips" | "reports">("trips");
+  const [activityPane, setActivityPane] = useState<"history" | "reports">("history");
   const [drNumber, setDrNumber] = useState("");
   const [reloadCount, setReloadCount] = useState(0);
   const reloadTrips = useCallback(() => {
@@ -245,7 +321,11 @@ export default function DriverPortal() {
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [logoutLoading, setLogoutLoading] = useState(false);
 
-  const selectedTrip = assignedTrips.find((trip) => trip.id === selectedTripId) ?? null;
+  const activeTrips = assignedTrips.filter((trip) => !isTripDone(trip));
+  const historyTrips = assignedTrips
+    .filter(isTripDone)
+    .sort((a, b) => String(completedAt(b) ?? "").localeCompare(String(completedAt(a) ?? "")));
+  const selectedTrip = activeTrips.find((trip) => trip.id === selectedTripId) ?? activeTrips[0] ?? null;
   const nextOpenStop = selectedTrip?.stops.find((stop) => !isDelivered(selectedTrip, stop)) ?? null;
   const selectedStop = selectedTrip?.stops.find((stop) => stop.id === selectedStopId)
     ?? nextOpenStop
@@ -287,6 +367,19 @@ export default function DriverPortal() {
   };
 
   useEffect(() => {
+    if (busy || tripsLoading) return;
+    const id = selectedTrip?.id ?? null;
+    if (id === selectedTripId) return;
+    const stop = selectedTrip?.stops.find((item) => !isDelivered(selectedTrip, item)) ?? selectedTrip?.stops[0] ?? null;
+    setSelectedTripId(id);
+    setSelectedStopId(stop?.id ?? null);
+    setCurrentStep(getStepIndex(selectedTrip, stop));
+    setDrNumber(stopDrNumber(stop));
+    resetReceiptDraft();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [busy, tripsLoading, selectedTrip?.id, selectedTripId]);
+
+  useEffect(() => {
     if (!accessToken) return;
     // Effect replay/token changes must attach a live consumer, rather than skip
     // the request whose original effect cleanup has already marked it inactive.
@@ -303,7 +396,8 @@ export default function DriverPortal() {
         if (!active || busyRef.current) return;
         setTripsError("");
         setAssignedTrips(trips);
-        const nextTrip = trips.find((trip) => trip.id === selectionRef.current.tripId) ?? trips[0];
+        const openTrips = trips.filter((trip) => !isTripDone(trip));
+        const nextTrip = openTrips.find((trip) => trip.id === selectionRef.current.tripId) ?? openTrips[0];
         setSelectedTripId(nextTrip?.id ?? null);
         const firstStop = nextTrip?.stops.find((stop) => stop.id === selectionRef.current.stopId)
           ?? nextTrip?.stops.find((stop) => getStepIndex(nextTrip, stop) < deliverySteps.length - 1)
@@ -673,10 +767,10 @@ export default function DriverPortal() {
 
   /* ---------------- render pieces ---------------- */
 
-  const tripSwitcher = assignedTrips.length > 1 && (
+  const tripSwitcher = activeTrips.length > 1 && (
     <div aria-label="Assigned trips" className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1">
-      {assignedTrips.map((trip) => {
-        const active = trip.id === selectedTripId;
+      {activeTrips.map((trip) => {
+        const active = trip.id === selectedTrip?.id;
         return (
           <button
             key={trip.id}
@@ -693,60 +787,83 @@ export default function DriverPortal() {
     </div>
   );
 
+  const renderMap = (trip: DriverAssignedTrip, live: boolean) => (
+    <section aria-label={live ? "Navigation" : "Route preview"} className="space-y-2">
+      <div className="flex items-center justify-between gap-2 px-1">
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500">{live ? "Navigation" : "Route preview"}</h3>
+        <span className="rounded-full bg-amber-50 px-2.5 py-0.5 text-[11px] font-semibold text-amber-800">Demo route · not live GPS</span>
+      </div>
+      <Suspense fallback={<div aria-busy="true" className="h-[440px] animate-pulse rounded-3xl bg-slate-200/70" />}>
+        <DriverRouteMap tripId={trip.id} live={live} />
+      </Suspense>
+    </section>
+  );
+
   const renderBrief = (trip: DriverAssignedTrip) => {
     const totalItems = trip.stops.reduce((sum, stop) => sum + stop.items.length, 0);
     const totalCbm = trip.stops.reduce((sum, stop) => sum + stopCbm(stop), 0);
+    const facts = [
+      { icon: <Truck className="h-4 w-4" />, label: "Truck", value: trip.plate_number || "—" },
+      { icon: <CalendarDays className="h-4 w-4" />, label: "Loading", value: formatDate(trip.loading_date) },
+      { icon: <Clock className="h-4 w-4" />, label: "Est. delivery", value: formatDate(trip.estimated_delivery_date) },
+    ];
     return (
       <>
-        <section className={`${cardClass} p-5`}>
+        <section className="rounded-3xl bg-gradient-to-br from-[#0b2341] to-[#16436f] p-5 text-white shadow-sm">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <p className="text-sm text-slate-500">Your next trip</p>
+              <p className="text-xs font-semibold uppercase tracking-wider text-blue-200">Next trip</p>
               <h2 className="mt-1 truncate text-2xl font-extrabold tracking-tight">{tripTitle(trip)}</h2>
             </div>
-            <StatusPill tone="blue">Ready to start</StatusPill>
+            <span className="shrink-0 rounded-full bg-white/15 px-3 py-1 text-xs font-semibold">Ready to start</span>
           </div>
-          <div className="mt-4 grid grid-cols-2 gap-2">
-            <InfoTile icon={<Truck className="h-4 w-4" />} label="Truck" value={trip.plate_number || "Not recorded"} />
-            <InfoTile icon={<CalendarDays className="h-4 w-4" />} label="Loading date" value={formatDate(trip.loading_date)} />
-            <InfoTile icon={<Clock className="h-4 w-4" />} label="Est. delivery" value={formatDate(trip.estimated_delivery_date)} />
-            <InfoTile icon={<Package className="h-4 w-4" />} label="Cargo" value={`${totalItems} ${totalItems === 1 ? "product" : "products"} · ${formatCbm(totalCbm)}`} />
-          </div>
+          <dl className="mt-5 grid grid-cols-3 gap-2">
+            {facts.map((fact) => (
+              <div key={fact.label} className="min-w-0 rounded-2xl bg-white/10 px-3 py-2.5">
+                <dt className="flex items-center gap-1.5 text-[11px] text-blue-200">{fact.icon}{fact.label}</dt>
+                <dd className="mt-1 truncate text-sm font-semibold">{fact.value}</dd>
+              </div>
+            ))}
+          </dl>
+          <p className="mt-4 flex items-center gap-2 text-sm text-blue-100">
+            <Package aria-hidden="true" className="h-4 w-4" />
+            {trip.stops.length} {trip.stops.length === 1 ? "stop" : "stops"} · {totalItems} {totalItems === 1 ? "product" : "products"} · {formatCbm(totalCbm)}
+          </p>
         </section>
 
+        {renderMap(trip, false)}
+
         <section className={`${cardClass} p-5`} aria-labelledby="route-title">
-          <h3 id="route-title" className="font-bold">Route</h3>
+          <h3 id="route-title" className="text-xs font-semibold uppercase tracking-wider text-slate-500">Route</h3>
           <ol className="mt-4">
             <li className="flex gap-3">
               <div className="flex flex-col items-center">
-                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#0b2341] text-white"><Building2 aria-hidden="true" className="h-4 w-4" /></span>
-                <span className="my-1 w-px flex-1 border-l-2 border-dashed border-slate-300" />
+                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#0b2341] text-white"><Building2 aria-hidden="true" className="h-4 w-4" /></span>
+                <span className="my-1 w-0.5 flex-1 rounded bg-slate-200" />
               </div>
-              <div className="min-w-0 pb-5">
+              <div className="min-w-0 pb-5 pt-0.5">
                 <p className="text-xs text-slate-500">Pick up at</p>
-                <p className="mt-0.5 break-words font-semibold">{trip.origin || "Origin not recorded"}</p>
+                <p className="break-words font-semibold">{trip.origin || "Origin not recorded"}</p>
               </div>
             </li>
             {trip.stops.map((stop, index) => {
               const last = index === trip.stops.length - 1;
-              const cbm = stopCbm(stop);
               return (
                 <li key={stop.id} className="flex gap-3">
                   <div className="flex flex-col items-center">
-                    <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#e6f0f9] text-sm font-bold text-[#1d5f94]">{stop.stop_sequence || index + 1}</span>
-                    {!last && <span className="my-1 w-px flex-1 border-l-2 border-dashed border-slate-300" />}
+                    <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#e6f0f9] text-sm font-bold text-[#1d5f94]">{stop.stop_sequence || index + 1}</span>
+                    {!last && <span className="my-1 w-0.5 flex-1 rounded bg-slate-200" />}
                   </div>
-                  <div className={`min-w-0 flex-1 ${last ? "" : "pb-5"}`}>
+                  <div className={`min-w-0 flex-1 pt-0.5 ${last ? "" : "pb-5"}`}>
                     <p className="break-words font-semibold">{stop.store_name || "Store not recorded"}</p>
                     {stop.customer_name && <p className="text-sm text-slate-500">{stop.customer_name}</p>}
-                    {stopAddress(stop) && <p className="mt-0.5 break-words text-sm text-slate-500">{stopAddress(stop)}</p>}
-                    <p className="mt-1.5 text-xs font-medium text-slate-500">{stop.items.length} {stop.items.length === 1 ? "product" : "products"} · {formatCbm(cbm)}</p>
-                    <details className="group mt-1">
-                      <summary className="inline-flex cursor-pointer list-none items-center gap-1 text-xs font-semibold text-[#2678b9] [&::-webkit-details-marker]:hidden">
-                        View products
+                    {stopAddress(stop) && <p className="break-words text-sm text-slate-500">{stopAddress(stop)}</p>}
+                    <details className="group mt-1.5">
+                      <summary className="inline-flex cursor-pointer list-none items-center gap-1 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600 [&::-webkit-details-marker]:hidden">
+                        {stop.items.length} {stop.items.length === 1 ? "product" : "products"} · {formatCbm(stopCbm(stop))}
                         <ChevronDown aria-hidden="true" className="h-3.5 w-3.5 transition group-open:rotate-180" />
                       </summary>
-                      <div className="mt-1 rounded-xl bg-slate-50 px-3"><ProductList stop={stop} /></div>
+                      <div className="mt-2 rounded-2xl bg-slate-50 px-3"><ProductList stop={stop} /></div>
                     </details>
                   </div>
                 </li>
@@ -916,28 +1033,26 @@ export default function DriverPortal() {
   const renderLive = (trip: DriverAssignedTrip) => (
     <>
       {/* Where am I going */}
-      <section className="rounded-2xl bg-[#0b2341] p-5 text-white shadow-sm">
+      <section className="rounded-3xl bg-gradient-to-br from-[#0b2341] to-[#16436f] p-5 text-white shadow-sm">
         <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-sm text-blue-200">{tripTitle(trip)}{trip.plate_number ? ` · ${trip.plate_number}` : ""}</p>
-            <p className="mt-3 text-xs text-blue-200">{allDelivered ? "Trip status" : "Heading to"}</p>
-            <p className="mt-0.5 flex items-center gap-2 text-xl font-extrabold tracking-tight">
-              {allDelivered ? <CheckCircle2 aria-hidden="true" className="h-5 w-5 shrink-0 text-emerald-300" /> : <Navigation aria-hidden="true" className="h-5 w-5 shrink-0 text-[#7fb8e6]" />}
-              <span className="truncate">{allDelivered ? "All deliveries complete" : heading?.name ?? "Next stop"}</span>
-            </p>
-            {!allDelivered && heading && (
-              <p className="mt-1 text-sm text-blue-200">
-                {heading.kind === "warehouse" ? "Warehouse pickup" : `Delivery ${deliveredCount + 1} of ${totalStops}`}
-              </p>
-            )}
-          </div>
+          <p className="min-w-0 truncate text-sm text-blue-200">{tripTitle(trip)}{trip.plate_number ? ` · ${trip.plate_number}` : ""}</p>
           {!allDelivered && (
-            <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1 text-xs font-semibold">
-              <span className="h-2 w-2 rounded-full bg-emerald-400" aria-hidden="true" />
+            <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-white/15 px-2.5 py-1 text-xs font-semibold">
+              <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" aria-hidden="true" />
               Live
             </span>
           )}
         </div>
+        <p className="mt-4 text-xs font-semibold uppercase tracking-wider text-blue-200">{allDelivered ? "Trip status" : "Heading to"}</p>
+        <p className="mt-1 flex items-center gap-2 text-xl font-extrabold tracking-tight">
+          {allDelivered ? <CheckCircle2 aria-hidden="true" className="h-5 w-5 shrink-0 text-emerald-300" /> : <Navigation aria-hidden="true" className="h-5 w-5 shrink-0 text-[#7fb8e6]" />}
+          <span className="truncate">{allDelivered ? "All deliveries complete" : heading?.name ?? "Next stop"}</span>
+        </p>
+        {!allDelivered && heading && (
+          <p className="mt-1 text-sm text-blue-200">
+            {heading.kind === "warehouse" ? "Warehouse pickup" : `Delivery ${deliveredCount + 1} of ${totalStops}`}
+          </p>
+        )}
         {totalStops > 0 && (
           <div className="mt-5">
             <div className="h-1.5 overflow-hidden rounded-full bg-white/15" role="progressbar" aria-valuemin={0} aria-valuemax={totalStops} aria-valuenow={deliveredCount} aria-label="Deliveries completed">
@@ -948,11 +1063,13 @@ export default function DriverPortal() {
         )}
       </section>
 
+      {renderMap(trip, true)}
+
       {/* Loading */}
-      <section aria-labelledby="loading-title" className={`${cardClass} p-4`}>
+      <section aria-labelledby="loading-title" className={`${cardClass} p-5`}>
         {loadingFinished ? (
           <div className="flex items-center gap-3">
-            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100 text-emerald-700"><Check aria-hidden="true" className="h-4 w-4" /></span>
+            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-100 text-emerald-700"><Check aria-hidden="true" className="h-4 w-4" /></span>
             <div className="min-w-0 flex-1">
               <h3 id="loading-title" className="font-bold">Loading complete</h3>
               <p className="text-xs text-slate-500">Finished at {formatTime(trip.loading_timestamps.loading_finished_at) || "—"}</p>
@@ -960,25 +1077,19 @@ export default function DriverPortal() {
           </div>
         ) : (
           <>
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <h3 id="loading-title" className="font-bold">Warehouse loading</h3>
-                <p className="mt-0.5 text-xs text-slate-500">Record each step before you leave the warehouse.</p>
-              </div>
-              <Building2 aria-hidden="true" className="h-5 w-5 text-[#2678b9]" />
-            </div>
-            <ol className="mt-4 space-y-1">
+            <h3 id="loading-title" className="text-xs font-semibold uppercase tracking-wider text-slate-500">Warehouse loading</h3>
+            <ol className="mt-4 grid grid-cols-3 gap-2">
               {loadingMilestones.map(({ field, label }, index) => {
                 const timestamp = trip.loading_timestamps[field];
                 const done = Boolean(timestamp);
                 const current = nextMilestone?.field === field;
                 return (
-                  <li key={field} className={`flex items-center gap-3 rounded-xl px-3 py-2.5 ${current ? "bg-[#e6f0f9]" : ""}`}>
-                    <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold ${done ? "bg-emerald-500 text-white" : current ? "bg-[#2678b9] text-white" : "bg-slate-100 text-slate-400"}`}>
-                      {done ? <Check aria-hidden="true" className="h-3.5 w-3.5" /> : index + 1}
+                  <li key={field} className="flex flex-col items-center gap-1.5 text-center">
+                    <span className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold ${done ? "bg-emerald-500 text-white" : current ? "bg-[#2678b9] text-white ring-4 ring-[#2678b9]/15" : "bg-slate-100 text-slate-400"}`}>
+                      {done ? <Check aria-hidden="true" className="h-4 w-4" /> : index + 1}
                     </span>
-                    <span className={`min-w-0 flex-1 text-sm ${done || current ? "font-semibold" : "text-slate-500"}`}>{label}</span>
-                    <span className="text-xs text-slate-500">{formatTime(timestamp)}</span>
+                    <span className={`text-[11px] leading-tight ${done || current ? "font-semibold text-slate-700" : "text-slate-400"}`}>{label}</span>
+                    <span className="text-[11px] text-slate-400">{formatTime(timestamp) || "—"}</span>
                   </li>
                 );
               })}
@@ -987,7 +1098,7 @@ export default function DriverPortal() {
               type="button"
               disabled={busy}
               onClick={() => void saveLoadingMilestone()}
-              className="mt-4 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#0b2341] px-4 text-sm font-bold text-white transition hover:bg-[#16385f] disabled:opacity-50"
+              className="mt-5 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-[#0b2341] px-4 text-sm font-bold text-white transition hover:bg-[#16385f] disabled:opacity-50"
             >
               {statusSaving ? "Saving…" : nextMilestone?.label ?? "Update loading"}
               {!statusSaving && <ArrowRight aria-hidden="true" className="h-4 w-4" />}
@@ -998,7 +1109,7 @@ export default function DriverPortal() {
 
       {/* Deliveries */}
       <section aria-labelledby="deliveries-title" className="space-y-3">
-        <h3 id="deliveries-title" className="px-1 font-bold">Deliveries</h3>
+        <h3 id="deliveries-title" className="px-1 text-xs font-semibold uppercase tracking-wider text-slate-500">Deliveries</h3>
         {trip.stops.length ? (
           <ol className="space-y-3">{trip.stops.map((stop, index) => renderStopCard(trip, stop, index))}</ol>
         ) : (
@@ -1011,29 +1122,40 @@ export default function DriverPortal() {
   );
 
   const showStartBar = portalTab === "trips" && !tripsLoading && selectedTrip && !tripStarted;
+  const tabs = [
+    ["trips", "My trip", Truck],
+    ["reports", "Activity reports", ClipboardList],
+  ] as const;
 
   return (
     <div className="driver-portal min-h-screen bg-[#f4f6f9] text-[#0b2341]">
-      <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/90 backdrop-blur">
+      <header className="sticky top-0 z-30 bg-[#f4f6f9]/80 backdrop-blur-md">
         <div className="mx-auto flex max-w-2xl items-center justify-between gap-3 px-4 py-3">
-          <div className="flex min-w-0 items-center gap-3">
-            <img src={logo} alt="Alzhen Trucking Services" className="h-10 w-10 shrink-0 rounded-full border border-slate-200 bg-white object-contain p-0.5" />
+          <div className={`flex h-11 min-w-0 items-center gap-2.5 rounded-full py-1 pl-1 pr-4 ${pillSurface}`}>
+            <img src={logo} alt="Alzhen Trucking Services" className="h-9 w-9 shrink-0 rounded-full bg-white object-cover" />
             <div className="min-w-0">
-              <p className="truncate text-sm font-bold">{driverName}</p>
-              <p className="text-xs text-slate-500">Alzhen driver</p>
+              <p className="truncate text-[13px] font-semibold leading-tight text-slate-900">{driverName}</p>
+              <p role="status" className="flex items-center gap-1.5 text-[11px] leading-tight text-slate-500">
+                <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${liveUpdates.connected ? "bg-emerald-500" : "bg-amber-400"}`} />
+                {liveUpdates.connected ? "Live" : "Reconnecting"} · Driver
+              </p>
             </div>
           </div>
-          <div className="flex items-center gap-2"><TruckerNotifications/><button type="button" onClick={() => setShowLogoutConfirm(true)} aria-label="Log out" title="Log out" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50">
-            <LogOut aria-hidden="true" className="h-4 w-4" />
-          </button></div>
+          <div className="flex shrink-0 items-center gap-2">
+            <div className={`relative ${bellTrigger} ${bellPanel}`}>
+              <TruckerNotifications />
+            </div>
+            <button type="button" onClick={() => setShowLogoutConfirm(true)} aria-label="Log out" title="Log out" className={`${iconButton} hover:!text-rose-600`}>
+              <LogOut aria-hidden="true" className="h-[18px] w-[18px] stroke-[1.6]" />
+            </button>
+          </div>
         </div>
       </header>
 
-      <main className={`mx-auto max-w-2xl space-y-4 px-4 pt-5 ${showStartBar ? "pb-44" : "pb-10"}`}>
-        <button type="button" disabled={busy || !accessToken} onClick={() => setReportOwner(profile?.id ?? null)} className="min-h-11 w-full rounded-xl bg-[#0b2341] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Report Trip</button>
+      <main className={`mx-auto max-w-2xl space-y-5 px-4 pt-4 ${showStartBar ? "pb-44" : "pb-10"}`}>
         <div className="flex items-center gap-2">
-          <div role="tablist" aria-label="Driver sections" className="grid flex-1 grid-cols-2 rounded-xl bg-slate-200/60 p-1 text-sm font-semibold">
-            {([["trips", "My trip"], ["reports", "Activity reports"]] as const).map(([key, label]) => (
+          <div role="tablist" aria-label="Driver sections" className="grid flex-1 grid-cols-2 rounded-2xl bg-slate-200/60 p-1 text-sm font-semibold">
+            {tabs.map(([key, label, Icon]) => (
               <button
                 key={key}
                 type="button"
@@ -1041,26 +1163,68 @@ export default function DriverPortal() {
                 aria-selected={portalTab === key}
                 disabled={busy}
                 onClick={() => setPortalTab(key)}
-                className={`rounded-lg py-2 transition disabled:opacity-50 ${portalTab === key ? "bg-white text-[#0b2341] shadow-sm" : "text-slate-500 hover:text-slate-700"}`}
+                className={`inline-flex items-center justify-center gap-2 rounded-xl py-2.5 transition disabled:opacity-50 ${portalTab === key ? "bg-white text-[#0b2341] shadow-sm" : "text-slate-500 hover:text-slate-700"}`}
               >
+                <Icon aria-hidden="true" className="h-4 w-4" />
                 {label}
               </button>
             ))}
           </div>
-          {portalTab === "trips" && (
-            <button type="button" disabled={busy || tripsLoading} aria-label="Refresh trips" title="Refresh trips" onClick={reloadTrips} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 disabled:opacity-50">
-              <RefreshCw aria-hidden="true" className={`h-4 w-4 ${tripsLoading ? "animate-spin" : ""}`} />
-            </button>
-          )}
+          <button type="button" disabled={busy || tripsLoading} aria-label="Refresh" title="Refresh" onClick={reloadTrips} className={iconButton}>
+            <RefreshCw aria-hidden="true" className={`h-[18px] w-[18px] stroke-[1.6] ${tripsLoading ? "animate-spin" : ""}`} />
+          </button>
         </div>
 
         {portalTab === "reports" ? (
-          <section className={`${cardClass} p-4 sm:p-5`}>
-            <OperationsReportsView mode="trucker" refreshVersion={reportsVersion} />
+ <section className="space-y-4" aria-label="Activity reports">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-xl font-extrabold tracking-tight">Activity</h2>
+              <button
+                type="button"
+                disabled={busy || !accessToken}
+                onClick={() => setReportOwner(profile?.id ?? null)}
+                className="inline-flex h-9 items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3.5 text-xs font-semibold text-[#0b2341] shadow-sm transition hover:bg-slate-50 disabled:opacity-50"
+              >
+                <Flag aria-hidden="true" className="h-3.5 w-3.5" />
+                Report an issue
+              </button>
+            </div>
+
+            <div role="tablist" aria-label="Activity" className="flex gap-6 border-b border-slate-200">
+              {([["history", `Trip history${historyTrips.length ? ` (${historyTrips.length})` : ""}`], ["reports", "Reports"]] as const).map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  role="tab"
+                  aria-selected={activityPane === key}
+                  onClick={() => setActivityPane(key)}
+                  className={`-mb-px border-b-2 pb-2.5 text-sm font-semibold transition ${activityPane === key ? "border-[#0b2341] text-[#0b2341]" : "border-transparent text-slate-500 hover:text-slate-700"}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {activityPane === "history" ? (
+              historyTrips.length ? (
+                <ul className="space-y-3">{historyTrips.map((trip) => <HistoryCard key={trip.id} trip={trip} />)}</ul>
+              ) : (
+                <div role="status" className={`${cardClass} p-6 text-center`}>
+                  <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-400">
+                    <ClipboardList aria-hidden="true" className="h-6 w-6" />
+                  </span>
+                  <p className="mt-3 font-bold">No completed trips yet</p>
+                  <p className="mt-1 text-sm text-slate-500">Finished trips will be listed here.</p>
+                </div>
+              )
+            ) : (
+              <div className="[&_details]:rounded-2xl [&_details]:bg-white [&_details]:shadow-sm [&_details]:ring-1 [&_details]:ring-slate-900/5 [&_input]:h-11 [&_input]:rounded-xl [&_input]:border-slate-200 [&_input]:bg-white [&_input]:px-3 [&_input]:text-sm [&_label]:text-xs [&_label]:font-medium [&_label]:text-slate-600 [&_summary]:cursor-pointer [&_summary]:py-2 [&_summary]:text-sm [&_summary]:font-semibold">
+                <OperationsReportsView mode="trucker" refreshVersion={reportsVersion} />
+              </div>
+            )}
           </section>
         ) : (
           <>
-            <p role="status" className="text-xs text-slate-500">{liveUpdates.connected?"Live updates connected":"Updates reconnecting"}</p>
             {tripsLoading && !selectedTrip && (
               <div role="status" aria-live="polite" className="flex items-center justify-center gap-2 py-10 text-sm font-medium text-slate-500">
                 <LoaderCircle aria-hidden="true" className="h-4 w-4 animate-spin text-[#2678b9]" />
@@ -1074,20 +1238,30 @@ export default function DriverPortal() {
                 <button type="button" disabled={tripsLoading} onClick={reloadTrips} className="min-h-9 shrink-0 rounded-lg border border-red-200 bg-white px-3 text-xs font-semibold hover:bg-red-100 disabled:opacity-50">Try again</button>
               </div>
             )}
-            {!tripsLoading && !tripsError && assignedTrips.length === 0 && (
-              <div role="status" className={`${cardClass} flex items-start gap-3 p-5`}>
-                <Truck aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0 text-slate-400" />
-                <div>
-                  <p className="font-bold">No assigned trips</p>
-                  <p className="mt-1 text-sm text-slate-500">Trips from your dispatcher will show up here.</p>
-                </div>
+            {!tripsLoading && !tripsError && !selectedTrip && (
+              <div role="status" className={`${cardClass} p-6 text-center`}>
+                <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-400">
+                  <Truck aria-hidden="true" className="h-6 w-6" />
+                </span>
+                <p className="mt-3 font-bold">No active trip</p>
+                <p className="mt-1 text-sm text-slate-500">New trips from your dispatcher will show up here.</p>
+                {historyTrips.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => { setActivityPane("history"); setPortalTab("reports"); }}
+                    className="mt-4 inline-flex h-10 items-center gap-2 rounded-full border border-slate-200 px-4 text-sm font-semibold text-[#0b2341] transition hover:bg-slate-50"
+                  >
+                    View trip history
+                    <ArrowRight aria-hidden="true" className="h-4 w-4" />
+                  </button>
+                )}
               </div>
             )}
 
-            {assignedTrips.length > 0 && selectedTrip && (
+            {selectedTrip && (
               <>
                 {tripSwitcher}
-                {accessToken&&<LocationSharing key={selectedTrip.id} token={accessToken} tripId={selectedTrip.id}/>}
+                {accessToken && <LocationSharing key={selectedTrip.id} token={accessToken} tripId={selectedTrip.id} />}
                 {tripStarted ? renderLive(selectedTrip) : renderBrief(selectedTrip)}
               </>
             )}

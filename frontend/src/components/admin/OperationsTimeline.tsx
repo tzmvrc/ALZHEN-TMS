@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import {
   Check,
+  ChevronDown,
   Clock,
   MapPin,
   PackageCheck,
@@ -146,39 +147,6 @@ function Chip({ theme, children, icon }: { theme: Theme; children: ReactNode; ic
   return <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ${theme.soft} ${theme.text}`}>{icon}{children}</span>;
 }
 
-function SummaryTile({ theme, Icon, label, value, hint, active }: { theme: Theme; Icon: LucideIcon; label: string; value: string; hint: string; active?: boolean }) {
-  return (
-    <div className={`relative overflow-hidden rounded-2xl border p-3.5 ${theme.soft} ${theme.border}`}>
-      <div className="flex items-center gap-3">
-        <span className={`relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white ${theme.solid}`}>
-          {active && <span aria-hidden="true" className="ot-ping absolute inset-0 rounded-xl" style={{ background: theme.hex }} />}
-          <Icon aria-hidden="true" className="relative h-5 w-5" />
-        </span>
-        <div className="min-w-0">
-          <p className={`text-[10px] font-bold uppercase tracking-wider ${theme.text}`}>{label}</p>
-          <p className="truncate text-base font-bold leading-tight text-[#0b2341]">{value}</p>
-          <p className="truncate text-[11px] text-slate-500">{hint}</p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function PanelHeader({ theme, Icon, title, subtitle, right }: { theme: Theme; Icon: LucideIcon; title: string; subtitle: string; right?: ReactNode }) {
-  return (
-    <header className={`flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3 ${theme.soft} ${theme.border}`}>
-      <div className="flex min-w-0 items-center gap-2.5">
-        <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-white ${theme.solid}`}><Icon aria-hidden="true" className="h-4 w-4" /></span>
-        <div className="min-w-0">
-          <h3 className="truncate text-sm font-bold text-[#0b2341]">{title}</h3>
-          <p className="truncate text-[11px] text-slate-500">{subtitle}</p>
-        </div>
-      </div>
-      {right}
-    </header>
-  );
-}
-
 /* ------------------------------------------------------------------ */
 /* Stop status from its timestamps                                       */
 /* ------------------------------------------------------------------ */
@@ -245,48 +213,38 @@ export default function OperationsTimeline({
     ? { value: toMs(activeStop.start) !== null ? "Unloading now" : "At the store", hint: `${activeStop.label} · ${activeStop.storeName}`, active: true }
     : { value: `${deliveredStops} / ${stops.length}`, hint: stops.length ? "stops delivered" : "No stops recorded", active: false };
 
-  return (
-    <div>
-      <style>{`
-        @keyframes ot-ping { 0% { transform: scale(1); opacity: 0.45; } 80%, 100% { transform: scale(1.7); opacity: 0; } }
-        @keyframes ot-stripes { from { background-position: 0 0; } to { background-position: 28px 0; } }
-        .ot-ping { animation: ot-ping 1.8s ease-out infinite; }
-        .ot-stripes { background-image: repeating-linear-gradient(135deg, rgba(255,255,255,0.35) 0 8px, transparent 8px 16px); background-size: 28px 28px; animation: ot-stripes 0.9s linear infinite; }
-        @media (prefers-reduced-motion: reduce) { .ot-ping, .ot-stripes { animation: none; } }
-      `}</style>
+  /* ---- accordion: the step the driver is on opens by itself; finished steps collapse with a check ---- */
+  const lastRecordAt = (records: OpsScope[]) => records.reduce((max, record) => Math.max(max, toMs(record.created_at) ?? 0), 0);
+  const freshAt = (records: OpsScope[]) => {
+    const time = lastRecordAt(records);
+    return time > 0 && now - time < FRESH_MS ? time : 0;
+  };
+  const loadingDone = loadEnd !== null;
+  const unloadingDone = stops.length > 0 && deliveredStops === stops.length;
+  const backFresh = freshAt(backloads);
+  const offFresh = freshAt(offloads);
+  /* A brand-new backload/offload record is a driver update too, so it takes the open spot for a few minutes. */
+  const freshKey = backFresh || offFresh ? (backFresh >= offFresh ? "backload" : "offload") : null;
+  const activeKey = freshKey ?? (!loadingDone ? "loading" : stops.length > 0 && !unloadingDone ? "unloading" : null);
 
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2.5">
-          <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-full bg-[#e6f0f9] text-[#2678b9]"><Clock className="h-4 w-4" /></span>
-          <h3 className="text-sm font-semibold text-[#0b2341]">Loading, unloading, backload &amp; offload</h3>
-        </div>
-        {live && (
-          <span role="status" className="inline-flex items-center gap-2 rounded-full bg-emerald-600 px-3 py-1 text-[11px] font-bold text-white shadow">
-            <span aria-hidden="true" className="relative flex h-2 w-2"><span className="ot-ping absolute inset-0 rounded-full bg-white" /><span className="relative h-2 w-2 rounded-full bg-white" /></span>
-            Driver just updated
-          </span>
-        )}
-      </header>
+  /* A manual open/close is kept until the active step changes. */
+  const [overrides, setOverrides] = useState<Record<string, boolean>>({});
+  useEffect(() => {
+    setOverrides({});
+  }, [activeKey]);
 
-      {error && <p role="status" className="mt-3 rounded-xl bg-amber-50 px-4 py-3 text-xs text-amber-800">{error}</p>}
+  const scopeChip = (records: OpsScope[]) => {
+    if (records.length === 0) return "None";
+    const boxes = records.reduce((sum, record) => sum + (Number(record.number_of_boxes) || 0), 0);
+    return `${records.length} record${records.length === 1 ? "" : "s"} · ${boxes} box${boxes === 1 ? "" : "es"}`;
+  };
 
-      <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <SummaryTile theme={THEME.amber} Icon={PackageOpen} label="Loading" value={loadingState.value} hint={loadingState.hint} active={loadingState.active} />
-        <SummaryTile theme={THEME.sky} Icon={MapPin} label="Unloading" value={unloadingTile.value} hint={unloadingTile.hint} active={unloadingTile.active} />
-        <SummaryTile theme={THEME.indigo} Icon={Undo2} label="Backload" value={backloads.length ? `${backloads.length} record${backloads.length === 1 ? "" : "s"}` : "None"} hint={backloads.length ? "Returned to warehouse" : "Nothing sent back"} />
-        <SummaryTile theme={THEME.rose} Icon={PackageMinus} label="Offload" value={offloads.length ? `${offloads.length} record${offloads.length === 1 ? "" : "s"}` : "None"} hint={offloads.length ? "Removed from the truck" : "Nothing offloaded"} />
-      </div>
-
-      <div className="mt-4 grid gap-4 lg:grid-cols-2">
-        {/* Loading */}
-        <article className={`overflow-hidden rounded-2xl border bg-white ${THEME.amber.border}`}>
-          <PanelHeader
-            theme={THEME.amber}
-            Icon={Warehouse}
-            title="Loading timeline"
-            subtitle="Trip level · at the warehouse"
-            right={<Chip theme={loadingState.active ? THEME.amber : loadEnd !== null ? THEME.emerald : THEME.slate}>{loadingState.value}</Chip>}
-          />
+  const sections = [
+    {
+      key: "loading", title: "Loading timeline", subtitle: loadingState.hint, theme: THEME.amber, Icon: Warehouse,
+      done: loadingDone, hasData: loading.length > 0, chip: loadingState.value,
+      body: (
+        <>
           <div className="p-4">
             {loading.length === 0 ? (
               <p className="py-6 text-center text-sm text-slate-500">No loading timeline has been recorded.</p>
@@ -303,17 +261,14 @@ export default function OperationsTimeline({
               </>
             )}
           </div>
-        </article>
-
-        {/* Unloading */}
-        <article className={`overflow-hidden rounded-2xl border bg-white ${THEME.sky.border}`}>
-          <PanelHeader
-            theme={THEME.sky}
-            Icon={MapPin}
-            title="Unloading timelines"
-            subtitle="Per delivery stop"
-            right={stops.length > 0 && <Chip theme={deliveredStops === stops.length ? THEME.emerald : THEME.sky}>{deliveredStops} of {stops.length} delivered</Chip>}
-          />
+        </>
+      ),
+    },
+    {
+      key: "unloading", title: "Unloading timelines", subtitle: unloadingTile.hint, theme: THEME.sky, Icon: MapPin,
+      done: unloadingDone, hasData: stops.length > 0, chip: stops.length ? `${deliveredStops} of ${stops.length} delivered` : "No stops",
+      body: (
+        <>
           <div className="space-y-3 p-4">
             {stops.length === 0 ? <p className="py-6 text-center text-sm text-slate-500">No stops are recorded.</p> : stops.map((stop) => {
               const state = stopState(stop);
@@ -348,31 +303,96 @@ export default function OperationsTimeline({
               );
             })}
           </div>
-        </article>
+        </>
+      ),
+    },
+    {
+      key: "backload", title: "Backload records", subtitle: "Goods sent back to the warehouse", theme: THEME.indigo, Icon: Undo2,
+      done: backloads.length > 0 && unloadingDone, hasData: backloads.length > 0, chip: scopeChip(backloads),
+      body: <ScopeBody theme={THEME.indigo} Icon={Undo2} records={backloads} stopLabel={stopLabel} now={now} />,
+    },
+    {
+      key: "offload", title: "Offload records", subtitle: "Goods taken off the truck", theme: THEME.rose, Icon: PackageMinus,
+      done: offloads.length > 0 && unloadingDone, hasData: offloads.length > 0, chip: scopeChip(offloads),
+      body: <ScopeBody theme={THEME.rose} Icon={PackageMinus} records={offloads} stopLabel={stopLabel} now={now} />,
+    },
+  ];
 
-        <ScopePanel title="Backload records" subtitle="Goods sent back to the warehouse" theme={THEME.indigo} Icon={Undo2} records={backloads} stopLabel={stopLabel} now={now} />
-        <ScopePanel title="Offload records" subtitle="Goods taken off the truck" theme={THEME.rose} Icon={PackageMinus} records={offloads} stopLabel={stopLabel} now={now} />
-      </div>
+  return (
+    <div>
+      <style>{`
+        @keyframes ot-ping { 0% { transform: scale(1); opacity: 0.45; } 80%, 100% { transform: scale(1.7); opacity: 0; } }
+        @keyframes ot-stripes { from { background-position: 0 0; } to { background-position: 28px 0; } }
+        .ot-ping { animation: ot-ping 1.8s ease-out infinite; }
+        .ot-stripes { background-image: repeating-linear-gradient(135deg, rgba(255,255,255,0.35) 0 8px, transparent 8px 16px); background-size: 28px 28px; animation: ot-stripes 0.9s linear infinite; }
+        @media (prefers-reduced-motion: reduce) { .ot-ping, .ot-stripes { animation: none; } }
+      `}</style>
+
+      <header className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5">
+          <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-full bg-[#e6f0f9] text-[#2678b9]"><Clock className="h-4 w-4" /></span>
+          <h3 className="text-sm font-semibold text-[#0b2341]">Loading, unloading, backload &amp; offload</h3>
+        </div>
+        {live && (
+          <span role="status" className="inline-flex items-center gap-2 rounded-full bg-emerald-600 px-3 py-1 text-[11px] font-bold text-white shadow">
+            <span aria-hidden="true" className="relative flex h-2 w-2"><span className="ot-ping absolute inset-0 rounded-full bg-white" /><span className="relative h-2 w-2 rounded-full bg-white" /></span>
+            Driver just updated
+          </span>
+        )}
+      </header>
+
+      {error && <p role="status" className="mt-3 rounded-xl bg-amber-50 px-4 py-3 text-xs text-amber-800">{error}</p>}
+
+      <ol className="mt-4 space-y-3">
+        {sections.map((section) => {
+          const state = section.done ? "done" : section.key === activeKey ? "active" : section.hasData ? "recorded" : "empty";
+          const open = overrides[section.key] ?? section.key === activeKey;
+          const chipTheme = state === "done" ? THEME.emerald : state === "empty" ? THEME.slate : section.theme;
+          const panelId = `ot-panel-${section.key}`;
+          return (
+            <li key={section.key} className={`overflow-hidden rounded-2xl border bg-white transition-shadow ${section.theme.border} ${state === "active" ? `ring-2 ${section.theme.ring}` : ""}`}>
+              <button
+                type="button"
+                aria-expanded={open}
+                aria-controls={panelId}
+                onClick={() => setOverrides((current) => ({ ...current, [section.key]: !open }))}
+                className={`flex w-full items-center gap-2.5 px-4 py-3 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2678b9] ${section.theme.soft} ${open ? `border-b ${section.theme.border}` : ""}`}
+              >
+                <span className={`relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-white transition-colors duration-500 ${state === "done" ? THEME.emerald.solid : section.theme.solid}`}>
+                  {state === "active" && <span aria-hidden="true" className="ot-ping absolute inset-0 rounded-full" style={{ background: section.theme.hex }} />}
+                  {state === "done" ? <Check aria-hidden="true" className="relative h-4 w-4" strokeWidth={3.5} /> : <section.Icon aria-hidden="true" className="relative h-4 w-4" />}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-bold text-[#0b2341]">{section.title}</span>
+                  <span className="block truncate text-[11px] text-slate-500">{section.subtitle}</span>
+                </span>
+                <Chip theme={chipTheme}>{section.chip}</Chip>
+                <ChevronDown aria-hidden="true" className={`h-4 w-4 shrink-0 text-slate-400 transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
+              </button>
+              <div
+                id={panelId}
+                role="region"
+                aria-label={section.title}
+                className={`grid transition-[grid-template-rows] duration-300 ease-out motion-reduce:transition-none ${open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}
+              >
+                <div className={`min-h-0 overflow-hidden ${open ? "" : "invisible"}`}>{section.body}</div>
+              </div>
+            </li>
+          );
+        })}
+      </ol>
     </div>
   );
 }
 
-function ScopePanel({
-  title, subtitle, theme, Icon, records, stopLabel, now,
+function ScopeBody({
+  theme, Icon, records, stopLabel, now,
 }: {
-  title: string; subtitle: string; theme: Theme; Icon: LucideIcon; records: OpsScope[];
+  theme: Theme; Icon: LucideIcon; records: OpsScope[];
   stopLabel: (stopId: string) => string | null; now: number;
 }) {
-  const totalBoxes = records.reduce((sum, record) => sum + (Number(record.number_of_boxes) || 0), 0);
   return (
-    <article className={`overflow-hidden rounded-2xl border bg-white ${theme.border}`}>
-      <PanelHeader
-        theme={theme}
-        Icon={Icon}
-        title={title}
-        subtitle={subtitle}
-        right={records.length > 0 && <Chip theme={theme}>{records.length} record{records.length === 1 ? "" : "s"} · {totalBoxes} box{totalBoxes === 1 ? "" : "es"}</Chip>}
-      />
+    <div>
       <div className="p-4">
         {records.length === 0 ? (
           <div className="flex flex-col items-center gap-2 py-6 text-center">
@@ -411,6 +431,6 @@ function ScopePanel({
           </ul>
         )}
       </div>
-    </article>
+    </div>
   );
 }

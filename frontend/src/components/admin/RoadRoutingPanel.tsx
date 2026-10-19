@@ -5,15 +5,18 @@ import {useAuth} from "../../context/AuthContext";
 import {getCachedApiResponse,invalidateApiCache,type ApiResponse} from "../../services/api.service";
 import {subscribeCollaborationEvents} from "../../services/collaboration.service";
 import {fetchRoadTrips,roadEndpoint,roadView,roadDisplayView,type RoadTrip,type RoadMode} from "../../services/road-routing";
-import {demonstrationRoadTrips,realRoutesAvailable} from "../../services/demo-road-routes";
+import {demonstrationRoadTrips,demoKeyFor,realRoutesAvailable} from "../../services/demo-road-routes";
 import RoadRouteMap from "./RoadRouteMap";
 import WarehouseCoordinateEditor from "./WarehouseCoordinateEditor";
 
-export default function RoadRoutingPanel({tripIds,height=440,demoFallback=false,offlineStyle=false}:{tripIds:string[];height?:number;demoFallback?:boolean;offlineStyle?:boolean}){
+export default function RoadRoutingPanel({tripIds,height=440,demoFallback=false,offlineStyle=false,focusKey=null,compact=false}:{tripIds:string[];height?:number;demoFallback?:boolean;offlineStyle?:boolean;focusKey?:string|null;compact?:boolean}){
  const {accessToken,profile}=useAuth();
  const ids=[...new Set(tripIds)].sort().slice(0,50),identity=ids.join(","),endpoint=roadEndpoint(ids);
  const allowed=profile&&["ADMIN","STAFF"].includes(profile.role);
- const [snapshot,setSnapshot]=useState<{token:string;identity:string;rows:RoadTrip[]}|null>(null),[error,setError]=useState(""),[retry,setRetry]=useState(0),[selection,setSelection]=useState(""),[mode,setMode]=useState<RoadMode>("planned");
+ const [snapshot,setSnapshot]=useState<{token:string;identity:string;rows:RoadTrip[]}|null>(null),[error,setError]=useState(""),[retry,setRetry]=useState(0),[selection,setSelection]=useState(()=>focusKey?demoKeyFor(focusKey):""),[mode,setMode]=useState<RoadMode>("planned");
+ const [seenFocus,setSeenFocus]=useState(focusKey);
+ /* Clicking a trip elsewhere (fleet list, trip details) picks that trip's own demo route. */
+ if(seenFocus!==focusKey){setSeenFocus(focusKey);setSelection(focusKey?demoKeyFor(focusKey):"");}
  const cached=allowed&&accessToken?getCachedApiResponse<ApiResponse<{rows:RoadTrip[]}>>(endpoint,accessToken,300000)?.data?.rows:null;
  const realRows=allowed&&accessToken?(snapshot?.token===accessToken&&snapshot.identity===identity?snapshot.rows:cached):null;
  const demoRows=useMemo(()=>demonstrationRoadTrips(),[]);
@@ -56,7 +59,7 @@ export default function RoadRoutingPanel({tripIds,height=440,demoFallback=false,
    {!!rows?.length&&<span className="shrink-0 rounded-full bg-[#e6f0f9] px-3 py-1 text-[11px] font-semibold text-[#1d5f94]">{rows.length} {rows.length===1?"trip":"trips"}</span>}
   </header>
   {isDemo&&<p role="status" className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900">Demonstration data — synthetic trucks on saved road routes across the Philippines, not live GPS. No operational data is changed.</p>}
-  <div className="flex flex-wrap items-center gap-2">
+  {!compact&&<div className="flex flex-wrap items-center gap-2">
    <div className="relative min-w-0 flex-1 basis-48">
     <select aria-label="Road route trip" className={`${field} w-full appearance-none truncate pr-9`} value={selected?.key??""} onChange={e=>setSelection(e.target.value)}>{rows?.map(row=><option key={row.key} value={row.key}>{row.dispatchNumber??row.tripId} · {row.plateNumber??"Unassigned truck"}</option>)}</select>
     <ChevronDown aria-hidden="true" className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"/>
@@ -66,7 +69,7 @@ export default function RoadRoutingPanel({tripIds,height=440,demoFallback=false,
     <ChevronDown aria-hidden="true" className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"/>
    </div>}
    <button type="button" className={`${field} inline-flex shrink-0 items-center gap-1.5 hover:bg-slate-50 ${coordinates?"bg-[#e6f0f9] text-[#1d5f94]":""}`} aria-expanded={coordinates} onClick={()=>setCoordinates(v=>!v)}><MapPin aria-hidden="true" className="h-3.5 w-3.5"/>Warehouse coordinates</button>
-  </div>
+  </div>}
   {coordinates&&createPortal(<div className="fixed inset-0 z-[2200] flex items-center justify-center bg-slate-900/30 p-4">
    <button type="button" aria-label="Close warehouse coordinates" tabIndex={-1} className="absolute inset-0 cursor-default" onClick={()=>setCoordinates(false)}/>
    <div role="dialog" aria-modal="true" aria-labelledby="warehouse-coordinates-title" className="relative flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-xl">

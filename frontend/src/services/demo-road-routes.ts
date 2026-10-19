@@ -52,3 +52,8 @@ export function demonstrationRoadTrips(now=Date.now()):RoadTrip[]{
  });
 }
 export function realRoutesAvailable(rows:RoadTrip[]){return rows.some(row=>(["planned","remaining"] as RoadMode[]).some(mode=>Boolean(roadView(row,mode).geometry)));}
+/* Same trip id -> same demo route everywhere (fleet list, trip details, driver portal). */
+const hashId=(id:string)=>{let h=0;for(const c of id)h=(Math.imul(h,31)+c.charCodeAt(0))>>>0;return h;};
+export const demoIndexFor=(id:string,count=10)=>hashId(id)%count;
+export const demoKeyFor=(id:string)=>`demo:assignment:${demoIndexFor(id)}`;
+export function demonstrationRoadTripFor(id:string,now=Date.now()):RoadTrip{const rows=demonstrationRoadTrips(now);return rows[demoIndexFor(id,rows.length)];}
