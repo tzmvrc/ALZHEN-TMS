@@ -129,7 +129,7 @@ export default function DashboardPage({
   >("combined");
   useEffect(()=>{
     if(!accessToken||!profile)return;
-    const feature=activeId==="overview"?"home":activeId==="trips"||activeId.startsWith("trip-detail:")?"trips":activeId==="reports"?"reports":undefined;
+    const feature=activeId==="overview"?"home":activeId==="trips"||activeId.startsWith("trip-detail:")?"trips":activeId==="reports"?"reports":activeId==="truckers"?"users":undefined;
     void preloadAdminPageData(accessToken,profile.role,feature,reportView);
   },[accessToken,profile,activeId,reportView]);
   const [billingView, setBillingView] = useState<

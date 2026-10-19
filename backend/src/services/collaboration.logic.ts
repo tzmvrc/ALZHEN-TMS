@@ -14,7 +14,7 @@ export const SOURCE_FIELDS: Record<string,readonly string[]> = {
  billings:["invoice_number"],
 };
 export type CellTarget = {table:string;source:string;recordId:string;tripId?:string;stopId?:string;field:string;status:"selected"|"editing"};
-export type Commit = {eventId:string;source:string;recordId:string;tripId?:string;stopId?:string;fields:string[];version:number|null;actorId:string|null;operation?:"INSERT"|"UPDATE"|"DELETE"};
+export type Commit = {eventId:string;source:string;recordId:string;tripId?:string;stopId?:string;fields:string[];version:number|null;actorId:string|null;operation?:"INSERT"|"UPDATE"|"DELETE";draftOnly?:boolean};
 export function parseCellTarget(value:unknown):CellTarget {
  if(!value||typeof value!=="object"||Array.isArray(value))throw Error("Invalid cell");
  const v=value as Record<string,unknown>;

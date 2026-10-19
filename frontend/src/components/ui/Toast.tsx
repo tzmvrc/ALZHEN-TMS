@@ -1,5 +1,6 @@
 import {
   useContext,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -23,17 +24,18 @@ export type ToastItem = {
   description?: string;
   variant: ToastVariant;
   duration?: number;
+  notificationKey?: string;
 };
 
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const nextId = useRef(1);
 
-  const dismissToast = (id: number) => {
+  const dismissToast = useCallback((id: number) => {
     setToasts((current) => current.filter((toast) => toast.id !== id));
-  };
+  }, []);
 
-  const addToast = (toast: Omit<ToastItem, "id">) => {
+  const addToast = useCallback((toast: Omit<ToastItem, "id">) => {
     const id = nextId.current++;
     const item: ToastItem = {
       ...toast,
@@ -41,10 +43,10 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       duration: toast.duration ?? 3000,
     };
 
-    setToasts((current) => [...current, item]);
-  };
+    setToasts((current) => [...current.filter(existing => !toast.notificationKey || existing.notificationKey !== toast.notificationKey), item]);
+  }, []);
 
-  const value = useMemo(() => ({ addToast, dismissToast }), []);
+  const value = useMemo(() => ({ addToast, dismissToast }), [addToast, dismissToast]);
 
   return (
     <ToastContext.Provider value={value}>
@@ -73,7 +75,7 @@ function ToastViewport({
 }) {
   return (
     <div
-      className="pointer-events-none fixed inset-x-3 top-3 z-50 flex max-w-full justify-center sm:inset-x-0 sm:top-4 sm:justify-center"
+      className="pointer-events-none fixed inset-x-3 top-3 z-[2300] flex max-w-full justify-center sm:inset-x-0 sm:top-4 sm:justify-center"
       style={{ paddingTop: "max(12px, env(safe-area-inset-top))" }}>
       <div className="flex w-full max-w-sm flex-col gap-3 sm:w-[360px]">
         {toasts.map((toast) => (

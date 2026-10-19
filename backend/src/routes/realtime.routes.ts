@@ -4,8 +4,13 @@ import { requireRole } from "../middleware/role.middleware.js";
 import { ApiError, sendError, sendSuccess } from "../utils/api-response.js";
 import { listAdminChangeSignals } from "../services/admin-change.service.js";
 import { readCollaborationRecord } from "../services/collaboration-record.service.js";
+import { trackerDraftColumns } from "../services/transmittal-tracker.service.js";
 
 const router = Router();
+router.get("/draft-tracker-columns",authMiddleware,requireRole("ADMIN","STAFF"),async(req,res)=>{
+ try{return sendSuccess(res,200,"Authorized column identities",await trackerDraftColumns({id:req.user!.id,role:req.appSession!.role as "ADMIN"|"STAFF"}));}
+ catch{return sendError(res,403,"Draft column access unavailable.","DRAFT_ACCESS_DENIED");}
+});
 router.get("/records/:source/:id",authMiddleware,requireRole("ADMIN","STAFF"),async(req,res)=>{
  try {return sendSuccess(res,200,"Authoritative spreadsheet record",await readCollaborationRecord(String(req.params.source),String(req.params.id)));}
  catch(error){if(error instanceof ApiError)return sendError(res,error.statusCode,error.message,error.code);return sendError(res,503,"Record unavailable.","COLLABORATION_READ_FAILED");}

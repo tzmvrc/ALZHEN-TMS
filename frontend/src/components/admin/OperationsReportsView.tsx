@@ -1,3 +1,4 @@
+import { CollaborativeCell } from "./CollaborativeCell";
 import EditStepNavigation from "./EditStepNavigation";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
 import { MoreVertical } from "lucide-react";
@@ -451,13 +452,13 @@ function OffloadItemFieldEditor({ token, model, field, onSaved }: { token: strin
       setHasError(true);
     } finally { saving.current = false; setBusy(false); }
   };
-  return <div className="min-w-0 text-left">
-    {editing ? <ReportTextCellEditor value={value} type="number" step="any" label={`${label} for Offload ${model.report.id} item ${model.id}`} disabled={busy}
+  return <CollaborativeCell target={{table:"operations",source:model.persisted?"offload_items":"offloads",recordId:model.persisted?model.id:model.report.id,field:model.persisted?field:`item.${field}`,tripId:model.report.trip_id,stopId:model.report.trip_stop_id??undefined,reportId:model.report.id}}><div className="min-w-0 text-left">
+    {editing ? <ReportTextCellEditor value={value} type="number" step="any" label={`${label} for Offload ${model.report.id} item ${model.id}`} disabled={busy} saveState={hasError?"error":undefined}
       onChange={setValue} onCommit={() => void save()} onCancel={() => { setValue(original == null ? "" : String(original)); setEditing(false); }}
       className="w-full min-w-20 rounded-md border border-blue-300 bg-white px-2 py-1.5 text-left text-sm tabular-nums text-slate-800 outline-none focus:ring-2 focus:ring-blue-100" /> : <button type="button" disabled={busy} onClick={() => { setMessage(""); setHasError(false); setEditing(true); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === "F2") { event.preventDefault(); setMessage(""); setHasError(false); setEditing(true); } }}
       className="w-full cursor-text rounded-sm px-1 py-0.5 text-left text-sm tabular-nums text-slate-800 hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9]" title={`Edit ${label}`}>{original == null ? "—" : String(original)}</button>}
     {message && <p role={hasError ? "alert" : "status"} className={`text-left text-[10px] ${hasError ? "text-rose-700" : busy ? "text-slate-500" : "text-emerald-700"}`}>{message}</p>}
-  </div>;
+  </div></CollaborativeCell>;
 }
 
 function dateLabelSafe(value: string | null) {
@@ -954,7 +955,11 @@ export function OperationsEventsTable({ rows, loading, hasLoaded, loadError, tok
     const active = editing?.rowId === row.id && editing.field === field;
     const selected = selectedCell?.rowId === row.id && selectedCell.field === field;
     const status = feedback?.rowId === row.id && feedback.field === field ? feedback : null;
-    const label = columns.find((column) => column.key === field)?.label ?? field;
+    const label = field==="dispatch_number"?"Dispatch Number":field==="delivery_date"?"Delivery Date":columns.find((column) => column.key === field)?.label ?? field;
+    const physical=field==="dispatch_number"?(row.trip_stop_id?{source:"trip_stops",recordId:row.trip_stop_id,field:"dispatch_number"}:{source:"trips",recordId:row.trip_id,field:"dispatch_number"})
+      :field==="delivery_date"&&row.trip_stop_id?{source:"trip_stops",recordId:row.trip_stop_id,field:"finish_unloading_time"}
+      :field==="remarks"?exactOffloadReport(row)?{source:"offloads",recordId:exactOffloadReport(row)!.id,field:"comments"}:row.trip_stop_id?{source:"trip_stops",recordId:row.trip_stop_id,field:"remarks"}:{source:"trips",recordId:row.trip_id,field:"remarks"}:null;
+    const draftTarget=editable&&physical?{table:"operations",...physical,tripId:row.trip_id,stopId:physical.source==="trip_stops"?row.trip_stop_id??undefined:physical.source==="offloads"?exactOffloadReport(row)?.trip_stop_id??undefined:undefined}:null;
     return <td key={field} data-cell-hover-disabled={!editable || active || selected ? "true" : undefined}
       tabIndex={editable && !active ? 0 : undefined}
       onClick={() => editable && !active && beginEdit(row, field)}
@@ -962,6 +967,7 @@ export function OperationsEventsTable({ rows, loading, hasLoaded, loadError, tok
       style={style}
       className={REPORT_GRID_BODY_CELL_CLASS + " relative border-r border-slate-100/70 align-top text-slate-800 last:border-r-0 " + (editable ? "cursor-text " : "") + (selected ? "outline outline-2 outline-inset outline-blue-500 " : "") + (columnColor ? "bg-white " : "") + extra}
       title={editable ? "Edit " + label : undefined}>
+      <CollaborativeCell target={draftTarget}>
       {active && editing ? <>{field === "reported_by" ? <OperationsReporterEditor token={token} value={editing.reporterId ?? exactOffloadReport(row)?.reported_by_id ?? ""} name={editing.value || "Name not recorded"} autoOpen disabled={status?.kind === "saving"} onSelect={(id, name) => { const option = { id, label: name }; selectedOption.current = option; setEditing((current) => current ? { ...current, value: name, reporterId: id } : current); void saveCell(row, field, name, option); }} onClose={() => { if (!saving.current && status?.kind !== "error") setEditing(null); }} /> : (field === "plate_number" || field === "driver_name") ? <SearchableRelationshipEditor
         token={token} kind={field === "plate_number" ? "trucks" : "drivers"}
         value={field === "plate_number" ? row.plate_number ?? "" : row.driver_name ?? ""}
@@ -970,14 +976,16 @@ export function OperationsEventsTable({ rows, loading, hasLoaded, loadError, tok
         onCommitSelection={(option) => void saveCell(row, field, option.label, option)}
         onCommitBlur={() => void saveCell(row, field, editing.value)}
         onCancel={() => setEditing(null)} /> : <ReportTextCellEditor
-        value={editing.value} type={field === "delivery_date" ? "datetime-local" : "text"}
+        buffered value={editing.value} type={field === "delivery_date" ? "datetime-local" : "text"}
+        saveState={status?.kind==="error"?"error":undefined}
         multiline={field === "remarks"} label={"Edit " + label} disabled={status?.kind === "saving"}
         className="w-full min-w-32 rounded-md border border-blue-300 bg-white px-2 py-1.5 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-blue-100"
         placeholder={field === "remarks" ? "Enter remarks" : undefined}
-        onChange={(value) => setEditing((current) => current ? { ...current, value } : current)}
-        onCommit={() => void saveCell(row, field, editing.value)} onCancel={() => setEditing(null)} />}
+        onChange={() => {}}
+        onCommit={(value) => saveCell(row, field, value)} onCancel={() => setEditing(null)} />}
         {status && <span role={status.kind === "error" ? "alert" : "status"} className={"block text-[10px] font-medium " + (status.kind === "error" ? "text-rose-600" : status.kind === "saved" ? "text-emerald-600" : "text-slate-400")}>{status.message}</span>}
       </> : <>{content}{status && <span role={status.kind === "error" ? "alert" : "status"} className={"ml-2 text-[10px] font-medium " + (status.kind === "error" ? "text-rose-600" : status.kind === "saved" ? "text-emerald-600" : "text-slate-400")}>{status.message}</span>}</>}
+      </CollaborativeCell>
     </td>;
   };
 
@@ -991,7 +999,7 @@ export function OperationsEventsTable({ rows, loading, hasLoaded, loadError, tok
       <div className="flex flex-wrap gap-1" role="group" aria-label="Filter operations reports by type">
         {filters.map((item) => <button key={item} type="button" aria-pressed={filter === item} onClick={() => { setSelectedRows(new Set()); setFilter(item); if (item === "Offload") setExpandedLineItemsRow(null); }} className={"rounded-full px-3 py-1.5 text-xs font-semibold transition " + (filter === item ? "bg-[#0b2341] text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200")}>{item}</button>)}
       </div>
-      <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">{selectedRows.size > 0 && <button type="button" disabled={deleteBusy} onClick={()=>setSelectedRows(new Set())} className="px-2 text-xs underline">Clear selection</button>}<ColumnFinder tableKey="operations" rowSearch={{value:search,onSearch:value=>{setSelectedRows(new Set());setSearch(value);},placeholder:"Search rows or columns…"}} columns={OPERATIONS_COLUMNS.map(column=>({key:column.key,title:column.label,hidden:layout.hidden.includes(column.key),index:columns.findIndex(item=>item.key===column.key)}))} viewport={viewportRef} getHeader={key=>viewportRef.current?.querySelector<HTMLElement>(`[data-ops-column="${key}"]`)} onReveal={key=>setLayout(current=>({...current,hidden:current.hidden.filter(item=>item!==key)}))} />{canManageReports && <><ReportRowActionButton action="edit" disabled={selectedRows.size !== 1 || selectedTargets?.length !== 1 || rowEditBusy || deleteBusy || Boolean(editing)} onClick={editSelectedRow} /><ReportRowActionButton action="delete" disabled={!selectedTargets?.length || rowEditBusy || deleteBusy || Boolean(editing)} onClick={() => { setDeletePassword(""); setDeleteMessage(null); setDeleteConfirmation(true); }} /></>}{toolbarActions}</div>
+      <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto"><ColumnFinder tableKey="operations" rowSearch={{value:search,onSearch:value=>{setSelectedRows(new Set());setSearch(value);},placeholder:"Search rows or columns…"}} columns={OPERATIONS_COLUMNS.map(column=>({key:column.key,title:column.label,hidden:layout.hidden.includes(column.key),index:columns.findIndex(item=>item.key===column.key)}))} viewport={viewportRef} getHeader={key=>viewportRef.current?.querySelector<HTMLElement>(`[data-ops-column="${key}"]`)} onReveal={key=>setLayout(current=>({...current,hidden:current.hidden.filter(item=>item!==key)}))} />{canManageReports && selectedRows.size>0 && Boolean(selectedTargets?.length) && <><ReportRowActionButton action="edit" disabled={selectedRows.size !== 1 || selectedTargets?.length !== 1 || rowEditBusy || deleteBusy || Boolean(editing)} onClick={editSelectedRow} /><ReportRowActionButton action="delete" disabled={!selectedTargets?.length || rowEditBusy || deleteBusy || Boolean(editing)} onClick={() => { setDeletePassword(""); setDeleteMessage(null); setDeleteConfirmation(true); }} /></>}{toolbarActions}</div>
     </div>
     {loading && hasLoaded && <p role="status" className="text-xs text-slate-500">Refreshing reports…</p>}
     {deleteMessage && <p role="status" className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">{deleteMessage}</p>}

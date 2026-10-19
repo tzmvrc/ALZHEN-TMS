@@ -313,3 +313,34 @@ changes wake the route worker; API hides obsolete geometry. Cell drafts remain
 independent of marker updates. No new publication or live location event enabled:
 TRACKING_ENABLED remains false, schema/RPC proposals unapplied. See
 tracking-pdf-activation.md for exact approvals, evidence and remaining acceptance.
+
+## Phase 2D.1 — Ephemeral live cell drafts (October 19, 2026)
+
+Supersedes the earlier prohibition on transmitting draft text **only for the
+server-authorized scalar report cells described here**. Drafts now travel through
+the existing authenticated Socket.IO connection. PostgreSQL/Supabase durable
+change events and confirmed REST responses remain the sole persistence path.
+
+Events: `cell:edit-start`, `cell:draft-changed`, `cell:edit-end`,
+`cell:edit-ended`, `cell:draft-snapshot`, `cell:edit-rejected`,
+`draft:availability`, metadata-only `cell:saved-notice`, and
+`table:access-revoked`. No draft tables, migrations or publications were added.
+
+Per-cell subscriptions keep remote keystrokes out of table/query state. Physical
+source/record/field plus report scope identify cells; Tracker binds existing
+column UUID to stop UUID without creating a flex-cell. Unsaved local text is never
+replaced by a remote preview. Existing save conflicts/versions and layout revision
+handling are preserved. Enter/blur save; Escape cancels; idle typing never saves.
+
+Defaults: 50 ms trailing throttle, 8 KB UTF-8 text limit, 15-second draft expiry,
+10-second visible heartbeat, 60 draft packets/second per authenticated user.
+Same-principal token refresh restarts authorized sessions without replacing local
+input. Logout/account/role changes clear ephemeral state. Multi-worker operation
+requires the already supported Redis adapter and fails closed if unavailable;
+no broker was added for local operation.
+
+Coverage, authorization, exact contracts, test evidence and limitations:
+[Phase 2D.1](phase-2d1-live-collaborative-cell-editing.md). The 13 isolated browser
+fixtures and 208 backend/93 frontend tests are not live production or real Redis
+multi-worker acceptance. Custom Flexible Table/modal forms retain their separate
+save-based editor behavior.

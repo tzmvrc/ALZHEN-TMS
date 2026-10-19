@@ -10,6 +10,7 @@ export function useSpreadsheetCollaboration(table:string,token:string|null,userI
  useEffect(()=>{if(!token||!userId)return;const leave=joinCollaborationRoom("table",table);let live=true;
   const unsubscribe=subscribeCollaborationEvents(event=>{
    if(event.kind!=="commit")return;const commit=event.commit;
+   if(commit.operation==="DELETE"){if(live)callback.current(commit,null);return;}
    void readCommittedRecord(token,commit).then(record=>{
     if(!live||!rememberConfirmedVersion(commit.source,commit.recordId,record.collaboration_version))return;
     callback.current(commit,record);

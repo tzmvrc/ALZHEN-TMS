@@ -1,3 +1,4 @@
+import { useLiveCellEditor } from "./useLiveCellEditor";
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { ArrowDown, ArrowUp, Bold,Italic,Underline, EyeOff, LoaderCircle, Paintbrush, Palette, Pencil, Pin, RotateCcw, Search, SlidersHorizontal, Trash2, X } from "lucide-react";
@@ -24,8 +25,9 @@ export function ReportCellFormattingToolbar({ selectedCellCount, selectionIsBold
   const [openColorPicker, setOpenColorPicker] = useState<"text" | "background" | null>(null);
   const apply = (change: Partial<ReportCellFormat>) => { onApply(change); setOpenColorPicker(null); };
   const toolbarButtonClass = "inline-flex h-7 w-7 items-center justify-center rounded border disabled:cursor-not-allowed disabled:opacity-40";
+  const plainFormatButtonClass = (active: boolean) => `inline-flex h-7 w-7 items-center justify-center border-0 bg-transparent p-0 shadow-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:cursor-not-allowed disabled:opacity-40 ${active ? "text-blue-700 hover:text-blue-800" : "text-slate-500 hover:text-slate-900"}`;
   return <div role="toolbar" aria-label="Cell formatting" className="flex min-h-9 items-center gap-1 border-b border-slate-100 bg-slate-50/70 px-3 py-1.5">
-    {advanced&&<><button type="button" title="Italic selected cells" aria-label="Italic selected cells" aria-pressed={selectionIsItalic} disabled={!selectedCellCount} onMouseDown={e=>e.preventDefault()} onClick={()=>apply({italic:!selectionIsItalic})} className={toolbarButtonClass}><Italic className="h-4 w-4" /></button><button type="button" aria-label="Underline selected cells" title="Underline selected cells" aria-pressed={selectionIsUnderlined} disabled={!selectedCellCount} onMouseDown={e=>e.preventDefault()} onClick={()=>apply({underline:!selectionIsUnderlined})} className={toolbarButtonClass}><Underline className="h-4 w-4"/></button></>}
+    {advanced&&<><button type="button" title="Italic selected cells" aria-label="Italic selected cells" aria-pressed={selectionIsItalic} disabled={!selectedCellCount} onMouseDown={e=>e.preventDefault()} onClick={()=>apply({italic:!selectionIsItalic})} className={plainFormatButtonClass(selectionIsItalic)}><Italic className="h-4 w-4" /></button><button type="button" aria-label="Underline selected cells" title="Underline selected cells" aria-pressed={selectionIsUnderlined} disabled={!selectedCellCount} onMouseDown={e=>e.preventDefault()} onClick={()=>apply({underline:!selectionIsUnderlined})} className={plainFormatButtonClass(selectionIsUnderlined)}><Underline className="h-4 w-4"/></button></>}
     <button type="button" title="Bold selected cells" aria-label="Bold selected cells" aria-pressed={selectionIsBold} disabled={!selectedCellCount} onMouseDown={(event) => event.preventDefault()} onClick={() => apply({ bold: !selectionIsBold })} className={`${toolbarButtonClass} ${selectionIsBold ? "border-blue-300 bg-blue-100 text-blue-800" : "border-transparent text-slate-600 hover:bg-white hover:text-slate-900"}`}><Bold aria-hidden="true" className="h-4 w-4" /></button>
     <div className="relative">
       <button type="button" title="Text color" aria-label="Text color" aria-expanded={openColorPicker === "text"} disabled={!selectedCellCount} onMouseDown={(event) => event.preventDefault()} onClick={() => setOpenColorPicker((current) => current === "text" ? null : "text")} className={`${toolbarButtonClass} ${openColorPicker === "text" ? "border-blue-300 bg-blue-100 text-blue-800" : "border-transparent text-slate-600 hover:bg-white hover:text-slate-900"}`}><Palette aria-hidden="true" className="h-4 w-4" /></button>
@@ -103,7 +105,7 @@ export function ReportColumnColorDialog({ columnName, color, onChange, onReset, 
 
 export function ReportTextCellEditor({
   value, type = "text", multiline = false, label, disabled, className, placeholder, maxLength, step,
-  commitOnBlur = true, onChange, onCommit, onCancel,
+  commitOnBlur = true, onChange, onCommit, onCancel, saveState, buffered = false,
 }: {
   value: string;
   type?: "text" | "number" | "date" | "time" | "datetime-local";
@@ -116,17 +118,26 @@ export function ReportTextCellEditor({
   step?: number | "any";
   commitOnBlur?: boolean;
   onChange: (value: string) => void;
-  onCommit: () => void;
+  onCommit: (value: string) => void | Promise<boolean | void>;
   onCancel: () => void;
+  saveState?: string;
+  buffered?: boolean;
 }) {
+  // Optional local buffer keeps large report owners out of the typing path.
+  // Parent-driven edits (mentions, canonical saves) still replace the base.
+  const [draft,setDraft]=useState({base:value,text:value});
+  if(draft.base!==value)setDraft({base:value,text:value});
+  const displayed=buffered&&draft.base===value?draft.text:value;
+  const live=useLiveCellEditor(displayed,saveState);
   const skipBlurCommit = useRef(false);
   const keyHandlers = (event: ReactKeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     if (event.key === "Enter" && (!multiline || !event.shiftKey)) {
       event.preventDefault();
-      onCommit();
+      live.commit(()=>onCommit(displayed));
     } else if (event.key === "Escape") {
       event.preventDefault();
       skipBlurCommit.current = true;
+      live.cancel();
       onCancel();
     }
   };
@@ -134,14 +145,16 @@ export function ReportTextCellEditor({
     autoFocus: true,
     "aria-label": label,
     disabled,
-    value,
+    value:displayed,
     placeholder,
     maxLength,
     ...(!multiline && type === "number" ? { step } : {}),
-    onChange: (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => onChange(event.target.value),
+    onFocus: live.focus,
+    onChange: (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => { const next=event.target.value; if(buffered)setDraft({base:value,text:next}); live.change(next); onChange(next); },
     onBlur: () => {
+      live.blur();
       if (skipBlurCommit.current) { skipBlurCommit.current = false; return; }
-      if (commitOnBlur) onCommit();
+      if (commitOnBlur) live.commit(()=>onCommit(displayed));
     },
     onKeyDown: keyHandlers,
     className,

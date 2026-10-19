@@ -155,6 +155,7 @@ function invalidateForTable(table: string, payload?: RealtimePayload) {
   if (["pod_records", "pod_drive_files", "driver_trip_updates", "flex_cell_mentions", "flex_table_permissions", "flex_dropdown_options"].includes(table)) invalidateApiCache(TRANSMITTAL_TRACKER_ENDPOINT);
   if (["transaction_deletion_jobs", "offload_deletion_jobs"].includes(table)) {
     invalidateApiCache("/trips"); invalidateApiCache("/reports"); invalidateReportPageCache();
+    if(table==="transaction_deletion_jobs")for(const prefix of [TRANSMITTAL_TRACKER_ENDPOINT,"/truckers","/tracking","/dashboard","/flexible-tables","/calendar/events","/documents"])invalidateApiCache(prefix);
   }
   if (["incidents", "incident_reasons", "demurrages", "pod_records", "pod_drive_files", "backload_items", "driver_trip_updates", "tms_route_options"].includes(table)) invalidateApiCache("/reports/operations/");
   if (table === "admin_notifications") invalidateApiCache("/notifications");
@@ -205,7 +206,7 @@ function invalidateForTable(table: string, payload?: RealtimePayload) {
     invalidateApiCache("/lookups/profiles");
     invalidateApiCache("/truckers");
   }
-  if (table === "trips" || table === "trip_truck_assignments") {
+  if (["trips","trip_stops","trip_truck_assignments","trucks"].includes(table)) {
     invalidateApiCache("/truckers");
   }
   if (table === "documents") invalidateApiCache("/documents");
@@ -248,7 +249,14 @@ export function startAdminRealtime(
     },
     schedule: (callback, delay) => setTimeout(callback, delay), cancel: clearTimeout,
   });
-  const stopSocketSignals=subscribeCollaborationEvents(event=>{if(active&&event.kind==="signal")feed.push({topic:event.topic,revision:event.revision});});
+  const stopSocketSignals=subscribeCollaborationEvents(event=>{
+    if(!active)return;
+    if(event.kind==="signal")feed.push({topic:event.topic,revision:event.revision});
+    if(event.kind==="commit"&&event.commit.operation==="DELETE"&&event.commit.source==="trips"){
+      invalidateForTable("trips");invalidateForTable("transaction_deletion_jobs");
+      emitAdminRealtime({kind:"batch",tables:["trips","transaction_deletion_jobs"]});
+    }
+  });
   const connect = async () => {
     const version = ++connectionVersion;
     const previous = signalChannel; signalChannel = null;

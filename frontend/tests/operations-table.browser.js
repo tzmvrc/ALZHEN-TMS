@@ -70,7 +70,7 @@ async (page) => {
     if (JSON.stringify(originalOrder) !== JSON.stringify(afterOrder)) throw new Error("Column Finder changed rows");
     await root.getByRole("button", { name: "Clear search", exact: true }).click();
     const edit = root.getByRole("button", { name: "Edit selected row", exact: true }), remove = root.getByRole("button", { name: "Delete selected reports", exact: true });
-    if (!await edit.isDisabled() || !await remove.isDisabled()) throw new Error("Toolbar actions must be disabled without checked rows");
+    if (await edit.count() || await remove.count()) throw new Error("Toolbar actions must be hidden without checked rows");
     await root.getByRole("checkbox", { name: "Select row DSP-FIXTURE-1", exact: true }).check();
     await root.getByRole("checkbox", { name: "Select row DSP-FIXTURE-2", exact: true }).check();
     if (!await edit.isDisabled() || await remove.isDisabled()) throw new Error("Multiple selection must disable Edit and retain Delete");
@@ -97,9 +97,9 @@ async (page) => {
     if (deleted.length) throw new Error("Cancel deleted a report");
     const search = finder;
     await search.fill("no-match"); await search.press("Enter");
-    if (!await remove.isDisabled()) throw new Error("Hidden selection retained actions");
+    if (await remove.count()) throw new Error("Hidden selection retained actions");
     await search.fill(""); await search.press("Enter");
-    if (!await remove.isDisabled()) throw new Error("Old selection resurrected");
+    if (await remove.count()) throw new Error("Old selection resurrected");
     await root.getByRole("checkbox", { name: "Select row DSP-FIXTURE-1", exact: true }).check();
     await fixture.evaluate(() => window.__fixtureRefresh());
     await fixture.waitForTimeout(50);
@@ -110,7 +110,7 @@ async (page) => {
     await root.getByLabel("Current account password").fill("fixture-password");
     await root.getByRole("alertdialog").getByRole("button", { name: "Delete 1 report", exact: true }).click();
     await root.getByText("1 of 1 report deleted.", { exact: true }).waitFor();
-    if (!await remove.isDisabled() || deleted.length !== 1 || deleted[0].endsWith("2")) throw new Error("Delete scope/reset failed");
+    if (await remove.count() || deleted.length !== 1 || deleted[0].endsWith("2")) throw new Error("Delete scope/reset failed");
     await root.getByRole("checkbox", { name: "Select row DSP-FIXTURE-2", exact: true }).check();
     await remove.click();
     if(!await root.getByRole("alertdialog").getByRole("button", {name:"Delete 1 report",exact:true}).isDisabled())throw Error("Password must be required");
@@ -118,7 +118,7 @@ async (page) => {
     await root.getByRole("alertdialog").getByRole("button", { name: "Delete 1 report", exact: true }).click();
     await root.getByRole("status").filter({ hasText: /protected historical report/ }).waitFor();
     if (!await root.getByRole("checkbox", { name: "Select row DSP-FIXTURE-2", exact: true }).isVisible()) throw new Error("Protected row vanished");
-    await root.getByRole("button", { name: "Clear selection", exact: true }).click();
+    for(const checkbox of await root.getByRole("checkbox",{name:/^Select row /}).all())await checkbox.uncheck();
     await root.getByRole("checkbox", { name: "Select row DSP-FIXTURE-3", exact: true }).check();
     await remove.click();
     if(!await root.getByRole("alertdialog").getByRole("button", {name:"Delete 1 report",exact:true}).isDisabled())throw Error("Password must be required");

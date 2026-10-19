@@ -5,7 +5,8 @@ import {fetchTrips} from "./trip.service";
 import {runBackgroundPreload} from "./background-preload";
 import {preloadOperationsOverview} from "./operations-report.service";
 import {preloadTransmittalTracker} from "./transmittal-tracker.service";
-export type AdminFeature="home"|"trips"|"reports";
+import {fetchUsersDirectory} from "./user-management.service";
+export type AdminFeature="home"|"trips"|"reports"|"users";
 let generation=0,session="",activeFeature:AdminFeature|undefined;
 const warmed=new Map<AdminFeature,number>();
 let running:{feature:AdminFeature;generation:number;promise:Promise<void>}|null=null;
@@ -22,7 +23,7 @@ export async function preloadAdminPageData(token:string,role:string,feature?:Adm
  const current=++generation;
  const page=(key:ReportKey)=>fetchReportPage(key,token,getInitialReportPageOptions(key));
  const references=[()=>fetchDropdownOptions(token),...(["trip-types","warehouses","trucking-companies"] as const).map(kind=>()=>searchRelationshipOptions(token,kind,""))];
- const tasks:Array<()=>Promise<unknown>>=feature==="reports"?[
+ const tasks:Array<()=>Promise<unknown>>=feature==="users"?[()=>fetchUsersDirectory(token,role)]:feature==="reports"?[
   ()=>page(initialReport),...references,
   ...(Object.keys(REPORTS) as ReportKey[]).filter(key=>key!==initialReport).map(key=>()=>page(key)),
   ()=>preloadOperationsOverview(token),()=>preloadTransmittalTracker(token),

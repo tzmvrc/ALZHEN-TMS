@@ -23,3 +23,25 @@ test("confirmed whole-trip success invalidates every affected feature, retains u
  globalThis.fetch=async(input,init)=>new Response(JSON.stringify(init?.method==="POST"?{success:true,data:confirmed?{cleanup_pending:true}:{}}:{success:true,data:{path:String(input)}}),{status:200});
  try{await Promise.all(paths.map(path=>apiGetCached(path,"fixture")));await deleteWholeTrips("fixture",[one],"isolated-password");for(const path of paths.slice(0,-1))assert.equal(getCachedApiResponse(path,"fixture"),null,path);assert.ok(getCachedApiResponse("/users","fixture"));confirmed=false;await assert.rejects(deleteWholeTrips("fixture",[one],"isolated-password"),/not confirmed/);}finally{globalThis.fetch=original;clearApiCache();}
 });
+
+test("concurrent confirmations and remounts reuse only the pending exact-session batch",async()=>{
+ const original=globalThis.fetch;let calls=0,release=()=>{};
+ globalThis.fetch=async()=>{calls++;await new Promise<void>(resolve=>{release=resolve;});return new Response(JSON.stringify({success:true,data:{cleanup_pending:false,deleted_trips:2}}),{status:200});};
+ try{
+  const first=deleteWholeTrips("fixture-concurrent",[one,two,one],"synthetic-password");
+  const second=deleteWholeTrips("fixture-concurrent",[two,one],"synthetic-password");
+  assert.equal(calls,1);release();assert.deepEqual(await first,await second);
+  const retry=deleteWholeTrips("fixture-concurrent",[one,two],"fresh-password");assert.equal(calls,2);release();await retry;
+ }finally{globalThis.fetch=original;}
+});
+
+test("failed confirmations can retry and never reuse authorization across accounts",async()=>{
+ const original=globalThis.fetch;let calls=0;
+ globalThis.fetch=async()=>{calls++;return new Response(JSON.stringify({success:false,message:"Incorrect password"}),{status:403});};
+ try{
+  await assert.rejects(deleteWholeTrips("fixture-account-a",[one],"wrong-password"));
+  await assert.rejects(deleteWholeTrips("fixture-account-a",[one],"another-password"));
+  await assert.rejects(deleteWholeTrips("fixture-account-b",[one],"own-password"));
+  assert.equal(calls,3);
+ }finally{globalThis.fetch=original;}
+});

@@ -72,3 +72,366 @@ Visit https://react.dev/link/error-boundaries to learn more about error boundari
     at sendError (http://localhost:5173/@vite/client:494:19)
     at sendLog (http://localhost:5173/@vite/client:522:11) @ http://localhost:5173/@vite/client:523
 [ 2953834ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://localhost:5000/api/trips/whole-delete/capabilities:0
+[36330683ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:14335
+[36331065ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://localhost:5000/api/auth/session/bootstrap:0
+[36331071ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://localhost:5000/api/auth/session/bootstrap:0
+[36331358ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://localhost:5000/api/auth/session/bootstrap:0
+[36364768ms] [INFO] [report-edit-diagnostic] ReportDataView mounted {mode: development, development: true} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792373239906:247
+[36364781ms] [INFO] [report-edit-diagnostic] ReportDataView mounted {mode: development, development: true} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792373239906:247
+[36365844ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 7} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792373239906:247
+[36365845ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 7} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792373239906:247
+[36365845ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 7} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792373239906:247
+[36369791ms] [INFO] [report-edit-diagnostic] cell selected for editing {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, selected: Object, canonicalIdentity: dispatch-monitoring:trip:29b5b887-aaaf-4b76-9805-0…f:assignment:45dd61d4-4865-4228-8f44-4efc58867b4e} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792373239906:247
+[36374767ms] [INFO] [report-edit-diagnostic] cell selected for editing {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, selected: Object, canonicalIdentity: dispatch-monitoring:trip:29b5b887-aaaf-4b76-9805-0…f:assignment:45dd61d4-4865-4228-8f44-4efc58867b4e} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792373239906:247
+[36377530ms] [INFO] [report-edit-diagnostic] cell selected for editing {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, selected: Object, canonicalIdentity: dispatch-monitoring:trip:29b5b887-aaaf-4b76-9805-0…f:assignment:45dd61d4-4865-4228-8f44-4efc58867b4e} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792373239906:247
+[36398525ms] [INFO] [report-edit-diagnostic] cell selected for editing {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, selected: Object, canonicalIdentity: dispatch-monitoring:trip:29b5b887-aaaf-4b76-9805-0…f:assignment:45dd61d4-4865-4228-8f44-4efc58867b4e} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792373239906:247
+[36649668ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:5173/src/components/admin/CollaborativeCell.tsx?t=1792374235206:0
+[36649671ms] [ERROR] [vite] Failed to reload /src/components/admin/CollaborativeCell.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[36652604ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:14335
+[36924222ms] [INFO] [report-edit-diagnostic] ReportDataView mounted {mode: development, development: true} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[36924230ms] [INFO] [report-edit-diagnostic] ReportDataView mounted {mode: development, development: true} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[36925223ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 7} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[36925224ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 7} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[36925224ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 7} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[36985447ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 7} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[37045459ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 7} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[37105395ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 7} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[37165389ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 7} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[37225432ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 7} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[37285592ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 7} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[37345476ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 7} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[37405534ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 7} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[37465483ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 7} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[37525341ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 7} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[37585377ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 7} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[37645499ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 7} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[37705584ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 7} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[37765912ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 7} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[37800252ms] [INFO] [report-edit-diagnostic] cell selected for editing {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, selected: Object, canonicalIdentity: dispatch-monitoring:trip:29b5b887-aaaf-4b76-9805-0…f:assignment:45dd61d4-4865-4228-8f44-4efc58867b4e} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[37802650ms] [INFO] [report-edit-diagnostic] cell selected for editing {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, selected: Object, canonicalIdentity: dispatch-monitoring:trip:a7bc15fe-b171-455f-9d39-0…a:assignment:96ed7c70-8507-42f6-8235-121ae543f985} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[37813340ms] [INFO] [report-edit-diagnostic] cell selected for editing {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, selected: Object, canonicalIdentity: dispatch-monitoring:trip:a6320035-2278-4a18-ae58-6…a:assignment:e71f88d2-5bb6-407a-938e-a11a189defb5} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[37822000ms] [INFO] [report-edit-diagnostic] cell selected for editing {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, selected: Object, canonicalIdentity: dispatch-monitoring:trip:a6320035-2278-4a18-ae58-6…a:assignment:e71f88d2-5bb6-407a-938e-a11a189defb5} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[37823977ms] [INFO] [report-edit-diagnostic] cell selected for editing {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, selected: Object, canonicalIdentity: dispatch-monitoring:trip:a7bc15fe-b171-455f-9d39-0…a:assignment:96ed7c70-8507-42f6-8235-121ae543f985} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[37828571ms] [INFO] [report-edit-diagnostic] cell selected for editing {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, selected: Object, canonicalIdentity: dispatch-monitoring:trip:ed329614-62d0-4d83-afbc-8…d:assignment:d431b444-2835-46c9-a3aa-2a0fcf359821} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[37831183ms] [INFO] [report-edit-diagnostic] cell selected for editing {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, selected: Object, canonicalIdentity: dispatch-monitoring:trip:038690f9-db6a-4f8a-a516-f…3:assignment:5c569de1-fe29-452f-bcd2-2afb30f080ff} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[37833974ms] [INFO] [report-edit-diagnostic] cell selected for editing {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, selected: Object, canonicalIdentity: dispatch-monitoring:trip:a7bc15fe-b171-455f-9d39-0…a:assignment:96ed7c70-8507-42f6-8235-121ae543f985} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[37837636ms] [INFO] [report-edit-diagnostic] cell selected for editing {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, selected: Object, canonicalIdentity: dispatch-monitoring:trip:a6320035-2278-4a18-ae58-6…a:assignment:e71f88d2-5bb6-407a-938e-a11a189defb5} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[37843066ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 7} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[37843066ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[37853829ms] [INFO] [report-edit-diagnostic] cell selected for editing {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, selected: Object, canonicalIdentity: dispatch-monitoring:trip:29b5b887-aaaf-4b76-9805-0…f:assignment:45dd61d4-4865-4228-8f44-4efc58867b4e} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[37885660ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 7} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[37885660ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[37945428ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 7} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[37945428ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[38005789ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 7} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[38005789ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[38065455ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 7} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[38065455ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[38125446ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 7} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[38125446ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[38185500ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 7} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[38185500ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[38246187ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 7} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[38246187ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[38305819ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 7} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[38305820ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[38365618ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 7} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[38365618ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[38425351ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 7} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[38425351ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[38488400ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 7} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[38488400ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[38545590ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 7} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[38545591ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[38605508ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 7} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[38605508ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[38665887ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 7} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[38665887ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[38725923ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 7} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[38725923ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[38785483ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 7} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[38785484ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[38845538ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 7} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[38845539ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[38905481ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 7} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[38905481ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[38965478ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 7} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[38965478ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[39025504ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 7} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[39025504ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[39086587ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 7} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[39086587ms] [INFO] [report-edit-diagnostic] report rows returned to the grid {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, query: Object, source: request, editedField: dispatch_number} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792374237637:247
+[39104667ms] Error: useAuth must be used within an AuthProvider
+    at useAuth (http://localhost:5173/src/context/AuthContext.tsx?t=1792373239906:417:9)
+    at AdminRoute (http://localhost:5173/src/components/AdminRoute.tsx?t=1792373239906:8:37)
+    at Object.react_stack_bottom_frame (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:12866:12)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:4213:19)
+    at updateFunctionComponent (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:5569:16)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:6140:20)
+    at runWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:851:66)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:8429:92)
+    at workLoopSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:8325:37)
+    at renderRootSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:8309:6)
+[39104672ms] [WARNING] %s
+
+%s
+ An error occurred in the <AdminRoute> component. Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries. @ http://localhost:5173/@vite/client:532
+[39104779ms] Error: useAuth must be used within an AuthProvider
+    at useAuth (http://localhost:5173/src/context/AuthContext.tsx?t=1792373239906:417:9)
+    at AdminRoute (http://localhost:5173/src/components/AdminRoute.tsx?t=1792373239906:8:37)
+    at Object.react_stack_bottom_frame (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:12866:12)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:4213:19)
+    at updateFunctionComponent (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:5569:16)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:6140:20)
+    at runWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:851:66)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:8429:92)
+    at workLoopSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:8325:37)
+    at renderRootSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:8309:6)
+[39104785ms] [WARNING] %s
+
+%s
+ An error occurred in the <AdminRoute> component. Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries. @ http://localhost:5173/@vite/client:532
+[39105623ms] Error: useAuth must be used within an AuthProvider
+    at useAuth (http://localhost:5173/src/context/AuthContext.tsx?t=1792373239906:417:9)
+    at AdminRoute (http://localhost:5173/src/components/AdminRoute.tsx?t=1792373239906:8:37)
+    at Object.react_stack_bottom_frame (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:12866:12)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:4213:19)
+    at updateFunctionComponent (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:5569:16)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:6140:20)
+    at runWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:851:66)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:8429:92)
+    at workLoopSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:8325:37)
+    at renderRootSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:8309:6)
+[39105629ms] [WARNING] %s
+
+%s
+ An error occurred in the <AdminRoute> component. Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries. @ http://localhost:5173/@vite/client:532
+[39107364ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:14335
+[39409871ms] Error: useAuth must be used within an AuthProvider
+    at useAuth (http://localhost:5173/src/context/AuthContext.tsx?t=1792376688472:417:9)
+    at AdminRoute (http://localhost:5173/src/components/AdminRoute.tsx?t=1792376688472:8:37)
+    at Object.react_stack_bottom_frame (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:12866:12)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:4213:19)
+    at updateFunctionComponent (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:5569:16)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:6140:20)
+    at runWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:851:66)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:8429:92)
+    at workLoopSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:8325:37)
+    at renderRootSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:8309:6)
+[39409865ms] [WARNING] %s
+
+%s
+ An error occurred in the <AdminRoute> component. Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries. @ http://localhost:5173/@vite/client:532
+[39410277ms] Error: useAuth must be used within an AuthProvider
+    at useAuth (http://localhost:5173/src/context/AuthContext.tsx?t=1792376688472:417:9)
+    at AdminRoute (http://localhost:5173/src/components/AdminRoute.tsx?t=1792376688472:8:37)
+    at Object.react_stack_bottom_frame (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:12866:12)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:4213:19)
+    at updateFunctionComponent (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:5569:16)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:6140:20)
+    at runWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:851:66)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:8429:92)
+    at workLoopSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:8325:37)
+    at renderRootSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:8309:6)
+[39410277ms] [WARNING] %s
+
+%s
+ An error occurred in the <AdminRoute> component. Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries. @ http://localhost:5173/@vite/client:532
+[39447242ms] Error: useAuth must be used within an AuthProvider
+    at useAuth (http://localhost:5173/src/context/AuthContext.tsx?t=1792376688472:417:9)
+    at AdminRoute (http://localhost:5173/src/components/AdminRoute.tsx?t=1792376688472:8:37)
+    at Object.react_stack_bottom_frame (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:12866:12)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:4213:19)
+    at updateFunctionComponent (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:5569:16)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:6140:20)
+    at runWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:851:66)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:8429:92)
+    at workLoopSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:8325:37)
+    at renderRootSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:8309:6)
+[39447242ms] [WARNING] %s
+
+%s
+ An error occurred in the <AdminRoute> component. Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries. @ http://localhost:5173/@vite/client:532
+[39776687ms] Error: useAuth must be used within an AuthProvider
+    at useAuth (http://localhost:5173/src/context/AuthContext.tsx?t=1792376688472:417:9)
+    at AdminRoute (http://localhost:5173/src/components/AdminRoute.tsx?t=1792376688472:8:37)
+    at Object.react_stack_bottom_frame (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:12866:12)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:4213:19)
+    at updateFunctionComponent (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:5569:16)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:6140:20)
+    at runWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:851:66)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:8429:92)
+    at workLoopSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:8325:37)
+    at renderRootSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:8309:6)
+[39776687ms] [WARNING] %s
+
+%s
+ An error occurred in the <AdminRoute> component. Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries. @ http://localhost:5173/@vite/client:532
+[40282333ms] Error: useAuth must be used within an AuthProvider
+    at useAuth (http://localhost:5173/src/context/AuthContext.tsx?t=1792376688472:417:9)
+    at AdminRoute (http://localhost:5173/src/components/AdminRoute.tsx?t=1792376688472:8:37)
+    at Object.react_stack_bottom_frame (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:12866:12)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:4213:19)
+    at updateFunctionComponent (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:5569:16)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:6140:20)
+    at runWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:851:66)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:8429:92)
+    at workLoopSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:8325:37)
+    at renderRootSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:8309:6)
+[40282332ms] [WARNING] %s
+
+%s
+ An error occurred in the <AdminRoute> component. Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries. @ http://localhost:5173/@vite/client:532
+[41227556ms] Error: useAuth must be used within an AuthProvider
+    at useAuth (http://localhost:5173/src/context/AuthContext.tsx?t=1792376688472:417:9)
+    at AdminRoute (http://localhost:5173/src/components/AdminRoute.tsx?t=1792376688472:8:37)
+    at Object.react_stack_bottom_frame (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:12866:12)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:4213:19)
+    at updateFunctionComponent (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:5569:16)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:6140:20)
+    at runWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:851:66)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:8429:92)
+    at workLoopSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:8325:37)
+    at renderRootSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:8309:6)
+[41227557ms] [WARNING] %s
+
+%s
+ An error occurred in the <AdminRoute> component. Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries. @ http://localhost:5173/@vite/client:532
+[41227589ms] Error: useAuth must be used within an AuthProvider
+    at useAuth (http://localhost:5173/src/context/AuthContext.tsx?t=1792376688472:417:9)
+    at AdminRoute (http://localhost:5173/src/components/AdminRoute.tsx?t=1792376688472:8:37)
+    at Object.react_stack_bottom_frame (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:12866:12)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:4213:19)
+    at updateFunctionComponent (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:5569:16)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:6140:20)
+    at runWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:851:66)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:8429:92)
+    at workLoopSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:8325:37)
+    at renderRootSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:8309:6)
+[41227590ms] [WARNING] %s
+
+%s
+ An error occurred in the <AdminRoute> component. Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries. @ http://localhost:5173/@vite/client:532
+[41234939ms] Error: useAuth must be used within an AuthProvider
+    at useAuth (http://localhost:5173/src/context/AuthContext.tsx?t=1792376688472:417:9)
+    at AdminRoute (http://localhost:5173/src/components/AdminRoute.tsx?t=1792376688472:8:37)
+    at Object.react_stack_bottom_frame (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:12866:12)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:4213:19)
+    at updateFunctionComponent (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:5569:16)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:6140:20)
+    at runWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:851:66)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:8429:92)
+    at workLoopSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:8325:37)
+    at renderRootSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:8309:6)
+[41234940ms] [WARNING] %s
+
+%s
+ An error occurred in the <AdminRoute> component. Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries. @ http://localhost:5173/@vite/client:532
+[41235275ms] Error: useAuth must be used within an AuthProvider
+    at useAuth (http://localhost:5173/src/context/AuthContext.tsx?t=1792376688472:417:9)
+    at AdminRoute (http://localhost:5173/src/components/AdminRoute.tsx?t=1792376688472:8:37)
+    at Object.react_stack_bottom_frame (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:12866:12)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:4213:19)
+    at updateFunctionComponent (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:5569:16)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:6140:20)
+    at runWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:851:66)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:8429:92)
+    at workLoopSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:8325:37)
+    at renderRootSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:8309:6)
+[41235276ms] [WARNING] %s
+
+%s
+ An error occurred in the <AdminRoute> component. Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries. @ http://localhost:5173/@vite/client:532
+[41402635ms] Error: useAuth must be used within an AuthProvider
+    at useAuth (http://localhost:5173/src/context/AuthContext.tsx?t=1792376688472:417:9)
+    at AdminRoute (http://localhost:5173/src/components/AdminRoute.tsx?t=1792376688472:8:37)
+    at Object.react_stack_bottom_frame (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:12866:12)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:4213:19)
+    at updateFunctionComponent (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:5569:16)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:6140:20)
+    at runWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:851:66)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:8429:92)
+    at workLoopSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:8325:37)
+    at renderRootSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:8309:6)
+[41402636ms] [WARNING] %s
+
+%s
+ An error occurred in the <AdminRoute> component. Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries. @ http://localhost:5173/@vite/client:532
+[41464217ms] Error: useAuth must be used within an AuthProvider
+    at useAuth (http://localhost:5173/src/context/AuthContext.tsx?t=1792376688472:417:9)
+    at AdminRoute (http://localhost:5173/src/components/AdminRoute.tsx?t=1792376688472:8:37)
+    at Object.react_stack_bottom_frame (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:12866:12)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:4213:19)
+    at updateFunctionComponent (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:5569:16)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:6140:20)
+    at runWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:851:66)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:8429:92)
+    at workLoopSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:8325:37)
+    at renderRootSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:8309:6)
+[41464217ms] [WARNING] %s
+
+%s
+ An error occurred in the <AdminRoute> component. Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries. @ http://localhost:5173/@vite/client:532
+[42142244ms] Error: useAuth must be used within an AuthProvider
+    at useAuth (http://localhost:5173/src/context/AuthContext.tsx?t=1792376688472:417:9)
+    at AdminRoute (http://localhost:5173/src/components/AdminRoute.tsx?t=1792376688472:8:37)
+    at Object.react_stack_bottom_frame (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:12866:12)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:4213:19)
+    at updateFunctionComponent (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:5569:16)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:6140:20)
+    at runWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:851:66)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:8429:92)
+    at workLoopSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:8325:37)
+    at renderRootSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:8309:6)
+[42142243ms] [WARNING] %s
+
+%s
+ An error occurred in the <AdminRoute> component. Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries. @ http://localhost:5173/@vite/client:532
+[42142491ms] Error: useAuth must be used within an AuthProvider
+    at useAuth (http://localhost:5173/src/context/AuthContext.tsx?t=1792376688472:417:9)
+    at AdminRoute (http://localhost:5173/src/components/AdminRoute.tsx?t=1792376688472:8:37)
+    at Object.react_stack_bottom_frame (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:12866:12)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:4213:19)
+    at updateFunctionComponent (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:5569:16)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:6140:20)
+    at runWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:851:66)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:8429:92)
+    at workLoopSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:8325:37)
+    at renderRootSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:8309:6)
+[42142490ms] [WARNING] %s
+
+%s
+ An error occurred in the <AdminRoute> component. Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries. @ http://localhost:5173/@vite/client:532
+[42318416ms] Error: useAuth must be used within an AuthProvider
+    at useAuth (http://localhost:5173/src/context/AuthContext.tsx?t=1792376688472:417:9)
+    at AdminRoute (http://localhost:5173/src/components/AdminRoute.tsx?t=1792376688472:8:37)
+    at Object.react_stack_bottom_frame (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:12866:12)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:4213:19)
+    at updateFunctionComponent (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:5569:16)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:6140:20)
+    at runWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:851:66)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:8429:92)
+    at workLoopSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:8325:37)
+    at renderRootSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:8309:6)
+[42318417ms] [WARNING] %s
+
+%s
+ An error occurred in the <AdminRoute> component. Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries. @ http://localhost:5173/@vite/client:532
+[50837189ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://localhost:5000/api/trips/whole-delete/capabilities:0

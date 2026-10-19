@@ -40,7 +40,7 @@ export default function ReportsWorkspace(props: Props) {
       <RetainedFeature active={activeTab === "reports"}><div role="tabpanel">
         <ReportDataView {...props} pageTitle={undefined} pageSubtitle={undefined} toolbarLeading={tabs} />
       </div></RetainedFeature>
-      <RetainedFeature active={activeTab === "transmittal"}><div role="tabpanel" className="space-y-3">{tabs}<TransmittalTrackerView /></div></RetainedFeature>
+      <RetainedFeature active={activeTab === "transmittal"}><div role="tabpanel" className="space-y-3"><TransmittalTrackerView toolbarLeading={tabs} /></div></RetainedFeature>
       <RetainedFeature active={activeTab === "operations"}><div role="tabpanel" className="space-y-3">{tabs}<OperationsReportsView mode="management" onOpenTrip={props.onOpenTrip} /></div></RetainedFeature>
     </section>
   );

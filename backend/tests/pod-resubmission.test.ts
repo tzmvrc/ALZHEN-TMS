@@ -15,7 +15,7 @@ test("completed-stop receipt resubmission preserves milestones/DR/siblings and r
   }};return chain;
  }) as typeof original;
  supabaseAdmin.storage.getBucket=(async()=>({data:{public:false},error:null})) as typeof get;
- supabaseAdmin.storage.from=(()=>({upload:async()=>{uploads++;return {error:null};},createSignedUrl:async()=>({data:{signedUrl:"https://isolated.test/new"},error:null}),remove:async()=>{throw Error('Original files must remain');}})) as typeof storage;
+ supabaseAdmin.storage.from=(()=>({upload:async()=>{assert.equal(seeds.trip_images.length,2,"Receipt reservation must exist before Storage upload");uploads++;return {error:null};},createSignedUrl:async()=>({data:{signedUrl:"https://isolated.test/new"},error:null}),remove:async()=>{throw Error('Original files must remain');}})) as typeof storage;
  const bytes=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jCzAAAAAASUVORK5CYII=','base64');
  try{
   seeds.drivers.push({id:"unrelated-driver",profile_id:"unrelated-owner"});

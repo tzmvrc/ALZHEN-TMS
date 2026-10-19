@@ -1,10 +1,11 @@
+import { CollaborativeCell } from "./CollaborativeCell";
 import {useWholeTripSelection} from "../../hooks/useWholeTripSelection";
 import WholeTripDeletionDialog from "./WholeTripDeletionDialog";
-import {selectedParentTripIds,selectedParentTripCount} from "../../services/whole-trip-deletion";
+import {selectedParentTripIds} from "../../services/whole-trip-deletion";
 import EditStepNavigation from "./EditStepNavigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, ClipboardEvent as ReactClipboardEvent, MouseEvent } from "react";
+import type { ReactNode, CSSProperties, KeyboardEvent as ReactKeyboardEvent, ClipboardEvent as ReactClipboardEvent, MouseEvent } from "react";
 import { ArrowDown, ArrowUp, ArrowUpDown, Download, EllipsisVertical, FileSpreadsheet, GripVertical, LoaderCircle, Printer, X } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import companyLogo from "../../assets/logo.png";
@@ -31,6 +32,7 @@ import { useSharedTableWidths } from "./useSharedTableWidths";
 import {useSharedTableDesign} from "./useSharedTableDesign";
 import {designLayout,designChanges} from "../../services/shared-table-design";
 import ColumnFinder from "./ColumnFinder";
+import TableViewers from "./TableViewers";
 import HiddenColumnsControl from "./HiddenColumnsControl";
 
 const LEGACY_TRACKER_PAGE_OPTIONS = {};
@@ -156,7 +158,7 @@ async function loadExcelJs() {
   }
 }
 
-export default function TransmittalTrackerView() {
+export default function TransmittalTrackerView({toolbarLeading}:{toolbarLeading?:ReactNode}={}) {
   const { accessToken, profile, user } = useAuth();
   const isAdmin = profile?.role === "ADMIN";
   const [query, setQuery] = useState("");
@@ -168,6 +170,8 @@ export default function TransmittalTrackerView() {
   const page = navigation.criteriaKey===criteriaKey ? navigation.page : 1;
   const pageOptions = useMemo<TrackerPageOptions>(()=>TRACKER_PAGINATION_ENABLED ? ({page,limit:navigation.limit,search:query,sortBy:sort?.key,sortOrder:sort?.direction,filterBy:columnFilter?.key,filter:columnFilter?.value}) : LEGACY_TRACKER_PAGE_OPTIONS,[page,navigation.limit,query,sort,columnFilter]);
   const cached = accessToken ? getCachedTransmittalTracker(accessToken,pageOptions) : null;
+  const deletedTripIds = useRef(new Set<string>());
+  useEffect(()=>{deletedTripIds.current.clear();},[accessToken]);
   const [dataState, setDataState] = useState<{ token: string | null; value: TransmittalTrackerResponse | null }>(() => ({ token: accessToken, value: cached }));
   const data = dataState.token === accessToken ? dataState.value : cached;
   const setData = useCallback((update: TransmittalTrackerResponse | null | ((current: TransmittalTrackerResponse | null) => TransmittalTrackerResponse | null)) => setDataState((current) => ({ token: accessToken, value: typeof update === "function" ? update(current.token === accessToken ? current.value : null) : update })), [accessToken]);
@@ -321,6 +325,7 @@ export default function TransmittalTrackerView() {
         await initializeTransmittalTracker(accessToken); initializedRef.current = true;
         result = await fetchTransmittalTracker(accessToken,pageOptions.search??"",pageOptions);
       }
+      result={...result,rows:result.rows.filter(row=>!deletedTripIds.current.has(String(row.trip_id)))};
       if (generation === loadGenerationRef.current) {
         if ((deferForEditing || TRACKER_PAGINATION_ENABLED) && realtimeGate.blocked()) { realtimeGate.request(); return; }
         if (result.pagination && Number(pageOptions.page ?? 1) > Math.max(1, result.pagination.totalPages)) {
@@ -571,6 +576,12 @@ export default function TransmittalTrackerView() {
     setEditingCellKey("");
     requestAnimationFrame(() => { if (!editingCellKeyRef.current) cellRefs.current.get(key)?.focus(); });
   };
+  const liveTrackerTarget=(row:TransmittalTrackerRow,field:EditableField)=>{
+    if(!data)return null;
+    if(field==="delivery_receipt_no_override")return {table:"transmittal-tracker",source:"trip_stops",recordId:row.trip_stop_id,tripId:row.trip_id,stopId:row.trip_stop_id,field:"dr_number"};
+    const column=data.columns.find(column=>column.settings.system_key===field);
+    return column?{table:"transmittal-tracker",source:"flex_columns",recordId:column.id,tripId:row.trip_id,stopId:row.trip_stop_id,field:"value"}:null;
+  };
   const renderEditableCell = (row: TransmittalTrackerRow, field: EditableField, editor: TrackerColumn["editor"], column?: TrackerColumn) => {
     const key = trackerCellKey(row, field);
     const value = cellValue(row, field);
@@ -599,15 +610,17 @@ export default function TransmittalTrackerView() {
       return <ReportDropdownEditor label={column.title} value={value} displayValue={choices.find((choice) => choice.value === value)?.label ?? value} options={choices} knownValues={dropdownOptions.filter((option) => option.field_key === "delivery_status").map((option) => option.option_value)} managedOptions={dropdownOptions.filter((option) => option.field_key === "delivery_status" && option.active)} loading={dropdownOptionsLoading} error={dropdownOptionsError} allowAdd canManageOptions={canManageDropdowns} onSelect={(next) => editDraft(row, field, next)} onCommitSelection={(next) => { editDraft(row, field, next); void saveCell(row, field, next).then((saved) => { if (saved) closeEditedCell(key); }); }} onCommitBlur={() => { const next = draftsRef.current[key]?.value ?? value; void saveCell(row, field, next).then((saved) => { if (saved) closeEditedCell(key); }); }} onAdd={addStatusOption} onEditOption={editStatusOption} onClose={() => { const next = draftsRef.current[key]?.value ?? value; void saveCell(row, field, next).then((saved) => { if (saved) closeEditedCell(key); }); }} />;
     }
     if (editing) return <ReportTextCellEditor
+      buffered
       value={value}
+      saveState={conflictKeys.has(key)?"error":undefined}
       type={editor === "date" ? "date" : "text"}
       multiline={field === "tracker_remarks"}
       label={`Edit ${column?.title ?? field} for ${row.delivered_to || "delivery stop"}`}
       maxLength={10_000}
       disabled={busyCells.has(key) || conflictKeys.has(key)}
       className={`w-full min-w-0 rounded-md border border-[#9cc3e3] bg-white px-2 py-1.5 text-sm font-medium text-slate-800 shadow-sm outline-none ring-2 ring-[#cfe1f1] ${editor === "date" ? "min-w-32" : ""} ${field === "tracker_remarks" ? "min-h-24 resize-y" : ""}`}
-      onChange={(next) => editDraft(row, field, next)}
-      onCommit={() => { void saveCell(row, field, draftsRef.current[key]?.value ?? value).then((saved) => { if (saved) closeEditedCell(key); }); }}
+      onChange={(next) => editDraft(row, field, next, false)}
+      onCommit={(next) => saveCell(row, field, next).then((saved) => { if (saved) closeEditedCell(key); return saved; })}
       onCancel={() => { const next = { ...draftsRef.current }; delete next[key]; draftsRef.current = next; setDrafts(next); closeEditedCell(key); }} />;
     return <button type="button" tabIndex={0} disabled={!editable || busyCells.has(key) || conflictKeys.has(key)} title={legacyConflict ? "Legacy values conflict; edit and save to resolve." : editable ? `Click to edit ${column?.title ?? field}` : undefined} onClick={(event) => { if (!editable) return; setSelectedCell({ rowId: row.trip_stop_id, field }); if (event.shiftKey && cellSelection) { setCellSelection((current) => current ? { ...current, focusRowId: row.trip_stop_id, focusField: field } : { anchorRowId: row.trip_stop_id, anchorField: field, focusRowId: row.trip_stop_id, focusField: field }); return; } setCellSelection({ anchorRowId: row.trip_stop_id, anchorField: field, focusRowId: row.trip_stop_id, focusField: field }); startEditingCell(key); }} className={`block min-h-5 w-full min-w-0 rounded-md border border-transparent p-0 text-left text-[13px] text-slate-800 transition ${editable ? "cursor-text" : "cursor-default"} ${legacyConflict ? "bg-amber-50" : ""}`}>
       <span className="block whitespace-pre-wrap break-words">{shownValue}</span>
@@ -638,12 +651,12 @@ export default function TransmittalTrackerView() {
     requestAnimationFrame(() => cellRefs.current.get(draftKey(row.trip_stop_id, column.field))?.focus());
   };
 
-  const editDraft = (row: TransmittalTrackerRow, field: EditableField, value: string) => {
+  const editDraft = (row: TransmittalTrackerRow, field: EditableField, value: string, notify=true) => {
     const key = draftKey(row.trip_stop_id, field);
     const existing = draftsRef.current[key];
     const next = { ...draftsRef.current, [key]: { value, expectedVersion: existing?.expectedVersion ?? row.cells[field]?.version ?? 0 } };
     draftsRef.current = next;
-    setDrafts(next);
+    if(notify||!existing)setDrafts(next);
   };
 
   const persistCell = async (row: TransmittalTrackerRow, field: EditableField, value: string): Promise<boolean> => {
@@ -1141,24 +1154,32 @@ export default function TransmittalTrackerView() {
   const renderSheetEditor = (row: TransmittalTrackerRow, field: EditableField) => {
     const key = draftKey(row.trip_stop_id, field);
     const value = cellValue(row, field);
-    return <ReportTextCellEditor
+    return <CollaborativeCell target={liveTrackerTarget(row,field)}><ReportTextCellEditor
+      buffered
       label={`${field} for ${row.delivered_to || "delivery stop"}`}
       type="date"
       value={value}
       disabled={!data?.access.canEdit || busyCells.has(key) || conflictKeys.has(key)}
       className="w-full min-w-28 rounded-md border border-transparent bg-transparent px-2 py-1.5 text-sm font-medium text-slate-800 outline-none focus:border-blue-500 focus:bg-white disabled:opacity-60"
-      onChange={(next) => editDraft(row, field, next)}
-      onCommit={() => { if (draftsRef.current[key] !== undefined) void saveCell(row, field, draftsRef.current[key].value); }}
-      onCancel={() => { const next = { ...draftsRef.current }; delete next[key]; draftsRef.current = next; setDrafts(next); }} />;
+      onChange={(next) => editDraft(row, field, next, false)}
+      onCommit={(next) => draftsRef.current[key] !== undefined ? saveCell(row, field, next) : Promise.resolve(true)}
+      onCancel={() => { const next = { ...draftsRef.current }; delete next[key]; draftsRef.current = next; setDrafts(next); }} /></CollaborativeCell>;
   };
 
   return <section className="space-y-3">
-    {wholeTripIds&&accessToken&&profile?.role==="ADMIN"&&<WholeTripDeletionDialog key={accessToken} token={accessToken} tripIds={wholeTripIds} selectedRowCount={selectedRows.size} onClose={()=>setWholeTripIds(null)} onDeleted={()=>{setSelectedRows(new Set());void load(true);}}/>}
+    {wholeTripIds&&accessToken&&profile?.role==="ADMIN"&&<WholeTripDeletionDialog key={accessToken} token={accessToken} tripIds={wholeTripIds} selectedRowCount={selectedRows.size} onClose={()=>setWholeTripIds(null)} onDeleted={(ids)=>{const removed=new Set(ids);ids.forEach(id=>deletedTripIds.current.add(id));const removedStops=new Set(data?.rows.filter(row=>removed.has(String(row.trip_id))).map(row=>row.trip_stop_id));setSelectedRows(current=>new Set([...current].filter(id=>!removedStops.has(id))));setData(current=>current?{...current,rows:current.rows.filter(row=>!removed.has(String(row.trip_id)))}:current);void load(true);}}/>}
     {sharedWidths.feedback}
     {sharedDesign.feedback}
-    <div className="flex flex-wrap items-center justify-between gap-3">
-      <div className="flex flex-wrap items-center gap-2"><ReportRowActionButton action="edit" disabled={selectedRows.size !== 1 || !data?.access.canEdit || pageNavigationBlocked} onClick={openSelectedRowEditor} />{profile?.role === "ADMIN" && <ReportRowActionButton action="delete" label="Permanently delete selected trips" disabled={!selectedTripIds || pageNavigationBlocked || loading} onClick={()=>{if(selectedTripIds)setWholeTripIds(selectedTripIds);}} />}{selectedRows.size > 0 && <span className="text-xs text-slate-500">{selectedRows.size} selected rows ? {selectedParentTripCount(selectedPhysicalRows) ?? "Unavailable"} unique trips ? current page{(selectedParentTripCount(selectedPhysicalRows)??0)>20?" (maximum 20 trips per batch)":""}</span>}{selectedRows.size > 0 && <button type="button" onClick={()=>setSelectedRows(new Set())} className="px-2 text-xs underline">Clear selection</button>}<ColumnFinder tableKey="transmittal-tracker" rowSearch={{value:query,onSearch:setQuery,placeholder:"Search rows or columns…"}} columns={TRACKER_COLUMNS.map(column=>({key:column.key,title:column.title,hidden:columnLayout.hidden.includes(column.key),index:renderedColumns.findIndex(item=>item.key===column.key)}))} viewport={viewportRef} getHeader={key=>headerRefs.current.get(key)} onReveal={restoreColumn} /></div>
-    <div className="flex flex-wrap items-center gap-2"><button disabled={legacyConflictCount > 0} onClick={() => void exportFiltered()} className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#12365a] px-3 text-sm font-medium text-white hover:bg-[#0d2945] disabled:cursor-not-allowed disabled:opacity-50"><Download className="h-4 w-4" />Export filtered</button><button type="button" onClick={openPrepareDialog} className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#12365a] px-3 text-sm font-medium text-[#12365a] hover:bg-blue-50"><FileSpreadsheet className="h-4 w-4" />Prepare Sheet</button></div>
+    <div className="flex flex-wrap items-center justify-between gap-3" aria-label="Transmittal report toolbar">
+      <div className="flex shrink-0 items-center gap-2" data-report-toolbar-leading>{toolbarLeading}</div>
+      <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2" data-report-toolbar-actions>
+        <ColumnFinder rowSearch={{value:query,onSearch:setQuery,placeholder:"Search rows or columns…"}} columns={TRACKER_COLUMNS.map(column=>({key:column.key,title:column.title,hidden:columnLayout.hidden.includes(column.key),index:renderedColumns.findIndex(item=>item.key===column.key)}))} viewport={viewportRef} getHeader={key=>headerRefs.current.get(key)} onReveal={restoreColumn} />
+        <TableViewers table="transmittal-tracker" />
+        {selectedRows.size>0&&data?.access.canEdit&&<ReportRowActionButton action="edit" disabled={selectedRows.size!==1||pageNavigationBlocked} onClick={openSelectedRowEditor}/>}
+        {selectedRows.size>0&&profile?.role==="ADMIN"&&<ReportRowActionButton action="delete" label="Permanently delete selected trips" disabled={!selectedTripIds||pageNavigationBlocked||loading} onClick={()=>{if(selectedTripIds)setWholeTripIds(selectedTripIds);}}/>}
+        <button type="button" onClick={openPrepareDialog} className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#12365a] px-3 text-sm font-medium text-[#12365a] hover:bg-blue-50"><FileSpreadsheet className="h-4 w-4"/>Prepare Sheet</button>
+        <button disabled={legacyConflictCount>0} onClick={()=>void exportFiltered()} className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#12365a] px-3 text-sm font-medium text-white hover:bg-[#0d2945] disabled:cursor-not-allowed disabled:opacity-50"><Download className="h-4 w-4"/>Export filtered</button>
+      </div>
     </div>
     {columnFilter && <div className="flex flex-wrap items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600"><span className="font-semibold">Filter {TRACKER_COLUMNS.find((column) => column.key === columnFilter.key)?.title}</span><input autoFocus value={columnFilter.value} onChange={(event) => setColumnFilter({ ...columnFilter, value: event.target.value })} aria-label={`Filter ${TRACKER_COLUMNS.find((column) => column.key === columnFilter.key)?.title}`} className="h-8 min-w-48 rounded border border-slate-300 bg-white px-2 text-xs outline-none focus:border-blue-400" /><button type="button" onClick={() => setColumnFilter(null)} className="rounded px-2 py-1 text-slate-500 hover:bg-white">Clear filter</button></div>}
     {(error || notice || exportError || legacyConflictCount > 0) && <div role="status" className={`flex flex-wrap items-center gap-2 text-sm ${error || exportError ? "text-red-700" : notice.includes("audit event") || legacyConflictCount > 0 ? "text-amber-800" : "text-emerald-700"}`}><span>{error || exportError || (legacyConflictCount > 0 ? `${legacyConflictCount} stop${legacyConflictCount === 1 ? " has" : "s have"} conflicting legacy POD values. Replace and save each highlighted field before exporting.` : notice)}</span>{conflictKeys.size > 0 && <button type="button" onClick={discardConflicts} className="rounded border border-amber-500 px-2 py-1 text-amber-900 hover:bg-amber-50">Discard conflicted drafts and load latest</button>}</div>}
@@ -1190,7 +1211,7 @@ export default function TransmittalTrackerView() {
           const fillRange = fillGesture && rowIndex >= Math.min(fillSourceRow, fillTargetRow) && rowIndex <= Math.max(fillSourceRow, fillTargetRow) && columnIndex >= Math.min(fillSourceColumn, fillTargetColumn) && columnIndex <= Math.max(fillSourceColumn, fillTargetColumn);
           const editing = editingCellKey === fieldKey;
           return <td key={column.key} data-tracker-stop-id={row.trip_stop_id} data-tracker-field={column.field} data-cell-hover-disabled={pin || editing || selected || fillRange ? "true" : undefined} ref={(element) => { if (element) cellRefs.current.set(fieldKey, element); else cellRefs.current.delete(fieldKey); }} tabIndex={-1} style={{ width, minWidth: width, maxWidth: width, ...(formatColor ? { backgroundColor: formatColor, color: colorForeground(formatColor) } : {}), ...(cellFormat?.bold ? { fontWeight: 700 } : {}), ...(cellFormat?.color ? { color: cellFormat.color } : {}), ...(cellFormat?.backgroundColor ? { backgroundColor: cellFormat.backgroundColor } : {}), ...(pin ? { position: "sticky", left: pin === "left" ? pinOffsets.left[column.key] ?? 0 : undefined, right: pin === "right" ? pinOffsets.right[column.key] ?? 0 : undefined, zIndex: 20 } : {}) } as CSSProperties} onPointerEnter={() => extendFillGesture(row, column)} onClick={(event) => { if ((event.target as HTMLElement).closest("button, input, select, textarea")) return; setSelectedCell({ rowId: row.trip_stop_id, field: column.field }); if (data?.access.canEdit) startEditingCell(fieldKey); }} className={`${REPORT_GRID_BODY_CELL_CLASS} relative group/cell border-r border-slate-100/70 ${pin ? "bg-white shadow-sm" : ""} ${fillRange ? "bg-blue-50 ring-2 ring-inset ring-blue-400" : ""} ${selected ? "outline outline-2 outline-inset outline-blue-500" : ""} ${column.key === "remarks" ? "whitespace-pre-wrap break-words" : ""}`}>
-            {renderEditableCell(row, column.field, column.editor, column)}
+            <CollaborativeCell target={liveTrackerTarget(row,column.field)}>{renderEditableCell(row, column.field, column.editor, column)}</CollaborativeCell>
             {data?.access.canEdit && column.editor !== "relationship" && !editing && <button type="button" title={`Drag to fill from ${column.title}`} aria-label={`Drag to fill from ${column.title}`} onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); beginFillGesture(row, column); }} onClick={(event) => event.stopPropagation()} className="absolute bottom-0.5 right-0.5 z-10 flex h-4 w-4 touch-none items-center justify-center rounded-sm border border-blue-300 bg-white text-blue-600 opacity-0 shadow-sm transition group-hover/cell:opacity-100 focus:opacity-100"><GripVertical aria-hidden="true" className="h-3 w-3 rotate-90" /></button>}
           </td>;
         })}</tr>)}</tbody>

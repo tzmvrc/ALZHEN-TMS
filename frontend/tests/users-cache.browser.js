@@ -8,7 +8,8 @@ async(page)=>{
   await p.route('**/api/**',async r=>{
    const req=r.request(),url=new URL(req.url());if(req.method()!=='GET')throw Error('No production or fixture writes expected');calls.push(url.pathname+url.search);
    const user={id:'fixture-admin',first_name:'Fixture',last_name:'User',full_name:'Fixture User',role:'ADMIN'};
-   const data=url.pathname==='/api/users'||url.pathname==='/api/lookups/profiles'?(url.searchParams.get('role')==='STAFF'?[]:[user]):[];
+   let data=url.pathname==='/api/users'||url.pathname==='/api/lookups/profiles'?(url.searchParams.get('role')==='STAFF'?[]:[user]):[];
+   if(url.pathname==='/api/truckers')data={rows:[],pagination:{page:1,limit:100,total:0,totalPages:1}};
    await r.fulfill({contentType:'application/json',body:JSON.stringify({success:true,data})});
   });
   await p.goto('http://localhost:5173/tests/table-fixture.html');

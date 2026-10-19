@@ -8,6 +8,7 @@ const {attachCollaborationServer}=await import("../../src/services/collaboration
 const {collaborationEvents}=await import("../../src/services/collaboration-events.js");
 const {validateDesignPatch,mergeDesign}=await import("../../src/services/table-design.logic.js");
 const layouts=new Map<string,{table_key:string;column_key:string;revision:number;width_px:number;design:Record<string,unknown>}>();
+let deletionFixtureRun=0;
 const trip="123e4567-e89b-42d3-a456-000000000010",stop="123e4567-e89b-42d3-a456-000000000012";
 let record={id:stop,trip_id:trip,dispatch_number:"DSP-2",collaboration_version:0};
 const http=createServer(async(req,res)=>{
@@ -22,6 +23,13 @@ const http=createServer(async(req,res)=>{
   const row={table_key:body.table,column_key:body.column,revision:(old?.revision??0)+1,width_px:old?.width_px??body.initial_width_px,design:mergeDesign(old?.design??{},validateDesignPatch(body.patch))};layouts.set(key,row);res.end(JSON.stringify(row));collaborationEvents.emit("layout",{table:row.table_key,column:row.column_key,revision:row.revision,eventId:`layout:${row.table_key}:${row.column_key}:${row.revision}`});return;
  }
  if(req.method==="GET"&&req.url==="/record"){res.end(JSON.stringify(record));return;}
+ if(req.method==="POST"&&req.url==="/trip-deleted"){
+  // Browser runs recreate independent synthetic data with the same fixture UUID.
+  // Give those separate test operations distinct identities; production dedup
+  // remains intact and production trips still use their stable deletion ID.
+  collaborationEvents.emit("commit",{source:"trips",recordId:trip,tripId:trip,operation:"DELETE",version:null,fields:[],actorId:"fixture-admin",eventId:`fixture:${++deletionFixtureRun}:trips:${trip}:deleted`});
+  res.end(JSON.stringify({ok:true}));return;
+ }
  if(req.method==="POST"&&(req.url==="/drop-staff"||req.url==="/disconnect-staff")){
   for(const socket of service.io.of("/").sockets.values())if(socket.data.actor.id==="fixture-staff"){if(req.url==="/disconnect-staff")socket.disconnect(true);else socket.conn.close();}
   res.end(JSON.stringify({ok:true}));return;
@@ -36,9 +44,15 @@ const http=createServer(async(req,res)=>{
  res.writeHead(404).end();
 });
 const service=await attachCollaborationServer(http,{bridge:false,authenticate:async(token,session)=>{
- if(!["admin","staff"].includes(String(token))||session!=="fixture-session")throw Error("Denied");
- return {id:`fixture-${token}`,role:token==="admin"?"ADMIN":"STAFF",name:token==="admin"?"Fixture Admin":"Fixture Staff",expiresAt:Date.now()+3600000};
-},canTrip:async()=>true,authorizeCell:async cell=>{if(cell.recordId!==stop||cell.tripId!==trip)throw Error("Wrong fixture record");}});
+ if(!["admin","admin-refresh","staff"].includes(String(token))||session!=="fixture-session")throw Error("Denied");
+ const identity=token==="admin-refresh"?"admin":token;
+ return {id:`fixture-${identity}`,role:identity==="admin"?"ADMIN":"STAFF",name:identity==="admin"?"Fixture Admin":"Fixture Staff",expiresAt:Date.now()+3600000};
+},canTrip:async()=>true,authorizeCell:async cell=>{if(cell.recordId!==stop||cell.tripId!==trip)throw Error("Wrong fixture record");},authorizeDraft:async cell=>{
+ if(cell.tripId!==trip)throw Error("Wrong fixture trip");
+ if(cell.source==="trip_stops"&&cell.recordId===stop&&cell.stopId===stop)return;
+ if(cell.source==="flex_columns"&&cell.recordId==="123e4567-e89b-42d3-a456-000000000014"&&cell.stopId===stop)return;
+ throw Error("Wrong fixture cell");
+}});
 http.listen(5199,"127.0.0.1",()=>console.log("Isolated collaboration fixture ready:5199"));
 process.on("SIGTERM",()=>void service.close());
 }

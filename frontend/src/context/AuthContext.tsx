@@ -88,7 +88,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [sessionExpiresAt, setSessionExpiresAt] = useState<string | null>(null);
   const cacheOwnerRef = useRef<string | null>(null);
-  useEffect(()=>startCollaboration(loading?null:accessToken,profile?.id,profile?.role),[loading,accessToken,profile?.id,profile?.role]);
+  useEffect(()=>{startCollaboration(loading?null:accessToken,profile?.id,profile?.role);},[loading,accessToken,profile?.id,profile?.role]);
+  useEffect(()=>()=>{startCollaboration(null,undefined,undefined);},[]);
   const cacheTokenRef = useRef<string | null>(null);
   const cacheRoleRef=useRef<string|null>(null);
   const retryRefreshTimerRef = useRef<number | undefined>(undefined);

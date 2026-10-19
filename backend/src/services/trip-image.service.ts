@@ -165,17 +165,6 @@ export async function uploadTripImage(
     originalName.trim().replace(/[\0\r\n]/g, "").slice(0, 255) ||
     `trip-photo.${extensions[detectedType]}`;
   const storagePath = `trips/${tripId}/${randomUUID()}.${extensions[detectedType]}`;
-  const { error: uploadError } = await supabaseAdmin.storage
-    .from(bucket)
-    .upload(storagePath, bytes, { contentType: detectedType, upsert: false });
-  if (uploadError) {
-    console.error("Trip photo storage upload failed:", {
-      statusCode: uploadError.statusCode,
-      error: uploadError.message,
-    });
-    throw new TripImageError(`Trip photo upload failed: ${uploadError.message}`, 502);
-  }
-
   const { data: last, error: orderError } = await supabaseAdmin
     .from("trip_images")
     .select("display_order")
@@ -184,8 +173,6 @@ export async function uploadTripImage(
     .limit(1)
     .maybeSingle();
   if (orderError) {
-    const { error: cleanupError } = await supabaseAdmin.storage.from(bucket).remove([storagePath]);
-    if (cleanupError) console.error("Trip photo cleanup failed after order lookup error:", cleanupError);
     throw databaseFailure("determine photo order", orderError);
   }
 
@@ -203,27 +190,30 @@ export async function uploadTripImage(
     .select("id, trip_id, storage_path, file_name, display_order, created_at, updated_at")
     .single();
   if (insertError || !inserted) {
-    const { error: cleanupError } = await supabaseAdmin.storage.from(bucket).remove([storagePath]);
-    if (cleanupError) console.error("Trip photo cleanup failed after database insert error:", cleanupError);
     if (insertError) throw databaseFailure("save trip photo details", insertError);
     throw new TripImageError("Unable to save trip photo details.", 502);
   }
 
+  // Reserve the physical receipt before external Storage I/O. A missing object
+  // now has a durable owner row and blocks trip deletion while upload is pending.
+  // Never discard that evidence until exact-object compensation is confirmed.
+  const compensate = async () => {
+    try {
+      const removed = await supabaseAdmin.storage.from(bucket).remove([storagePath]);
+      if (removed.error) return false;
+      const deleted = await supabaseAdmin.from("trip_images").delete().eq("id", inserted.id).eq("trip_id", tripId);
+      return !deleted.error;
+    } catch { return false; }
+  };
+  const { error: uploadError } = await supabaseAdmin.storage.from(bucket).upload(storagePath, bytes, { contentType: detectedType, upsert: false });
+  if (uploadError) {
+    const cleaned = await compensate();
+    throw new TripImageError(cleaned ? "Trip photo upload failed. Please retry." : "Trip photo upload could not be confirmed. Its reserved receipt is retained for recovery; do not delete the trip until reviewed.", 502);
+  }
   try {
     return await withSignedUrl(inserted as Record<string, unknown>);
   } catch (error) {
-    const { error: rowCleanupError } = await supabaseAdmin
-      .from("trip_images")
-      .delete()
-      .eq("id", inserted.id)
-      .eq("trip_id", tripId);
-    const { error: fileCleanupError } = await supabaseAdmin.storage.from(bucket).remove([storagePath]);
-    if (rowCleanupError || fileCleanupError) {
-      console.error("Trip photo cleanup failed after signed URL creation error:", {
-        rowCleanupError,
-        fileCleanupError,
-      });
-    }
+    if (!await compensate()) throw new TripImageError("Private document access failed. Its reserved receipt is retained for recovery; do not delete the trip until reviewed.", 502);
     throw error;
   }
 }

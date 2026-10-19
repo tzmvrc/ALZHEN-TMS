@@ -202,6 +202,16 @@ export async function fetchTruckerDetail(token: string, truckerId: string): Prom
   return response.data;
 }
 
+export const getCachedTruckerDetail=(token:string,id:string)=>getCachedApiResponse<ApiResponse<TruckerDetail>>(`/truckers/${encodeURIComponent(id)}`,token,300000)?.data??null;
+/** Show known summary fields immediately; retain enrichment only for matching identities. */
+export function truckerDetailFromSummary(row:TruckerListItem,previous?:TruckerDetail|null):TruckerDetail{
+ const old=previous?.id===row.id?previous:null;
+ return {id:row.id,driver_id:row.id,profile_id:row.profile_id,first_name:row.first_name,last_name:row.last_name,full_name:row.full_name,contact_number:row.contact_number,email:row.email,status:row.status,profile_picture_path:row.profile_picture_path,
+  truck:row.assigned_truck_id?{id:row.assigned_truck_id,plate_number:row.plate_number,truck_number:old?.truck?.id===row.assigned_truck_id?old.truck.truck_number:null,make:old?.truck?.id===row.assigned_truck_id?old.truck.make:null,model:old?.truck?.id===row.assigned_truck_id?old.truck.model:null,status:old?.truck?.id===row.assigned_truck_id?old.truck.status:null}:null,
+  active_trip:row.active_trip_id?{id:row.active_trip_id,trip_number:row.active_trip_number,dispatch_number:old?.active_trip?.id===row.active_trip_id?old.active_trip.dispatch_number:null,status:row.current_trip_status,loading_date:row.loading_date,estimated_delivery_date:old?.active_trip?.id===row.active_trip_id?old.active_trip.estimated_delivery_date:null,route:old?.active_trip?.id===row.active_trip_id?old.active_trip.route:null,delivery_status:row.delivery_status}:null,
+  trip_history:old?.trip_history??[]};
+}
+
 export async function saveDriverTripUpdate(
   token: string,
   payload: {

@@ -1,5 +1,8 @@
+import {withTripDetailsColumn,tripDetailsTarget} from "../../services/report-action-columns";
+import { CollaborativeCell } from "./CollaborativeCell";
+import { useDraftTrackerColumns } from "./useDraftTrackerColumns";
 import {useWholeTripSelection} from "../../hooks/useWholeTripSelection";
-import {selectedParentTripIds,selectedParentTripCount} from "../../services/whole-trip-deletion";
+import {selectedParentTripIds} from "../../services/whole-trip-deletion";
 import { updateLoadingReport } from "../../services/operations-report.service";
 import {isTripTimeField,tripTimeDisplay,manilaDateTime,saveTripTime} from "../../services/trip-time";
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ClipboardEvent as ReactClipboardEvent, type CSSProperties, type MouseEvent, type ReactNode } from "react";
@@ -13,6 +16,7 @@ import {
   Building2,
   CalendarDays,
   ArrowUpRight,
+  Eye,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -81,7 +85,6 @@ import {
   updateTripRecord,
   updateTripStopRecord,
   saveTransactionReference,
-  deleteTransaction,
 } from "../../services/trip.service";
 import SearchableRelationshipEditor from "./SearchableRelationshipEditor";
 import {
@@ -411,14 +414,12 @@ const ReportSelectionToolbar = memo(function ReportSelectionToolbar({
   rows,
   columns,
   onEdit,
-  onDeleteTransaction,
   onDeleteTrips,
 }: {
   reportKey: ReportKey;
   rows: ReportRow[];
   columns: ReportColumn[];
   onEdit: () => void;
-  onDeleteTransaction?: (row: ReportRow) => void;
   onDeleteTrips?: (rows:ReportRow[])=>void;
 }) {
   useSyncExternalStore(reportSelection.subscribe, reportSelection.revision, reportSelection.revision);
@@ -428,7 +429,8 @@ const ReportSelectionToolbar = memo(function ReportSelectionToolbar({
   const hasEditableFields = Boolean(row && columns.some((column) => getEditableCellTarget(row, column.key, reportKey)));
   const canEdit = keys.length === 1 && Boolean(row) && hasEditableFields;
   const selected=keys.map(key=>rows.find(candidate=>getReportRowKey(reportKey,candidate)===key));
-  return <><span className="text-xs text-slate-500">{keys.length} selected rows ? {selectedParentTripCount(selected) ?? "Unavailable"} unique trips ? current page{(selectedParentTripCount(selected)??0)>20?" (maximum 20 trips per batch)":""}</span><button type="button" className="px-2 text-xs underline" onClick={()=>reportSelection.clear(reportKey)}>Clear selection</button><ReportRowActionButton action="edit" disabled={!canEdit} onClick={onEdit} />{onDeleteTransaction && <ReportRowActionButton action="delete" disabled={keys.length !== 1 || !row} label="Permanently delete selected transaction" onClick={() => { if (row) onDeleteTransaction(row); }} />}{onDeleteTrips&&<ReportRowActionButton action="delete" label="Permanently delete selected trips" disabled={!selectedParentTripIds(selected)} onClick={()=>onDeleteTrips(selected.filter((r):r is ReportRow=>Boolean(r)))}/>}</>;
+  const tripIds = selectedParentTripIds(selected);
+  return <><ReportRowActionButton action="edit" disabled={!canEdit} onClick={onEdit} />{onDeleteTrips && <ReportRowActionButton action="delete" label={tripIds && tripIds.length > 1 ? "Delete Selected Trips" : "Delete Entire Trip"} disabled={!tripIds} onClick={() => onDeleteTrips(selected.filter((r): r is ReportRow => Boolean(r)))} />}</>;
 });
 
 function rowText(row: ReportRow, ...keys: string[]): string {
@@ -458,6 +460,12 @@ type EditableCellTarget = ReportEditDefinition & {
 };
 
 const collaborationSources:Record<ReportEditDefinition["sourceEntity"],string>={trip:"trips",stop:"trip_stops",lineItem:"trip_line_items",assignment:"trip_truck_assignments",billing:"billings",storeCall:"store_calls",loadingReport:"loading_reports"};
+function liveDraftCell(table:string,target:EditableCellTarget|null,trackerColumn?:string){
+ if(!target)return null;
+ if(target.sourceField==="transmittal_ref")return trackerColumn&&target.tripId&&target.stopId?{table,source:"flex_columns",recordId:trackerColumn,field:"value",tripId:target.tripId,stopId:target.stopId}:null;
+ const id={trip:target.tripId,stop:target.stopId,lineItem:target.lineItemId,assignment:target.assignmentId,billing:target.billingId,storeCall:target.storeCallId,loadingReport:target.loadingReportId}[target.sourceEntity];
+ return id?{table,source:collaborationSources[target.sourceEntity],recordId:id,tripId:target.tripId,stopId:["stop","lineItem","storeCall"].includes(target.sourceEntity)?target.stopId:undefined,field:target.sourceField}:null;
+}
 function collaborationCell(table:string,target:EditableCellTarget|null,status:"selected"|"editing"="selected"):CollaborationCell|null {
  // Loading reports refresh through secure change signals; they have no approved
  // per-record collaboration version. Do not invent a versioned socket identity.
@@ -1019,7 +1027,8 @@ export default function ReportDataView({
     });
   }, []);
   const [viewMode, setViewMode] = useState<"visual" | "table">("table");
-  const [columns, setColumns] = useState<ReportColumn[]>([]);
+  const [dataColumns, setColumns] = useState<ReportColumn[]>([]);
+  const columns=useMemo(()=>withTripDetailsColumn(dataColumns,transactionView||reportKey==="combined"),[dataColumns,transactionView,reportKey]);
   const sharedWidths = useSharedTableWidths(transactionView ? "trips" : `report:${reportKey}`, accessToken, ["ADMIN", "STAFF"].includes(profile?.role ?? ""));
   const saveSharedColumnWidth = sharedWidths.save;
   const columnLayoutStorageKey = `alzhen:report-column-layout:${profile?.id ?? "user"}:${reportKey}`;
@@ -1036,6 +1045,9 @@ export default function ReportDataView({
   const [fillGesture, setFillGesture] = useState<FillGesture | null>(null);
   const fillGestureRef = useRef<FillGesture | null>(null);
   const [rows, setRows] = useState<ReportRow[]>([]);
+  const deletedTripIds = useRef(new Set<string>());
+  const deletionRowKeys = useRef<string[]>([]);
+  useEffect(() => { deletedTripIds.current.clear(); }, [accessToken]);
   const [localPinnedColumnSides, setPinnedColumnSides] = useState<Record<string, "left" | "right">>({});
   const [leftPinOffsets, setLeftPinOffsets] = useState<Record<string, number>>({});
   const [rightPinOffsets, setRightPinOffsets] = useState<Record<string, number>>({});
@@ -1100,13 +1112,6 @@ export default function ReportDataView({
   useEffect(() => {
     if (editModalOpen) tripEditHeading.current?.focus();
   }, [transactionView, editModalOpen, tripEditStep]);
-  const [deleteTarget, setDeleteTarget] = useState<ReportRow | null>(null);
-  const [deleteBusy, setDeleteBusy] = useState(false);
-  const [deleteError, setDeleteError] = useState("");
-  const [transactionPassword,setTransactionPassword]=useState("");
-  const transactionOwner=useRef(`${profile?.id??""}:${profile?.role??""}:${accessToken??""}`);
-  useEffect(()=>{const owner=`${profile?.id??""}:${profile?.role??""}:${accessToken??""}`;if(transactionOwner.current!==owner){transactionOwner.current=owner;setTransactionPassword("");setDeleteTarget(null);}},[accessToken,profile?.id,profile?.role]);
-  const deleteRequest = useRef(false);
   const [pagination, setPagination] = useState<Pagination | null>(null);
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
@@ -1125,6 +1130,7 @@ export default function ReportDataView({
   } | null>(null);
   const [retryVersion, setRetryVersion] = useState(0);
   const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
+  const bufferedTextDraft = useRef<EditingCell | null>(null);
   const sharedDesign=useSharedTableDesign(transactionView?"trips":`report:${reportKey}`,accessToken,["ADMIN","STAFF"].includes(profile?.role??""),Boolean(editingCell||editModalOpen||columnResize||draggedColumnKey||fillGesture));
   const columnLayout=useMemo(()=>{
     const design=sharedDesign.columns;
@@ -1180,7 +1186,7 @@ export default function ReportDataView({
   const sortableFields =
     columns.length > 0
       ? columns
-          .filter((column) => column.key !== "route")
+          .filter((column) => column.key !== "route" && column.type !== "action")
           .map((column) => column.key)
       : getSortableFields(reportKey);
   const activeSortBy = sortableFields.includes(sortBy)
@@ -1313,6 +1319,14 @@ export default function ReportDataView({
   const successfulSaveVersion = useRef(0);
   const savedRowReconciliations = useRef<SavedRowReconciliation[]>([]);
   const collaboration=useSpreadsheetCollaboration(transactionView?"trips":reportKey,accessToken,profile?.id,(commit,record)=>{
+    if(commit.operation==="DELETE"&&commit.source==="trips"&&editingCell?.tripId!==commit.recordId){
+      deletedTripIds.current.add(commit.recordId);
+      const retain=(current:ReportRow[])=>current.filter(row=>row.trip_id!==commit.recordId);
+      setRows(retain);
+      if(accessToken)updateCachedReportPages(reportKey,accessToken,bundle=>({...bundle,rows:retain(bundle.rows)}));
+      scheduleRealtimeRefreshRef.current();
+      return;
+    }
     if(!record){scheduleRealtimeRefreshRef.current();return;}
     const firstMatch=rows.flatMap(row=>columns.map(column=>({row,column,target:getEditableCellTarget(row,column.key,reportKey)}))).find(({target})=>{const cell=collaborationCell(transactionView?"trips":reportKey,target);return cell?.source===commit.source&&cell.recordId===commit.recordId;});
     const firstTarget=firstMatch?.target;
@@ -1335,6 +1349,7 @@ export default function ReportDataView({
     const queryAffected=Boolean(appliedSearch||Object.values(appliedFilters).some(Boolean)||sortChanged);
     if(!firstMatch||commit.operation==="INSERT"||relationshipChanged||queryAffected){if(activeReportEdit.current)realtimeRefreshDirty.current=true;else scheduleRealtimeRefreshRef.current();}
   });
+  const draftTrackerColumns=useDraftTrackerColumns(accessToken,columns.some(column=>column.key==="transmittal_ref"));
   const selectedCollaborationRow=cellSelection?displayedRows.find(row=>getReportRowKey(reportKey,row)===cellSelection.focusRowKey):null;
   const localCollaborationTarget=editingCell?{...editingCell.definition,...editingCell}:selectedCollaborationRow&&cellSelection?getEditableCellTarget(selectedCollaborationRow,cellSelection.focusField,reportKey):null;
   const presenceIdentity=JSON.stringify(collaborationCell(transactionView?"trips":reportKey,localCollaborationTarget,editingCell?"editing":"selected"));
@@ -1529,7 +1544,7 @@ export default function ReportDataView({
     const displayCache = cached ?? getStaleReportPage(reportKey, accessToken, pageOptions);
     if (displayCache) {
       setColumns(displayCache.columns);
-      setRows(displayCache.rows);
+      setRows(displayCache.rows.filter(row => !deletedTripIds.current.has(String(row.trip_id))));
       setPagination(displayCache.pagination);
       setLoadedQueryKey(queryKey);
       loadedSnapshotKeyRef.current = snapshotKey;
@@ -1608,11 +1623,12 @@ export default function ReportDataView({
           : result.rows;
         setRequestError((current) => current?.key === queryKey ? null : current);
         setColumns(result.columns);
-        setRows(reconciledRows);
+        const visibleRows = reconciledRows.filter(row => !deletedTripIds.current.has(String(row.trip_id)));
+        setRows(visibleRows);
         setPagination(result.pagination);
         setCachedReportPage(reportKey, accessToken, pageOptions, {
           columns: result.columns,
-          rows: reconciledRows,
+          rows: visibleRows,
           pagination: result.pagination,
         });
         loadedSnapshotKeyRef.current = snapshotKey;
@@ -1858,6 +1874,7 @@ export default function ReportDataView({
       });
     }
     setMentionOptions([]);
+    bufferedTextDraft.current = null;
     setEditingCell(nextCell);
     setCellSaveState({
       rowKey: nextCell.rowKey,
@@ -2141,20 +2158,6 @@ export default function ReportDataView({
     event.clipboardData.setData("text/plain", text);
   }
 
-  async function confirmTransactionDeletion() {
-    if (!deleteTarget || !accessToken || deleteRequest.current || !transactionPassword) return;
-    if (cellSaveInFlight.current) { setDeleteError("Wait for the current cell save to finish, then retry."); return; }
-    const tripId = deleteTarget.trip_id;
-    const stopId = deleteTarget.trip_stop_id ?? deleteTarget._trip_stop_id;
-    if (typeof tripId !== "string" || (stopId != null && typeof stopId !== "string")) { setDeleteError("This row is missing its transaction identity."); return; }
-    deleteRequest.current = true; setDeleteBusy(true); setDeleteError("");
-    try {
-      await deleteTransaction(accessToken, tripId, typeof stopId === "string" ? stopId : null,transactionPassword);
-      setDeleteTarget(null); reportSelection.clear(reportKey); setRetryVersion((current) => current + 1);
-    } catch (cause) { setDeleteError(cause instanceof Error ? cause.message : "Deletion could not be confirmed. Retry this same transaction."); }
-    finally { setTransactionPassword("");deleteRequest.current = false; setDeleteBusy(false); }
-  }
-
   function openSelectedRowEditor() {
     const keys = reportSelection.getKeys(reportKey);
     if (keys.length !== 1) return;
@@ -2278,6 +2281,7 @@ export default function ReportDataView({
   }
 
   function keepCellEditLocal(candidate: EditingCell) {
+    bufferedTextDraft.current = candidate;
     setCellSaveState({
       rowKey: candidate.rowKey,
       field: candidate.field,
@@ -2285,6 +2289,12 @@ export default function ReportDataView({
       message: "Editing",
     });
     setEditingCell(candidate);
+  }
+
+  function keepTextDraftLocal(candidate: EditingCell) {
+    bufferedTextDraft.current = candidate;
+    setCellSaveState(current => current?.rowKey===candidate.rowKey&&current.field===candidate.field&&current.status==="editing"
+      ? current : {rowKey:candidate.rowKey,field:candidate.field,status:"editing",message:"Editing"});
   }
 
   async function commitEditableCell(
@@ -2296,7 +2306,8 @@ export default function ReportDataView({
       cancelNextBlur.current = false;
       return false;
     }
-    const sourceCell = candidate ?? editingCell;
+    const buffered = bufferedTextDraft.current;
+    const sourceCell = candidate ?? (buffered && editingCell && buffered.rowKey===editingCell.rowKey && buffered.field===editingCell.field ? buffered : editingCell);
     if (!sourceCell || !accessToken || cellSaveInFlight.current) return false;
     const targetCell = { ...sourceCell };
     const definition = targetCell.definition;
@@ -2908,7 +2919,7 @@ export default function ReportDataView({
 
         {collaboration.notice&&<div role="status" className="max-w-md rounded border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-900">{collaboration.notice.text}{collaboration.notice.latest!==undefined&&<span className="block">Latest persisted value: {String(collaboration.notice.latest??"(blank)")}</span>}<button type="button" onClick={collaboration.dismissNotice} className="ml-2 underline">Dismiss</button></div>}
         <div className="flex w-full min-w-0 flex-wrap items-center justify-end gap-2 lg:flex-[1_1_36rem] lg:flex-nowrap">
-          <ColumnFinder tableKey={transactionView?"trips":reportKey} key={reportKey} rowSearch={{value:search,placeholder:"Search rows or columns…",onSearch:value=>{setSearch(value);setAppliedSearch(value);setPage(1);}}} columns={columns.filter((column) => !(transactionView && column.key === "warehouse_code")).map((column) => ({ ...column, hidden: hiddenColumnKeys.has(column.key), index: renderedGridColumns.findIndex((item) => item.key === column.key) }))} viewport={tableViewportRef} getHeader={(key) => headerCellRefs.current.get(key)} onReveal={restoreReportColumn} />
+          <ColumnFinder tableKey={transactionView?"trips":reportKey} key={reportKey} rowSearch={{value:search,placeholder:"Search rows or columnsâ€¦",onSearch:value=>{setSearch(value);setAppliedSearch(value);setPage(1);}}} columns={columns.filter((column) => !(transactionView && column.key === "warehouse_code")).map((column) => ({ ...column, hidden: hiddenColumnKeys.has(column.key), index: renderedGridColumns.findIndex((item) => item.key === column.key) }))} viewport={tableViewportRef} getHeader={(key) => headerCellRefs.current.get(key)} onReveal={restoreReportColumn} />
           {showReportPicker && (
             <label className="sr-only" htmlFor="report-select">
               Select report
@@ -2937,8 +2948,7 @@ export default function ReportDataView({
             reportKey={reportKey}
             rows={displayedRows}
             columns={columns}
-            onDeleteTrips={!transactionView&&reportKey==="combined"&&profile?.role==="ADMIN"?selected=>{const ids=selectedParentTripIds(selected);if(ids){setWholeTripRowCount(selected.length);setWholeTripIds(ids);}}:undefined}
-            onDeleteTransaction={transactionView ? (row) => { setDeleteTarget(row); setDeleteError(""); } : undefined}
+            onDeleteTrips={(transactionView||reportKey==="combined")&&profile?.role==="ADMIN"?selected=>{const ids=selectedParentTripIds(selected);if(ids){deletionRowKeys.current=reportSelection.getKeys(reportKey);setWholeTripRowCount(selected.length);setWholeTripIds(ids);}}:undefined}
             onEdit={openSelectedRowEditor} />
         </div>
         <div className="flex min-w-0 flex-wrap items-center justify-end gap-2 lg:flex-none">
@@ -3090,34 +3100,24 @@ export default function ReportDataView({
             {exportError && <p role="alert" className="mt-3 text-sm text-rose-700">{exportError}</p>}
             <div className="mt-5 flex justify-end gap-2">
               <button type="button" disabled={exportBusy} onClick={() => setExportModalOpen(false)} className="rounded-full border border-slate-200 px-4 py-2 text-sm text-slate-700 disabled:opacity-50">Cancel</button>
-              <button type="button" disabled={exportBusy} onClick={() => void runReportExport()} className="rounded-full bg-[#ffd43b] px-4 py-2 text-sm font-semibold text-[#0b2341] disabled:opacity-50">{exportBusy ? "Preparing…" : "Export"}</button>
+              <button type="button" disabled={exportBusy} onClick={() => void runReportExport()} className="rounded-full bg-[#ffd43b] px-4 py-2 text-sm font-semibold text-[#0b2341] disabled:opacity-50">{exportBusy ? "Preparingâ€¦" : "Export"}</button>
             </div>
           </section>
         </div>
       )}
 
-      {wholeTripIds&&accessToken&&<WholeTripDeletionDialog token={accessToken} tripIds={wholeTripIds} selectedRowCount={wholeTripRowCount} onClose={()=>setWholeTripIds(null)} onDeleted={()=>{reportSelection.clear(reportKey);setPage(1);setRetryVersion(v=>v+1);}}/>}
+      {wholeTripIds&&accessToken&&<WholeTripDeletionDialog token={accessToken} tripIds={wholeTripIds} selectedRowCount={wholeTripRowCount} onClose={()=>setWholeTripIds(null)} onDeleted={(ids)=>{ids.forEach(id=>deletedTripIds.current.add(id));const retain=(current:ReportRow[])=>current.filter(row=>!deletedTripIds.current.has(String(row.trip_id)));setRows(retain);reportSelection.setVisible(deletionRowKeys.current,false);if(!retain(displayedRows).length&&page>1)setPage(page-1);setRetryVersion(v=>v+1);}}/>}
       {transactionView && accessToken && <TransactionCleanupNotice key={accessToken} token={accessToken} version={retryVersion} />}
-      {deleteTarget && <div className="fixed inset-0 z-[2100] flex items-center justify-center bg-slate-900/30 p-4 backdrop-blur-sm">
-        <section role="alertdialog" aria-modal="true" aria-labelledby="transaction-delete-title" aria-describedby="transaction-delete-description" className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
-          <h2 id="transaction-delete-title" className="text-lg font-semibold text-[#0b2341]">Permanently delete transaction?</h2>
-          <p className="mt-2 text-sm font-semibold text-slate-700">{rowText(deleteTarget, "transaction_dr_number", "dr_number", "dispatch_number", "transaction_number")} · {rowText(deleteTarget, "store_name", "customer_name")}</p>
-          <label className="mt-3 block text-sm font-medium">Current account password<input type="password" autoComplete="current-password" value={transactionPassword} disabled={deleteBusy} onChange={event=>setTransactionPassword(event.target.value)} className="mt-1 w-full rounded border border-slate-300 p-2" /></label>
-          <p id="transaction-delete-description" className="mt-3 text-sm text-slate-600">This permanently deletes this transaction, its exclusively owned reports, items and eligible images. Sibling transactions and shared assignments remain. Protected history or financial records block deletion. Image cleanup may remain pending and can be retried. This cannot be undone.</p>
-          {deleteError && <p role="alert" className="mt-3 text-sm text-rose-700">{deleteError}</p>}
-          <footer className="mt-5 flex justify-end gap-2"><button type="button" disabled={deleteBusy} onClick={() => {setTransactionPassword("");setDeleteTarget(null);}} className="rounded-full px-4 py-2 text-sm text-slate-600 disabled:opacity-50">Cancel</button><button type="button" disabled={deleteBusy || !transactionPassword} onClick={() => void confirmTransactionDeletion()} className="rounded-full bg-[#0b2341] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{deleteBusy ? "Saving…" : "Permanently delete"}</button></footer>
-        </section>
-      </div>}
       {editModalOpen && editModalRecord && (
         <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-slate-900/20 p-4 backdrop-blur-[2px]" onMouseDown={(event) => {
           if (event.target === event.currentTarget) closeRowEdit();
         }}>
           <section role="dialog" aria-modal="true" aria-labelledby="report-row-edit-title" onKeyDown={event=>{if(event.key==="Escape"){event.stopPropagation();closeRowEdit();}}} className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
             <header className="border-b border-slate-100 px-5 py-4">
-              <h2 id="report-row-edit-title" ref={tripEditHeading} tabIndex={-1} className="text-lg font-semibold text-[#0b2341] outline-none">{transactionView ? `Edit transaction · ${TRIP_EDIT_STEPS[tripEditStep]}` : `Edit report row · ${editSteps[tripEditStep]}`}</h2>
-              <p className="mt-1 text-sm text-slate-500">{REPORTS[reportKey].title} · {rowText(editModalRecord, "dispatch_number", "trip_number", "store_call_id") || "Selected record"}</p>
+              <h2 id="report-row-edit-title" ref={tripEditHeading} tabIndex={-1} className="text-lg font-semibold text-[#0b2341] outline-none">{transactionView ? `Edit transaction Â· ${TRIP_EDIT_STEPS[tripEditStep]}` : `Edit report row Â· ${editSteps[tripEditStep]}`}</h2>
+              <p className="mt-1 text-sm text-slate-500">{REPORTS[reportKey].title} Â· {rowText(editModalRecord, "dispatch_number", "trip_number", "store_call_id") || "Selected record"}</p>
             </header>
-            {<ol aria-label={transactionView ? "Trip edit progress" : "Report edit progress"} className="grid grid-cols-2 gap-2 border-b border-slate-100 bg-slate-50 px-5 py-3 sm:grid-cols-4">{editSteps.map((label, index) => <li key={label} aria-current={index === tripEditStep ? "step" : undefined}><button type="button" disabled={editModalBusy || index > tripEditStep} onClick={() => { setTripEditStep(index); setEditModalError(""); }} className={`w-full rounded-lg px-2 py-2 text-left text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9] disabled:cursor-not-allowed ${index === tripEditStep ? "bg-[#0b2341] text-white" : index < tripEditStep ? "bg-emerald-50 text-emerald-700" : "text-slate-400"}`}>{index < tripEditStep ? "✓" : index + 1} {label}</button></li>)}</ol>}
+            {<ol aria-label={transactionView ? "Trip edit progress" : "Report edit progress"} className="grid grid-cols-2 gap-2 border-b border-slate-100 bg-slate-50 px-5 py-3 sm:grid-cols-4">{editSteps.map((label, index) => <li key={label} aria-current={index === tripEditStep ? "step" : undefined}><button type="button" disabled={editModalBusy || index > tripEditStep} onClick={() => { setTripEditStep(index); setEditModalError(""); }} className={`w-full rounded-lg px-2 py-2 text-left text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9] disabled:cursor-not-allowed ${index === tripEditStep ? "bg-[#0b2341] text-white" : index < tripEditStep ? "bg-emerald-50 text-emerald-700" : "text-slate-400"}`}>{index < tripEditStep ? "âœ“" : index + 1} {label}</button></li>)}</ol>}
             <div className="grid gap-4 overflow-y-auto p-5 sm:grid-cols-2">
               {transactionView && tripEditStep === 1 && <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900 sm:col-span-2">Truck and driver assignments are shared by the other transactions on this physical trip.</p>}
               {transactionView && tripEditStep === 3 && <div className="sm:col-span-2"><h3 className="mb-3 text-sm font-semibold text-slate-700">Review pending changes</h3>{editModalFields.filter(({ cell }) => tripEditFieldChanged(cell)).length === 0 ? <p className="text-sm text-slate-500">No changes.</p> : <dl className="grid gap-3 sm:grid-cols-2">{editModalFields.filter(({ cell }) => tripEditFieldChanged(cell)).map(({ column, cell }) => <div key={cell.field} className="rounded-lg border border-slate-100 p-3"><dt className="text-xs font-semibold text-slate-500">{column.title}</dt><dd className="mt-1 whitespace-pre-wrap break-words text-sm text-slate-800">{cell.value || "Blank"}{["trip", "assignment"].includes(cell.definition.sourceEntity) && <span className="ml-2 text-xs text-amber-700">Shared {cell.definition.sourceEntity}</span>}</dd></div>)}</dl>}</div>}
@@ -3187,7 +3187,7 @@ export default function ReportDataView({
                 const invalid = editModalFields.filter(({ cell }) => tripEditFieldStep(cell.definition) === tripEditStep).map(({ cell }) => validateTripEditField(cell)).find(Boolean);
                 if (invalid) { setEditModalError(invalid); return; }
                 setTripEditStep((step) => step + 1); setEditModalError("");
-              }} className="rounded-full bg-[#ffd43b] px-4 py-2 text-sm font-semibold text-[#0b2341] hover:bg-[#f2c200] disabled:opacity-50">Next</button>}<button type="button" disabled={editModalBusy || editModalFields.length === 0} onClick={() => void saveSelectedRowEdits()} className="rounded-full bg-[#ffd43b] px-4 py-2 text-sm font-semibold text-[#0b2341] hover:bg-[#f2c200] disabled:opacity-50">{editModalBusy ? "Saving…" : "Save changes"}</button>
+              }} className="rounded-full bg-[#ffd43b] px-4 py-2 text-sm font-semibold text-[#0b2341] hover:bg-[#f2c200] disabled:opacity-50">Next</button>}<button type="button" disabled={editModalBusy || editModalFields.length === 0} onClick={() => void saveSelectedRowEdits()} className="rounded-full bg-[#ffd43b] px-4 py-2 text-sm font-semibold text-[#0b2341] hover:bg-[#f2c200] disabled:opacity-50">{editModalBusy ? "Savingâ€¦" : "Save changes"}</button>
             </footer>
           </section>
         </div>
@@ -3434,8 +3434,11 @@ export default function ReportDataView({
                                   ? "text-right tabular-nums"
                                   : "text-left"
                               }`}>
-                              {remoteEditors.length>0&&<span className="pointer-events-none absolute right-1 top-0 z-30 max-w-[90%] truncate rounded-sm bg-white/95 px-1 text-[9px] leading-3" style={{color:remoteEditors[0].color}} title={remoteEditors.map(peer=>`${peer.name} (${peer.status})`).join(", ")}>{remoteEditors[0].name}{remoteEditors[0].status==="editing"?" · editing":""}{remoteEditors.length>1?` +${remoteEditors.length-1}`:""}</span>}
-                              {isEditing && editingCell ? (
+                              <CollaborativeCell target={liveDraftCell(transactionView?"trips":reportKey,editableTarget,draftTrackerColumns.transmittal_ref)} selectionPresence={remoteEditors}>
+                              {column.key==="trip_details"?(()=>{
+                                const target=tripDetailsTarget(row);
+                                return target?<a href={target.href} title="View Trip Details" aria-label={`View Trip Details for ${rowText(row,"dispatch_number","trip_number")||target.tripId}`} onClick={event=>{event.stopPropagation();if(!event.ctrlKey&&!event.metaKey&&!event.shiftKey&&!event.altKey){event.preventDefault();if(onOpenTrip)onOpenTrip(target.tripId,target.stopId);else navigate(target.href);}}} className="inline-flex items-center gap-1.5 rounded px-1 py-1 text-inherit hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"><Eye aria-hidden="true" className="h-4 w-4 shrink-0"/><span>View Details</span></a>:<span className="text-slate-400">Unavailable</span>;
+                              })():isEditing && editingCell ? (
                                 editingCell.definition.editor ===
                                   "relationship" &&
                                 editingCell.definition.relationship ? (
@@ -3543,7 +3546,9 @@ export default function ReportDataView({
                                 ) : (
                                   <div className="grid min-w-[150px] gap-1">
                                   <ReportTextCellEditor
+                                    buffered
                                     value={editingCell.value}
+                                    saveState={cellSaveState?.rowKey===currentRowKey&&cellSaveState.field===column.key?cellSaveState.status:undefined}
                                     type={editingCell.definition.editor === "number" ? "number" : editingCell.definition.editor === "date" ? "date" : editingCell.definition.editor === "datetime" ? isTripTimeField(editingCell.field)&&manilaDateTime(editingCell.originalTimestamp??"")?"time":"datetime-local" : "text"}
                                     multiline={editingCell.definition.sourceField === "remarks"}
                                     label={`Edit ${column.title}`}
@@ -3551,9 +3556,9 @@ export default function ReportDataView({
                                     step={editingCell.definition.editor === "number" && editingCell.field === "page_no" ? 1 : "any"}
                                     disabled={cellSaveState?.rowKey === currentRowKey && cellSaveState.status === "saving"}
                                     commitOnBlur={!mentionControlActive.current}
-                                    onChange={(value) => keepCellEditLocal({ ...editingCell, value })}
-                                    onCommit={() => { void commitEditableCell(); }}
-                                    onCancel={() => { setEditingCell(null); setCellSaveState(null); }}
+                                    onChange={(value) => keepTextDraftLocal({ ...editingCell, value })}
+                                    onCommit={(value) => commitEditableCell({ ...editingCell, value })}
+                                    onCancel={() => { bufferedTextDraft.current=null; setEditingCell(null); setCellSaveState(null); }}
                                     className={editingCell.definition.sourceField === "remarks"
                                       ? "w-[min(36rem,70vw)] min-w-[min(24rem,70vw)] max-w-[70vw] resize-y rounded-md border border-[#9cc3e3] bg-white px-2 py-1 text-sm font-medium text-slate-800 shadow-sm outline-none ring-2 ring-[#cfe1f1]"
                                       : "min-w-[120px] rounded-md border border-[#9cc3e3] bg-white px-2 py-1 text-sm font-medium text-slate-800 shadow-sm outline-none ring-2 ring-[#cfe1f1]"}
@@ -3565,7 +3570,7 @@ export default function ReportDataView({
                                         <select aria-label="Select admin or staff to mention" defaultValue="" onBlur={() => { mentionControlActive.current = false; void commitEditableCell(); }} onChange={(event) => {
                                           const option = mentionOptions.find((item) => item.id === event.target.value);
                                           if (!option) return;
-                                          const current = editingCell;
+                                          const current = bufferedTextDraft.current?.rowKey===editingCell.rowKey&&bufferedTextDraft.current.field===editingCell.field?bufferedTextDraft.current:editingCell;
                                           const nextCell = {
                                             ...current,
                                             value: `${current.value}${current.value && !current.value.endsWith(" ") ? " " : ""}@${option.label}`,
@@ -3581,7 +3586,7 @@ export default function ReportDataView({
                                           {mentionOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
                                         </select>
                                       )}
-                                      {mentionLoading && <span className="text-[10px] text-slate-500">Loading users…</span>}
+                                      {mentionLoading && <span className="text-[10px] text-slate-500">Loading usersâ€¦</span>}
                                       {cellSaveState?.status === "error" && cellSaveState.message.includes("eligible admin") && <span role="alert" className="text-[10px] text-rose-600">{cellSaveState.message}</span>}
                                     </>
                                   )}
@@ -3663,6 +3668,7 @@ export default function ReportDataView({
                                   <GripVertical aria-hidden="true" className="h-3 w-3 rotate-90" />
                                 </button>
                               )}
+                              </CollaborativeCell>
                             </td>
                           );
                         })}
@@ -3678,7 +3684,7 @@ export default function ReportDataView({
           <footer className={tableUi.footer}>
             <span>
               {pagination
-                ? `${pagination.total.toLocaleString()} rows · Page ${pagination.page} of ${pagination.totalPages}`
+                ? `${pagination.total.toLocaleString()} rows Â· Page ${pagination.page} of ${pagination.totalPages}`
                 : ""}
             </span>
             <div className="flex items-center gap-2">

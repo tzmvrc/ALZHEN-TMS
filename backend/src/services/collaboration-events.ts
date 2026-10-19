@@ -2,6 +2,7 @@ import { EventEmitter } from "node:events";
 import { randomUUID } from "node:crypto";
 import type { RequestHandler } from "express";
 import { SOURCE_FIELDS,validVersion,type Commit } from "./collaboration.logic.js";
+import { DRAFT_EXTRA_FIELDS } from "./cell-draft.logic.js";
 export const collaborationEvents=new EventEmitter();
 let versionsReady=false;
 export function setCollaborationVersionsReady(value:boolean){versionsReady=value;}
@@ -32,6 +33,29 @@ export const collaborationResponseMiddleware:RequestHandler=(req,res,next)=>{
     const event:Commit={source,recordId:record.id,version,operation:"UPDATE",actorId:req.user.id,fields:Object.keys(req.body??{}).filter(key=>SOURCE_FIELDS[source].includes(key)),eventId:version===null?randomUUID():`${source}:${record.id}:${version}`,
      tripId:source==="trips"?record.id:record.trip_id,stopId:source==="trip_stops"?record.id:record.trip_stop_id};
     res.once("finish",()=>{if(res.statusCode>=200&&res.statusCode<300)collaborationEvents.emit("commit",event);});break;
+   }
+  }
+  if(["PATCH","PUT"].includes(req.method)&&body?.success&&req.user){
+   const loading=requestPath.match(/^\/api\/reports\/operations\/loading\/([0-9a-f-]+)\/reports\/([0-9a-f-]+)$/i);
+   if(loading&&body.data?.id===loading[2]&&body.data?.trip_id===loading[1]){
+    const notice:Commit={source:"loading_reports",recordId:body.data.id,tripId:body.data.trip_id,fields:Object.keys(req.body??{}).filter(field=>DRAFT_EXTRA_FIELDS.loading_reports!.includes(field)),version:null,actorId:req.user.id,eventId:randomUUID(),draftOnly:true};
+    res.once("finish",()=>{if(res.statusCode>=200&&res.statusCode<300&&notice.fields.length)collaborationEvents.emit("commit",notice);});
+   }
+   const unloading=requestPath.match(/^\/api\/reports\/operations\/unloading\/([0-9a-f-]+)\/stops\/([0-9a-f-]+)$/i);
+   if(unloading&&body.data?.stop?.id===unloading[2]&&body.data.stop.trip_id===unloading[1]){
+    const notice:Commit={source:"trip_stops",recordId:body.data.stop.id,tripId:body.data.stop.trip_id,stopId:body.data.stop.id,fields:Object.keys(req.body??{}).filter(field=>["arrival_time","start_unloading_time","finish_unloading_time"].includes(field)),version:null,actorId:req.user.id,eventId:randomUUID(),draftOnly:true};
+    res.once("finish",()=>{if(res.statusCode>=200&&res.statusCode<300&&notice.fields.length)collaborationEvents.emit("commit",notice);});
+   }
+   const match=requestPath.match(/^\/api\/reports\/operations\/(offloads|backloads)\/([0-9a-f-]+)$/i);
+   if(match){const source=match[1]!.toLowerCase(),record=body.data?.report??body.data;
+    if(record?.id===match[2]){const fields=Object.keys(req.body??{}).filter(field=>DRAFT_EXTRA_FIELDS[source]?.includes(field));
+     const item=body.data?.item;const notice:Commit=item?{source:"offload_items",recordId:item.id,fields:Object.keys(req.body?.item??{}).filter(field=>["quantity","total_cbm"].includes(field)),version:null,actorId:req.user.id,eventId:randomUUID(),draftOnly:true,tripId:record.trip_id,stopId:record.trip_stop_id}:{source,recordId:record.id,fields,version:null,actorId:req.user.id,eventId:randomUUID(),draftOnly:true,tripId:record.trip_id,stopId:record.trip_stop_id};
+     res.once("finish",()=>{if(res.statusCode>=200&&res.statusCode<300&&notice.fields.length)collaborationEvents.emit("commit",notice);});
+     if(item&&source==="offloads"){
+      const bound={...notice,source:"offloads",recordId:record.id,fields:notice.fields.map(field=>`item.${field}`),eventId:randomUUID()};
+      res.once("finish",()=>{if(res.statusCode>=200&&res.statusCode<300&&bound.fields.length)collaborationEvents.emit("commit",bound);});
+     }
+    }
    }
   }
   return original(body);

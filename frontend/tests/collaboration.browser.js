@@ -25,7 +25,7 @@ async(page)=>{
    const react=await import(code.match(/from ["']([^"']*\/react\.js[^"']*)["']/)[1]),React=react.default??react;
    const DOM=await import(main.match(/from ["']([^"']*react-dom_client\.js[^"']*)["']/)[1]);
    const {MemoryRouter}=await import(code.match(/from ["']([^"']*react-router-dom\.js[^"']*)["']/)[1]);
-   const {startCollaboration}=await import(code.match(/from ["']([^"']*collaboration\.service\.ts[^"']*)["']/)[1]);window.fixtureStop=startCollaboration(actor,`fixture-${actor}`,actor==='admin'?'ADMIN':'STAFF');
+   const collaboration=await import(code.match(/from ["']([^"']*collaboration\.service\.ts[^"']*)["']/)[1]);window.fixtureCollaboration=collaboration;window.fixtureStop=collaboration.startCollaboration(actor,`fixture-${actor}`,actor==='admin'?'ADMIN':'STAFF');
    const {default:View}=await import('/src/components/admin/ReportDataView.tsx');
    const root=document.createElement('div');root.id='collaboration-fixture';Object.assign(root.style,{position:'fixed',inset:'0',zIndex:'2000',overflow:'auto',background:'white'});document.body.append(root);
    (DOM.createRoot??DOM.default.createRoot)(root).render(React.createElement(MemoryRouter,null,React.createElement(View,{initialReport:'dispatch-monitoring',showReportPicker:false})));
@@ -35,22 +35,22 @@ async(page)=>{
  try{
   const admin=await make('admin'),staff=await make('staff');
   const root=p=>p.locator('#collaboration-fixture'),row=(p,value)=>root(p).getByRole('row').filter({has:p.getByRole('checkbox',{name:'Select row '+value,exact:true})});
-  await root(admin).getByText('Live collaboration',{exact:true}).waitFor();await root(staff).getByText('Live collaboration',{exact:true}).waitFor();
+  for(const p of [admin,staff])await p.waitForFunction(()=>window.fixtureCollaboration.collaborationSnapshot().connected);
   const initial=(await(await fetch('http://127.0.0.1:5199/record')).json()).dispatch_number;
   await row(admin,initial).locator('td').nth(1).click();
   const edit=p=>root(p).getByRole('textbox',{name:'Edit Dispatch Number',exact:true});
   await edit(admin).fill(draft);
   await root(staff).getByText('Fixture Admin · editing',{exact:true}).waitFor();
   await row(staff,initial).locator('td').nth(1).click();await edit(staff).fill(saved);await edit(staff).press('Enter');
-  await root(admin).getByText(/Another collaborator saved this cell/).waitFor();
+  await root(admin).getByText(/Another collaborator saved this cell/).first().waitFor();
   if(await edit(admin).inputValue()!==draft)throw Error('Remote commit erased draft');
   await edit(admin).press('Enter');await row(staff,draft).waitFor();await row(admin,draft).waitFor();
   await admin.waitForTimeout(5200);await row(admin,draft).waitFor();await row(staff,draft).waitFor();
   const final=await(await fetch('http://127.0.0.1:5199/record')).json();if(final.collaboration_version<2)throw Error('Version did not advance');
   await root(admin).getByText('Fixture Staff',{exact:true}).waitFor();
   stage='reconnect';await fetch('http://127.0.0.1:5199/drop-staff',{method:'POST'});
-  await root(staff).getByText('Collaboration reconnecting',{exact:true}).waitFor();
-  await root(staff).getByText('Live collaboration',{exact:true}).waitFor();
+  await staff.waitForFunction(()=>!window.fixtureCollaboration.collaborationSnapshot().connected);
+  await staff.waitForFunction(()=>window.fixtureCollaboration.collaborationSnapshot().connected);
   await root(admin).getByText('Fixture Staff',{exact:true}).waitFor();
   await staff.evaluate(()=>window.fixtureStop());await root(admin).getByText('Fixture Staff',{exact:true}).waitFor({state:'hidden'});
   if(errors.length)throw Error(errors.join('; '));

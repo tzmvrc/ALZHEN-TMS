@@ -3515,3 +3515,180 @@ or delete existing operational data. No further database change is currently
 required. Do not rerun migrations 11/12. Pending uploads must be recovered, not
 silently expired; lost original files or revoked uploader access require reviewed
 operator recovery. The tested rollback proposal refuses nonempty retry evidence.
+
+## Phase 2D.1 checkpoint — Live collaborative cell editing (October 19, 2026)
+
+Completed the ephemeral draft path on the existing authenticated Socket.IO
+connection. Shared text/number/date/remarks editors in Trips/standard reports,
+Operations and Tracker now show remote unsaved previews and editor names while
+preserving each local input. Enter/blur saving, Escape cancellation, canonical
+save reconciliation, conflicts, layouts and multi-stop identities are preserved.
+Typing performs no REST save, PostgreSQL write or Supabase change event.
+
+Added closed server report/field mappings, read-only physical-owner and Tracker
+ACL checks, monotonic editor sessions, bounded throttling/payload/rate budgets,
+expiry, cancel tombstones, room snapshots, disconnect/reconnect/logout cleanup,
+same-principal token-refresh continuity, and metadata-only versionless-save
+conflict notices. Empty standalone Offload item drafts use the physical parent
+binding rather than per-browser pending IDs. Stop-scoped Operations drafts now
+follow the exact existing save branch. Dropdown lookup queries are not sent.
+
+Validation: **208/208 backend**, **93/93 frontend**, both TypeScript checks and
+production builds pass; **13 unique isolated browser fixtures pass**, including
+two-context standard-report, Tracker and Operations typing. Last main fixture
+remote latencies: 57/117/85/82 ms; typing/cancel save requests: zero. A 5,000-cell
+fixture painted 100 updates in 29.7 ms with no owner/unrelated-cell rerenders and
+zero API requests. These are measured fixture results, not live latency promises.
+Changed-file lint has only the **7 errors + 1 warning reproduced from Git HEAD**
+in Tracker/Auth; new production files and other changed components pass targeted
+lint. Existing Vite chunk-size warning remains.
+
+Supabase inspection was read-only. No migration, RLS/grant/publication/Storage
+change, operational mutation, DR333 edit, GPS/route/PDF activation, paid provider
+request, deployment, commit or push. Existing local whole-trip deletion and POD
+review state were preserved; tracking/planned routes/PDF remain disabled/default
+false. Separate custom Flexible Table/modal editors remain save-based.
+
+Full file list, events, limits, verification and exact resume point:
+[Phase 2D.1 report](phase-2d1-live-collaborative-cell-editing.md).
+Next acceptance requires two approved live management sessions with an explicitly
+approved disposable edit scope; real multi-worker Redis failure/load verification
+is also pending if that topology is deployed. Do not treat the isolated fixtures
+as production write acceptance.
+
+
+## Phase 2D.2 - Users one-load and report UI (October 19, 2026)
+
+Users now composes the existing token-scoped account and trucker page caches once
+per valid cache lifecycle. Category/filter changes use loaded data; details opens
+from summary/cache and requests only missing enrichment. Realtime updates preserve
+visible rows and update/close affected details. Existing session/logout isolation
+and per-tab preload are reused. Report actions are conditional on selection; visible
+Clear Selection controls are removed. Tracker reuses the existing report navigation
+on the left and groups search/viewers/actions/Export on the right. Trips/Combined
+have one normal configurable TRIP DETAILS column with exact parent/stop navigation,
+shared resizing/order/visibility/colors/formatting/pinning, and no data editing/sorting.
+
+Verification: **99/99 frontend**, **208/208 backend regression**, both TypeScript
+checks/builds, **21 unique isolated browser fixtures passed**. New/other changed
+files pass targeted lint; four Tracker/Dashboard errors were reproduced from Git
+HEAD. Existing Vite chunk warning remains. Users fixture: 2 initial directory reads,
+0 for six category switches (552 ms total), 0 on modal reopen and revisit. Ten
+concurrent two-page directory callers issue 3 source requests. No timed pre-change
+baseline was captured. All write-success tests use synthetic fixtures; no live
+authenticated production acceptance is claimed.
+
+No Supabase/API/schema/permission changes, operational writes, feature activation,
+paid provider calls, deployment, commit or push. Prior worktree preserved.
+Full files, measurements, test details and limitations:
+[Phase 2D.2 report](phase-2d2-one-load-and-report-ui.md).
+Resume: optional non-destructive manual Admin/Staff UI acceptance; no SQL approval
+or configuration change is required for this implementation.
+
+
+## Phase 2D.3 - Safe bulk deletion (October 19, 2026)
+
+Selection summary text removed from Combined/Tracker; selection/actions retained.
+Trips Admin bulk action reuses the shared password-confirmed whole-trip dialog,
+physical-ID deduplication and 20-parent cap. Confirmed DELETE notifications reconcile
+other grids without replacing unrelated drafts. Journal cleanup now requires exact
+object verification and reports pending/blocked failures explicitly.
+
+Read-only target hdmknewarynwpbrhfgai: 7 trips, 46 driver updates, 9 images remain;
+8 POD history references classified VERIFIED by the standalone ownership SELECT.
+The live blanket legacy safeguard remains installed. No records were repaired or
+deleted. New proposal only: 2026_11_13_proposed_verified_trip_attachment_cleanup.sql,
+SHA-256 96E83021882FA5FD8FAF56452CA5E1813541140507B5805621EAA1B3CFD0245E. Requires separate approval.
+
+Verification: 212/212 backend, 99/99 frontend, 31 disposable PostgreSQL cases,
+15 isolated browser fixtures; both TypeScript/builds pass. Targeted lint retains
+only two pre-existing Tracker errors. No Supabase write, Storage removal, feature
+change, paid call, deployment, commit or push.
+
+Resume: review the pending SQL and installation dependency before restarting the
+new cleanup consumer. No new production deletion acceptance is authorized.
+Details: [Phase 2D.3 report](phase-2d3-safe-bulk-trip-deletion.md).
+
+Final related fix: POD images reserve their existing physical owner row before
+Storage upload; failed compensation retains the reservation for safe recovery.
+No live unregistered trip-namespace objects were found.
+
+
+## Phase 2D.4 ? Unified Entire Trip Deletion (October 19, 2026)
+
+Removed the Trips transaction-only delete control and its separate confirmation
+implementation. Trips/Combined expose one parent-trip action: Delete Entire Trip
+or Delete Selected Trips, using the existing shared password/impact/atomic RPC
+workflow. Report-only deletion elsewhere and cleanup retry remain unchanged.
+Read-only installed RPC checks matched Phase 2D.3; no SQL changes needed.
+Verification: backend 212/212, frontend 99/99, disposable SQL 33/33, isolated
+browser fixtures 5/5; both builds/TypeScript, targeted lint and diff check pass.
+No live destructive tests, production data changes, flags, deployment, commit or
+push. Details: docs/phase-2d4-unified-entire-trip-deletion.md.
+Resume: implementation complete; production deletion is Admin-initiated only.
+
+
+## Phase 2D.5 ? Compact whole-trip deletion confirmation (October 19, 2026)
+
+Shared WholeTripDeletionDialog now shows only a single/bulk title and matching
+red button, the requested warning, irreversible-action note, password and Cancel.
+Impact/ownership information remains internal; no tables, IDs, counts, attachment
+reviews or selected-row summaries render. Errors use concise password, protection,
+session, rate-limit and retry messages. Existing confirmation, cache invalidation,
+Realtime, atomic RPC and recoverable cleanup paths remain unchanged; pending
+Storage cleanup still uses the existing outside-modal warning toast.
+Files: shared dialog; new frontend/tests/whole-trip-dialog.test.ts; six existing
+browser fixtures (whole-trip-delete, whole-trip-password, trips-bulk-deletion,
+transaction-deletion, report-wizard, tracker-trip-deletion). Frontend 101/101 and
+browser fixtures 6/6 pass. No backend or Supabase changes or production writes.
+Frontend TypeScript, production build, targeted ESLint and git diff --check pass.
+Existing Vite large-chunk warning remains. No deployment, commit or push.
+
+
+## Phase 2D.5 deletion blocker hotfix ? pending SQL approval
+
+Diagnosed exact user-supplied trip ed329614-62d0-4d83-afbc-8c578fdb23d1 read-only.
+Preview has no blockers; all 3 receipts verified. Disposable reproduction found
+final-stop/POD FK SET NULL updates collide with the newly created cleanup journal
+reference guard. Proposed migration 2026_11_14_proposed_trip_image_delete_order.sql
+(SHA-256 163E2A3FB5A74DA72BF4470E533914D9967B06A3CED562FCE79DC7599195EE6C)
+removes already-verified/snapshotted image relations before deleting linked parents.
+NOT applied live. UI now distinguishes consistency/ownership/upload/financial errors
+without technical panels. Tests: SQL 36/36, backend 212/212, frontend 109/109,
+isolated browser 6/6; both builds/TypeScript, targeted lint and diff check pass.
+Production trip/stop/3 images remain; no deletion journal, operational write or
+Storage deletion. Resume at approval of exact proposal, not production deletion.
+Details: docs/phase-2d5-deletion-blocker-hotfix.md.
+
+
+## Phase 2D.5 FINAL ? deletion-order hotfix installed
+
+Applied approved migration 20261019074116 (trip_image_delete_order) to
+hdmknewarynwpbrhfgai. Exact SHA-256:
+163E2A3FB5A74DA72BF4470E533914D9967B06A3CED562FCE79DC7599195EE6C.
+Installed RPC body matches; guards/ACLs/security configuration unchanged.
+Counts and content hashes across 29 live relations unchanged by installation and
+verification. No production deletion or Storage cleanup invoked.
+Fresh checks: backend 212/212, frontend 109/109, disposable SQL 38/38, browser 7/7;
+both builds/TypeScript, targeted frontend lint and diff check pass. Added single/
+multi-stop three-receipt SQL cases. Restarted local backend; health OK; genuine
+Admin read-only capability endpoint confirms enabled, max20, password required.
+Flags preserved. Identified trip preview has no blockers. Ready for Admin-initiated
+acceptance; no automated production deletion. No deployment, commit or push.
+Details and live-versus-mocked limits: docs/phase-2d5-deletion-blocker-hotfix.md.
+
+
+## Phase 2D.6 ? Request-driven deletion feedback
+
+Shared dialog now shows immediate spinner/wait text and disables dismissal and
+controls until the actual response. Reuses keyed success/error toasts (4500 ms,
+manual dismiss); committed pending cleanup remains a warning. Exact-session/batch
+in-flight deduplication handles repeated confirms/remounts. Trips/Combined/Tracker
+reconcile parent rows immediately and reject stale row resurrection, preserving
+existing caches, pagination and Realtime. No backend deletion logic/SQL changed.
+Frontend 112/112; 8 isolated browser fixtures pass, including 20-parent loading/toast
+coverage and two-session deletion/draft preservation. Build/TypeScript pass.
+Changed-file lint has 3 baseline-confirmed existing Tracker/Toast errors; clean
+changed-file subset passes. Existing Vite chunk warning remains. No production
+deletions, SQL, deployment, commit or push. Details/files/fixture caveats:
+docs/phase-2d6-deletion-feedback.md.

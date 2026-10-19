@@ -23,3 +23,20 @@ test("commit observer waits for successful physical response finish and excludes
   assert.throws(()=>parseCellTarget({table:"trips",source:"constructor",recordId:id,field:"name",status:"editing"}),/Invalid cell/);
  }finally{collaborationEvents.off("commit",receive);}
 });
+
+test("versionless Loading and Offload item saves notify conflicts only after successful persistence",()=>{
+ const events:Commit[]=[];const receive=(event:Commit)=>events.push(event);collaborationEvents.on("commit",receive);
+ const trip="123e4567-e89b-42d3-a456-000000000010",id="123e4567-e89b-42d3-a456-000000000012";
+ const response=(path:string,body:unknown,data:unknown,status=200)=>{
+  const res=Object.assign(new EventEmitter(),{statusCode:status,json:(value:unknown)=>value});
+  collaborationResponseMiddleware({method:"PATCH",originalUrl:path,user:{id:"trusted"},body} as never,res as never,()=>{});res.json({success:true,data});return res;
+ };
+ try{
+  const loading=response(`/api/reports/operations/loading/${trip}/reports/${id}`,{loading_start_at:"timestamp",service_key:"never broadcast"},{id,trip_id:trip});assert.equal(events.length,0);loading.emit("finish");
+  assert.equal(events.length,1);assert.equal(events[0].draftOnly,true);assert.deepEqual(events[0].fields,["loading_start_at"]);assert.equal(events[0].version,null);
+  response(`/api/reports/operations/offloads/${id}`,{item:{id:"item",quantity:10,total_cbm:3,secret:"no"}},{report:{id,trip_id:trip},item:{id:"item"}}).emit("finish");
+  assert.equal(events.length,3);assert.deepEqual(events[1].fields,["quantity","total_cbm"]);assert.equal(events[2].source,"offloads");assert.deepEqual(events[2].fields,["item.quantity","item.total_cbm"]);
+  response(`/api/reports/operations/loading/${trip}/reports/${id}`,{loading_start_at:"bad"},{id,trip_id:trip},500).emit("finish");assert.equal(events.length,3);
+  assert.ok(!JSON.stringify(events).includes("never broadcast"));assert.ok(!JSON.stringify(events).includes("timestamp"));
+ }finally{collaborationEvents.off("commit",receive);}
+});

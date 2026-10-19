@@ -11,11 +11,12 @@ test("transaction service validates exact scope, retries owned images, and repor
   const service = {...module,deleteTransaction:module.createTransactionDeleter(async(_owner,_credentials,commit)=>commit())};
   const actor = { id: id(1), role: "ADMIN" };
   const job = { id: id(2), transaction_id: id(4), trip_id: id(3), trip_stop_id: id(4), state: "PENDING_STORAGE", attempts: 0,
-    storage_objects: [{ bucket: "report-receipts", path: `operations/${id(3)}/offload/${id(5)}/${id(6)}.png` }], snapshot: { private: true } };
+    storage_objects: [{ bucket: "report-receipts", path: `operations/${id(3)}/offload/${id(5)}/${id(6)}.png`, object_id:id(7) }], snapshot: { private: true } };
   const original = { rpc: supabaseAdmin.rpc, from: supabaseAdmin.from, storage: supabaseAdmin.storage.from };
   let rpcCalls = 0, fails = true, ackFails = false, rpcError: { code: string; message: string } | null = null;
   const removed: string[][] = [];
   (supabaseAdmin as any).rpc = async (name: string, input: unknown) => {
+    if(name==="validate_transaction_cleanup_objects_v1")return {data:job.storage_objects,error:null};
     rpcCalls++; assert.equal(name, "delete_transaction_with_cleanup_v1");
     assert.deepEqual(input, { p_trip_id: id(3), p_stop_id: id(4), p_actor_id: id(1) });
     return { data: rpcError ? null : { ...job }, error: rpcError };

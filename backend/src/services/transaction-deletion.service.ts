@@ -2,16 +2,18 @@ import {withCurrentUserPassword,type DeletionCredentials} from "./deletion-passw
 import { supabaseAdmin } from "../config/supabase.js";
 import { ApiError } from "../utils/api-response.js";
 import { requireUuid } from "./flexible-table.validation.js";
+import { isValidUuid } from "../utils/validation.js";
 
 type Actor = { id: string; role: string };
-type Job = { id: string; transaction_id: string; trip_id: string; trip_stop_id: string | null; state: string; attempts: number; storage_objects: Array<{ bucket: string; path: string }> };
+type StorageObject = { bucket: string; path: string; object_id?: string };
+type Job = { id: string; transaction_id: string; trip_id: string; trip_stop_id: string | null; state: string; attempts: number; storage_objects: StorageObject[] };
 const fields = "id,transaction_id,trip_id,trip_stop_id,state,attempts,storage_objects";
 const running = new Map<string, Promise<ReturnType<typeof result>>>();
 function authorize(actor: Actor) {
   if (!["ADMIN", "STAFF"].includes(actor.role.toUpperCase())) throw new ApiError("Only ADMIN or STAFF may delete transactions.", 403, "TRANSACTION_ACCESS_DENIED");
 }
-function result(job: Job) {
-  return { operation_id: job.id, transaction_id: job.transaction_id, trip_id: job.trip_id, trip_stop_id: job.trip_stop_id, cleanup_pending: job.state !== "COMPLETE" };
+function result(job: Job, blockedReason?: string) {
+  return { operation_id: job.id, transaction_id: job.transaction_id, trip_id: job.trip_id, trip_stop_id: job.trip_stop_id, cleanup_pending: job.state !== "COMPLETE", ...(blockedReason ? { cleanup_blocked_reason: blockedReason } : {}) };
 }
 function ownedObject(job: Job, object: { bucket: string; path: string }) {
   if (typeof object?.path !== "string") return false;
@@ -20,12 +22,25 @@ function ownedObject(job: Job, object: { bucket: string; path: string }) {
   const tail = object.path.slice(prefix.length);
   return (object.bucket === "trip-images" ? /^[a-f0-9-]{36}\.(jpg|jpeg|png|webp)$/ : /^(loading|unloading|backload|offload)\/[a-f0-9-]{36}\/[a-f0-9-]{36}\.(jpg|jpeg|png|webp)$/).test(tail);
 }
-async function clean(job: Job) {
+async function clean(job: Job, actor: Actor) {
   if (job.state === "COMPLETE") return result(job);
-  if (!Array.isArray(job.storage_objects) || job.storage_objects.some((object) => !ownedObject(job, object))) return result(job);
+  const blocked = async (reason: string) => {
+    try { await supabaseAdmin.from("transaction_deletion_jobs").update({ last_error: reason }).eq("id", job.id).eq("state", "PENDING_STORAGE"); } catch { /* Journal remains pending even if diagnostic acknowledgement fails. */ }
+    return result(job, reason);
+  };
+  if (!Array.isArray(job.storage_objects) || job.storage_objects.some((object) => !ownedObject(job, object))) return blocked("Cleanup manifest contains an unverified object. Ownership review is required.");
+  // A committed journal is necessary but not sufficient: retained references or
+  // a replacement object at the same path must stop cleanup. The separately
+  // proposed service-only RPC validates exact identities without browser grants.
+  let objects: StorageObject[];
+  try {
+    const { data, error } = await supabaseAdmin.rpc("validate_transaction_cleanup_objects_v1", { p_operation_id: job.id, p_actor_id: actor.id });
+    if (error || !Array.isArray(data) || data.some((object: StorageObject) => !ownedObject(job, object) || !isValidUuid(object.object_id) || !job.storage_objects.some(item => item.bucket === object.bucket && item.path === object.path && item.object_id === object.object_id))) return blocked("Storage ownership verification is unavailable or blocked. The committed journal is retained for review and retry.");
+    objects = data;
+  } catch { return blocked("Storage ownership verification is unavailable. The committed journal is retained for retry."); }
   let failed = false;
   for (const bucket of ["report-receipts", "trip-images"]) {
-    const paths = job.storage_objects.filter((object) => object.bucket === bucket).map((object) => object.path);
+    const paths = [...new Set(objects.filter((object) => object.bucket === bucket).map((object) => object.path))];
     // Exact objects only. Retrying an already-removed object is safe.
     for (let start = 0; start < paths.length; start += 100) {
       try { const outcome = await supabaseAdmin.storage.from(bucket).remove(paths.slice(start, start + 100)); if (outcome.error) failed = true; }
@@ -40,8 +55,8 @@ async function clean(job: Job) {
     return result(!error && data ? data as Job : job);
   } catch { return result(job); } // DB deletion is committed even if acknowledgement fails.
 }
-function cleanOnce(job: Job) {
-  if (!running.has(job.id)) running.set(job.id, clean(job).finally(() => { running.delete(job.id); }));
+function cleanOnce(job: Job, actor: Actor) {
+  if (!running.has(job.id)) running.set(job.id, clean(job, actor).finally(() => { running.delete(job.id); }));
   return running.get(job.id)!;
 }
 async function deleteConfirmedTransaction(actor: Actor, tripInput: unknown, stopInput: unknown) {
@@ -54,11 +69,11 @@ async function deleteConfirmedTransaction(actor: Actor, tripInput: unknown, stop
     throw new ApiError("Deletion could not be confirmed. Retry this same transaction, not another row.", 503, "TRANSACTION_DELETE_UNCONFIRMED");
   }
   if (!data?.id || data.trip_id !== trip || data.trip_stop_id !== stop || data.transaction_id !== (stop ?? trip)) throw new ApiError("Deletion identity could not be confirmed. Retry the same transaction.", 503, "TRANSACTION_DELETE_UNCONFIRMED");
-  return cleanOnce(data as Job);
+  return cleanOnce(data as Job, actor);
 }
 export async function listTransactionCleanup(actor: Actor) {
   authorize(actor);
-  const { data, error } = await supabaseAdmin.from("transaction_deletion_jobs").select("id,transaction_id,trip_id,trip_stop_id,created_at").eq("state", "PENDING_STORAGE").order("created_at").limit(50);
+  const { data, error } = await supabaseAdmin.from("transaction_deletion_jobs").select("id,transaction_id,trip_id,trip_stop_id,created_at,last_error").eq("state", "PENDING_STORAGE").order("created_at").limit(50);
   if (error) throw new ApiError("Pending transaction cleanup could not be loaded.", 503, "CLEANUP_READ_FAILED");
   return data ?? [];
 }
@@ -73,7 +88,7 @@ export async function retryTransactionCleanup(actor: Actor, input: unknown) {
   const { data, error } = await supabaseAdmin.from("transaction_deletion_jobs").select(fields).eq("id", requireUuid(input, "operation_id")).maybeSingle();
   if (error) throw new ApiError("Cleanup could not be loaded.", 503, "CLEANUP_READ_FAILED");
   if (!data) throw new ApiError("Cleanup operation not found.", 404, "CLEANUP_NOT_FOUND");
-  return cleanOnce(data as Job);
+  return cleanOnce(data as Job, actor);
 }
 
 /** Last-stop/empty-parent deletion is never reachable without fresh current-user authentication. */

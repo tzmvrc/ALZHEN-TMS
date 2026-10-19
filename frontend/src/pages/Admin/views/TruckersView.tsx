@@ -4,16 +4,15 @@ import { useAuth } from "../../../context/AuthContext";
 import { tableUi } from "../../../components/admin/dashboardStyles";
 import SlidingSegmentedControl from "../../../components/admin/SlidingSegmentedControl";
 import TruckerDetailDrawer from "../../../components/admin/TruckerDetailDrawer";
-import { apiGetCached,getCachedApiResponse,invalidateApiCache,cacheApiSnapshot,apiCacheGeneration, type ApiResponse } from "../../../services/api.service";
-import { fetchTruckerDetail, fetchTruckers,getCachedTruckers,type TruckerListItem } from "../../../services/trucker.service";
+import { getCachedApiResponse,invalidateApiCache,cacheApiSnapshot,apiCacheGeneration, type ApiResponse } from "../../../services/api.service";
+import { fetchTruckerDetail, getCachedTruckerDetail,truckerDetailFromSummary,type TruckerListItem } from "../../../services/trucker.service";
 import UserManagementModal from "../../../components/admin/UserManagementModal";
-import { fetchManagedUsers, type ManagedUser } from "../../../services/user-management.service";
+import { fetchUsersDirectory,getCachedUsersDirectory,filterDirectoryTruckers,type ManagedUser } from "../../../services/user-management.service";
 import { subscribeToAdminRealtime } from "../../../services/realtime.service";
 import { useDeferredRealtimeRefresh } from "../../../components/admin/useDeferredRealtimeRefresh";
 
 import { useManagementTableColumns } from "../../../components/admin/useManagementTableColumns";
 
-const PAGE_SIZE = 100;
 const userCategoryOptions = [
   { value: "staff", label: "Admin & Staff" },
   { value: "truckers", label: "Truckers" },
@@ -42,7 +41,7 @@ export default function TruckersView(){
 }
 function UsersTable() {
   const { accessToken, profile } = useAuth();
-  const preferencesKey=`/users/table-state/${profile?.role??"none"}`;
+  const preferencesKey=`/screen-state/account-table/${profile?.role??"none"}`;
   const saved=accessToken?getCachedApiResponse<{category:"staff"|"truckers";search:string;status:string;assignment:"all"|"assigned"|"unassigned"}>(preferencesKey,accessToken,300000):null;
   const [selectedCategory, setSelectedCategory] = useState<"staff" | "truckers">(() => saved?.category??(profile?.role === "ADMIN" ? "staff" : "truckers"));
   const category = profile?.role === "ADMIN" ? selectedCategory : "truckers";
@@ -50,20 +49,19 @@ function UsersTable() {
   const [status, setStatus] = useState(saved?.status??"all");
   const [assignment, setAssignment] = useState<"all" | "assigned" | "unassigned">(saved?.assignment??"all");
   useEffect(()=>{if(accessToken)cacheApiSnapshot(preferencesKey,accessToken,{category,search,status,assignment},apiCacheGeneration());},[accessToken,preferencesKey,category,search,status,assignment]);
-  const cachedTruckers=accessToken?getCachedTruckers(accessToken,{search,status,assignment,page:1,limit:PAGE_SIZE}):null;
-  const adminCache=accessToken?getCachedApiResponse<ApiResponse<ProfileLookupRow[]>>("/lookups/profiles?role=ADMIN",accessToken,5*60_000):null;
-  const staffCache=accessToken?getCachedApiResponse<ApiResponse<ProfileLookupRow[]>>("/lookups/profiles?role=STAFF",accessToken,5*60_000):null;
-  const cachedProfiles=adminCache?.data&&staffCache?.data?[...adminCache.data,...staffCache.data].filter((p):p is AdminStaffProfile=>(p.role==="ADMIN"||p.role==="STAFF")&&Boolean(p.id)):null;
-  const [rows, setRows] = useState<TruckerListItem[]>(cachedTruckers?.rows??[]);
-  const [profiles, setProfiles] = useState<AdminStaffProfile[]>(cachedProfiles??[]);
-  const [loading, setLoading] = useState(!(category==="staff"?cachedProfiles:cachedTruckers));
+  const cachedDirectory=useMemo(()=>accessToken?getCachedUsersDirectory(accessToken,profile?.role??""):null,[accessToken,profile?.role]);
+  const [rows, setRows] = useState<TruckerListItem[]>(cachedDirectory?.truckers??[]);
+  const [loading, setLoading] = useState(!cachedDirectory);
   const [error, setError] = useState("");
   const [refreshVersion, setRefreshVersion] = useState(0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<Awaited<ReturnType<typeof fetchTruckerDetail>> | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError,setDetailError]=useState("");
   const [localManagedUsers, setManagedUsers] = useState<ManagedUser[]>(()=>accessToken&&profile?.role==="ADMIN"?getCachedApiResponse<ApiResponse<ManagedUser[]>>("/users",accessToken,5*60_000)?.data??[]:[]);
-  const managedUsers=profile?.role==="ADMIN"?localManagedUsers:[];
+  const managedUsers=useMemo(()=>profile?.role==="ADMIN"?localManagedUsers:[],[profile?.role,localManagedUsers]);
+  const profiles=useMemo<AdminStaffProfile[]>(()=>managedUsers.filter(user=>user.role==="ADMIN"||user.role==="STAFF").map(user=>({...user,role:user.role as "ADMIN"|"STAFF",full_name:[user.first_name,user.last_name].filter(Boolean).join(" ")||"Name not recorded"})),[managedUsers]);
+  const visibleTruckers=useMemo(()=>filterDirectoryTruckers(rows,search,status,assignment),[rows,search,status,assignment]);
   const [userModalOpen, setUserModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<ManagedUser | null>(null);
   const [notice, setNotice] = useState("");
@@ -73,78 +71,27 @@ function UsersTable() {
 
   useEffect(() => subscribeToAdminRealtime((event) => {
     if (event.kind === "batch") {
-      if (event.tables.some((table) => ["profiles", "drivers", "trips", "trip_stops", "trip_truck_assignments"].includes(table))) realtimeGate.request();
+      if (event.tables.some((table) => ["profiles", "drivers", "trips", "trip_stops", "trip_truck_assignments", "trucks"].includes(table))) realtimeGate.request();
       return;
     }
-    if (event.kind === "resume") { realtimeGate.request(); return; }
+    if (event.kind === "resume") { invalidateApiCache("/users");invalidateApiCache("/truckers");realtimeGate.request(); return; }
     const table = event.kind === "recovered" ? event.table : event.payload.table;
-    if (["profiles", "drivers", "trips", "trip_stops", "trip_truck_assignments"].includes(table)) {
+    if (["profiles", "drivers", "trips", "trip_stops", "trip_truck_assignments", "trucks"].includes(table)) {
       realtimeGate.request();
     }
   }), [realtimeGate]);
 
   useEffect(() => {
-    if (!accessToken || profile?.role !== "ADMIN") return;
-    let active = true;
-    void fetchManagedUsers(accessToken).then((users) => { if (active) setManagedUsers(users); })
-      .catch((cause) => { if (active) setError(cause instanceof Error ? cause.message : "Unable to load user details."); });
-    return () => { active = false; };
-  }, [accessToken, profile?.role, refreshVersion]);
-
-  useEffect(() => {
-    if (!accessToken || category !== "staff") return;
-    let active = true;
-    queueMicrotask(()=>{if(active){setLoading(!(getCachedApiResponse("/lookups/profiles?role=ADMIN",accessToken,300000)&&getCachedApiResponse("/lookups/profiles?role=STAFF",accessToken,300000)));setError("");}});
-    void (async () => {
-      try {
-        const [adminResponse, staffResponse] = await Promise.all([
-          apiGetCached<ApiResponse<ProfileLookupRow[]>>("/lookups/profiles?role=ADMIN", accessToken, 60_000),
-          apiGetCached<ApiResponse<ProfileLookupRow[]>>("/lookups/profiles?role=STAFF", accessToken, 60_000),
-        ]);
-        if (!adminResponse.success || !adminResponse.data || !staffResponse.success || !staffResponse.data) {
-          throw new Error(adminResponse.message ?? staffResponse.message ?? "Unable to load staff profiles.");
-        }
-        if (!active) return;
-        setProfiles([...adminResponse.data, ...staffResponse.data].filter((profile): profile is AdminStaffProfile =>
-          (profile.role === "ADMIN" || profile.role === "STAFF") && Boolean(profile.id),
-        ));
-      } catch (cause) {
-        if (active) setError(cause instanceof Error ? cause.message : "Unable to load staff profiles.");
-      } finally {
-        if (active) setLoading(false);
-      }
-    })();
-    return () => { active = false; };
-  }, [accessToken, category, refreshVersion]);
-
-  useEffect(() => {
-    if (!accessToken || category !== "truckers") return;
-    let active = true;
-    queueMicrotask(()=>{if(active){setLoading(!getCachedTruckers(accessToken,{search,status,assignment,page:1,limit:PAGE_SIZE}));setError("");}});
-    void (async () => {
-      try {
-        const params = {
-          search,
-          status,
-          assignment,
-          limit: PAGE_SIZE,
-        };
-        const firstPage = await fetchTruckers(accessToken, { ...params, page: 1 });
-        const allRows = [...firstPage.rows];
-        for (let nextPage = 2; nextPage <= firstPage.pagination.totalPages; nextPage += 1) {
-          const result = await fetchTruckers(accessToken, { ...params, page: nextPage });
-          allRows.push(...result.rows);
-        }
-        if (!active) return;
-        setRows(allRows);
-      } catch (cause) {
-        if (active) setError(cause instanceof Error ? cause.message : "Unable to load truckers.");
-      } finally {
-        if (active) setLoading(false);
-      }
-    })();
-    return () => { active = false; };
-  }, [accessToken, assignment, category, refreshVersion, search, status]);
+    const role=profile?.role??"";
+    if(!accessToken||!["ADMIN","STAFF"].includes(role))return;
+    let active=true;
+    queueMicrotask(()=>{if(active){setLoading(!getCachedUsersDirectory(accessToken,role));setError("");}});
+    void fetchUsersDirectory(accessToken,role).then(directory=>{
+      if(active){setManagedUsers(directory.users);setRows(directory.truckers);setSelectedId(current=>current&&!directory.truckers.some(row=>row.id===current)?null:current);}
+    }).catch(cause=>{if(active)setError(cause instanceof Error?cause.message:"Unable to load users.");})
+      .finally(()=>{if(active)setLoading(false);});
+    return()=>{active=false;};
+  },[accessToken,profile?.role,refreshVersion]);
 
   useEffect(() => {
     if (!selectedId || !accessToken || category !== "truckers") {
@@ -152,20 +99,21 @@ function UsersTable() {
       return;
     }
     let active = true;
-    const cached=getCachedApiResponse<ApiResponse<Awaited<ReturnType<typeof fetchTruckerDetail>>>>(`/truckers/${encodeURIComponent(selectedId)}`,accessToken,5*60_000)?.data??null;
-    queueMicrotask(()=>{if(active){setDetail(cached);setDetailLoading(!cached);}});
+    const cached=getCachedTruckerDetail(accessToken,selectedId);
+    const summary=rows.find(row=>row.id===selectedId);
+    queueMicrotask(()=>{if(active){setDetailError("");setDetail(previous=>cached??(summary?truckerDetailFromSummary(summary,previous):previous?.id===selectedId?previous:null));setDetailLoading(!cached);}});
     void (async () => {
       try {
         const nextDetail = await fetchTruckerDetail(accessToken, selectedId);
         if (active) setDetail(nextDetail);
       } catch (cause) {
-        if (active) setError(cause instanceof Error?cause.message:"Unable to refresh user details. Previous details are retained.");
+        if (active) {const message=cause instanceof Error?cause.message:"Unable to refresh user details. Previous details are retained.";setError(message);setDetailError(message);}
       } finally {
         if (active) setDetailLoading(false);
       }
     })();
     return () => { active = false; };
-  }, [accessToken, category, selectedId]);
+  }, [accessToken, category, selectedId, refreshVersion, rows]);
 
   const visibleUserCategories = profile?.role === "ADMIN"
     ? userCategoryOptions
@@ -177,6 +125,7 @@ function UsersTable() {
     });
   }, [profiles, search]);
   function refreshList() {
+    invalidateApiCache("/users");
     invalidateApiCache("/lookups/profiles");
     invalidateApiCache("/truckers");
     setRefreshVersion((current) => current + 1);
@@ -246,14 +195,14 @@ function UsersTable() {
                   {renderCells(<> <td className="px-4 py-3.5"><div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-[#e6f0f9]">{profile.profile_picture_url ? <img src={profile.profile_picture_url} alt="" className="h-full w-full object-cover" /> : <UserRound aria-hidden="true" className="h-5 w-5 text-[#2678b9]" />}</div><div><div className="text-[13px] font-medium text-[#0b2341]">{profile.full_name}</div><div className="text-xs text-slate-500">{profile.role === "ADMIN" && profile.is_admin ? "Admin" : profile.role === "ADMIN" ? "Administrator" : "Staff"}</div></div></div></td>
                   <td className={tableUi.td}>{managedUsers.find((item) => item.id === profile.id)?.email ?? "—"}</td><td className={tableUi.td}>{profile.role}</td><td className={tableUi.td}>{managedUsers.some((item) => item.id === profile.id) && <button type="button" aria-label={`Edit ${profile.full_name}`} onClick={() => { setEditingUser(managedUsers.find((item) => item.id === profile.id) ?? null); setUserModalOpen(true); }} className={tableUi.iconBtn}><Pencil className="h-4 w-4" /></button>}</td>
                 </>)} </tr>
-              )) : rows.length === 0 ? (
+              )) : visibleTruckers.length === 0 ? (
                 <tr><td colSpan={6} className="px-4 py-16 text-center text-sm text-slate-400">No truckers found.</td></tr>
-              ) : rows.map((trucker) => {
+              ) : visibleTruckers.map((trucker) => {
                 const avatar = managedUsers.find((item) => item.id === trucker.profile_id)?.profile_picture_url ?? formatAvatarPath(trucker.profile_picture_path);
                 return (
-                  <tr key={trucker.id} onClick={() => { setDetail(null); setDetailLoading(true); setSelectedId(trucker.id); }} className={`cursor-pointer ${tableUi.row}`}>
+                  <tr key={trucker.id} onClick={() => { const cached=accessToken?getCachedTruckerDetail(accessToken,trucker.id):null;setDetail(cached??truckerDetailFromSummary({...trucker,profile_picture_path:avatar??trucker.profile_picture_path}));setDetailLoading(!cached);setSelectedId(trucker.id); }} className={`cursor-pointer ${tableUi.row}`}>
                     {renderCells(<> <td className="px-4 py-3.5"><div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-[#e6f0f9]">{avatar ? <img src={avatar} alt={trucker.full_name} className="h-full w-full object-cover" /> : <UserRound aria-hidden="true" className="h-5 w-5 text-[#2678b9]" />}</div><div><div className="text-[13px] font-medium text-[#0b2341]">{trucker.full_name}</div><div className="text-xs text-slate-500">{trucker.email || "No email"}</div></div></div></td>
-                    <td className={tableUi.td}>{trucker.contact_number || "—"}</td><td className={tableUi.td}>{trucker.plate_number || "—"}</td><td className={tableUi.td}>{trucker.active_trip_number || "—"}</td><td className={tableUi.td}>{trucker.delivery_status || trucker.current_trip_status || "—"}</td><td className={tableUi.td}><button type="button" aria-label={`Edit ${trucker.full_name}`} onClick={(event) => { event.stopPropagation(); const managed = managedUsers.find((item) => item.id === trucker.profile_id); if (managed) { setEditingUser(managed); setUserModalOpen(true); } else setError("Unable to load this user account for editing."); }} className={tableUi.iconBtn}><Pencil className="h-4 w-4" /></button></td>
+                    <td className={tableUi.td}>{trucker.contact_number || "—"}</td><td className={tableUi.td}>{trucker.plate_number || "—"}</td><td className={tableUi.td}>{trucker.active_trip_number || "—"}</td><td className={tableUi.td}>{trucker.delivery_status || trucker.current_trip_status || "—"}</td><td className={tableUi.td}>{profile?.role==="ADMIN"&&<button type="button" aria-label={`Edit ${trucker.full_name}`} onClick={(event) => { event.stopPropagation(); const managed = managedUsers.find((item) => item.id === trucker.profile_id); if (managed) { setEditingUser(managed); setUserModalOpen(true); } else setError("Unable to load this user account for editing."); }} className={tableUi.iconBtn}><Pencil className="h-4 w-4" /></button>}</td>
                   </>)} </tr>
                 );
               })}
@@ -263,7 +212,7 @@ function UsersTable() {
         {hiddenControl}
       </div>
 
-      {selectedId && (detail || detailLoading) ? <TruckerDetailDrawer trucker={detail} loading={detailLoading} onClose={() => setSelectedId(null)} /> : null}
+      {selectedId && (detail || detailLoading) ? <TruckerDetailDrawer trucker={detail} loading={detailLoading} error={detailError} onClose={() => setSelectedId(null)} /> : null}
       {userModalOpen && <UserManagementModal user={editingUser} onClose={() => setUserModalOpen(false)} onSaved={(message) => { setUserModalOpen(false); setNotice(message ?? "User saved successfully."); refreshList(); }} />}
     </div>
   );

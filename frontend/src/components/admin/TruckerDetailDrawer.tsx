@@ -16,6 +16,7 @@ function resolveAvatarUrl(path: string | null | undefined) {
 export default function TruckerDetailDrawer({
   trucker,
   loading = false,
+  error,
   onClose,
 }: {
   trucker: {
@@ -30,6 +31,7 @@ export default function TruckerDetailDrawer({
     trip_history: Array<{ id: string; trip_number: string | null; dispatch_number: string | null; status: string | null; loading_date: string | null; estimated_delivery_date: string | null; origin: string | null; destination: string | null; customer: string | null; store: string | null; delivery_status: string | null; plate_number: string | null; }>;
   } | null;
   loading?: boolean;
+  error?: string;
   onClose: () => void;
 }) {
   if (!trucker) return loading ? (
@@ -109,6 +111,8 @@ export default function TruckerDetailDrawer({
               <h4 className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">Recent delivery history</h4>
               {trucker.trip_history.length > recentTrips.length && <span className="text-[10px] font-medium text-slate-400">+{trucker.trip_history.length - recentTrips.length} more</span>}
             </div>
+            {loading && <p role="status" className="mb-2 text-xs text-slate-500">Loading additional details…</p>}
+            {error && <p role="alert" className="mb-2 text-xs text-rose-700">{error}</p>}
             {recentTrips.length ? (
               <div className="grid gap-2 sm:grid-cols-2">
                 {recentTrips.map((trip) => (
@@ -122,7 +126,7 @@ export default function TruckerDetailDrawer({
                   </article>
                 ))}
               </div>
-            ) : <p className="text-xs text-slate-500">No delivery history recorded.</p>}
+            ) : !loading && !error && <p className="text-xs text-slate-500">No delivery history recorded.</p>}
           </section>
         </div>
       </section>

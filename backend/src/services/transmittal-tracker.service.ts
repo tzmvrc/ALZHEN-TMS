@@ -1,5 +1,6 @@
 import { parseTrackerPageQuery, trackerPageRequest } from "./tracker-pagination.js";
 import { randomUUID } from "node:crypto";
+import { collaborationEvents } from "./collaboration-events.js";
 import { supabaseAdmin } from "../config/supabase.js";
 import { consumeReportReadRows, reportReadPageSize } from "./report-read-budget.js";
 import { ApiError } from "../utils/api-response.js";
@@ -168,6 +169,25 @@ async function getTrackerAccess(actor: FlexActor, level: "view" | "edit") {
   const access = calculateFlexAccess(actor, table.created_by, permissions);
   assertFlexAccess(access, level);
   return { table, access };
+}
+
+/** Read-only authorization for ephemeral drafts; never initializes rows/cells. */
+export async function authorizeTrackerDraft(actor:FlexActor,columnId:string|null,tripId:string,stopId:string,reportScope="transmittal-tracker"){
+  const {table}=await getTrackerAccess(actor,"edit");
+  const stop=await supabaseAdmin.from("trip_stops").select("id,trip_id,archived_at,finish_unloading_time").eq("id",stopId).eq("trip_id",tripId).maybeSingle();
+  if(stop.error||!stop.data||stop.data.archived_at)throw new ApiError("Tracker transaction unavailable.",403,"DRAFT_ACCESS_DENIED");
+  if(columnId){
+    const column=await supabaseAdmin.from("flex_columns").select("id,settings,binding_scope").eq("id",columnId).eq("table_id",table.id).eq("is_archived",false).maybeSingle();
+    if(column.error||!column.data||column.data.binding_scope!=="STOP"||!EDITABLE_FIELDS.has(String(column.data.settings?.system_key)))throw new ApiError("Tracker column unavailable.",403,"DRAFT_ACCESS_DENIED");
+    if(reportScope!=="transmittal-tracker"&&column.data.settings?.system_key!=="transmittal_ref")throw new ApiError("Field is not editable in this report.",403,"DRAFT_ACCESS_DENIED");
+  }
+}
+export async function authorizeTrackerDraftView(actor:FlexActor){await getTrackerAccess(actor,"view");}
+export async function trackerDraftColumns(actor:FlexActor){
+ const {table}=await getTrackerAccess(actor,"edit");
+ const result=await supabaseAdmin.from("flex_columns").select("id,settings").eq("table_id",table.id).eq("binding_scope","STOP").eq("is_archived",false);
+ if(result.error)throw new ApiError("Column metadata unavailable.",503,"DRAFT_METADATA_UNAVAILABLE");
+ return Object.fromEntries((result.data??[]).filter(c=>EDITABLE_FIELDS.has(String(c.settings?.system_key))).map(c=>[String(c.settings.system_key),c.id]));
 }
 
 async function readPaged<T>(tableName: string, select: string, configure?: (builder: any) => any): Promise<T[]> {
@@ -359,6 +379,7 @@ export async function updateTrackerCell(actor: FlexActor, stopIdInput: unknown, 
     let auditWarning: string | undefined;
     try { await audit(table.id, actor.id, "update", "ROW", stopId, { dr_number: stop.dr_number }, { dr_number: saved.dr_number, trip_stop_id: stopId }, requestId); }
     catch { auditWarning = "Value saved, but its audit event could not be recorded. Contact an administrator."; }
+    collaborationEvents.emit("commit",{source:"trip_stops",recordId:stopId,tripId:stop.trip_id,stopId,fields:["dr_number"],version:null,actorId:actor.id,eventId:randomUUID(),draftOnly:true});
     return { field, trip_stop_id: stopId, cell: { value: saved.dr_number ?? "", version: Number(saved.dr_version), row_id: stopId }, row_id: stopId, ...(auditWarning ? { audit_warning: auditWarning } : {}) };
   }
   const { data: column, error: columnError } = await supabaseAdmin.from("flex_columns").select(COLUMN_FIELDS).eq("table_id", table.id).eq("settings->>system_key", field).eq("binding_scope", "STOP").eq("is_archived", false).maybeSingle();
@@ -399,5 +420,6 @@ export async function updateTrackerCell(actor: FlexActor, stopIdInput: unknown, 
     console.error("Transmittal Tracker cell was saved, but its audit event failed:", auditError);
     auditWarning = "Value saved, but its audit event could not be recorded. Contact an administrator.";
   }
+  collaborationEvents.emit("commit",{source:"flex_columns",recordId:column.id,stopId,fields:["value"],version:null,actorId:actor.id,eventId:randomUUID(),draftOnly:true});
   return { field, trip_stop_id: stopId, cell: { ...saved, value: responseValue }, row_id: row.id, audit_warning: auditWarning };
 }
