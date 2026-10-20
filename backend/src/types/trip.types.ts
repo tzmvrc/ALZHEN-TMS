@@ -14,6 +14,7 @@ export interface TripRecord {
   updated_at: string | null;
   transaction_number: string | null;
   trip_number: number | null;
+  trip_reference?: string | null;
   added_to_report: boolean | null;
   letter_status: string | null;
   truck_allocated_by: string | null;

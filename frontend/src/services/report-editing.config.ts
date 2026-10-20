@@ -571,6 +571,7 @@ export function getReportEditDefinition(
   columnKey: string,
   row?: Record<string, unknown>,
 ): ReportEditDefinition | null {
+  if (columnKey === "trip_number" || columnKey === "trip_reference") return null;
   if (["combined", "dispatch", "dispatch-monitoring"].includes(reportKey) && ["loading_start_at", "loading_finished_at"].includes(columnKey)) {
     return {label: columnKey === "loading_start_at" ? "Loading Start" : "Loading Finish", sourceEntity: "loadingReport", sourceField: columnKey, editor: "datetime", recordIdField: "loading_report_id"};
   }

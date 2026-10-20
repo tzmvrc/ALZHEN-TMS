@@ -6,10 +6,11 @@ import {
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import SearchableRelationshipEditor from "./SearchableRelationshipEditor";
-import { fetchTruckAvailability, type TruckAvailability, searchRelationshipOptions, getNextDispatchNumber, searchDispatches, type DispatchOption, type RelationshipOption } from "../../services/lookup.service";
+import { fetchTruckAvailability, type TruckAvailability, searchRelationshipOptions, getNextTripReferences, searchDispatches, type DispatchOption, type RelationshipOption } from "../../services/lookup.service";
 import { readTripCsv, csvNumber, csvDate, tripCapacity, type CsvTripGroup } from "./tripCsv";
 import TripTablePreview, { type TripPreviewRow } from "./TripTablePreview";
 import TripFormNotice from "./TripFormNotice";
+import { resolveTripCsvLookups } from "./tripCsvLookups";
 
 export type NewTripPayload = {
   trip: {
@@ -86,8 +87,8 @@ const newTruckAssignment = (): TruckAssignmentDraft => ({ key: ++uid, truckId: "
 
 const pad = (n: number) => String(n).padStart(2, "0");
 const todayLocal = () => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
-/** "2026-03-05" -> "TRIP260305"  (refs look like TRIP260305-1, TRIP260305-2 …) */
-const dispatchPrefix = (iso: string) => `TRIP${iso.slice(2, 4)}${iso.slice(5, 7)}${iso.slice(8, 10)}`;
+/** Date-based dispatch identifiers; trips have a separate TRIP reference. */
+const dispatchPrefix = (iso: string) => `DISPATCH${iso.slice(2, 4)}${iso.slice(5, 7)}${iso.slice(8, 10)}`;
 /** Product code name (e.g. TAC-10CSD/KEI2-ID) = products.model_code, then SKU, then name. */
 const productCode = (o: Option) => o.values?.model_code || o.values?.sku || o.label;
 const num = (v: string) => (v.trim() === "" ? NaN : Number(v));
@@ -249,6 +250,8 @@ export default function AddTripForm({
   const [lookupError, setLookupError] = useState("");
 
   const [dispatchNo, setDispatchNo] = useState("");
+  const [tripReference, setTripReference] = useState("");
+  const [tripReferenceStatus, setTripReferenceStatus] = useState<"ready" | "setup_required" | "unavailable">("ready");
   const [dispatchLoading, setDispatchLoading] = useState(false);
   const [dispatchError, setDispatchError] = useState("");
   const [dispatchRetry, setDispatchRetry] = useState(0);
@@ -281,6 +284,7 @@ export default function AddTripForm({
   const [csvGroups, setCsvGroups] = useState<CsvTripGroup[]>([]);
   const [csvGroupKey, setCsvGroupKey] = useState("");
   const [importing, setImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState({ completed: 0, total: 0 });
   const [importMessage, setImportMessage] = useState("");
   const [importError, setImportError] = useState("");
   const [importWarnings, setImportWarnings] = useState<string[]>([]);
@@ -308,14 +312,14 @@ export default function AddTripForm({
     return()=>{live=false;clearTimeout(timer);};
   },[accessToken,loadingDate,etaDate,availabilityRetry]);
   function rememberOption(kind:keyof Lookups,option:Option){setLookups(current=>({...current,[kind]:[option,...current[kind].filter(item=>item.id!==option.id)]}));}
-  /* dispatch ref: TRIP + YYMMDD (loading date, or today) + next running number */
+  /* Preview independent DISPATCH and TRIP references for the selected date. */
   const refDate = loadingDate || todayLocal();
   useEffect(() => {
-    if (!accessToken || dispatchMode !== "new") return;
+    if (!accessToken) return;
     let active = true;
-    queueMicrotask(() => { if (active) { setDispatchLoading(true); setDispatchError(""); setDispatchNo(""); } });
-    getNextDispatchNumber(accessToken, dispatchPrefix(refDate))
-      .then((ref) => active && setDispatchNo(ref))
+    queueMicrotask(() => { if (active) { setDispatchLoading(true); setDispatchError(""); setDispatchNo(""); setTripReference(""); } });
+    getNextTripReferences(accessToken, dispatchPrefix(refDate))
+      .then((refs) => { if (active) { setDispatchNo(refs.dispatch_number); setTripReference(refs.trip_reference ?? ""); setTripReferenceStatus(refs.trip_reference_status); } })
       .catch((cause) => { if (!active) return; setDispatchNo(""); setDispatchError(cause instanceof Error ? cause.message : "Could not generate the dispatch reference."); })
       .finally(() => active && setDispatchLoading(false));
     return () => { active = false; };
@@ -409,43 +413,34 @@ export default function AddTripForm({
   async function applyCsv() {
     const group = csvGroups.find(value => value.key === csvGroupKey);
     if (!group || !accessToken || importing) return;
-    setImporting(true); setImportError("");
+    setImporting(true); setImportError(""); setImportProgress({ completed: 0, total: 0 });
     try {
-      const nextLookups = { ...lookups };
-      const normalize = (value: string) => value.normalize("NFKC").trim().toLowerCase().replace(/\s+/g, " ");
-      const matches = (kind: keyof Lookups, option: Option, value: string) => {
-        const keys = kind === "products" ? ["model_code", "sku", "product_name"] : kind === "warehouses" ? ["warehouse_code", "warehouse_name"] : kind === "stores" ? ["store_name", "ship_to", "store_code"] : kind === "customers" ? ["customer_name","customer_code"] : kind === "trucks" ? ["plate_number"] : ["trip_type"];
-        return [option.id, option.label, ...keys.map(key => option.values?.[key] ?? "")].some(label => normalize(label) === normalize(value));
-      };
-      const requests = new Map<string, Promise<Option | undefined>>();
-      const find = (kind: keyof Lookups, value: string, customerId?:string): Promise<Option | undefined> => {
-        if (!value) return Promise.resolve(undefined);
-        const local = nextLookups[kind].filter(option => matches(kind, option, value)&&(!customerId||option.values?.customer_id===customerId));
-        if (local.length === 1) return Promise.resolve(local[0]);
-        const key = `${kind}:${customerId??""}:${normalize(value)}`;
-        if (!requests.has(key)) requests.set(key, (async () => {
-          const options = await searchRelationshipOptions(accessToken, kind, value,{customerId});
-          nextLookups[kind] = [...new Map([...nextLookups[kind], ...options].map(option => [option.id, option])).values()];
-          const exact = nextLookups[kind].filter(option => matches(kind, option, value)&&(!customerId||option.values?.customer_id===customerId));
-          return exact.length === 1 ? exact[0] : undefined;
-        })());
-        return requests.get(key)!;
-      };
       const first = group.rows[0].values;
       const loading = csvDate(first.loadingDate), eta = csvDate(first.eta);
-      const importedNumber = first.trip ? Number(csvNumber(first.trip, "Trip number", group.rows[0].line, true)) : 1;
+      const sourceTripReference = /^TRIP\d{6}-\d+$/i.test(first.trip) ? first.trip : "";
+      const importedNumber = first.trip && !sourceTripReference ? Number(csvNumber(first.trip, "Trip number", group.rows[0].line, true)) : 1;
       if (importedNumber < 1) throw new Error("Trip number must be at least 1 when supplied.");
-      const warehouse = await find("warehouses", first.warehouse);
-      const tripType = await find("trip-types", first.tripType);
+      // Reject invalid supplied values before spending time on network lookups.
+      for (const row of group.rows) {
+        csvNumber(row.values.qty, "Quantity", row.line, true);
+        csvNumber(row.values.unitCbm, "Unit CBM", row.line);
+        csvNumber(row.values.cbm, "Total CBM", row.line);
+      }
+      const { lookups: nextLookups, find } = await resolveTripCsvLookups(group, lookups,
+        (kind, value, customerId) => searchRelationshipOptions(accessToken, kind, value, { customerId }),
+        (completed, total) => setImportProgress({ completed, total }),
+      );
+      const warehouse = find("warehouses", first.warehouse);
+      const tripType = find("trip-types", first.tripType);
       const warnings = new Set<string>();
       const importedStops = new Map<string, StopDraft>();
       const importedTrucks = new Map<string, TruckAssignmentDraft>();
       for (const row of group.rows) {
         const v = row.values;
-        const customer=await find("customers",v.customer);
-        const store = v.customer&&!customer?undefined:await find("stores", v.store,customer?.id);
-        const product = await find("products", v.product);
-        const truck = await find("trucks", v.plate);
+        const customer = find("customers", v.customer);
+        const store = v.customer && !customer ? undefined : find("stores", v.store, customer?.id);
+        const product = find("products", v.product);
+        const truck = find("trucks", v.plate);
         const qty = csvNumber(v.qty, "Quantity", row.line, true);
         const unitCbm = csvNumber(v.unitCbm, "Unit CBM", row.line);
         const cbm = v.cbm ? csvNumber(v.cbm, "Total CBM", row.line) : qty && unitCbm ? String(Number((Number(qty) * Number(unitCbm)).toFixed(8))) : "";
@@ -459,13 +454,13 @@ export default function AddTripForm({
         importedStops.set(stopKey, stop);
       }
       if (first.warehouse && !warehouse) warnings.add(`Warehouse “${first.warehouse}” needs a selection; its name is kept in trip notes.`);
-      setLookups(nextLookups); setStops([...importedStops.values()]);
+      setLookups(current => ({ ...current, ...nextLookups })); setStops([...importedStops.values()]);
       setTruckAssignments(importedTrucks.size ? [...importedTrucks.values()] : [newTruckAssignment()]);
       setLoadingDate(loading); setEtaDate(eta); setWarehouseId(warehouse?.id ?? "");
       setTripTypeId(tripType?.id ?? ""); setNewTripType(tripType ? "" : first.tripType); setAddingTripType(!tripType && Boolean(first.tripType));
       setDispatchMode("new"); setImportedDispatch(first.dispatch); setImportedTripNumber(importedNumber);
-      setStatus("PLANNED"); setRemarks(!warehouse && first.warehouse ? `Imported warehouse: ${first.warehouse}` : "");
-      setStep([...importedStops.values()].some(stop=>stop.pendingDestination&&!stop.storeId)?1:2); setError(""); setCsvGroups([]);
+      setStatus("PLANNED"); setRemarks([!warehouse && first.warehouse ? `Imported warehouse: ${first.warehouse}` : "", sourceTripReference ? `Source trip: ${sourceTripReference}` : ""].filter(Boolean).join(" ? "));
+      setStep([...importedStops.values()].some(stop => stop.pendingDestination && !stop.storeId) ? 1 : 2); setError(""); setCsvGroups([]);
       requestAnimationFrame(() => bodyRef.current?.scrollTo({ top: 0 }));
       setImportMessage(`${group.rows.length} product line${group.rows.length === 1 ? "" : "s"} loaded. Check the preview, then create the trip.`);
       setImportWarnings([...warnings]);
@@ -608,7 +603,7 @@ export default function AddTripForm({
   const productLabel = (i: ItemDraft) => (i.productId ? labelOf(productOptions, i.productId) : i.newCode.trim() || null);
   const selectedCsvGroup = csvGroups.find(group => group.key === csvGroupKey);
   const previewTrip: TripPreviewRow = {
-    dispatch: dispatchRef || "Generated on save", trip: String(tripNumber), tripType: tripTypeLabel || "",
+    dispatch: dispatchRef || "Generated on save", trip: tripReference || (tripReferenceStatus === "setup_required" ? "Not yet enabled" : "Generated on save"), tripType: tripTypeLabel || "",
     status: sentence(status), loadingDate, eta: etaDate,
     plate: selectedTruckAssignments.map(assignment => labelOf(lookups.trucks, assignment.truckId)).filter(Boolean).join(", "),
     drivers: selectedTruckAssignments.map(assignment => labelOf(lookups.drivers, assignment.driverId)).filter(Boolean).join(", "),
@@ -636,7 +631,7 @@ export default function AddTripForm({
                 <span className="max-w-full truncate font-mono text-[13px] font-medium text-[#2678b9]">
                   {dispatchBusy ? "Loading…" : dispatchRef || "No dispatch yet"}
                 </span>
-                {dispatchRef && <span className="text-xs text-slate-400">Trip {tripNumber}</span>}
+                <span className="text-xs text-slate-500">{tripReference || (tripReferenceStatus === "setup_required" ? "Trip numbering not yet enabled" : "Trip no. generated on save")}</span>
                 {tripTypeLabel && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">{tripTypeLabel}</span>}
               </p>
             </div>
@@ -664,12 +659,13 @@ export default function AddTripForm({
               {selectedCsvGroup && <TripTablePreview key={selectedCsvGroup.key} title="CSV table preview" description="Check the selected rows. Show all columns to see the remaining details." rows={selectedCsvGroup.rows.map(row => ({ ...row.values, notes: [row.values.notes, row.extra].filter(Boolean).join(" · ") }))} />}
               <div className="flex flex-wrap items-center justify-between gap-3 pt-2"><p className="max-w-md text-xs leading-5 text-slate-500">Previewing replaces the current form. Your trip is saved only when you select Create trip.</p><div className="flex flex-wrap gap-2"><button type="button" disabled={importing} onClick={() => { setCsvGroups([]); setImportError(""); }} className="rounded-full border border-slate-200 px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50">Cancel import</button><button type="button" disabled={importing || saving} onClick={() => void applyCsv()} className="inline-flex items-center gap-2 rounded-full bg-[#ffd43b] px-4 py-2 text-xs font-semibold text-[#0b2341] hover:bg-[#f2c200] disabled:opacity-50">{importing && <Loader2 className="h-3.5 w-3.5 animate-spin" />}{importing ? "Preparing preview…" : "Preview trip in table"}</button></div></div>
             </div>}
+            {importing && importProgress.total > 0 && <div role="status" className="mt-3 space-y-1.5"><p className="text-xs text-slate-600">Matching records · {importProgress.completed} of {importProgress.total}</p><progress aria-label="CSV record matching" value={importProgress.completed} max={importProgress.total} className="h-1.5 w-full accent-[#2678b9]" /></div>}
             {(importError || importMessage || importWarnings.length > 0) && <div className="mt-3 space-y-2">
               {importError && <TripFormNotice tone="error" title="CSV import needs attention" onDismiss={() => setImportError("")}>{importError}</TripFormNotice>}
               {importMessage && <TripFormNotice tone="success" title="Preview ready" onDismiss={() => setImportMessage("")}>{importMessage}</TripFormNotice>}
               {importWarnings.length > 0 && <TripFormNotice tone="warning" title="Review import notes" onDismiss={() => setImportWarnings([])}><p>Some source names could not be matched and were kept in notes. Check the selections in the form.</p><details><summary className="cursor-pointer font-medium">View import notes ({importWarnings.length})</summary><ul className="mt-2 max-h-36 space-y-1 overflow-y-auto pl-4 list-disc">{importWarnings.map(warning => <li key={warning}>{warning}</li>)}</ul></details></TripFormNotice>}
             </div>}
-            {importedDispatch && dispatchMode === "new" && <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-600"><span>Imported reference: {importedDispatch} · Trip {importedTripNumber}</span><button type="button" onClick={() => setImportedDispatch("")} className="font-medium text-[#2678b9] underline">Generate a new dispatch instead</button></div>}
+            {importedDispatch && dispatchMode === "new" && <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-600"><span>Imported dispatch: {importedDispatch}</span><button type="button" onClick={() => setImportedDispatch("")} className="font-medium text-[#2678b9] underline">Generate a new dispatch instead</button></div>}
           </div>
           {capacityState.full && <TripFormNotice tone="warning" title={capacityState.exceeded ? "Truck capacity exceeded" : "Truck capacity is full"} action={<button type="button" onClick={addCapacityTruck} className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-white/70 px-3 py-1.5 text-xs font-semibold hover:bg-white"><Plus className="h-3.5 w-3.5" />Add another truck</button>}>
             <p>{fmt(totals.cbm)} CBM of cargo / {fmt(assignedCapacity)} CBM capacity.</p><p>{capacityState.exceeded ? `Add a truck for the remaining ${fmt(capacityState.overflow)} CBM before loading.` : "Add another truck if you need to load more cargo."} You can still save this as a planned trip.</p>
@@ -698,9 +694,9 @@ export default function AddTripForm({
                     </p>
                     <p className="mt-1.5 text-xs text-white/60">
                       {dispatchMode === "new"
-                        ? importedDispatch ? `Imported dispatch · Trip ${tripNumber}` : `Trip 1 · Reference generated from ${loadingDate ? "the loading date" : "today's date"}.`
+                        ? importedDispatch ? "Dispatch reference from your CSV." : `Reference generated from ${loadingDate ? "the loading date" : "today's date"}.`
                         : existingDispatch
-                          ? `This will be trip ${tripNumber}. The dispatch already has ${existingDispatch.trip_count} trip${existingDispatch.trip_count === 1 ? "" : "s"}.`
+                          ? `Adding a trip to this dispatch · ${existingDispatch.trip_count} existing trip${existingDispatch.trip_count === 1 ? "" : "s"}.`
                           : "Select an existing dispatch to add another trip."}
                     </p>
                     {dispatchError && (dispatchMode === "existing" || !importedDispatch) && <div className="mt-3"><TripFormNotice tone="warning" title={dispatchMode === "existing" ? "Dispatch list unavailable" : "Dispatch reference unavailable"} action={<button type="button" onClick={() => setDispatchRetry(value => value + 1)} className="rounded-full border border-amber-300 bg-white/70 px-3 py-1 text-xs font-semibold hover:bg-white">Try again</button>}>{dispatchError}{dispatchMode === "new" && " A reference will be generated when you save."}</TripFormNotice></div>}
@@ -720,6 +716,11 @@ export default function AddTripForm({
                   </div>
                 )}
               </section>
+
+              <Section title="Trip number" description="Generated separately from the dispatch reference.">
+                <Field label="Trip no."><input readOnly aria-label="Generated trip number" value={tripReference} placeholder={dispatchLoading ? "Generating trip number…" : tripReferenceStatus === "setup_required" ? "Trip numbering not yet enabled" : "Generated when you save"} className={`${input} font-mono`} /></Field>
+                {tripReferenceStatus === "ready" ? <p className="mt-2 text-xs text-slate-500">The final number is assigned when the trip is saved.</p> : <div className="mt-3"><TripFormNotice tone="warning" title={tripReferenceStatus === "setup_required" ? "Trip numbering needs an update" : "Trip number preview unavailable"}>{tripReferenceStatus === "setup_required" ? "The database update for generated trip numbers has not been applied. Dispatch references still work, and you can save using the existing trip numbering." : "The dispatch reference is ready. Try generating the trip number again."}</TripFormNotice></div>}
+              </Section>
 
               <Section title="Schedule">
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -1034,7 +1035,7 @@ export default function AddTripForm({
                 {([
                   ["Trip", [
                     ["Dispatch reference", dispatchRef || "—"],
-                    ["Trip number", String(tripNumber || "—")],
+                    ["Trip no.", tripReference || (tripReferenceStatus === "setup_required" ? "Existing trip numbering" : "Generated on save")],
                     ["Trip type", tripTypeLabel ?? "Not set"],
                     ["Status", sentence(status)],
                     ["Loading date", loadingDate || "Not set"],

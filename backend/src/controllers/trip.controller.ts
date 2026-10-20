@@ -13,6 +13,7 @@ import {
   getTripList,
   getTripStops,
   getNextDispatchNumber,
+  getNextTripReference,
   listDispatchOptions,
   resolveTripTypeByName,
   resolveProductByCode,
@@ -86,8 +87,14 @@ export async function getTripByDispatch(req: Request, res: Response) {
 export async function nextDispatchNumber(req: Request, res: Response) {
   try {
     const prefix = typeof req.query.prefix === "string" ? req.query.prefix : "";
-    const dispatchNumber = await getNextDispatchNumber(prefix);
-    return sendSuccess(res, 200, "Dispatch number generated", { dispatch_number: dispatchNumber, trip_number: 1 });
+    const [dispatch, trip] = await Promise.allSettled([getNextDispatchNumber(prefix), getNextTripReference(prefix)]);
+    if (dispatch.status === "rejected") throw dispatch.reason;
+    if (trip.status === "rejected") console.error("Trip reference preview unavailable:", trip.reason);
+    const tripReference = trip.status === "fulfilled" ? trip.value : null;
+    return sendSuccess(res, 200, "Dispatch number generated", {
+      dispatch_number: dispatch.value, trip_reference: tripReference, trip_number: 1,
+      trip_reference_status: trip.status === "rejected" ? "unavailable" : tripReference ? "ready" : "setup_required",
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to generate dispatch number";
     return sendError(res, message.startsWith("Invalid") ? 400 : 500, message, "TRIP_DISPATCH_GENERATE_FAILED");

@@ -164,7 +164,6 @@ export default function DispatchOverview({
   refreshKey?: number;
 }) {
   const { accessToken } = useAuth();
-  const page = 1;
   const [refresh, setRefresh] = useState(0);
   const [trips, setTrips] = useState<TripRecord[]>([]);
   const [warehouseOptions, setWarehouseOptions] = useState<RelationshipOption[]>([]);
@@ -173,7 +172,7 @@ export default function DispatchOverview({
   const [assignmentRows, setAssignmentRows] = useState<Record<string, TripAssignmentRecord[]>>({});
   const [assignmentLoading, setAssignmentLoading] = useState<Record<string, boolean>>({});
   const [assignmentErrors, setAssignmentErrors] = useState<Record<string, string>>({});
-  const requestKey = `${page}:${refresh}:${refreshKey}`;
+  const requestKey = `${refresh}:${refreshKey}`;
   const [requestStatus, setRequestStatus] = useState<{ key: string; error: string | null }>({ key: "", error: null });
   const loading = requestStatus.key !== requestKey;
   const error = requestStatus.key === requestKey ? requestStatus.error : null;
@@ -196,7 +195,7 @@ export default function DispatchOverview({
     if (!accessToken) return;
     let active = true;
     void fetchTrips(accessToken, {
-        page,
+        page: 1,
         limit: 100,
         archiveScope: "active",
         sortBy: "loading_date",
@@ -213,7 +212,7 @@ export default function DispatchOverview({
       });
     });
     return () => { active = false; };
-  }, [accessToken, page, refresh, refreshKey, requestKey]);
+  }, [accessToken, refresh, refreshKey, requestKey]);
 
   const groups = useMemo(() => {
     const grouped = new Map<string, DispatchGroup>();
@@ -358,7 +357,7 @@ export default function DispatchOverview({
                       const tripId = String(trip.id ?? "");
                       const tripExpanded = expandedTrip === tripId;
                       const assignments = assignmentRows[tripId] ?? [];
-                      const tripLabel = recordValue(trip, "trip_number") || String(index + 1);
+                      const tripLabel = recordValue(trip, "trip_reference") || `Trip ${recordValue(trip, "trip_number") || String(index + 1)}`;
                       const destination = recordValue(trip, "destination", "delivery_address", "ship_to", "customer_name", "store_name");
                       const tripWarehouse = warehouseOptions.find((warehouse) => warehouse.id === trip.warehouse_id)?.label ?? group.warehouseName ?? "Warehouse not set";
                       const activeAssignments = assignments.filter((assignment) => !assignment.unassigned_at);
@@ -380,7 +379,7 @@ export default function DispatchOverview({
                           <div className="px-3 pt-3">
                             <div className="flex items-center justify-between gap-2">
                               <div className="flex min-w-0 items-center gap-2">
-                                <h4 className="truncate text-sm font-bold tracking-tight text-[#0b2341]">Trip {tripLabel}</h4>
+                                <h4 className="truncate text-sm font-bold tracking-tight text-[#0b2341]">{tripLabel}</h4>
                                 <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset ${tripTone.pill}`}>
                                   {display(tripStatus, "PLANNED").replaceAll("_", " ")}
                                 </span>

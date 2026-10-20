@@ -202,18 +202,18 @@ function UsersTable() {
   const [userModalOpen, setUserModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<ManagedUser | null>(null);
   const [notice, setNotice] = useState("");
-  const tableColumns = useMemo(() => (category === "staff" ? ["User", "Email", "Role", "Actions"] : ["User", "Contact", "Assigned truck", "Current trip", "Delivery status", "Actions"]).map((title) => ({ key: title.toLowerCase().replaceAll(" ", "-"), title, width: title === "User" ? 280 : title === "Actions" ? 110 : 200 })), [category]);
+  const tableColumns = useMemo(() => (category === "staff" ? ["User", "Email", "Role", "Actions"] : ["User", "Contact", "Assigned truck", "Trip no.", "Delivery status"]).map((title) => ({ key: title.toLowerCase().replaceAll(" ", "-"), title, width: title === "User" ? 280 : title === "Actions" ? 110 : 200 })), [category]);
   const { attachViewport, viewportProps, tableStyle, controls: columnControls, hiddenControl, colgroup, headerProps, headerControls, orderedColumns, renderCells } = useManagementTableColumns({ table: `users:${category}`, token: accessToken, profileId: profile?.id, columns: tableColumns, paused: Boolean(userModalOpen || selectedId), enabled: ["ADMIN", "STAFF"].includes(profile?.role ?? ""),rowSearch:{value:search,onSearch:setSearch,placeholder:"Search users or columns…"} });
-  const realtimeGate = useDeferredRealtimeRefresh(() => setRefreshVersion((version) => version + 1), userModalOpen);
+  const realtimeGate = useDeferredRealtimeRefresh(() => setRefreshVersion((version) => version + 1), Boolean(userModalOpen || selectedId));
 
   useEffect(() => subscribeToAdminRealtime((event) => {
     if (event.kind === "batch") {
-      if (event.tables.some((table) => ["profiles", "drivers", "trips", "trip_stops", "trip_truck_assignments", "trucks"].includes(table))) realtimeGate.request();
+      if (event.tables.some((table) => ["profiles", "drivers", "trips", "trip_stops", "trip_line_items", "trip_truck_assignments", "trucks"].includes(table))) realtimeGate.request();
       return;
     }
     if (event.kind === "resume") { invalidateApiCache("/users");invalidateApiCache("/truckers");realtimeGate.request(); return; }
     const table = event.kind === "recovered" ? event.table : event.payload.table;
-    if (["profiles", "drivers", "trips", "trip_stops", "trip_truck_assignments", "trucks"].includes(table)) {
+    if (["profiles", "drivers", "trips", "trip_stops", "trip_line_items", "trip_truck_assignments", "trucks"].includes(table)) {
       realtimeGate.request();
     }
   }), [realtimeGate]);
@@ -303,7 +303,7 @@ function UsersTable() {
               {loading && !(category==="staff" ? profiles.length : rows.length) ? Array.from({ length: 5 }).map((_, index) => (
                 <tr key={`skeleton-${index}`} className={tableUi.row}>{orderedColumns.map((column) => <td key={column.key} className="px-4 py-3"><div className="h-4 w-3/4 animate-pulse rounded bg-slate-200" /></td>)}</tr>
               )) : error && !(category==="staff" ? profiles.length : rows.length) ? (
-                <tr><td colSpan={category === "staff" ? 4 : 6} role="alert" className="px-4 py-12 text-center text-sm text-rose-700">{error}</td></tr>
+                <tr><td colSpan={orderedColumns.length} role="alert" className="px-4 py-12 text-center text-sm text-rose-700">{error}</td></tr>
               ) : category === "staff" ? matchingProfiles.length === 0 ? (
                 <tr><td colSpan={4} className="px-4 py-16 text-center text-sm text-slate-400">No admin or staff users found.</td></tr>
               ) : matchingProfiles.map((profile) => (
@@ -312,13 +312,13 @@ function UsersTable() {
                   <td className={tableUi.td}>{managedUsers.find((item) => item.id === profile.id)?.email ?? "—"}</td><td className={tableUi.td}>{profile.role}</td><td className={tableUi.td}>{managedUsers.some((item) => item.id === profile.id) && <button type="button" aria-label={`Edit ${profile.full_name}`} onClick={() => { setEditingUser(managedUsers.find((item) => item.id === profile.id) ?? null); setUserModalOpen(true); }} className={tableUi.iconBtn}><Pencil className="h-4 w-4" /></button>}</td>
                 </>)} </tr>
               )) : visibleTruckers.length === 0 ? (
-                <tr><td colSpan={6} className="px-4 py-16 text-center text-sm text-slate-400">No drivers found.</td></tr>
+                <tr><td colSpan={orderedColumns.length} className="px-4 py-16 text-center text-sm text-slate-400">No drivers found.</td></tr>
               ) : visibleTruckers.map((trucker) => {
                 const avatar = managedUsers.find((item) => item.id === trucker.profile_id)?.profile_picture_url ?? formatAvatarPath(trucker.profile_picture_path);
                 return (
                   <tr key={trucker.id} onClick={() => { const cached=accessToken?getCachedTruckerDetail(accessToken,trucker.id):null;setDetail(cached??truckerDetailFromSummary({...trucker,profile_picture_path:avatar??trucker.profile_picture_path}));setDetailLoading(!cached);setSelectedId(trucker.id); }} className={`cursor-pointer ${tableUi.row}`}>
                     {renderCells(<> <td className="px-4 py-3.5"><div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-[#e6f0f9]">{avatar ? <img src={avatar} alt={trucker.full_name} className="h-full w-full object-cover" /> : <UserRound aria-hidden="true" className="h-5 w-5 text-[#2678b9]" />}</div><div><div className="text-[13px] font-medium text-[#0b2341]">{trucker.full_name}</div><div className="text-xs text-slate-500">{trucker.email || "No email"}</div></div></div></td>
-                    <td className={tableUi.td}>{trucker.contact_number || "—"}</td><td className={tableUi.td}>{trucker.plate_number || "—"}</td><td className={tableUi.td}>{trucker.active_trip_number || "—"}</td><td className={tableUi.td}>{trucker.delivery_status || trucker.current_trip_status || "—"}</td><td className={tableUi.td}>{profile?.role==="ADMIN"&&<button type="button" aria-label={`Edit ${trucker.full_name}`} onClick={(event) => { event.stopPropagation(); const managed = managedUsers.find((item) => item.id === trucker.profile_id); if (managed) { setEditingUser(managed); setUserModalOpen(true); } else setError("Unable to load this user account for editing."); }} className={tableUi.iconBtn}><Pencil className="h-4 w-4" /></button>}</td>
+                    <td className={tableUi.td}>{trucker.contact_number || "—"}</td><td className={tableUi.td}>{trucker.plate_number || "—"}</td><td className={tableUi.td}>{trucker.active_trip_number || "—"}</td><td className={tableUi.td}>{trucker.delivery_status || trucker.current_trip_status || "—"}</td>
                   </>)} </tr>
                 );
               })}
@@ -328,7 +328,7 @@ function UsersTable() {
         {hiddenControl}
       </div>
 
-      {selectedId && (detail || detailLoading) ? <TruckerDetailDrawer trucker={detail} loading={detailLoading} error={detailError} onClose={() => setSelectedId(null)} /> : null}
+      {selectedId && !userModalOpen && (detail || detailLoading) ? <TruckerDetailDrawer key={selectedId} trucker={detail} loading={detailLoading} error={detailError} onClose={() => setSelectedId(null)} canAssignTruck={["ADMIN", "STAFF"].includes(profile?.role ?? "")} onAssigned={refreshList} onEdit={profile?.role === "ADMIN" && managedUsers.some(user => user.id === detail?.profile_id) ? () => { setEditingUser(managedUsers.find(user => user.id === detail?.profile_id) ?? null); setUserModalOpen(true); } : undefined} /> : null}
       {userModalOpen && <UserManagementModal user={editingUser} onClose={() => setUserModalOpen(false)} onSaved={(message) => { setUserModalOpen(false); setNotice(message ?? "User saved successfully."); refreshList(); }} />}
       </>}
     </div>

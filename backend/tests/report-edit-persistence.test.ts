@@ -50,7 +50,7 @@ test("confirmed physical stop edits survive delayed report refresh without paren
       return {data: single ? matches[0] ?? null : matches.slice(start,end+1).map(row=>({...row})), count: matches.length, error: null};
     };
     const chain: any = {
-      select: (fields: string) => {if(table==="trips" && fields==="id, dispatch_number, transaction_number")parentReferenceReads++;return chain;}, order: () => chain,
+      select: (fields: string) => {if(table==="trips" && fields==="id, dispatch_number, transaction_number")parentReferenceReads++;return chain;}, order: () => chain, limit: () => chain,
       eq: (key: string,value: unknown) => {filters.push([key,value]);return chain;},
       is: (key: string,value: unknown) => {filters.push([key,value]);return chain;},
       in: (key: string,values: unknown[]) => {included={key,values};return chain;},

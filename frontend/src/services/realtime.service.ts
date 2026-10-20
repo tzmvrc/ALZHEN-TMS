@@ -207,7 +207,7 @@ function invalidateForTable(table: string, payload?: RealtimePayload) {
     invalidateApiCache("/lookups/profiles");
     invalidateApiCache("/truckers");
   }
-  if (["trips","trip_stops","trip_truck_assignments","trucks"].includes(table)) {
+  if (["trips","trip_stops","trip_line_items","trip_truck_assignments","trucks"].includes(table)) {
     invalidateApiCache("/truckers");
   }
   if (table === "documents") invalidateApiCache("/documents");

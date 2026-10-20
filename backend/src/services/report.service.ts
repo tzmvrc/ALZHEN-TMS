@@ -16,6 +16,7 @@ import { buildIlikeOrFilter } from "../utils/postgrest-search.js";
 import { getTripRoutes } from "./trip-route.service.js";
 import { getOngoingTripIds } from "./trip-ongoing.service.js";
 import { resolveLegacyPodCellValue } from "./transmittal-tracker.logic.js";
+import { tripReferenceAvailable } from "./trip-reference.schema.js";
 
 const REPORT_ROUTE_MAP = {
   combined: "v_tms_combined",
@@ -592,6 +593,22 @@ function getReportDefinition(reportKey: string): ReportDefinition {
   return definition;
 }
 
+async function attachGeneratedTripNumbers(rows: Record<string, unknown>[]) {
+  const ids = [...new Set(rows.map(row => row.trip_id ?? row._trip_id).filter((id): id is string => typeof id === "string" && isValidUuid(id)))];
+  if (!ids.length || !await tripReferenceAvailable()) return;
+  const { data, error } = await supabaseAdmin.from("trips").select("id, trip_reference").in("id", ids);
+  if (error) throw new ApiError("Unable to load generated trip numbers", 500, "TRIP_REFERENCE_QUERY_FAILED");
+  const references = new Map((data ?? []).map(trip => [String(trip.id), trip.trip_reference]));
+  for (const row of rows) {
+    const reference = references.get(String(row.trip_id ?? row._trip_id));
+    if (typeof reference !== "string" || !reference.trim()) continue;
+    row.trip_reference = reference;
+    // Retain the stable column key used by saved layouts, while displaying the
+    // generated identifier instead of the internal position within a dispatch.
+    row.trip_number = reference;
+  }
+}
+
 export async function getReportData(
   reportKey: string,
   query: ReportQueryParams = {},
@@ -629,7 +646,9 @@ export async function getReportData(
   if(issueTripIds?.length===0)return {rows:[],pagination:buildPaginationMeta(page,limit,0)};
   let matchingTripIds: string[] = [];
   if (search && ["combined", "dispatch-monitoring", "dispatch", "trip-booking"].includes(key)) {
-    const { data, error } = await supabaseAdmin.from("trips").select("id").eq("dispatch_number", search);
+    const fields = ["dispatch_number", ...(await tripReferenceAvailable() ? ["trip_reference"] : [])];
+    const filter = buildIlikeOrFilter(fields, search);
+    const { data, error } = await supabaseAdmin.from("trips").select("id").or(filter!);
     if (error) throw new ApiError("Unable to search saved trip references", 500, "TRIP_REFERENCE_QUERY_FAILED");
     matchingTripIds = (data ?? []).map((trip) => String(trip.id));
   }
@@ -683,6 +702,7 @@ export async function getReportData(
       const enriched = ["combined", "dispatch", "dispatch-monitoring", "trip-booking", "store-calling"].includes(key)
         ? await attachOperationalRecordIds(rows, key === "dispatch-monitoring")
         : rows;
+      await attachGeneratedTripNumbers(enriched);
       if (["combined", "dispatch", "dispatch-monitoring"].includes(key)) {
         await attachLoadingMilestones(enriched);
       }
@@ -728,7 +748,7 @@ export const getTripExceptionsReport = (query: ReportQueryParams = {}) => getRep
 export async function getReportColumns(reportKey: string) {
   const key = reportKey.trim();
   if (!REPORT_KEYS.includes(key)) throw new ApiError("Report not found", 404, "REPORT_NOT_FOUND");
-  return { report: key, columns: REPORT_DEFINITIONS[key].columns };
+  return { report: key, columns: REPORT_DEFINITIONS[key].columns.map(column => column.key === "trip_number" ? { ...column, type: "text" as const } : column) };
 }
 
 export async function getAvailableReportKeys() { return REPORT_KEYS; }

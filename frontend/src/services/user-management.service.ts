@@ -41,7 +41,7 @@ export async function fetchUsersDirectory(token:string,role:string):Promise<User
 }
 export function filterDirectoryTruckers(rows:TruckerListItem[],search:string,status:string,assignment:string){
  const term=search.trim().toLocaleLowerCase();
- return rows.filter(row=>(!term||[row.full_name,row.email,row.contact_number,row.plate_number,row.active_trip_number].some(value=>String(value??"").toLocaleLowerCase().includes(term)))
+ return rows.filter(row=>(!term||[row.full_name,row.email,row.contact_number,row.plate_number,row.active_trip_number,row.dr_number].some(value=>String(value??"").toLocaleLowerCase().includes(term)))
   &&(status==="all"||row.status?.toUpperCase()===status.toUpperCase())
   &&(assignment==="all"||(assignment==="assigned"?Boolean(row.active_trip_id):!row.active_trip_id)));
 }

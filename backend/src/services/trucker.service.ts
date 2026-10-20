@@ -3,6 +3,8 @@ import { supabaseAdmin } from "../config/supabase.js";
 import { buildIlikeOrFilter } from "../utils/postgrest-search.js";
 import { deleteTripImage, uploadTripImage } from "./trip-image.service.js";
 import { storeDriverReceiptText } from "./trip-receipt.service.js";
+import { collectDriverDrNumbers } from "./driver-dr.logic.js";
+import { tripReferenceAvailable } from "./trip-reference.schema.js";
 
 export type TruckerListItem = {
   id: string;
@@ -21,6 +23,7 @@ export type TruckerListItem = {
   plate_number: string | null;
   active_trip_id: string | null;
   active_trip_number: string | null;
+  dr_number: string | null;
   current_trip_status: string | null;
   delivery_status: string | null;
   loading_date: string | null;
@@ -58,6 +61,7 @@ export type TruckerDetail = {
     estimated_delivery_date: string | null;
     route: string | null;
     delivery_status: string | null;
+    dr_number: string | null;
   } | null;
   trip_history: Array<{
     id: string;
@@ -97,6 +101,7 @@ function isActiveTripStatus(value: unknown): boolean {
 
   return ![
     "COMPLETED",
+    "DELIVERED",
     "CANCELLED",
     "CANCELED",
     "CLOSED",
@@ -169,6 +174,25 @@ async function getTripDeliveryStatus(tripId: string): Promise<string | null> {
   return latestStop && typeof latestStop.delivery_status === "string"
     ? latestStop.delivery_status
     : null;
+}
+
+async function getDriverTripDrNumbers(tripIds: string[]) {
+  if (!tripIds.length) return new Map<string, string>();
+  const read = async (table: "trip_stops" | "trip_line_items", fields: string) => {
+    const rows: Record<string, unknown>[] = [];
+    for (let offset = 0; ; offset += 1000) {
+      const result = await supabaseAdmin.from(table).select(fields).in("trip_id", tripIds).order("id").range(offset, offset + 999);
+      if (result.error) throw new Error("Unable to load driver DR numbers.");
+      const page = (result.data ?? []) as unknown as Record<string, unknown>[];
+      rows.push(...page);
+      if (page.length < 1000) return rows;
+    }
+  };
+  const [stops, lines] = await Promise.all([
+    read("trip_stops", "id, trip_id, dr_number, archived_at"),
+    read("trip_line_items", "id, trip_id, trip_stop_id, dr_number"),
+  ]);
+  return collectDriverDrNumbers(stops, lines);
 }
 
 async function getTripStopRoute(
@@ -1087,9 +1111,10 @@ export async function getTruckerList(query: Record<string, unknown>) {
     const { data: tripRows } = await supabaseAdmin
       .from("trips")
       .select(
-        "id, trip_number, dispatch_number, status, loading_date, estimated_delivery_date",
+        ["id", "trip_number", ...(await tripReferenceAvailable() ? ["trip_reference"] : []), "dispatch_number", "status", "loading_date", "estimated_delivery_date"].join(", "),
       )
-      .in("id", tripIds);
+      .in("id", tripIds)
+      .returns<Record<string, unknown>[]>();
 
     for (const trip of tripRows ?? []) {
       if (trip?.id) {
@@ -1104,6 +1129,7 @@ export async function getTruckerList(query: Record<string, unknown>) {
       (row) => String(row.driver_id) === driverId,
     );
     const activeAssignment = assignments.find((assignment) => {
+      if (assignment.unassigned_at) return false;
       const tripId =
         typeof assignment.trip_id === "string" ? assignment.trip_id : null;
       if (!tripId) {
@@ -1129,6 +1155,7 @@ export async function getTruckerList(query: Record<string, unknown>) {
   const truckMap = await getTruckMap(truckIds);
 
   const items: TruckerListItem[] = [];
+  const drNumbers = await getDriverTripDrNumbers([...new Set([...assignmentByDriver.values()].flatMap(assignment => typeof assignment?.trip_id === "string" ? [assignment.trip_id] : []))]);
   for (const row of drivers) {
     const profileId = row.profile_id ? String(row.profile_id) : null;
     const profile = profileId ? (profileMap.get(profileId) ?? {}) : {};
@@ -1188,12 +1215,10 @@ export async function getTruckerList(query: Record<string, unknown>) {
           ? String(truck.plate_number)
           : null,
       active_trip_id: tripId,
+      dr_number: tripId ? drNumbers.get(tripId) ?? null : null,
       active_trip_number:
-        trip && typeof trip.dispatch_number === "string"
-          ? String(trip.dispatch_number)
-          : trip && typeof trip.trip_number === "string"
-            ? String(trip.trip_number)
-          : null,
+        trip && typeof trip.trip_reference === "string" ? trip.trip_reference
+          : trip && trip.trip_number != null ? String(trip.trip_number) : null,
       current_trip_status:
         trip && typeof trip.status === "string" ? String(trip.status) : null,
       delivery_status: tripId ? await getTripDeliveryStatus(tripId) : null,
@@ -1293,9 +1318,10 @@ export async function getTruckerById(id: string) {
     const { data: tripRows, error: tripError } = await supabaseAdmin
       .from("trips")
       .select(
-        "id, trip_number, dispatch_number, status, loading_date, estimated_delivery_date, authorization_letter, remarks, created_by, warehouse_id",
+        ["id", "trip_number", ...(await tripReferenceAvailable() ? ["trip_reference"] : []), "dispatch_number", "status", "loading_date", "estimated_delivery_date", "authorization_letter", "remarks", "created_by", "warehouse_id"].join(", "),
       )
-      .in("id", tripIds);
+      .in("id", tripIds)
+      .returns<Record<string, unknown>[]>();
 
     if (tripError) {
       console.error("Trucker trip detail fetch failed:", tripError);
@@ -1322,6 +1348,7 @@ export async function getTruckerById(id: string) {
 
   const activeAssignment =
     sortedAssignments.find((assignment) => {
+      if (assignment.unassigned_at) return false;
       const tripId =
         typeof assignment.trip_id === "string" ? assignment.trip_id : null;
       if (!tripId) {
@@ -1336,6 +1363,7 @@ export async function getTruckerById(id: string) {
       ? (tripMap.get(String(activeAssignment.trip_id)) ?? null)
       : null;
 
+  const activeDrNumbers = await getDriverTripDrNumbers(activeTrip ? [String(activeTrip.id)] : []);
   const activeTruck =
     activeAssignment && typeof activeAssignment.truck_id === "string"
       ? (truckMap.get(String(activeAssignment.truck_id)) ?? null)
@@ -1460,9 +1488,8 @@ export async function getTruckerById(id: string) {
       ? {
           id: typeof activeTrip.id === "string" ? String(activeTrip.id) : null,
           trip_number:
-            typeof activeTrip.trip_number === "string"
-              ? String(activeTrip.trip_number)
-              : null,
+            typeof activeTrip.trip_reference === "string" ? activeTrip.trip_reference
+              : activeTrip.trip_number != null ? String(activeTrip.trip_number) : null,
           dispatch_number:
             typeof activeTrip.dispatch_number === "string"
               ? String(activeTrip.dispatch_number)
@@ -1487,6 +1514,7 @@ export async function getTruckerById(id: string) {
                   .join(" → ") || null
               : null,
           delivery_status: activeTripDeliveryStatus,
+          dr_number: activeDrNumbers.get(String(activeTrip.id)) ?? null,
         }
       : null,
     trip_history: tripHistoryPayload.filter(

@@ -16,6 +16,7 @@ export type TruckerListItem = {
   plate_number: string | null;
   active_trip_id: string | null;
   active_trip_number: string | null;
+  dr_number?: string | null;
   current_trip_status: string | null;
   delivery_status: string | null;
   loading_date: string | null;
@@ -49,6 +50,7 @@ export type TruckerDetail = {
     estimated_delivery_date: string | null;
     route: string | null;
     delivery_status: string | null;
+    dr_number?: string | null;
   } | null;
   trip_history: Array<{
     id: string;
@@ -208,7 +210,7 @@ export function truckerDetailFromSummary(row:TruckerListItem,previous?:TruckerDe
  const old=previous?.id===row.id?previous:null;
  return {id:row.id,driver_id:row.id,profile_id:row.profile_id,first_name:row.first_name,last_name:row.last_name,full_name:row.full_name,contact_number:row.contact_number,email:row.email,status:row.status,profile_picture_path:row.profile_picture_path,
   truck:row.assigned_truck_id?{id:row.assigned_truck_id,plate_number:row.plate_number,truck_number:old?.truck?.id===row.assigned_truck_id?old.truck.truck_number:null,make:old?.truck?.id===row.assigned_truck_id?old.truck.make:null,model:old?.truck?.id===row.assigned_truck_id?old.truck.model:null,status:old?.truck?.id===row.assigned_truck_id?old.truck.status:null}:null,
-  active_trip:row.active_trip_id?{id:row.active_trip_id,trip_number:row.active_trip_number,dispatch_number:old?.active_trip?.id===row.active_trip_id?old.active_trip.dispatch_number:null,status:row.current_trip_status,loading_date:row.loading_date,estimated_delivery_date:old?.active_trip?.id===row.active_trip_id?old.active_trip.estimated_delivery_date:null,route:old?.active_trip?.id===row.active_trip_id?old.active_trip.route:null,delivery_status:row.delivery_status}:null,
+  active_trip:row.active_trip_id?{id:row.active_trip_id,trip_number:row.active_trip_number,dispatch_number:old?.active_trip?.id===row.active_trip_id?old.active_trip.dispatch_number:null,status:row.current_trip_status,loading_date:row.loading_date,estimated_delivery_date:old?.active_trip?.id===row.active_trip_id?old.active_trip.estimated_delivery_date:null,route:old?.active_trip?.id===row.active_trip_id?old.active_trip.route:null,delivery_status:row.delivery_status,dr_number:row.dr_number??null}:null,
   trip_history:old?.trip_history??[]};
 }
 

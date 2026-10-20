@@ -20,6 +20,8 @@ import {
   normalizeText,
 } from "../utils/validation.js";
 import { buildIlikeOrFilter } from "../utils/postgrest-search.js";
+import { dispatchReferencePrefix, nextReference } from "./trip-reference.logic.js";
+import { tripReferenceAvailable } from "./trip-reference.schema.js";
 
 const ALLOWED_TRIP_SORTS = [
   "loading_date",
@@ -135,9 +137,9 @@ function normalizeTripQuery(query: Record<string, unknown>) {
   return { sortBy, sortOrder };
 }
 
-function applyTripSearch(queryBuilder: any, search: string) {
+function applyTripSearch(queryBuilder: any, search: string, hasTripReference: boolean) {
   const filter = buildIlikeOrFilter(
-    ["dispatch_number", "transaction_number", "trip_number", "remarks"],
+    ["dispatch_number", "transaction_number", ...(hasTripReference ? ["trip_reference"] : []), "remarks"],
     search,
   );
   return filter ? queryBuilder.or(filter) : queryBuilder;
@@ -379,7 +381,7 @@ export async function getTripList(
       throw new Error("trip_type_id must be a valid UUID.");
     queryBuilder = queryBuilder.eq("trip_type_id", tripTypeId);
   }
-  if (search) queryBuilder = applyTripSearch(queryBuilder, search);
+  if (search) queryBuilder = applyTripSearch(queryBuilder, search, await tripReferenceAvailable());
 
   queryBuilder = queryBuilder.order(sortBy, { ascending: sortOrder === "asc" });
   queryBuilder = queryBuilder.range(from, from + limit - 1);
@@ -458,13 +460,16 @@ export async function getTripById(id: string): Promise<TripDetail> {
     throw new Error("Invalid trip id");
   }
 
+  const fields = "id, dispatch_number, trip_type_id, warehouse_id, loading_date, estimated_delivery_date, status, authorization_letter, page_no, remarks, created_by, created_at, updated_at, transaction_number, trip_number, added_to_report, letter_status, truck_allocated_by, subcon_rate_manual, signed_dr_upload_date, transmittal_date, tms_date, tms_done_by, pod_ac_shipping_date, lbc_tracking_number, request_received_at, departure_from_warehouse_at".split(", ");
+  if (await tripReferenceAvailable()) fields.push("trip_reference");
   const { data, error } = await supabaseAdmin
     .from("trips")
     .select(
-      "id, dispatch_number, trip_type_id, warehouse_id, loading_date, estimated_delivery_date, status, authorization_letter, page_no, remarks, created_by, created_at, updated_at, transaction_number, trip_number, added_to_report, letter_status, truck_allocated_by, subcon_rate_manual, signed_dr_upload_date, transmittal_date, tms_date, tms_done_by, pod_ac_shipping_date, lbc_tracking_number, request_received_at, departure_from_warehouse_at",
+      fields.join(", "),
     )
     .eq("id", id)
-    .maybeSingle();
+    .maybeSingle()
+    .returns<TripRecord>();
 
   if (error) {
     console.error("Trip detail query error:", { tripId: id, error });
@@ -591,33 +596,27 @@ export async function getTripByDispatchNumber(dispatchNumberInput: string) {
   return data;
 }
 
-const DISPATCH_PREFIX_PATTERN = /^TRIP\d{6}$/;
 
 /** Next dispatch reference for a day, e.g. prefix "TRIP260305" -> "TRIP260305-3". */
 export async function getNextDispatchNumber(prefixInput: string) {
-  const prefix = String(prefixInput ?? "").trim().toUpperCase();
-  if (!DISPATCH_PREFIX_PATTERN.test(prefix)) {
-    throw new Error("Invalid dispatch prefix");
-  }
+  return getNextGeneratedReference(dispatchReferencePrefix(String(prefixInput ?? "")), "dispatch_number");
+}
 
-  const { data, error } = await supabaseAdmin
-    .from("trips")
-    .select("dispatch_number")
-    .like("dispatch_number", `${prefix}-%`)
-    .limit(5000);
+export async function getNextTripReference(dispatchPrefix: string) {
+  const prefix = dispatchReferencePrefix(dispatchPrefix).replace(/^DISPATCH/, "TRIP");
+  if (!await tripReferenceAvailable()) return null;
+  return getNextGeneratedReference(prefix, "trip_reference");
+}
 
-  if (error) {
-    console.error("Next dispatch number query error:", { prefix, error });
-    throw new Error("Unable to generate dispatch number");
+async function getNextGeneratedReference(prefix: string, column: "dispatch_number" | "trip_reference") {
+  const references: unknown[] = [];
+  for (let offset = 0; ; offset += 1000) {
+    const { data, error } = await supabaseAdmin.from("trips").select(column).like(column, `${prefix}-%`).order("id").range(offset, offset + 999);
+    if (error) throw new Error(`Unable to generate ${column === "dispatch_number" ? "dispatch" : "trip"} number`);
+    const rows = data ?? [];
+    references.push(...rows.map(row => (row as unknown as Record<string, unknown>)[column]));
+    if (rows.length < 1000) return nextReference(prefix, references);
   }
-
-  const pattern = new RegExp(`^${prefix}-(\\d+)$`);
-  let highest = 0;
-  for (const row of data ?? []) {
-    const match = pattern.exec(String(row.dispatch_number ?? ""));
-    if (match) highest = Math.max(highest, Number(match[1]));
-  }
-  return `${prefix}-${highest + 1}`;
 }
 
 export type DispatchOption = {
@@ -777,7 +776,8 @@ export async function createTripRecord(
   if (!payload.dispatch_number) {
     const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila", year: "2-digit", month: "2-digit", day: "2-digit" }).formatToParts(new Date());
     const part = (type: string) => parts.find(value => value.type === type)?.value ?? "";
-    payload.dispatch_number = await getNextDispatchNumber(`TRIP${part("year")}${part("month")}${part("day")}`);
+    const date = typeof payload.loading_date === "string" ? payload.loading_date.slice(0, 10).replaceAll("-", "").slice(2) : `${part("year")}${part("month")}${part("day")}`;
+    payload.dispatch_number = await getNextDispatchNumber(`DISPATCH${date}`);
   }
 
   const { data, error } = await supabaseAdmin

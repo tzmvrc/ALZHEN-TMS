@@ -61,6 +61,7 @@ export async function retryTransactionCleanup(token: string, id: string) {
 
 export type TripRecord = Record<string, unknown> & {
   id?: string;
+  trip_reference?: string | null;
   dispatch_number?: string | null;
   loading_date?: string | null;
   estimated_delivery_date?: string | null;

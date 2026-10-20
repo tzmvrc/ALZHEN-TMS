@@ -1025,7 +1025,7 @@ export default function TripDetailView({
     { key: "stops" as const, label: "Stops", count: stops.length },
     { key: "activity" as const, label: "Activity", count: orderedEvents.length },
   ];
-  const tripNumber = valueText(trip?.trip_number, "");
+  const tripNumber = valueText(trip?.trip_reference, "") || (trip?.trip_number != null ? `Trip ${valueText(trip.trip_number, "")}` : "");
   const nextStop = nextStopIndex >= 0 ? stops[nextStopIndex] : null;
   const nextStopName = nextStop
     ? valueText(rowsForStop(String(nextStop.id ?? ""))[0]?.store_name, "Store not recorded")
@@ -1133,7 +1133,7 @@ export default function TripDetailView({
         <section className={`${surface.card} flex min-w-0 flex-col p-5`}>
           <h2 className="text-lg font-semibold text-[#0b2341]">Trip details</h2>
           <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-slate-500">
-            <span>{tripNumber ? `Trip ${tripNumber}` : "Trip"}</span>
+            <span>{tripNumber || "Trip"}</span>
             <span aria-hidden="true" className="text-slate-300">|</span>
             <StatusPill status={trip?.status} fallback="Loading" />
           </div>

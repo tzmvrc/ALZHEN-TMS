@@ -158,9 +158,13 @@ export function toRelationshipOption(
   }
 }
 
-/** Next dispatch reference for a day (e.g. prefix "TRIP260305" -> "TRIP260305-3"). Never cached. */
+/** Next dispatch reference for a day, with a separate generated trip reference. Never cached. */
 export async function getNextDispatchNumber(token: string, prefix: string): Promise<string> {
-  const response = await apiGet<ApiResponse<{ dispatch_number: string }>>(
+  return (await getNextTripReferences(token, prefix)).dispatch_number;
+}
+
+export async function getNextTripReferences(token: string, prefix: string): Promise<{ dispatch_number: string; trip_reference: string | null; trip_reference_status: "ready" | "setup_required" | "unavailable" }> {
+  const response = await apiGet<ApiResponse<{ dispatch_number: string; trip_reference?: string | null; trip_reference_status?: "ready" | "setup_required" | "unavailable" }>>(
     `/trips/next-dispatch-number?prefix=${encodeURIComponent(prefix)}`,
     token,
     15_000,
@@ -168,7 +172,7 @@ export async function getNextDispatchNumber(token: string, prefix: string): Prom
   if (!response.success || !response.data?.dispatch_number) {
     throw new Error(response.message ?? "Could not generate the dispatch reference.");
   }
-  return response.data.dispatch_number;
+  return { dispatch_number: response.data.dispatch_number, trip_reference: response.data.trip_reference ?? null, trip_reference_status: response.data.trip_reference_status ?? (response.data.trip_reference ? "ready" : "unavailable") };
 }
 
 export type DispatchOption = {
