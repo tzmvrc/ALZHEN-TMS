@@ -1,7 +1,7 @@
 import { useSpreadsheetFeedback } from "./SpreadsheetPresentation";
 import { ToastContext } from "../ui/toast-context";
 import { useCallback, useContext, useEffect, useMemo, useState, useSyncExternalStore } from "react";
-import { emptyDesign, readSharedDesign, subscribeSharedDesign, refreshSharedDesign, saveSharedDesign, saveSharedColumnOrder, retrySharedDesign, mergeColumnDesign, type ColumnDesign } from "../../services/shared-table-design";
+import { emptyDesign, readSharedDesign, subscribeSharedDesign, refreshSharedDesign, saveSharedDesign, saveSharedColumnOrder, retrySharedDesign, mergeColumnDesign, mergeDesignPatches, type ColumnDesign } from "../../services/shared-table-design";
 import { subscribeCollaborationEvents } from "../../services/collaboration.service";
 import { subscribeToAdminRealtime } from "../../services/realtime.service";
 
@@ -29,20 +29,20 @@ export function useSharedTableDesign(table: string, token: string | null, enable
     });
     return () => { live = false; };
   }, [owner, snapshot, paused]);
-  useSpreadsheetFeedback(snapshot.error && !snapshot.saving ? "Table design could not be saved or refreshed. Unsaved changes can be retried with Retry table design." : null, "error");
+  useSpreadsheetFeedback(snapshot.error && !snapshot.saving ? "Formatting could not be saved or refreshed. Your changes are kept here; choose Retry design." : null, "error");
   useEffect(() => {
     if (!active) return;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const refresh = () => { if (timer) return; timer = setTimeout(() => { timer = undefined; void refreshSharedDesign(token!, table); }, 150); };
     refresh();
     const socket = subscribeCollaborationEvents(event => { if (event.kind === "connected" || event.kind === "layout" && event.table === table) refresh(); });
-    const signals = subscribeToAdminRealtime(event => { if (event.kind === "resume" || event.kind === "batch" && event.tables.includes("shared_table_column_widths")) refresh(); });
+    const signals = subscribeToAdminRealtime(event => { if (event.kind === "resume" || event.kind === "batch" && event.tables.includes("shared_table_column_widths") || event.kind === "change" && event.payload.table === "shared_table_column_widths" || event.kind === "recovered" && event.table === "shared_table_column_widths") refresh(); });
     window.addEventListener("focus", refresh);
     return () => { clearTimeout(timer); window.removeEventListener("focus", refresh); socket(); signals(); };
   }, [active, table, token]);
   const stage = useCallback((patches: Record<string, ColumnDesign>) => setPreview(current => {
     const next = current.owner === owner ? { ...current.columns } : {};
-    for (const [key, patch] of Object.entries(patches)) next[key] = mergeColumnDesign(next[key] ?? {}, patch);
+    for (const [key, patch] of Object.entries(patches)) next[key] = mergeDesignPatches(next[key] ?? {}, patch);
     return { owner, columns: next };
   }), [owner]);
   const denied = useCallback(() => { toast?.addToast({ title: "You do not have permission to change this table layout.", variant: "error" }); return Promise.resolve(); }, [toast?.addToast]);

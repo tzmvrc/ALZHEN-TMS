@@ -15,7 +15,6 @@ import ReportDataView from "../../../components/admin/ReportDataView";
 import ReportsWorkspace from "../../../components/admin/ReportsWorkspace";
 import FlexibleTableSectionTabs from "../../../components/admin/FlexibleTableSectionTabs";
 import TruckCardGrid from "../../../components/admin/TruckCardGrid";
-import DispatchOverview from "../../../components/admin/DispatchOverview";
 import RequestsView from "./RequestsView";
 import MasterDataView from "./MasterDataView";
 import CalendarView from "./CalendarView";
@@ -272,6 +271,7 @@ export default function ResourceView({
   data,
   onNavigate,
   onReportScopeChange,
+  workspaceReport,
   notificationTarget,
   billingScope,
   onBillingScopeChange,
@@ -287,6 +287,7 @@ export default function ResourceView({
       | "trip-booking"
       | "store-calling",
   ) => void;
+  workspaceReport?: "combined" | "dispatch-monitoring" | "dispatch" | "trip-booking" | "store-calling";
   notificationTarget?: AdminNotificationTarget | null;
   billingScope?: "rates-fuel" | "invoices" | "payables" | "cash-tracker";
   onBillingScopeChange?: (
@@ -300,7 +301,6 @@ export default function ResourceView({
      keeps its page, search and filters while the trip is open. */
   const [localTripId, setLocalTripId] = useState<string | null>(null);
   const [createdTripReference, setCreatedTripReference] = useState<string | null>(null);
-  const [tripListRefresh, setTripListRefresh] = useState(0);
   const [localTripStopId, setLocalTripStopId] = useState<string | null>(null);
   useEffect(() => {
     setLocalTripId(null);
@@ -392,34 +392,9 @@ export default function ResourceView({
       {/* ============ REQUESTS (prototype workflow) ============ */}
       {id === "requests" && <RequestsView />}
 
-      {id === "dispatches" && (
-        <ReportDataView
-          initialReport="dispatch-monitoring"
-          pageTitle={barTitle}
-          pageSubtitle={barSubtitle}
-          notificationTarget={notificationTarget}
-          showReportPicker={false}
-          showExport={false}
-          transactionView
-          hideVisualPagination
-          onOpenTrip={openTrip}
-          createdTripReference={createdTripReference}
-          visualOverview={
-            <DispatchOverview
-              onOpenTrip={openTrip}
-              refreshKey={tripListRefresh}
-            />
-          }
-          toolbarActions={
-            <AddTripButton
-              onCreated={(reference) => {
-                setCreatedTripReference(reference);
-                setTripListRefresh((value) => value + 1);
-              }}
-            />
-          }
-        />
-      )}
+
+      {id === "dispatches" && <ReportsWorkspace initialReport={workspaceReport ?? "combined"} notificationTarget={notificationTarget} onOpenTrip={openTrip} onReportScopeChange={onReportScopeChange} createdTripReference={createdTripReference} toolbarActions={<AddTripButton onCreated={setCreatedTripReference} />} />}
+
 
       {/* ============ FLEET ============ */}
       {id === "fleet" && (

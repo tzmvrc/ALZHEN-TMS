@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-test("trip detail enrichment includes stop dispatches and excludes other trips across pages", async () => {
+for(const report of ["trip-booking","dispatch"]){
+test(`${report}: scoped detail reads use physical parent IDs and isolate stops across pages`, async () => {
   process.env.SUPABASE_URL = "http://127.0.0.1:54321";
   process.env.SUPABASE_SERVICE_ROLE_KEY = "isolated-test";
   process.env.SUPABASE_ANON_KEY = "isolated-test";
@@ -29,7 +30,7 @@ test("trip detail enrichment includes stop dispatches and excludes other trips a
       order: () => chain,
       range: (from: number, to: number) => { start = from; end = to; return chain; },
       then: (resolve: (value: unknown) => unknown, reject: (error: unknown) => unknown) => {
-        const matches = table === "v_trip_booking"
+        const matches = table === (report==="dispatch"?"v_dispatch_report":"v_trip_booking")
           ? rows.filter((row) => filters.every(([key, value]) => (row as Record<string, unknown>)[key] === value))
           : table === "trips"
             ? trips.filter((trip) => includedIds.includes(trip.id))
@@ -40,9 +41,9 @@ test("trip detail enrichment includes stop dispatches and excludes other trips a
     return chain;
   };
   try {
-    const first = await getReportData("trip-booking", { trip_id: tripId, limit: 1 });
-    const second = await getReportData("trip-booking", { trip_id: tripId, limit: 1, page: 2 });
-    const third = await getReportData("trip-booking", { trip_id: tripId, limit: 1, page: 3 });
+    const first = await getReportData(report, { trip_id: tripId, limit: 1 });
+    const second = await getReportData(report, { trip_id: tripId, limit: 1, page: 2 });
+    const third = await getReportData(report, { trip_id: tripId, limit: 1, page: 3 });
     assert.equal(first.pagination.total, 3);
     assert.equal(first.pagination.totalPages, 3);
     assert.equal(first.rows[0].product_name, "Refrigerator");
@@ -51,9 +52,11 @@ test("trip detail enrichment includes stop dispatches and excludes other trips a
     assert.equal(second.rows[0].dispatch_number, "STOP-B");
     assert.equal(third.rows[0].dispatch_number, "CANONICAL-DISPATCH", "trip-only records retain their authoritative parent identifier");
     assert.ok([...first.rows, ...second.rows].every((row) => row.trip_id === tripId));
-    await assert.rejects(getReportData("trip-booking", { trip_id: "invalid" }), /Invalid trip id/);
-    await assert.rejects(getReportData("trip-booking", { trip_id: [tripId] }), /Invalid query parameter/);
+    await assert.rejects(getReportData(report, { trip_id: "invalid" }), /Invalid trip id/);
+    await assert.rejects(getReportData(report, { trip_id: [tripId] }), /Invalid query parameter/);
   } finally {
     supabaseAdmin.from = originalFrom;
   }
 });
+
+}

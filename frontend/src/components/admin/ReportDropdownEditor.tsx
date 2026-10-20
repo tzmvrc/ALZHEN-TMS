@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { Check, ChevronDown, Pencil, Plus, Save, X } from "lucide-react";
 import type { DropdownOption } from "../../services/dropdown-option.service";
 
-export type ReportDropdownChoice = { value: string; label: string };
+export type ReportDropdownChoice = { value: string; label: string; color?:string|null };
 
 type ReportDropdownEditorProps = {
   label: string;
@@ -227,7 +227,7 @@ export default function ReportDropdownEditor({
               <>
                 <button type="button" role="option" aria-selected={option.value === value} onMouseDown={(event) => event.preventDefault()} onMouseEnter={() => setActiveIndex(index)} onClick={() => { onSelect(option.value); close(false); requestAnimationFrame(() => triggerRef.current?.focus()); }} className="flex min-h-10 min-w-0 flex-1 items-center justify-between gap-2 px-2.5 py-1.5 text-left text-xs text-slate-700">
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-xs font-bold text-slate-800">{option.label}</span>
+                    <span style={(option.color??managedOption?.color)?{color:option.color??managedOption?.color??undefined,backgroundColor:`${option.color??managedOption?.color}18`}:undefined} className="block truncate rounded-sm px-1 text-xs font-medium text-slate-800">{option.label}</span>
                     {showStoredValue && <span className="block truncate text-[10px] font-normal text-slate-500">{option.value}</span>}
                   </span>
                   {option.value === value && <Check aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-emerald-700" />}
@@ -276,7 +276,7 @@ export default function ReportDropdownEditor({
             if (event.key === "Escape") { event.preventDefault(); onCancel?.(); }
             else if (event.key === "Enter" && onCommitBlur) { event.preventDefault(); onCommitBlur(); }
           }} onClick={() => { setQuery(""); onSearch?.(""); setActiveIndex(Math.max(0, options.findIndex((option) => option.value === value))); setOpen(true); }} className="spreadsheet-cell-editor spreadsheet-dropdown-trigger flex w-full items-center justify-between gap-1.5 rounded-md border border-amber-300 bg-white px-2.5 py-1.5 text-left text-xs font-medium text-slate-800 shadow-sm hover:bg-amber-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 disabled:opacity-60">
-            <span className="truncate">{(displayValue ?? value) || `Choose ${label.toLowerCase()}`}</span><ChevronDown aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-amber-700" />
+            <span style={options.find(option=>option.value===value)?.color?{color:options.find(option=>option.value===value)!.color!,backgroundColor:`${options.find(option=>option.value===value)!.color}18`}:managedOptions.find(option=>option.option_value===value)?.color?{color:managedOptions.find(option=>option.option_value===value)!.color!,backgroundColor:`${managedOptions.find(option=>option.option_value===value)!.color}18`}:undefined} className="truncate rounded-sm px-1">{(displayValue ?? value) || `Choose ${label.toLowerCase()}`}</span><ChevronDown aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-amber-700" />
           </button>
         )}
         {open && <ChevronDown aria-hidden="true" className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-amber-700" />}

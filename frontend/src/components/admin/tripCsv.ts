@@ -2,7 +2,7 @@ export const csvFields = {
   dispatch: ["dispatch no", "dispatch number"], trip: ["trip no", "trip number"],
   loadingDate: ["loading date", "email date"], eta: ["estimated delivery date", "eta"],
   tripType: ["trip type"], plate: ["plate no", "plate number", "truck name"],
-  warehouse: ["wh code", "warehouse", "ship from"], store: ["ship to", "store", "store name"],
+  warehouse: ["wh code", "warehouse", "ship from"], store: ["ship to", "ship-to", "ship_to", "ship to name", "ship to code", "ship to / destination", "store", "store name", "store code", "destination", "destination name", "delivery destination", "delivered to"],
   customer: ["customer name", "customer"], product: ["customer model", "product code", "model code", "sku"],
   category: ["product category", "category"], qty: ["qty", "quantity"],
   unitCbm: ["cbm", "unit cbm"], cbm: ["total cbm"], dr: ["dr", "dr number", "dr no"],
@@ -46,7 +46,7 @@ export function readTripCsv(text: string): CsvTripGroup[] {
   const [headers, ...records] = parseCsv(text);
   if (!headers || !records.length) throw new Error("Choose a CSV containing a header row and at least one data row.");
   const keys = headers.map(normalize);
-  const fieldIndexes = Object.fromEntries(Object.entries(csvFields).map(([field, aliases]) => [field, aliases.map(alias => keys.indexOf(alias)).find(index => index >= 0) ?? -1])) as Record<CsvField, number>;
+  const fieldIndexes = Object.fromEntries(Object.entries(csvFields).map(([field, aliases]) => [field, aliases.map(alias => keys.indexOf(normalize(alias))).find(index => index >= 0) ?? -1])) as Record<CsvField, number>;
   if (!["product", "store", "dr", "qty", "cbm"].some(field => fieldIndexes[field as CsvField] >= 0)) throw new Error("No trip columns found. Use the booking or dispatch report CSV headers.");
   const used = new Set(Object.values(fieldIndexes));
   const groups = new Map<string, CsvTripGroup>();

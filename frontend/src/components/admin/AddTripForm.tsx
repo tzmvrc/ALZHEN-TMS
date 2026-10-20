@@ -5,7 +5,8 @@ import {
   MapPin, Pencil, SlidersHorizontal, Package, Upload, FileSpreadsheet, Loader2,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
-import { searchRelationshipOptions, getNextDispatchNumber, searchDispatches, type DispatchOption, type RelationshipOption } from "../../services/lookup.service";
+import SearchableRelationshipEditor from "./SearchableRelationshipEditor";
+import { fetchTruckAvailability, type TruckAvailability, searchRelationshipOptions, getNextDispatchNumber, searchDispatches, type DispatchOption, type RelationshipOption } from "../../services/lookup.service";
 import { readTripCsv, csvNumber, csvDate, tripCapacity, type CsvTripGroup } from "./tripCsv";
 import TripTablePreview, { type TripPreviewRow } from "./TripTablePreview";
 import TripFormNotice from "./TripFormNotice";
@@ -49,7 +50,7 @@ export type NewTripPayload = {
   }>;
 };
 
-type Option = RelationshipOption;
+type Option = RelationshipOption & {disabled?:boolean};
 type Lookups = Record<"trip-types" | "warehouses" | "trucks" | "drivers" | "stores" | "products" | "customers", Option[]>;
 type ItemDraft = {
   key: number; productId: string; newCode: string; addingProduct: boolean; open: boolean;
@@ -57,10 +58,10 @@ type ItemDraft = {
   category: string; unitCbm: string; itemStatus: string; warehouse: string; qty: string; cbm: string; importNotes: string;
 };
 type StopDraft = {
-  key: number; storeId: string; customer: string; city: string; province: string; address: string;
+  key: number; storeId: string; pendingDestination?:string; customerId?:string; customer: string; city: string; province: string; address: string;
   editLocation: boolean; collapsed: boolean; items: ItemDraft[]; importNotes: string;
 };
-type TruckAssignmentDraft = { key: number; truckId: string; driverId: string };
+type TruckAssignmentDraft = { key: number; truckId: string; driverId: string; availabilityConfirmed?:boolean };
 
 const STATUSES = ["PLANNED", "LOADING", "IN_TRANSIT", "DELIVERED", "CANCELLED"];
 const EMPTY_LOOKUPS: Lookups = { "trip-types": [], warehouses: [], trucks: [], drivers: [], stores: [], products: [], customers: [] };
@@ -101,7 +102,7 @@ function labelOf(options: Option[], id: string): string | null {
 function lineQty(i: ItemDraft) { const n = num(i.qty); return Number.isFinite(n) ? n : 0; }
 function lineCbm(i: ItemDraft) { const n = num(i.cbm); return Number.isFinite(n) ? n : 0; }
 const hasItemData = (item: ItemDraft) => [item.productId, item.newCode, item.dr, item.dn, item.sp, item.so, item.sapSo, item.customerPo, item.po, item.category, item.unitCbm, item.itemStatus, item.warehouse, item.qty, item.cbm, item.importNotes].some(value => value.trim());
-const hasStopData = (stop: StopDraft) => [stop.storeId, stop.customer, stop.city, stop.province, stop.address, stop.importNotes].some(value => value.trim()) || stop.items.some(hasItemData);
+const hasStopData = (stop: StopDraft) => [stop.storeId, stop.pendingDestination??"", stop.customer, stop.city, stop.province, stop.address, stop.importNotes].some(value => value.trim()) || stop.items.some(hasItemData);
 function stopTotals(s: StopDraft) {
   return s.items.reduce((t, i) => ({ qty: t.qty + lineQty(i), cbm: t.cbm + lineCbm(i) }), { qty: 0, cbm: 0 });
 }
@@ -123,12 +124,13 @@ function Field({ label, required, hint, children, className = "" }: {
 }
 
 function Dropdown({
-  value, onChange, options, placeholder, loading, disabled, onAddNew, addNewLabel, compact,
+  value, onChange, options, placeholder, loading, disabled, onAddNew, addNewLabel, compact, openRequested=false,
 }: {
   value: string; onChange: (v: string) => void; options: Option[]; placeholder: string;
-  loading?: boolean; disabled?: boolean; onAddNew?: () => void; addNewLabel?: string; compact?: boolean;
+  loading?: boolean; disabled?: boolean; onAddNew?: () => void; addNewLabel?: string; compact?: boolean;openRequested?:boolean;
 }) {
   const [open, setOpen] = useState(false);
+  useEffect(()=>{if(openRequested)setOpen(true);},[openRequested]);
   const [query, setQuery] = useState("");
   const selected = options.find((o) => o.id === value);
   const q = query.trim().toLowerCase();
@@ -159,11 +161,11 @@ function Dropdown({
 
       {open && (
         <div className="absolute z-30 mt-1.5 max-h-72 w-full min-w-[14rem] overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-xl ring-1 ring-slate-900/5">
-          {options.length > 7 && (
+          {(
             <div className="sticky top-0 border-b border-slate-100 bg-white p-2">
               <div className="relative">
                 <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-300" />
-                <input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search"
+                <input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={event=>{if(event.key==="Enter"){event.preventDefault();const first=visible.find(option=>!option.disabled);if(first){onChange(first.id);setOpen(false);}}else if(event.key==="ArrowDown"){event.preventDefault();(event.currentTarget.closest("[data-dropdown-root]")?.querySelector("[data-dropdown-option]:not(:disabled)") as HTMLButtonElement|null)?.focus();}}} placeholder="Search"
                   className="h-8 w-full rounded-md border border-slate-200 pl-8 pr-2 text-xs outline-none focus:border-[#2678b9]" />
               </div>
             </div>
@@ -179,8 +181,8 @@ function Dropdown({
             {visible.map((o) => {
               const active = o.id === value;
               return (
-                <button key={o.id} type="button" onClick={() => { onChange(o.id); setOpen(false); }}
-                  className={`flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm ${active ? "bg-[#2678b9]/10 font-medium text-[#1d5f94]" : "text-slate-700 hover:bg-slate-50"}`}>
+                <button key={o.id} data-dropdown-option disabled={o.disabled} type="button" onKeyDown={event=>{if(event.key==="ArrowDown"||event.key==="ArrowUp"){event.preventDefault();const buttons=Array.from(event.currentTarget.closest("[data-dropdown-root]")?.querySelectorAll<HTMLButtonElement>("[data-dropdown-option]:not(:disabled)")??[]);const at=buttons.indexOf(event.currentTarget);buttons[(at+(event.key==="ArrowDown"?1:-1)+buttons.length)%buttons.length]?.focus();}}} onClick={() => { onChange(o.id); setOpen(false); }}
+                  className={`flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm disabled:cursor-not-allowed disabled:opacity-40 ${active ? "bg-[#2678b9]/10 font-medium text-[#1d5f94]" : "text-slate-700 hover:bg-slate-50"}`}>
                   <span className="min-w-0 truncate">
                     {o.label}
                     {o.secondary && <span className="ml-2 text-xs font-normal text-slate-400">{o.secondary}</span>}
@@ -263,6 +265,12 @@ export default function AddTripForm({
   const [status, setStatus] = useState("PLANNED");
   const [warehouseId, setWarehouseId] = useState("");
   const [truckAssignments, setTruckAssignments] = useState<TruckAssignmentDraft[]>(() => [newTruckAssignment()]);
+  const [truckPickerKey,setTruckPickerKey]=useState<number|null>(null);
+  const availabilitySchedule=useRef({loadingDate,etaDate});
+  const [availability,setAvailability]=useState<TruckAvailability[]>([]);
+  const [availabilityLoading,setAvailabilityLoading]=useState(true);
+  const [availabilityError,setAvailabilityError]=useState("");
+  const [availabilityRetry,setAvailabilityRetry]=useState(0);
   const [remarks, setRemarks] = useState("");
   const [stops, setStops] = useState<StopDraft[]>(() => [newStop()]);
 
@@ -286,12 +294,20 @@ export default function AddTripForm({
     let active = true;
     const names = Object.keys(EMPTY_LOOKUPS) as Array<keyof Lookups>;
     void Promise.all(names.map(async (name) => [name, await searchRelationshipOptions(accessToken, name, "")] as const))
-      .then((entries) => active && setLookups(Object.fromEntries(entries) as Lookups))
+      .then((entries) => {if(active)setLookups(current=>{const loaded=Object.fromEntries(entries) as Lookups;return {...loaded,trucks:[...new Map([...loaded.trucks,...current.trucks].map(truck=>[truck.id,truck])).values()]};});})
       .catch((cause) => active && setLookupError(cause instanceof Error ? cause.message : "Could not load the lists."))
       .finally(() => active && setLoadingLookups(false));
     return () => { active = false; };
   }, [accessToken]);
 
+  useEffect(()=>{
+    if(!accessToken)return;let live=true;
+    setAvailabilityLoading(true);setAvailabilityError("");
+    if(availabilitySchedule.current.loadingDate!==loadingDate||availabilitySchedule.current.etaDate!==etaDate){setTruckAssignments(current=>current.map(assignment=>({...assignment,availabilityConfirmed:false})));availabilitySchedule.current={loadingDate,etaDate};}
+    const timer=setTimeout(()=>{void fetchTruckAvailability(accessToken,loadingDate,etaDate).then(rows=>{if(live){setAvailability(rows);setLookups(current=>({...current,trucks:rows.map(truck=>{const existing=current.trucks.find(option=>option.id===truck.id);return {...existing,id:truck.id,label:truck.plate_number,secondary:existing?.secondary??truck.truck_type??undefined,values:{...existing?.values,plate_number:truck.plate_number,truck_type:truck.truck_type??"",capacity_cbm:truck.capacity_cbm==null?"":String(truck.capacity_cbm)}};})}));}}).catch(()=>{if(live){setAvailability([]);setAvailabilityError("Unable to check truck schedules. Retry before selecting a truck.");}}).finally(()=>{if(live)setAvailabilityLoading(false);});},200);
+    return()=>{live=false;clearTimeout(timer);};
+  },[accessToken,loadingDate,etaDate,availabilityRetry]);
+  function rememberOption(kind:keyof Lookups,option:Option){setLookups(current=>({...current,[kind]:[option,...current[kind].filter(item=>item.id!==option.id)]}));}
   /* dispatch ref: TRIP + YYMMDD (loading date, or today) + next running number */
   const refDate = loadingDate || todayLocal();
   useEffect(() => {
@@ -373,7 +389,9 @@ export default function AddTripForm({
   const hasUnknownTruckCapacity = capacityState.unknown;
 
   function addCapacityTruck() {
-    setTruckAssignments((current) => current.some(assignment => !assignment.truckId) ? current : [...current, newTruckAssignment()]);
+    const empty=truckAssignments.find(assignment=>!assignment.truckId),target=empty??newTruckAssignment();
+    if(!empty)setTruckAssignments(current=>[...current,target]);
+    setTruckPickerKey(target.key);
     setStep(0);
     setError("");
     requestAnimationFrame(() => document.getElementById("trip-truck-assignments")?.scrollIntoView({ behavior: "smooth", block: "center" }));
@@ -394,21 +412,21 @@ export default function AddTripForm({
     setImporting(true); setImportError("");
     try {
       const nextLookups = { ...lookups };
-      const normalize = (value: string) => value.trim().toLowerCase().replace(/\s+/g, " ");
+      const normalize = (value: string) => value.normalize("NFKC").trim().toLowerCase().replace(/\s+/g, " ");
       const matches = (kind: keyof Lookups, option: Option, value: string) => {
-        const keys = kind === "products" ? ["model_code", "sku", "product_name"] : kind === "warehouses" ? ["warehouse_code", "warehouse_name"] : kind === "stores" ? ["store_name", "ship_to"] : kind === "trucks" ? ["plate_number"] : ["trip_type"];
+        const keys = kind === "products" ? ["model_code", "sku", "product_name"] : kind === "warehouses" ? ["warehouse_code", "warehouse_name"] : kind === "stores" ? ["store_name", "ship_to", "store_code"] : kind === "customers" ? ["customer_name","customer_code"] : kind === "trucks" ? ["plate_number"] : ["trip_type"];
         return [option.id, option.label, ...keys.map(key => option.values?.[key] ?? "")].some(label => normalize(label) === normalize(value));
       };
       const requests = new Map<string, Promise<Option | undefined>>();
-      const find = (kind: keyof Lookups, value: string): Promise<Option | undefined> => {
+      const find = (kind: keyof Lookups, value: string, customerId?:string): Promise<Option | undefined> => {
         if (!value) return Promise.resolve(undefined);
-        const local = nextLookups[kind].filter(option => matches(kind, option, value));
+        const local = nextLookups[kind].filter(option => matches(kind, option, value)&&(!customerId||option.values?.customer_id===customerId));
         if (local.length === 1) return Promise.resolve(local[0]);
-        const key = `${kind}:${normalize(value)}`;
+        const key = `${kind}:${customerId??""}:${normalize(value)}`;
         if (!requests.has(key)) requests.set(key, (async () => {
-          const options = await searchRelationshipOptions(accessToken, kind, value);
+          const options = await searchRelationshipOptions(accessToken, kind, value,{customerId});
           nextLookups[kind] = [...new Map([...nextLookups[kind], ...options].map(option => [option.id, option])).values()];
-          const exact = nextLookups[kind].filter(option => matches(kind, option, value));
+          const exact = nextLookups[kind].filter(option => matches(kind, option, value)&&(!customerId||option.values?.customer_id===customerId));
           return exact.length === 1 ? exact[0] : undefined;
         })());
         return requests.get(key)!;
@@ -424,14 +442,15 @@ export default function AddTripForm({
       const importedTrucks = new Map<string, TruckAssignmentDraft>();
       for (const row of group.rows) {
         const v = row.values;
-        const store = await find("stores", v.store);
+        const customer=await find("customers",v.customer);
+        const store = v.customer&&!customer?undefined:await find("stores", v.store,customer?.id);
         const product = await find("products", v.product);
         const truck = await find("trucks", v.plate);
         const qty = csvNumber(v.qty, "Quantity", row.line, true);
         const unitCbm = csvNumber(v.unitCbm, "Unit CBM", row.line);
         const cbm = v.cbm ? csvNumber(v.cbm, "Total CBM", row.line) : qty && unitCbm ? String(Number((Number(qty) * Number(unitCbm)).toFixed(8))) : "";
         const stopKey = JSON.stringify([v.store, v.customer, v.city, v.province, v.address]);
-        const stop = importedStops.get(stopKey) ?? { ...newStop(), storeId: store?.id ?? "", customer: v.customer, city: v.city, province: v.province, address: v.address || store?.values?.address || "", importNotes: !store && v.store ? `Imported ship to: ${v.store}` : "", items: [] };
+        const stop = importedStops.get(stopKey) ?? { ...newStop(), storeId: store?.id ?? "", pendingDestination:store?"":v.store, customerId:store?.values?.customer_id??customer?.id, customer: v.customer, city: v.city, province: v.province, address: v.address || store?.values?.address || "", importNotes: !store && v.store ? `Imported ship to: ${v.store}` : "", items: [] };
         if (v.store && !store) warnings.add(`Store “${v.store}” needs a selection; its name is kept in stop notes.`);
         if (v.plate && !truck) warnings.add(`Vehicle “${v.plate}” needs a selection; its plate is kept in line notes.`);
         if (truck) importedTrucks.set(truck.id, { ...newTruckAssignment(), truckId: truck.id });
@@ -446,7 +465,7 @@ export default function AddTripForm({
       setTripTypeId(tripType?.id ?? ""); setNewTripType(tripType ? "" : first.tripType); setAddingTripType(!tripType && Boolean(first.tripType));
       setDispatchMode("new"); setImportedDispatch(first.dispatch); setImportedTripNumber(importedNumber);
       setStatus("PLANNED"); setRemarks(!warehouse && first.warehouse ? `Imported warehouse: ${first.warehouse}` : "");
-      setStep(2); setError(""); setCsvGroups([]);
+      setStep([...importedStops.values()].some(stop=>stop.pendingDestination&&!stop.storeId)?1:2); setError(""); setCsvGroups([]);
       requestAnimationFrame(() => bodyRef.current?.scrollTo({ top: 0 }));
       setImportMessage(`${group.rows.length} product line${group.rows.length === 1 ? "" : "s"} loaded. Check the preview, then create the trip.`);
       setImportWarnings([...warnings]);
@@ -461,20 +480,22 @@ export default function AddTripForm({
     setStops((list) => list.map((s) => s.key === stopKey
       ? { ...s, items: s.items.map((i) => (i.key === itemKey ? { ...i, ...patch } : i)) } : s));
 
-  function pickStore(stopKey: number, storeId: string) {
-    const location = lookups.stores.find((o) => o.id === storeId)?.values;
+  function pickStore(stopKey: number, storeId: string, option?:Option) {
+    if(option)rememberOption("stores",option);
+    const location = option?.values??lookups.stores.find((o) => o.id === storeId)?.values;
     const customer = lookups.customers.find((o) => o.id === location?.customer_id);
     updateStop(stopKey, {
-      storeId,
-      customer: customer?.values?.customer_name ?? "",
+      storeId,pendingDestination:"",customerId:location?.customer_id,
+      customer: customer?.values?.customer_name ?? stops.find(stop=>stop.key===stopKey)?.customer ?? "",
       city: location?.city ?? "",
       province: location?.province ?? "",
       address: location?.address ?? "",
     });
   }
 
-  function pickProduct(stopKey: number, itemKey: number, productId: string) {
-    const category = lookups.products.find((o) => o.id === productId)?.values?.product_category ?? "";
+  function pickProduct(stopKey: number, itemKey: number, productId: string, option?:Option) {
+    if(option)rememberOption("products",option);
+    const category = option?.values?.product_category??lookups.products.find((o) => o.id === productId)?.values?.product_category ?? "";
     updateItem(stopKey, itemKey, { productId, category, addingProduct: false, newCode: "" });
   }
 
@@ -486,6 +507,8 @@ export default function AddTripForm({
   function validateTrip(): string {
     if (dispatchMode === "existing" && !existingDispatch) return "Choose the dispatch this trip belongs to.";
     if (etaDate && loadingDate && etaDate < loadingDate) return "Estimated delivery can't be before the loading date.";
+    if(selectedTruckAssignments.length&&(availabilityLoading||availabilityError))return "Wait for the truck availability check, or retry it.";
+    for(const assignment of selectedTruckAssignments){const state=availability.find(truck=>truck.id===assignment.truckId);if(!state||state.availability==="CONFLICT")return "A selected truck is unavailable for these dates. Choose another truck.";if(state.availability==="REVIEW"&&!assignment.availabilityConfirmed)return "Confirm the schedule for trucks marked availability requires confirmation.";}
     const assignedTruckIds = selectedTruckAssignments.map((assignment) => assignment.truckId);
     if (new Set(assignedTruckIds).size !== assignedTruckIds.length) return "Choose a different truck for each assignment.";
     if (truckAssignments.some((assignment) => assignment.driverId && !assignment.truckId)) return "Choose a truck before assigning a driver.";
@@ -495,6 +518,7 @@ export default function AddTripForm({
   function validateStops(): string {
     for (const [i, stop] of stops.entries()) {
       const n = i + 1;
+      if(stop.pendingDestination&&!stop.storeId)return `Stop ${n}: select or add destination "${stop.pendingDestination}" before creating the trip.`;
       for (const item of stop.items) {
         if (item.qty.trim() && (!Number.isSafeInteger(num(item.qty)) || num(item.qty) < 0)) return `Stop ${n}: quantity must be a non-negative whole number.`;
         if (item.unitCbm.trim() && (!Number.isFinite(num(item.unitCbm)) || num(item.unitCbm) < 0)) return `Stop ${n}: unit CBM must be a non-negative number.`;
@@ -521,6 +545,7 @@ export default function AddTripForm({
     if (problem) return setError(problem);
     setError(""); setSaving(true);
     try {
+      if(accessToken&&selectedTruckAssignments.length){const latest=await fetchTruckAvailability(accessToken,loadingDate,etaDate);for(const assignment of selectedTruckAssignments){const truck=latest.find(row=>row.id===assignment.truckId);const previous=availability.find(row=>row.id===assignment.truckId);if(!truck||truck.availability==="CONFLICT")throw Error("A selected truck now has a schedule conflict. Choose another truck.");if(truck.availability==="REVIEW"&&(!assignment.availabilityConfirmed||previous?.availability!=="REVIEW"))throw Error("A selected truck requires schedule confirmation before creating the trip.");}}
       await onSubmit({
         trip: {
           dispatch_number: dispatchRef.trim() || null,
@@ -543,7 +568,7 @@ export default function AddTripForm({
         stops: stops.filter(hasStopData).map((stop, index) => ({
           stop_sequence: index + 1,
           store_id: stop.storeId || null,
-          customer_id: lookups.stores.find((o) => o.id === stop.storeId)?.values?.customer_id || null,
+          customer_id: lookups.stores.find((o) => o.id === stop.storeId)?.values?.customer_id || stop.customerId || null,
           remarks: [stop.customer && `Customer: ${stop.customer}`, stop.province && `Province: ${stop.province}`, stop.city && `City: ${stop.city}`, stop.address && `Ship-to address: ${stop.address}`, stop.importNotes].filter(Boolean).join(" · ") || null,
           line_items: stop.items.filter(hasItemData).map((item) => {
             const typed = item.newCode.trim();
@@ -591,7 +616,7 @@ export default function AddTripForm({
   };
   const previewRows: TripPreviewRow[] = populatedStops.flatMap(stop => {
     const items = stop.items.filter(hasItemData);
-    const base: TripPreviewRow = { ...previewTrip, store: labelOf(lookups.stores, stop.storeId) || "Unassigned", customer: stop.customer, province: stop.province, city: stop.city };
+    const base: TripPreviewRow = { ...previewTrip, store: labelOf(lookups.stores, stop.storeId) || stop.pendingDestination || "Unassigned", customer: stop.customer, province: stop.province, city: stop.city };
     return items.length ? items.map(item => ({ ...base, product: productLabel(item) || "", category: item.category, qty: item.qty, unitCbm: item.unitCbm, cbm: item.cbm, dr: item.dr, sapSo: item.sapSo, customerPo: item.customerPo, po: item.po, notes: [remarks, stop.importNotes, stop.address && `Ship-to address: ${stop.address}`, item.sp && `SP: ${item.sp}`, item.dn && `DN: ${item.dn}`, item.so && `SO: ${item.so}`, item.itemStatus && `Source status: ${item.itemStatus}`, item.warehouse && `Source warehouse: ${item.warehouse}`, item.importNotes].filter(Boolean).join(" · ") })) : [{ ...base, notes: [remarks, stop.importNotes, stop.address].filter(Boolean).join(" · ") }];
   });
 
@@ -727,25 +752,33 @@ export default function AddTripForm({
               <Section title="Warehouse and trucks" description="Add more than one truck to this trip. Cargo is not automatically split between trucks.">
                 <div className="grid gap-4 sm:grid-cols-3">
                   <Field label="Origin warehouse">
-                    <Dropdown value={warehouseId} onChange={setWarehouseId} options={lookups.warehouses} placeholder="Choose warehouse" loading={loadingLookups} />
+                    {accessToken&&<div className={`${input} flex items-center`}><SearchableRelationshipEditor token={accessToken} kind="warehouses" value={labelOf(lookups.warehouses,warehouseId)??""} autoFocus={false} disabled={saving} onSelect={option=>{rememberOption("warehouses",option);setWarehouseId(option.id);}} onCommitBlur={()=>{}} onCancel={()=>{}}/></div>}
                   </Field>
                   <div className="sm:col-span-2">
                     <div className="mb-2 flex items-center justify-between gap-3">
                       <p className="text-xs font-medium text-slate-600">Truck assignments</p>
                       <button
                         type="button"
-                        onClick={() => setTruckAssignments((current) => [...current, newTruckAssignment()])}
+                        onClick={()=>{addCapacityTruck();setAvailabilityRetry(value=>value+1);}}
                         className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold text-[#2678b9] hover:bg-[#e6f0f9]"
                       >
                         <Plus className="h-3.5 w-3.5" /> Add truck
                       </button>
                     </div>
+                    {availabilityError&&<p className="mb-2 text-xs text-rose-700">{availabilityError} <button type="button" onClick={()=>setAvailabilityRetry(value=>value+1)} className="underline">Retry schedules</button></p>}
+                    <p className="mb-2 text-xs text-slate-500">Cargo: {fmt(totals.cbm)} CBM · Selected capacity: {fmt(assignedCapacity)} CBM · Additional capacity needed: {fmt(Math.max(0,totals.cbm-assignedCapacity))} CBM. Capacity planning does not allocate cargo.</p>
                     <div className="space-y-2">
                       {truckAssignments.map((assignment, index) => {
-                        const availableTrucks = lookups.trucks.filter((truck) =>
-                          truck.id === assignment.truckId ||
-                          !truckAssignments.some((other) => other.key !== assignment.key && other.truckId === truck.id),
-                        );
+                        const otherCapacity=truckAssignments.filter(other=>other.key!==assignment.key&&other.truckId).reduce((total,other)=>total+Number(lookups.trucks.find(truck=>truck.id===other.truckId)?.values?.capacity_cbm||0),0);
+                        const remaining=Math.max(0,totals.cbm-otherCapacity);
+                        const ranked=lookups.trucks.filter(truck=>truck.id===assignment.truckId||!truckAssignments.some(other=>other.key!==assignment.key&&other.truckId===truck.id)).map(truck=>{
+                          const status=availability.find(row=>row.id===truck.id);const capacity=Number(truck.values?.capacity_cbm||0);
+                          const available=status?.availability==="AVAILABLE";
+                          return {...truck,disabled:!status||status.availability==="CONFLICT",rank:!status||status.availability==="CONFLICT"?3:!available?2:capacity>=remaining?0:1,
+                            secondary:`${truck.values?.truck_type||"Truck"} · Max ${capacity>0?fmt(capacity):"unknown"} CBM · ${available?`Available ${capacity>0?fmt(capacity):"unknown"} CBM`:status?.availability==="CONFLICT"?"Conflicting assignment":"Availability requires confirmation"} · ${capacity>0&&capacity>=remaining?"Fits remaining cargo":capacity>0?"Partial capacity":"Capacity requires review"}`};
+                        }).sort((a,b)=>a.rank-b.rank||Number(a.values?.capacity_cbm||0)-Number(b.values?.capacity_cbm||0)||a.label.localeCompare(b.label));
+                        const availableTrucks=ranked;
+                        const truckState=availability.find(truck=>truck.id===assignment.truckId);
                         const chosenTruck = lookups.trucks.find((truck) => truck.id === assignment.truckId);
                         const capacity = Number(chosenTruck?.values?.capacity_cbm);
                         return (
@@ -753,12 +786,16 @@ export default function AddTripForm({
                   <div id="trip-truck-assignments" className="min-w-0">
                               <Dropdown
                                 value={assignment.truckId}
-                                onChange={(truckId) => setTruckAssignments((current) => current.map((item) => item.key === assignment.key ? { ...item, truckId } : item))}
+                                onChange={(truckId) => {setTruckPickerKey(null);setTruckAssignments((current) => current.map((item) => item.key === assignment.key ? { ...item, truckId, availabilityConfirmed:false } : item));}}
                                 options={availableTrucks}
+                                openRequested={truckPickerKey===assignment.key&&!availabilityLoading&&!availabilityError}
+                                disabled={availabilityLoading||Boolean(availabilityError)}
                                 placeholder={index === 0 ? "Assign primary truck later" : "Choose truck"}
                                 loading={loadingLookups}
                                 compact
                               />
+                              {truckState?.availability==="REVIEW"&&<label className="mt-1 flex items-start gap-1 text-[11px] text-amber-700"><input type="checkbox" checked={Boolean(assignment.availabilityConfirmed)} onChange={event=>setTruckAssignments(current=>current.map(item=>item.key===assignment.key?{...item,availabilityConfirmed:event.target.checked}:item))}/>I have confirmed this truck's availability for the trip schedule.</label>}
+                              {truckState?.availability==="CONFLICT"&&<p className="text-xs text-rose-700">Conflicting assignment. Choose another truck.</p>}
                               {chosenTruck && (
                                 <p className="mt-1 truncate text-[10px] text-slate-400">
                                   {chosenTruck.secondary || "Truck"}
@@ -831,8 +868,8 @@ export default function AddTripForm({
                       <div className="flex flex-wrap items-center gap-3 px-4 py-3.5 sm:px-5">
                         <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#0b2341] text-xs font-semibold text-white">{si + 1}</span>
                         <div className="min-w-[14rem] flex-1">
-                          <Dropdown value={stop.storeId} onChange={(v) => pickStore(stop.key, v)} options={lookups.stores}
-                            placeholder="Choose a store to deliver to" loading={loadingLookups} />
+                          {accessToken&&<div className={`${input} flex items-center`}><SearchableRelationshipEditor token={accessToken} kind="stores" value={labelOf(lookups.stores,stop.storeId)??stop.pendingDestination??""} customerId={stop.customerId} createDefaults={{address:stop.address,city:stop.city,province:stop.province}} autoFocus={false} disabled={saving} onSelect={option=>pickStore(stop.key,option.id,option)} onCommitBlur={()=>{}} onCancel={()=>{}}/></div>}
+                          {stop.pendingDestination&&!stop.storeId&&<p className="mt-1 text-xs text-amber-700">Imported destination: {stop.pendingDestination}. Select a match or choose Add in the search list.</p>}
                         </div>
                         <span className="hidden text-xs text-slate-400 md:inline">
                           {stop.items.length} line{stop.items.length === 1 ? "" : "s"} · {fmt(t.qty, 0)} qty · {fmt(t.cbm)} CBM
@@ -899,10 +936,7 @@ export default function AddTripForm({
                                             className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"><X className="h-4 w-4" /></button>
                                         </div>
                                       ) : (
-                                        <Dropdown compact value={item.productId} onChange={(v) => pickProduct(stop.key, item.key, v)}
-                                          options={productOptions} placeholder="Search product code" loading={loadingLookups}
-                                          onAddNew={() => updateItem(stop.key, item.key, { productId: "", addingProduct: true, open: true })}
-                                          addNewLabel="Add a new product code" />
+                                        accessToken?<div className={`${inputSm} flex items-center`}><SearchableRelationshipEditor token={accessToken} kind="products" value={labelOf(productOptions,item.productId)??""} autoFocus={false} disabled={saving} onSelect={option=>pickProduct(stop.key,item.key,option.id,option)} onCommitBlur={()=>{}} onCancel={()=>{}}/></div>:null
                                       )}
                                     </div>
                                     <div>

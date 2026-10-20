@@ -1,11 +1,17 @@
 import { supabaseAdmin } from "../config/supabase.js";
 import { buildIlikeOrFilter } from "../utils/postgrest-search.js";
 
-export type MasterDataResource = "warehouses" | "trucks" | "stores" | "store-contacts" | "products";
+export type MasterDataResource = "customers" | "warehouses" | "trucks" | "stores" | "store-contacts" | "products";
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const configs = {
+  customers: {
+    table: "customers", select: "id, code, name, contact_person, contact_number, email, status",
+    orderBy: "name", search: ["code", "name", "contact_person"],
+    fields: ["code", "name", "contact_person", "contact_number", "email", "status"], required: ["code", "name"],
+    types: {code: "text", name: "text", contact_person: "nullable", contact_number: "nullable", email: "nullable", status: "text"},
+  },
   warehouses: {
     table: "warehouses",
     select: "id, code, name, address, province, city, latitude, longitude, warehouse_type, status, notes, region, created_at, updated_at",
@@ -132,13 +138,33 @@ async function validatePayloadRelationships(resource: string, payload: Record<st
   if (resource === "store-contacts" && payload.store_id !== undefined) payload.store_id = await validateRelationship("customer_stores", payload.store_id, "store_id");
 }
 
-export async function saveMasterData(resource: string, input: Record<string, unknown>, id?: string) {
+async function saveMasterDataRecord(resource: string, input: Record<string, unknown>, id?: string) {
   const creating = !id;
   if (id && !uuidPattern.test(id)) throw new Error("Invalid master-data record id.");
   const config = getConfig(resource);
   const payload = buildPayload(resource, input, creating);
   if (!Object.keys(payload).length) throw new Error("Enter at least one field to save.");
   await validatePayloadRelationships(resource, payload);
+  if(creating){
+    // Reuse exact identities across imports and explicit dropdown creation. A store
+    // name is unique only within its customer; identifiers retain DB uniqueness.
+    const normalize=(value:unknown)=>String(value??"").normalize("NFKC").trim().replace(/\s+/g," ").toLocaleLowerCase();
+    const keys=resource==="products"?["sku","model_code"]:resource==="warehouses"||resource==="customers"?["code","name"]:resource==="stores"?["code","name"]:[];
+    for(const key of keys){
+      if(!payload[key])continue;
+      const pattern=String(payload[key]).normalize("NFKC").trim().replace(/[%_*\s]+/g,"%");
+      let check=(supabaseAdmin.from(config.table) as any).select(config.select).ilike(key,pattern).limit(101);
+      if(resource==="stores")check=check.eq("customer_id",payload.customer_id);
+      const {data:candidates,error:lookupError}=await check;
+      if(lookupError||candidates?.length>100)throw new Error("Unable to verify duplicate records; refine the identifier and try again.");
+      const exact=(candidates??[]).filter((row:Record<string,unknown>)=>normalize(row[key])===normalize(payload[key]));
+      if(exact.length>1)throw new Error("Multiple records already exist with this identifier. Select an existing record.");
+      if(exact.length===1){
+        if(exact[0].status&&exact[0].status!=="ACTIVE")throw new Error("This identifier already exists on an inactive record. Ask an authorized user to review it.");
+        return exact[0];
+      }
+    }
+  }
   const table = supabaseAdmin.from(config.table) as any;
   const builder = creating
     ? table.insert(payload)
@@ -152,4 +178,15 @@ export async function saveMasterData(resource: string, input: Record<string, unk
     throw new Error("Unable to save this master-data record.");
   }
   return data;
+}
+
+// Serialize explicit creation per resource within a worker, including the exact
+// match lookup. Existing database identifier constraints remain authoritative.
+const creationQueues=new Map<string,Promise<unknown>>();
+export async function saveMasterData(resource:string,input:Record<string,unknown>,id?:string){
+ if(id)return saveMasterDataRecord(resource,input,id);
+ const previous=creationQueues.get(resource)??Promise.resolve();
+ const next=previous.catch(()=>undefined).then(()=>saveMasterDataRecord(resource,input));
+ creationQueues.set(resource,next);
+ try{return await next;}finally{if(creationQueues.get(resource)===next)creationQueues.delete(resource);}
 }

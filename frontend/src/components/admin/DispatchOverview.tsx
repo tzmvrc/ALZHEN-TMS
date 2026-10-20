@@ -20,7 +20,6 @@ import {
 } from "../../services/trip.service";
 import { searchRelationshipOptions, type RelationshipOption } from "../../services/lookup.service";
 import { useAuth } from "../../context/AuthContext";
-import { tableUi } from "./dashboardStyles";
 
 type DispatchGroup = {
   reference: string;
@@ -165,12 +164,11 @@ export default function DispatchOverview({
   refreshKey?: number;
 }) {
   const { accessToken } = useAuth();
-  const [page, setPage] = useState(1);
+  const page = 1;
   const [refresh, setRefresh] = useState(0);
   const [trips, setTrips] = useState<TripRecord[]>([]);
   const [warehouseOptions, setWarehouseOptions] = useState<RelationshipOption[]>([]);
   const [warehouseError, setWarehouseError] = useState<string | null>(null);
-  const [pagination, setPagination] = useState({ page: 1, limit: 100, total: 0, totalPages: 0 });
   const [expandedTrip, setExpandedTrip] = useState<string | null>(null);
   const [assignmentRows, setAssignmentRows] = useState<Record<string, TripAssignmentRecord[]>>({});
   const [assignmentLoading, setAssignmentLoading] = useState<Record<string, boolean>>({});
@@ -206,7 +204,6 @@ export default function DispatchOverview({
       }).then((tripPage) => {
       if (!active) return;
       setTrips(tripPage.rows);
-      setPagination(tripPage.pagination);
       setRequestStatus({ key: requestKey, error: null });
     }).catch((cause: unknown) => {
       if (!active) return;

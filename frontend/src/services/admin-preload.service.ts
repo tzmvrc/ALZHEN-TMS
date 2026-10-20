@@ -28,7 +28,8 @@ export async function preloadAdminPageData(token:string,role:string,feature?:Adm
   ...(Object.keys(REPORTS) as ReportKey[]).filter(key=>key!==initialReport).map(key=>()=>page(key)),
   ()=>preloadOperationsOverview(token),()=>preloadTransmittalTracker(token),
  ]:feature==="trips"?[
-  ()=>fetchReportPage("dispatch-monitoring",token,{...getInitialReportPageOptions("dispatch-monitoring"),filters:{active_transactions:"true",archive_scope:"active"}}),...references,
+  ()=>page("dispatch-monitoring"),...references,
+  ...(["dispatch","trip-booking","store-calling"] as ReportKey[]).map(key=>()=>page(key)),
  ]:[
   ()=>fetchTrips(token,{limit:100,archiveScope:"active"}),
   ()=>fetchTrips(token,{limit:1,status:"IN_PROGRESS",archiveScope:"active"}),

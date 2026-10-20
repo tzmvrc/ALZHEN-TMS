@@ -1,6 +1,6 @@
 import { apiGet, apiGetCached, getCachedApiResponse, invalidateApiCache, apiPatch, apiPost, getAppSessionHeaders, handleSessionExpiredResponse, type ApiResponse } from "./api.service";
 
-export type MasterDataKey = "warehouses" | "trucks" | "stores" | "store-contacts" | "products";
+export type MasterDataKey = "customers" | "warehouses" | "trucks" | "stores" | "store-contacts" | "products";
 export type MasterDataRow = Record<string, unknown> & { id: string };
 export type MasterDataPage = { rows: MasterDataRow[]; pagination: { page: number; limit: number; total: number; totalPages: number } };
 export type LocationSearchResult = { display_name: string; latitude: number; longitude: number };

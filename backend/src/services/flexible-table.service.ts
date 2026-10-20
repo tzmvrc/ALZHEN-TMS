@@ -1,3 +1,4 @@
+import { validateFormulaSyntax } from "../../../packages/spreadsheet-formula/index.js";
 import { randomUUID } from "node:crypto";
 import { supabaseAdmin } from "../config/supabase.js";
 import { ApiError } from "../utils/api-response.js";
@@ -10,7 +11,7 @@ const SYSTEM_TRACKER_KEY = "alzhen_transmittal_tracker_v1";
 const TABLE_FIELDS = "id, name, table_kind, report_key, settings, created_by, version, created_at, updated_at, archived_at";
 const COLUMN_FIELDS = "id, table_id, name, position, value_type, input_mode, binding_scope, settings, is_hidden, is_archived, created_by, version, created_at, updated_at";
 const ROW_FIELDS = "id, table_id, row_kind, source_entity_type, source_entity_id, position, created_by, version, created_at, updated_at, archived_at";
-const CELL_FIELDS = "id, row_id, column_id, value, version, updated_by, created_at, updated_at";
+const CELL_FIELDS = "id, row_id, column_id, value, formula, version, updated_by, created_at, updated_at";
 const OPTION_FIELDS = "id, column_id, label, stored_value, position, color, is_active, created_by, created_at, updated_at";
 const PERMISSION_FIELDS = "id, table_id, subject_type, subject_role, subject_profile_id, can_view, can_edit, can_manage, created_by, created_at, updated_at";
 
@@ -174,25 +175,18 @@ export async function createTable(actor: FlexActor, input: Record<string, unknow
 export async function getTable(actor: FlexActor, tableId: unknown) {
   const { table, access } = await getTableAccess(tableId, actor, "view");
   const id = table.id as string;
-  const [columnsResult, rowsResult] = await Promise.all([
-    supabaseAdmin.from("flex_columns").select(COLUMN_FIELDS).eq("table_id", id).eq("is_archived", false).order("position").order("created_at"),
-    supabaseAdmin.from("flex_rows").select(ROW_FIELDS).eq("table_id", id).eq("row_kind", "CUSTOM").is("archived_at", null).order("position").order("created_at"),
+  const readAll = async (build: () => any) => { const result:TableRecord[]=[]; for(let offset=0;offset<10000;offset+=1000){const page=await build().range(offset,offset+999);if(page.error)failDb("load complete table data for",page.error);result.push(...(page.data??[]));if((page.data?.length??0)<1000)return result;}throw new ApiError("This table exceeds the current spreadsheet loading limit.",400,"FLEX_TABLE_SIZE_LIMIT");};
+  const [columns,rows]=await Promise.all([
+    readAll(()=>supabaseAdmin.from("flex_columns").select(COLUMN_FIELDS).eq("table_id",id).eq("is_archived",false).order("position").order("created_at").order("id")),
+    readAll(()=>supabaseAdmin.from("flex_rows").select(ROW_FIELDS).eq("table_id",id).eq("row_kind","CUSTOM").is("archived_at",null).order("position").order("created_at").order("id")),
   ]);
-  if (columnsResult.error) failDb("load columns for", columnsResult.error);
-  if (rowsResult.error) failDb("load rows for", rowsResult.error);
-  const columns = columnsResult.data ?? [];
-  const rows = rowsResult.data ?? [];
-  const columnIds = columns.map((column) => column.id);
-  const rowIds = rows.map((row) => row.id);
-  const [cellsResult, optionsResult] = await Promise.all([
-    rowIds.length ? supabaseAdmin.from("flex_cells").select(CELL_FIELDS).in("row_id", rowIds) : Promise.resolve({ data: [], error: null } as any),
-    columnIds.length ? supabaseAdmin.from("flex_dropdown_options").select(OPTION_FIELDS).in("column_id", columnIds).eq("is_active", true).order("position") : Promise.resolve({ data: [], error: null } as any),
-  ]);
-  if (cellsResult.error) failDb("load cells for", cellsResult.error);
-  if (optionsResult.error) failDb("load dropdown options for", optionsResult.error);
+  const cells:TableRecord[]=[],options:TableRecord[]=[];
+  for(let offset=0;offset<rows.length;offset+=100){const batch=rows.slice(offset,offset+100).map(row=>row.id);cells.push(...await readAll(()=>supabaseAdmin.from("flex_cells").select(CELL_FIELDS).in("row_id",batch).order("id")));}
+  for(let offset=0;offset<columns.length;offset+=100){const batch=columns.slice(offset,offset+100).map(column=>column.id);options.push(...await readAll(()=>supabaseAdmin.from("flex_dropdown_options").select(OPTION_FIELDS).in("column_id",batch).eq("is_active",true).order("position").order("id")));}
+
   const cellsByRow: Record<string, TableRecord[]> = {};
-  for (const cell of cellsResult.data ?? []) (cellsByRow[cell.row_id] ??= []).push(cell);
-  return { table, access, columns, rows: rows.map((row) => ({ ...row, cells: cellsByRow[row.id] ?? [] })), options: optionsResult.data ?? [] };
+  for (const cell of cells) (cellsByRow[cell.row_id] ??= []).push(cell);
+  return { table, access, columns, rows: rows.map((row) => ({ ...row, cells: cellsByRow[row.id] ?? [] })), options };
 }
 
 export async function updateTable(actor: FlexActor, tableIdInput: unknown, input: Record<string, unknown>, requestId?: string) {
@@ -247,6 +241,11 @@ export async function updateColumn(actor: FlexActor, tableIdInput: unknown, colu
   if (input.name !== undefined || input.value_type !== undefined || input.input_mode !== undefined || input.binding_scope !== undefined || input.settings !== undefined) {
     const config = validateColumnConfiguration({ ...column, ...input });
     if (config.binding_scope !== "CUSTOM_ROW") badRequest("Source bindings are not enabled for custom tables.");
+    if(config.input_mode==="DROPDOWN" && column.input_mode!=="DROPDOWN"){
+      const formulas=await supabaseAdmin.from("flex_cells").select("id").eq("column_id",column.id).not("formula","is",null).limit(1).maybeSingle();
+      if(formulas.error)failDb("check formula compatibility for",formulas.error);
+      if(formulas.data)badRequest("Preserve the formula column or create a separate dropdown column.","FLEX_FORMULA_COLUMN_IN_USE");
+    }
     if (config.value_type !== column.value_type) {
       const { data: existingCell, error: cellError } = await supabaseAdmin.from("flex_cells").select("id").eq("column_id", column.id).limit(1).maybeSingle();
       if (cellError) failDb("check existing values before changing column type for", cellError);
@@ -312,9 +311,31 @@ export async function updateCell(actor: FlexActor, tableIdInput: unknown, rowIdI
   const column = await requireColumn(table.id, columnIdInput);
   assertCellParentTables(table.id, row.table_id, column.table_id);
   if (column.binding_scope !== "CUSTOM_ROW") throw new ApiError("This column is not editable on custom rows.", 409, "FLEX_BINDING_SCOPE_MISMATCH");
-  if (Object.keys(input).some((key) => !["value", "expected_version"].includes(key)) || !Object.hasOwn(input, "value")) badRequest("Provide value and expected_version only.");
+  if (Object.keys(input).some((key) => !["value", "formula", "expected_version"].includes(key)) || !Object.hasOwn(input, "value")) badRequest("Provide a value or formula with its expected version.");
   const expectedVersion = requireCellVersion(input.expected_version);
-  const value = validateCellValue(input.value, column.value_type as FlexValueType);
+  const formula = input.formula === undefined || input.formula === null ? null : input.formula as Record<string, unknown>;
+  if (formula) {
+    if (row.row_kind !== "CUSTOM" || !["TEXT", "NUMBER"].includes(column.input_mode) || !["TEXT", "NUMBER"].includes(column.value_type)) badRequest("Formulas are only available in custom text/number cells.");
+    if (typeof formula !== "object" || Array.isArray(formula) || Object.keys(formula).some(key => !["expression", "references"].includes(key)) || typeof formula.expression !== "string" || !formula.expression.startsWith("=") || formula.expression.length > 2000 || !formula.references || typeof formula.references !== "object" || Array.isArray(formula.references) || Buffer.byteLength(JSON.stringify(formula)) > 131072) badRequest("Invalid formula metadata.");
+    try { validateFormulaSyntax(String(formula.expression)); } catch { badRequest("Invalid formula expression."); }
+    const references = Object.entries(formula.references as Record<string, unknown>);
+    if (references.length > 1000) badRequest("Formula reference limit exceeded.");
+    const formulaRows = new Set<string>(), formulaColumns = new Set<string>();
+    for (const [address, reference] of references) {
+      if (!/^[A-Z]+[1-9][0-9]*$/.test(address) || !reference || typeof reference !== "object" || Array.isArray(reference)) badRequest("Invalid formula reference.");
+      const ref = reference as Record<string, unknown>;
+      if (Object.keys(ref).some(key => !["rowId", "columnId"].includes(key))) badRequest("Invalid formula reference.");
+      formulaRows.add(requireUuid(ref.rowId, "formula row")); formulaColumns.add(requireUuid(ref.columnId, "formula column"));
+    }
+    for (const [source, ids] of [["flex_rows", [...formulaRows]], ["flex_columns", [...formulaColumns]]] as const) {
+      for (let offset=0; offset<ids.length; offset+=100) {
+        const batch=ids.slice(offset,offset+100);
+        const found=await supabaseAdmin.from(source).select("id").eq("table_id", table.id).in("id",batch);
+        if(found.error || found.data?.length!==batch.length) badRequest("Formula references must belong to this table.");
+      }
+    }
+  }
+  const value = formula ? null : validateCellValue(input.value, column.value_type as FlexValueType);
   if (column.input_mode === "DROPDOWN" && value !== null) {
     if (typeof value !== "string") badRequest("Dropdown cell values must be stored text values.");
     const { data: option, error } = await supabaseAdmin.from("flex_dropdown_options").select("id").eq("column_id", column.id).eq("stored_value", value).eq("is_active", true).maybeSingle();
@@ -327,13 +348,13 @@ export async function updateCell(actor: FlexActor, tableIdInput: unknown, rowIdI
   if (existing) {
     const version = expectedVersion;
     if (version < 1 || existing.version !== version) throw new ApiError("This cell changed since it was loaded. Refresh and retry.", 409, "FLEX_VERSION_CONFLICT");
-    const { data, error } = await supabaseAdmin.from("flex_cells").update({ value, version: version + 1, updated_by: actor.id, updated_at: new Date().toISOString() }).eq("id", existing.id).eq("version", version).select(CELL_FIELDS).maybeSingle();
+    const { data, error } = await supabaseAdmin.from("flex_cells").update({ value, formula, version: version + 1, updated_by: actor.id, updated_at: new Date().toISOString() }).eq("id", existing.id).eq("version", version).select(CELL_FIELDS).maybeSingle();
     if (error) failDb("update cell for", error);
     if (!data) throw new ApiError("This cell changed since it was loaded. Refresh and retry.", 409, "FLEX_VERSION_CONFLICT");
     saved = data;
   } else {
     if (expectedVersion !== 0) throw new ApiError("This cell was created by another editor. Refresh and retry.", 409, "FLEX_VERSION_CONFLICT");
-    const { data, error } = await supabaseAdmin.from("flex_cells").insert({ row_id: row.id, column_id: column.id, value, version: 1, updated_by: actor.id }).select(CELL_FIELDS).single();
+    const { data, error } = await supabaseAdmin.from("flex_cells").insert({ row_id: row.id, column_id: column.id, value, formula, version: 1, updated_by: actor.id }).select(CELL_FIELDS).single();
     if (error) {
       if (error.code === "23505") throw new ApiError("This cell was created by another editor. Refresh and retry.", 409, "FLEX_VERSION_CONFLICT");
       failDb("create cell for", error);
@@ -483,4 +504,15 @@ export async function getTableAudit(actor: FlexActor, tableIdInput: unknown, lim
   const { data, error } = await supabaseAdmin.from("flex_audit_events").select("id, table_id, actor_profile_id, action, entity_type, entity_id, before_data, after_data, request_id, created_at").eq("table_id", table.id).order("created_at", { ascending: false }).limit(limit);
   if (error) failDb("load audit history for", error);
   return data ?? [];
+}
+
+/** Bounded legacy-flex batch. Preserve existing per-cell audit/version checks and report partial results. */
+export async function saveFlexibleFormulaBatch(actor:FlexActor,tableId:unknown,input:Record<string,unknown>,requestId?:string){
+ await getTableAccess(tableId,actor,"edit");
+ if(!Array.isArray(input.changes)||input.changes.length<1||input.changes.length>50)badRequest("Fill 1 to 50 custom formula cells at a time.");
+ const changes=input.changes as Array<Record<string,unknown>>,seen=new Set<string>();
+ for(const change of changes){if(!change||typeof change!=="object"||!change.formula)badRequest("Provide formula cells only.");const key=`${requireUuid(change.row_id,"row")}\0${requireUuid(change.column_id,"column")}`;if(seen.has(key))badRequest("Duplicate formula destination.");seen.add(key);}
+ const saved=[];let failure:{index:number;message:string}|null=null;
+ for(let index=0;index<changes.length;index++){const change=changes[index];try{saved.push(await updateCell(actor,tableId,change.row_id,change.column_id,{value:null,formula:change.formula,expected_version:change.expected_version},requestId));}catch(error){failure={index,message:error instanceof ApiError&&error.statusCode===409?"A destination changed. Earlier confirmed cells remain saved.":"Fill stopped. Earlier confirmed cells remain saved; review before retrying."};break;}}
+ return {saved,failure,atomic:false};
 }

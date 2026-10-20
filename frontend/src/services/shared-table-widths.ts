@@ -1,4 +1,4 @@
-import { apiGet, apiPatch, type ApiResponse } from "./api.service";
+import { apiGet, apiPatch, ApiError, type ApiResponse } from "./api.service";
 import {clearSharedDesign} from "./shared-table-design";
 
 export type SharedWidth = { table_key: string; column_key: string; width_px: number; revision: number; updated_at: string; updated_by: string | null };
@@ -37,8 +37,8 @@ export function refreshSharedWidths(token: string, table: string): Promise<void>
   const epoch = state.epoch;
   state.request = apiGet<ApiResponse<SharedWidth[]>>(endpoint(table), token).then((response) => {
     if (!response.success || !response.data) throw new Error("Shared widths could not be loaded.");
-    if (!state.active || state.epoch !== epoch) return;
-    state.rows = new Map(response.data.map((row) => [row.column_key, row]));
+    if (!state.active) return;
+    for(const row of response.data)if(row.revision >= (state.rows.get(row.column_key)?.revision??0))state.rows.set(row.column_key,row);
     state.loaded = true;
     publish(state, state.drafts.size ? state.value.error : "");
   }).catch((error) => { if (state.epoch === epoch) publish(state, error instanceof Error ? error.message : "Shared layout refresh failed."); }).finally(() => { state.request = undefined; });
@@ -61,9 +61,17 @@ export function retrySharedWidths(token: string, table: string): Promise<void> {
     await refreshSharedWidths(token, table);
     while (state.active && state.drafts.size) {
       const [column, width] = state.drafts.entries().next().value!;
-      const revision = state.rows.get(column)?.revision ?? 0;
-      state.epoch += 1;
-      const response = await apiPatch<ApiResponse<SharedWidth>>(`${endpoint(table)}/${encodeURIComponent(column)}`, { width_px: width, expected_revision: revision }, token);
+      if(state.rows.get(column)?.width_px===width){if(state.drafts.get(column)===width)state.drafts.delete(column);publish(state,"");continue;}
+      let response:ApiResponse<SharedWidth>|undefined;
+      for(let attempt=0;attempt<3;attempt++){
+        const revision=state.rows.get(column)?.revision??0;state.epoch++;
+        try{
+          response=await apiPatch<ApiResponse<SharedWidth>>(`${endpoint(table)}/${encodeURIComponent(column)}`,{width_px:width,expected_revision:revision},token);
+          if(!response.success||!response.data||response.data.column_key!==column||response.data.width_px!==width||response.data.revision<=revision)throw Error("The column width was not saved.");
+          break;
+        }catch(error){if(!(error instanceof ApiError)||error.status!==409||attempt===2)throw error;await refreshSharedWidths(token,table);}
+      }
+      if(!response?.data)throw Error("The column width was not saved.");
       if (!state.active) return;
       if (!response.success || !response.data) throw new Error("The column width was not saved.");
       state.epoch += 1;

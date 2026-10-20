@@ -109,6 +109,7 @@ export const TRANSMITTAL_TRACKER_REALTIME_TABLES = [
 /** Existing source tables used by authenticated admin pages. Publication
  * membership is a deployment setting and cannot be inferred from this list. */
 export const ADMIN_REALTIME_TABLES = [...new Set([
+  "spreadsheet_cell_formulas",
   ...Object.values(REPORT_REALTIME_TABLES).flat(),
   ...TRANSMITTAL_TRACKER_REALTIME_TABLES,
   "trip_images",
@@ -256,9 +257,9 @@ export function startAdminRealtime(
       invalidateForTable("trips");invalidateForTable("transaction_deletion_jobs");
       emitAdminRealtime({kind:"batch",tables:["trips","transaction_deletion_jobs"]});
     }
-      if(event.kind==="commit"&&event.commit.operation==="DELETE"&&["offloads","backloads","loading_reports","unloading_reports"].includes(event.commit.source)) {
+      if(event.kind==="commit"&&["offloads","backloads","demurrages","incidents","loading_reports","unloading_reports"].includes(event.commit.source)) {
         const tables = [event.commit.source, "report_receipts", ...(event.commit.source === "offloads" ? ["offload_items", "offload_deletion_jobs"] : event.commit.source === "backloads" ? ["backload_items", "backload_deletion_jobs"] : [])];
-        tables.forEach(invalidateForTable);
+        tables.forEach(table=>invalidateForTable(table));
         emitAdminRealtime({kind:"batch",tables});
       }
   });
@@ -272,9 +273,9 @@ export function startAdminRealtime(
     signalChannel = supabase.channel(`admin-change-signals:${profileId}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "admin_change_signals" }, (payload) => {
         if (active && version === connectionVersion) feed.push(payload.new as ChangeSignal);
-      }).subscribe((status) => {
+      }).on("postgres_changes",{event:"*",schema:"public",table:"spreadsheet_cell_formulas"},()=>{if(active&&version===connectionVersion)emitAdminRealtime({kind:"batch",tables:["spreadsheet_cell_formulas"]});}).subscribe((status) => {
         if (!active || version !== connectionVersion) return;
-        if (status === "SUBSCRIBED") { healthy = true; reconnectAttempt = 0; window.clearTimeout(reconnectTimer); reconnectTimer = undefined; void feed.reconcile(); }
+        if (status === "SUBSCRIBED") { healthy = true; emitAdminRealtime({kind:"batch",tables:["spreadsheet_cell_formulas"]}); reconnectAttempt = 0; window.clearTimeout(reconnectTimer); reconnectTimer = undefined; void feed.reconcile(); }
         if (["CHANNEL_ERROR", "TIMED_OUT", "CLOSED"].includes(status)) {
           healthy = false;
           if (reconnectTimer === undefined) reconnectTimer = window.setTimeout(() => {

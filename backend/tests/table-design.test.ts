@@ -20,3 +20,15 @@ test("design writes reuse width storage, preserve width, enforce role and exact 
   conflict=true;await assert.rejects(saveSharedDesign(actor,"trips","route",input),/Another user/);
  }finally{supabaseAdmin.from=original;}
 });
+
+test("cell appearance patches preserve unrelated saved properties and neighboring rows",()=>{
+ const current={format:{italic:true},cells:{"stop:a":{bold:true,color:"#abcdef"},"stop:b":{fontSize:14}}};
+ assert.deepEqual(mergeDesign(current,{cells:{"stop:a":{backgroundColor:"#fef3c7"}}}),{format:{italic:true},cells:{"stop:a":{bold:true,color:"#abcdef",backgroundColor:"#fef3c7"},"stop:b":{fontSize:14}}});
+});
+
+test("formula reads without saved overlays do not reread operational reports",async()=>{
+ process.env.SUPABASE_URL="http://127.0.0.1:54321";process.env.SUPABASE_SERVICE_ROLE_KEY="isolated-test";process.env.SUPABASE_ANON_KEY="isolated-test";
+ const {supabaseAdmin}=await import("../src/config/supabase.js");const {readSpreadsheetFormulas}=await import("../src/services/spreadsheet-formula.service.js");const original=supabaseAdmin.from;
+ (supabaseAdmin as any).from=(table:string)=>{assert.equal(table,"spreadsheet_cell_formulas","no operational source reads are needed for an empty overlay set");const chain:any={select:()=>chain,eq:()=>chain,order:()=>chain,range:async()=>({data:[],error:null})};return chain;};
+ try{assert.deepEqual(await readSpreadsheetFormulas({profileId:"fixture",role:"ADMIN"},{table_key:"report:dispatch",rows:["trip:223e4567-e89b-42d3-a456-426614174000"]}),{formulas:[],sources:[]});}finally{supabaseAdmin.from=original;}
+});

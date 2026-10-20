@@ -24,6 +24,7 @@ router.post("/:tableId/rows", controller.createRow);
 router.patch("/:tableId/rows/:rowId", controller.updateRow);
 router.delete("/:tableId/rows/:rowId", controller.archiveRow);
 router.patch("/:tableId/rows/:rowId/cells/:columnId", controller.updateCell);
+router.post("/:tableId/formulas/batch",controller.saveFormulaBatch);
 
 router.get("/:tableId/columns/:columnId/options", controller.listOptions);
 router.post("/:tableId/columns/:columnId/options", controller.createOption);

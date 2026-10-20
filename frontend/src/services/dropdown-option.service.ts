@@ -22,6 +22,7 @@ export type DropdownOption = {
   active: boolean;
   is_system: boolean;
   usage_count: number;
+  color?: string | null;
 };
 
 function unwrap<T>(response: ApiResponse<T>, fallback: string): T {
@@ -48,6 +49,7 @@ export async function addDropdownOption(
     field_key: DropdownField;
     option_value: string;
     display_label: string;
+    color?: string | null;
     sort_order?: number;
   },
 ): Promise<DropdownOption> {
@@ -66,6 +68,7 @@ export async function editDropdownOption(
   optionId: string,
   input: {
     display_label?: string;
+    color?: string | null;
     sort_order?: number;
     active?: boolean;
     confirm_in_use?: boolean;

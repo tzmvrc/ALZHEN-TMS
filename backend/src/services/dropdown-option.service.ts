@@ -72,7 +72,7 @@ export async function listDropdownOptions(fieldInput?: unknown) {
   let query = supabaseAdmin
     .from("tms_dropdown_options")
     .select(
-      "id, field_key, option_value, display_label, sort_order, active, is_system",
+      "id, field_key, option_value, display_label, sort_order, active, is_system, color",
     )
     .order("field_key", { ascending: true })
     .order("sort_order", { ascending: true })
@@ -122,9 +122,10 @@ export async function createDropdownOption(input: Record<string, unknown>) {
       sort_order: sortOrder,
       active: true,
       is_system: false,
+      color: validateOptionColor(input.color),
     })
     .select(
-      "id, field_key, option_value, display_label, sort_order, active, is_system",
+      "id, field_key, option_value, display_label, sort_order, active, is_system, color",
     )
     .single();
   if (error) {
@@ -146,7 +147,7 @@ export async function updateDropdownOption(
   if (!/^[0-9a-f-]{36}$/i.test(id)) {
     throw new Error("Invalid dropdown option id.");
   }
-  const allowedFields = ["display_label", "sort_order", "active"];
+  const allowedFields = ["display_label", "sort_order", "active", "color"];
   const unknownFields = Object.keys(input).filter(
     (field) => !allowedFields.includes(field) && field !== "confirm_in_use",
   );
@@ -158,7 +159,7 @@ export async function updateDropdownOption(
   const { data: existing, error: lookupError } = await supabaseAdmin
     .from("tms_dropdown_options")
     .select(
-      "id, field_key, option_value, display_label, sort_order, active, is_system",
+      "id, field_key, option_value, display_label, sort_order, active, is_system, color",
     )
     .eq("id", id)
     .maybeSingle();
@@ -182,6 +183,7 @@ export async function updateDropdownOption(
     }
     patch.sort_order = sortOrder;
   }
+  if ("color" in input) patch.color = validateOptionColor(input.color);
   if ("active" in input) {
     if (typeof input.active !== "boolean") {
       throw new Error("active must be a boolean.");
@@ -215,7 +217,7 @@ export async function updateDropdownOption(
     .update({ ...patch, updated_at: new Date().toISOString() })
     .eq("id", id)
     .select(
-      "id, field_key, option_value, display_label, sort_order, active, is_system",
+      "id, field_key, option_value, display_label, sort_order, active, is_system, color",
     )
     .single();
   if (error) {
@@ -253,3 +255,5 @@ export async function assertActiveDropdownOption(
     throw new Error(`${field} must be an active configured option.`);
   }
 }
+
+function validateOptionColor(value: unknown): string | null { if (value === undefined || value === null || value === "") return null; if (typeof value !== "string" || !/^#[0-9a-f]{6}$/i.test(value)) throw new Error("Choose a valid option color."); return value; }

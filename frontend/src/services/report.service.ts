@@ -307,6 +307,7 @@ export async function fetchReportRows(
   });
   if (options.search.trim()) params.set("search", options.search.trim());
   if (!params.get("sort_by")) params.delete("sort_by");
+  if(options.filters.issue_filter && options.filters.issue_filter!=="All") params.set("issue_filter",options.filters.issue_filter);
   for (const filter of reportFilters[reportKey]) {
     const value = options.filters[filter.key]?.trim();
     if (value) params.set(filter.key, value);

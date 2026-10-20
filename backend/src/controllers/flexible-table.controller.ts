@@ -60,3 +60,5 @@ export const connectSectionTable = (req: Request, res: Response) => respond(res,
   return service.setSectionTableConnection(actorFromRequest(req), param(req, "sectionKey"), requestBody.table_id, true, requestId(req));
 });
 export const disconnectSectionTable = (req: Request, res: Response) => respond(res, "Flexible table disconnected from section successfully", () => service.setSectionTableConnection(actorFromRequest(req), param(req, "sectionKey"), param(req, "tableId"), false, requestId(req)));
+
+export const saveFormulaBatch=(req:Request,res:Response)=>respond(res,"Formula batch processed",()=>service.saveFlexibleFormulaBatch(actorFromRequest(req),param(req,"tableId"),body(req),requestId(req)));

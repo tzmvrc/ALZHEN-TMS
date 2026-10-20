@@ -1,3 +1,4 @@
+import { issueFilterTripIds } from "./trip-issues.service.js";
 import { supabaseAdmin } from "../config/supabase.js";
 import { REPORT_DEFINITIONS, REPORT_KEYS } from "../config/reports.js";
 import type {
@@ -81,6 +82,7 @@ function applySearch(
   searchValue: string | undefined,
   columns: ReportDefinition["columns"],
   matchingTripIds: string[] = [],
+  tripIdField = "trip_id",
 ) {
   const searchFilter = buildIlikeOrFilter(
     columns
@@ -95,7 +97,7 @@ function applySearch(
   // Some deployed report views project blank references. An exact saved dispatch
   // can still be found through its authoritative trip record before pagination.
   const safeTripIds = matchingTripIds.filter(isValidUuid);
-  if (safeTripIds.length) clauses.push(`trip_id.in.(${safeTripIds.join(",")})`);
+  if (safeTripIds.length) clauses.push(`${tripIdField}.in.(${safeTripIds.join(",")})`);
   const numericSearch = searchValue.trim();
   if (/^-?\d+(\.\d+)?$/.test(numericSearch)) {
     clauses.push(
@@ -597,6 +599,9 @@ export async function getReportData(
   const key = reportKey.trim();
   if (!REPORT_KEYS.includes(key)) throw new ApiError("Report not found", 404, "REPORT_NOT_FOUND");
   const definition = getReportDefinition(key);
+  // These views expose the physical parent as an internal field; the public
+  // trip_id alias is attached only after querying, so it cannot be filtered in SQL.
+  const tripIdField = ["trip-booking", "dispatch"].includes(key) ? "_trip_id" : "trip_id";
   validateArrayQuery(query.trip_id, "trip_id");
   const tripId = normalizeText(getQueryString(query.trip_id));
   if (tripId && !isValidUuid(tripId)) {
@@ -620,6 +625,8 @@ export async function getReportData(
     return { rows: [], pagination: buildPaginationMeta(page, limit, 0) };
   }
 
+  const issueTripIds=await issueFilterTripIds(getQueryString(query.issue_filter)??"All");
+  if(issueTripIds?.length===0)return {rows:[],pagination:buildPaginationMeta(page,limit,0)};
   let matchingTripIds: string[] = [];
   if (search && ["combined", "dispatch-monitoring", "dispatch", "trip-booking"].includes(key)) {
     const { data, error } = await supabaseAdmin.from("trips").select("id").eq("dispatch_number", search);
@@ -630,13 +637,14 @@ export async function getReportData(
   let lastError: Error | null = null;
   for (const viewName of viewNames) {
     let builder = supabaseAdmin.from(viewName).select("*", { count: "exact" });
-    if (tripId) builder = builder.eq(key === "trip-booking" ? "_trip_id" : "trip_id", tripId);
+    if (tripId) builder = builder.eq(tripIdField, tripId);
     if (key === "dispatch-monitoring" && getQueryString(query.active_transactions) === "true") {
       builder = getQueryString(query.archive_scope) === "archived"
         ? builder.not("transaction_archived_at", "is", null)
         : builder.is("transaction_archived_at", null);
     }
     if (ongoingTripIds) builder = builder.in("trip_id", ongoingTripIds);
+    if(issueTripIds)builder=builder.in(tripIdField,issueTripIds);
     builder = applyFilters(builder, definition, query);
     const reportTableKeys = [
       "combined",
@@ -659,7 +667,7 @@ export async function getReportData(
           title: column,
           type: "text" as const,
         }));
-    builder = applySearch(builder, search, searchColumns, matchingTripIds);
+    builder = applySearch(builder, search, searchColumns, matchingTripIds, tripIdField);
     builder = builder.order(sortBy, { ascending: sortOrder === "asc" });
     builder = builder.range(from, from + limit - 1);
     const { data, error, count } = await builder;

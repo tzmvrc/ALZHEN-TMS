@@ -1,6 +1,6 @@
 import { ArrowUpRight } from "lucide-react";
 import { SPREADSHEET_DEFAULT_ROW_HEIGHT } from "./spreadsheet-row-layout";
-import { useContext, useEffect, useLayoutEffect, useState, type CSSProperties, type MouseEvent, type ReactNode, type RefObject } from "react";
+import { useContext, useEffect, useLayoutEffect, useState, type CSSProperties, type MouseEvent, type ReactNode, type RefObject, type TdHTMLAttributes } from "react";
 import { ToastContext } from "../ui/toast-context";
 
 export const SPREADSHEET_GUTTER_WIDTH = 52;
@@ -20,12 +20,17 @@ export function SpreadsheetFooter({ total, page = 1, totalPages = 1, children, l
 export type SpreadsheetColumn = { key: string; width: number; style?: CSSProperties };
 
 /** Presentation only: never adds entries to a dataset, selection, or export. */
-export function SpreadsheetBlankRows({ count, columns, start, height, loading = false, gutterWidth = SPREADSHEET_GUTTER_WIDTH }: {
+export function SpreadsheetBlankRows({ count, columns, start, height, loading = false, gutterWidth = SPREADSHEET_GUTTER_WIDTH, cellProps, onRowSelect }: {
   count: number; columns: SpreadsheetColumn[]; start: number; height: number; loading?: boolean; gutterWidth?: number;
+  cellProps?: (rowNumber:number,column:string)=>TdHTMLAttributes<HTMLTableCellElement>;
+  onRowSelect?: (rowNumber:number,event:MouseEvent<HTMLButtonElement>)=>void;
 }) {
-  return <>{Array.from({ length: count }, (_, index) => <tr key={`blank-${index}`} data-spreadsheet-blank="true" aria-hidden="true" style={{ height }}>
-    <td className="spreadsheet-gutter sticky left-0 z-30 border-b border-r border-slate-200 bg-slate-50 px-1 text-center align-middle text-xs tabular-nums text-slate-400" style={{ width: gutterWidth, minWidth: gutterWidth }}><SpreadsheetRowNumber value={start + index} />{gutterWidth === SPREADSHEET_GUTTER_WIDTH && <span aria-hidden="true" className="inline-block w-[18px]" />}</td>
-    {columns.map(column => <td key={column.key} className="border-b border-r border-slate-100 px-4" style={{ width: column.width, minWidth: column.width, maxWidth: column.width, ...column.style }}>{loading && <div className="h-3 w-2/3 animate-pulse rounded-sm bg-slate-100 motion-reduce:animate-none" />}</td>)}
+  return <>{Array.from({ length: count }, (_, index) => <tr key={`blank-${index}`} data-spreadsheet-blank="true" aria-hidden={cellProps?undefined:true} style={{ height }}>
+    <td className="spreadsheet-gutter sticky left-0 z-30 border-b border-r border-slate-200 bg-slate-50 px-1 text-center align-middle text-xs tabular-nums text-slate-400" style={{ width: gutterWidth, minWidth: gutterWidth }}>
+      {onRowSelect?<button type="button" aria-label={`Select spreadsheet row ${start+index}`} title="Select row; Ctrl/Cmd-click toggles, Shift-click extends" onClick={event=>onRowSelect(start+index,event)} className="w-full text-center focus-visible:outline-2 focus-visible:outline-blue-500"><SpreadsheetRowNumber value={start+index}/></button>:<SpreadsheetRowNumber value={start + index}/>}
+      {gutterWidth === SPREADSHEET_GUTTER_WIDTH && <span aria-hidden="true" className="inline-block w-[18px]" />}
+    </td>
+    {columns.map(column => {const props=cellProps?.(start+index,column.key);return <td key={column.key} {...props} className={`border-b border-r border-slate-100 px-4 ${props?.className??""}`} style={{ width: column.width, minWidth: column.width, maxWidth: column.width, ...column.style,...props?.style }}>{loading && <div className="h-3 w-2/3 animate-pulse rounded-sm bg-slate-100 motion-reduce:animate-none" />}</td>;})}
   </tr>)}</>;
 }
 
@@ -59,7 +64,8 @@ export function useSpreadsheetViewport(ref: RefObject<HTMLDivElement | null>, ro
         bottomPadding += parseFloat(style.paddingBottom || "0") + parseFloat(style.borderBottomWidth || "0");
         if (ancestor.tagName === "MAIN") break;
       }
-      const available = Math.max(160, (window.visualViewport?.height ?? window.innerHeight) - top - footerHeight - bottomPadding);
+      const sheetTabsHeight = viewport.closest("[data-trips-workspace]")?.querySelector("[data-sheet-tabs]")?.getBoundingClientRect().height ?? 0;
+      const available = Math.max(160, (window.visualViewport?.height ?? window.innerHeight) - top - footerHeight - bottomPadding - sheetTabsHeight);
       viewport.style.height = `${available}px`;
       const table = viewport.querySelector("table");
       const body = table?.tBodies[0];
@@ -95,8 +101,11 @@ export function spreadsheetFeedbackMessage(message: string, variant: "success" |
   // Only locally composed, bounded outcome summaries may retain their counts.
   if (/^(?:[0-9]+ reports? deleted\.|No reports were deleted\.)(?: [0-9]+ reports? could not be deleted\. Review the selection before retrying\.)?(?: Image cleanup is pending\. Use the image cleanup action to review it\.)?(?: The table could not be refreshed\. Retry loading it\.)?$/.test(message)) return message;
   if (variant === "error") {
+    if (/^Invalid formula: #(REF!|DIV\/0!|VALUE!|CYCLE!|ERROR!)$/.test(message)) return message;
+    if (/^Choose an active (configured dropdown|status|dropdown) value\.$/.test(message)) return message;
     if (message === "Table design could not be saved or refreshed. Unsaved changes can be retried with Retry table design.") return message;
     if (/^(Quantity|Total CBM) must be a non-negative number\.$/.test(message)) return message;
+    if (message === "Select a driver explicitly before changing this truck.") return message;
     if (message === "Choose the original image with its original filename.") return message;
     if (/password|credentials/i.test(message)) return "Incorrect password. Please try again.";
     if (/session|expired|sign.?in|unauthenticated/i.test(message)) return "Your session has expired. Please sign in again.";

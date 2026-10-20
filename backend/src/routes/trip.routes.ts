@@ -1,3 +1,4 @@
+import {getTruckAvailability} from "../services/truck-availability.service.js";
 import { Router } from "express";
 import {wholeTripImpact,deleteWholeTrips} from "../services/whole-trip-deletion.service.js";
 import {ApiError,sendError,sendSuccess} from "../utils/api-response.js";
@@ -78,6 +79,7 @@ router.delete(
 router.get("/", authMiddleware, requireRole("ADMIN", "STAFF"), listTrips);
 router.post("/", authMiddleware, requireRole("ADMIN", "STAFF"), createTrip);
 // Must stay above "/:id" routes, otherwise "next-dispatch-number" is read as a trip id.
+router.get("/truck-availability",authMiddleware,requireRole("ADMIN","STAFF"),async(req,res)=>{try{const result=await getTruckAvailability(typeof req.query.start==="string"?req.query.start:undefined,typeof req.query.end==="string"?req.query.end:undefined);return sendSuccess(res,200,"Truck availability",result);}catch(error){return sendError(res,error instanceof ApiError?error.statusCode:503,"Unable to check truck availability. Check the schedule and try again.");}});
 router.get("/next-dispatch-number", authMiddleware, requireRole("ADMIN", "STAFF"), nextDispatchNumber);
 router.get("/dispatches", authMiddleware, requireRole("ADMIN", "STAFF"), listDispatches);
 router.get(

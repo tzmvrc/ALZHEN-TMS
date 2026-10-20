@@ -1,6 +1,8 @@
 import { useEffect, useId, useRef, useState } from "react";
+import { useAuth } from "../../context/AuthContext";
+import RelationshipCreateDialog, {creatableRelationship, normalizeRelationship} from "./RelationshipCreateDialog";
 import { createPortal } from "react-dom";
-import { Check, ChevronDown } from "lucide-react";
+import { Check, Plus } from "lucide-react";
 import {
   searchRelationshipOptions,
   type RelationshipKind,
@@ -15,6 +17,7 @@ type SearchableRelationshipEditorProps = {
   disabled?: boolean;
   autoFocus?: boolean;
   customerId?: string;
+  createDefaults?:Record<string,string>;
   onSelect: (option: RelationshipOption) => void;
   onCommitSelection?: (option: RelationshipOption) => void;
   onCommitBlur: () => void;
@@ -29,11 +32,15 @@ export default function SearchableRelationshipEditor({
   disabled = false,
   autoFocus = true,
   customerId,
+  createDefaults,
   onSelect,
   onCommitSelection,
   onCommitBlur,
   onCancel,
 }: SearchableRelationshipEditorProps) {
+  const {profile}=useAuth();
+  const [creating,setCreating]=useState(false);
+  const createRef=useRef(false);
   const listId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
   const [isOpen, setIsOpen] = useState(false);
@@ -42,7 +49,7 @@ export default function SearchableRelationshipEditor({
   const [activeIndex, setActiveIndex] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [position, setPosition] = useState({ left: 0, top: 0, width: 240 });
+  const [position, setPosition] = useState({ left: 0, top: 0, width: 240, zIndex:100 });
 
   useEffect(() => {
     if (!isOpen) return;
@@ -85,11 +92,12 @@ export default function SearchableRelationshipEditor({
     const updatePosition = () => {
       const rect = inputRef.current?.getBoundingClientRect();
       if (!rect) return;
+      let layer=90;for(let ancestor:HTMLElement|null=inputRef.current;ancestor;ancestor=ancestor.parentElement){const z=Number.parseInt(getComputedStyle(ancestor).zIndex,10);if(Number.isFinite(z))layer=Math.max(layer,z);}
       const width = Math.min(Math.max(rect.width, 220), Math.max(0, window.innerWidth - 16));
       setPosition({
         left: Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)),
         top: Math.max(8, Math.min(rect.bottom + 4, window.innerHeight - 220)),
-        width,
+        width,zIndex:layer+10,
       });
     };
     updatePosition();
@@ -109,17 +117,21 @@ export default function SearchableRelationshipEditor({
     if (commit) onCommitSelection?.(option);
   }
 
+  const identityFields=kind==="warehouses"?["warehouse_code","warehouse_name"]:kind==="stores"?["store_code","store_name","ship_to"]:kind==="customers"?["customer_code","customer_name"]:["sku","model_code","product_name"];
+  const canCreate=creatableRelationship(kind)&&["ADMIN","STAFF"].includes(profile?.role??"")&&Boolean(query.trim())&&!loading&&!error&&!options.some(option=>[option.id,option.label,...identityFields.map(field=>option.values?.[field]??"")].some(value=>normalizeRelationship(value)===normalizeRelationship(query)));
+  const beginCreate=()=>{createRef.current=true;setCreating(true);};
   function handleKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
     if (event.key === "ArrowDown") {
       event.preventDefault();
       setIsOpen(true);
-      setActiveIndex((index) => Math.min(index + 1, Math.max(0, options.length - 1)));
+      setActiveIndex((index) => Math.min(index + 1, Math.max(0, options.length - 1 + Number(canCreate))));
     } else if (event.key === "ArrowUp") {
       event.preventDefault();
       setActiveIndex((index) => Math.max(index - 1, 0));
     } else if (event.key === "Enter") {
       event.preventDefault();
-      if (isOpen && options.length > 0) {
+      if(isOpen&&canCreate&&activeIndex===options.length){beginCreate();}
+      else if (isOpen && options.length > 0) {
         selectOption(options[activeIndex] ?? options[0], true);
       } else {
         onCommitBlur();
@@ -174,6 +186,7 @@ export default function SearchableRelationshipEditor({
           </button>
         ))
       )}
+      {canCreate&&<button id={`${listId}-${options.length}`} type="button" role="option" aria-selected={activeIndex===options.length} onMouseDown={event=>event.preventDefault()} onMouseEnter={()=>setActiveIndex(options.length)} onClick={beginCreate} className="flex w-full items-center gap-1 border-t px-3 py-2 text-left text-xs text-blue-700"><Plus className="h-3 w-3"/>Add "{query.trim()}"</button>}
     </div>
   ) : null;
 
@@ -184,12 +197,13 @@ export default function SearchableRelationshipEditor({
         ref={inputRef}
         autoFocus={autoFocus}
         disabled={disabled}
+        aria-label={`Search ${kind}`}
         role="combobox"
         aria-autocomplete="list"
         aria-expanded={isOpen}
         aria-controls={listId}
-        aria-activedescendant={isOpen && options.length ? `${listId}-${activeIndex}` : undefined}
-        value={query}
+        aria-activedescendant={isOpen && (options.length||canCreate) ? `${listId}-${activeIndex}` : undefined}
+        value={isOpen?query:value}
         placeholder="Search records"
         onFocus={() => {
           if (!disabled) {
@@ -205,20 +219,19 @@ export default function SearchableRelationshipEditor({
           setIsOpen(true);
         }}
         onBlur={(event) => {
+          if(createRef.current||(event.relatedTarget as Element|null)?.closest("[data-relationship-create]"))return;
           if ((event.relatedTarget as Element | null)?.closest("[data-spreadsheet-formatting]")) { requestAnimationFrame(() => inputRef.current?.focus()); return; }
           setIsOpen(false);
           setQuery("");
           onCommitBlur();
         }}
         onKeyDown={handleKeyDown}
-        className="spreadsheet-cell-editor w-full min-w-0 max-w-full rounded-lg border border-amber-300 bg-white px-3 py-2 pr-9 text-sm font-medium text-slate-800 shadow-sm outline-none transition hover:border-amber-400 focus:border-amber-500 focus:ring-2 focus:ring-amber-100 disabled:cursor-wait disabled:opacity-60"
+        className="spreadsheet-cell-editor w-full min-w-0 max-w-full rounded-none border-0 bg-transparent px-0 py-0 text-sm font-medium text-slate-800 shadow-sm outline-none transition hover:border-amber-400 focus:border-amber-500 focus:ring-2 focus:ring-amber-100 disabled:cursor-wait disabled:opacity-60"
       />
-        <ChevronDown
-          aria-hidden="true"
-          className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-amber-700"
-        />
+
       </div>
-      {popover && createPortal(popover, document.body)}
+      {popover && !creating && createPortal(popover, document.body)}
+      {creating&&creatableRelationship(kind)&&<RelationshipCreateDialog token={token} kind={kind} initialValue={query.trim()} customerId={customerId} defaults={createDefaults} zIndex={position.zIndex+20} onCancel={()=>{setCreating(false);createRef.current=false;inputRef.current?.focus();}} onCreated={option=>{setCreating(false);createRef.current=false;setOptions(current=>[option,...current.filter(row=>row.id!==option.id)]);selectOption(option,true);}}/>}
     </>
   );
 }

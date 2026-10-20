@@ -32,7 +32,7 @@ function fullName(row: LookupRow) {
     .trim();
 }
 
-function toRelationshipOption(
+export function toRelationshipOption(
   kind: RelationshipKind,
   row: LookupRow,
 ): RelationshipOption | null {
@@ -81,6 +81,7 @@ function toRelationshipOption(
         secondary: stringValue(row, "code"),
         values: {
           customer_name: stringValue(row, "name"),
+          customer_code: stringValue(row, "code"),
         },
       };
     case "stores":
@@ -93,6 +94,7 @@ function toRelationshipOption(
         values: {
           customer_id: stringValue(row, "customer_id"),
           store_name: stringValue(row, "name"),
+          store_code: stringValue(row, "code"),
           ship_to: stringValue(row, "name"),
           city: stringValue(row, "city"),
           province: stringValue(row, "province"),
@@ -226,4 +228,10 @@ export async function searchRelationshipOptions(
     .map((row) => toRelationshipOption(kind, row))
     .filter((option): option is RelationshipOption => Boolean(option?.label))
     .map((option) => [option.id, option])).values()];
+}
+export type TruckAvailability={id:string;plate_number:string;truck_type:string|null;capacity_cbm:number|null;available_cbm:number|null;availability:"AVAILABLE"|"CONFLICT"|"REVIEW";reason:string};
+export async function fetchTruckAvailability(token:string,start:string,end:string):Promise<TruckAvailability[]>{
+ const query=new URLSearchParams();if(start)query.set("start",start);if(end)query.set("end",end);
+ const response=await apiGet<ApiResponse<TruckAvailability[]>>(`/trips/truck-availability?${query}`,token);
+ if(!response.success||!response.data)throw new Error("Unable to check truck availability.");return response.data;
 }

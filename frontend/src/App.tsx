@@ -65,6 +65,9 @@ function App() {
         }
       />
 
+      <Route path="/trips" element={<AdminRoute><DashboardPage /></AdminRoute>} />
+      <Route path="/reports" element={<AdminRoute><DashboardPage /></AdminRoute>} />
+      <Route path="/reports/:reportKey" element={<AdminRoute><DashboardPage /></AdminRoute>} />
       <Route path="/trips/:tripId" element={<AdminRoute><DashboardPage /></AdminRoute>} />
 
       <Route

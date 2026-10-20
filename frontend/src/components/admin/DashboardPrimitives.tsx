@@ -262,7 +262,7 @@ function statusPill(status: string) {
   return map[status] ?? "bg-slate-100 text-slate-600 ring-slate-200";
 }
 
-export function StatusBadge({ value }: { value: unknown }) {
+export function StatusBadge({ value,color }: { value: unknown; color?:string|null }) {
   const raw =
     typeof value === "string"
       ? value.trim()
@@ -297,7 +297,7 @@ export function StatusBadge({ value }: { value: unknown }) {
 
   return (
     <span
-      className={`inline-flex items-center rounded-full px-2 py-1 text-[10px] font-semibold ring-1 ring-inset ${tone}`}>
+      style={color?{color,backgroundColor:`${color}18`,boxShadow:`inset 0 0 0 1px ${color}33`}:undefined} className={`inline-flex items-center rounded-full px-2 py-1 text-[10px] font-semibold ring-1 ring-inset ${tone}`}>
       {normalized.replaceAll("_", " ")}
     </span>
   );

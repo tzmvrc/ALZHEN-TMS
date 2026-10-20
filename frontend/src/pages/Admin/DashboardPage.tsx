@@ -1,4 +1,6 @@
-import {useNavigate,useParams,useSearchParams} from "react-router-dom";
+import {workspaceReportFromLocation} from "../../services/trips-workspace";
+import { apiGet,type ApiResponse } from "../../services/api.service";
+import {useNavigate,useParams,useSearchParams,useLocation} from "react-router-dom";
 // src/pages/Admin/DashboardPage.tsx
 import { useCallback,useEffect, useMemo, useRef, useState } from "react";
 import SidebarNav, {
@@ -9,7 +11,6 @@ import { PageSkeleton } from "../../components/admin/DashboardPrimitives";
 import ConfirmDialog from "../../components/ui/ConfirmDialog";
 import { useAuth } from "../../context/AuthContext";
 import {
-  BarChart3,
   Inbox,
   LayoutDashboard,
   Truck,
@@ -57,6 +58,7 @@ type ClientTab = "website-preview" | "trucks" | "announcements" | "careers";
 
 const normalizeMainSection = (value: string) => {
   if(value.startsWith("trip-detail:"))return value;
+  if(["reports","offloads","offload-reports","operations-reports","backloads"].includes(value))return "trips";
   if (value === "notifications") return "notifications";
   if (["dispatches", "deliveries", "monitoring"].includes(value))
     return "trips";
@@ -69,7 +71,7 @@ const normalizeMainSection = (value: string) => {
       "store-calling",
     ].includes(value)
   )
-    return "reports";
+    return "trips";
   if (["rates-fuel", "invoices", "payables", "cash-tracker"].includes(value))
     return "billing";
   if (
@@ -108,25 +110,26 @@ export default function DashboardPage({
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [logoutLoading, setLogoutLoading] = useState(false);
+  const location=useLocation();
+  const requestedSheet=workspaceReportFromLocation(location.pathname,location.search);
   const [localActiveId, setLocalActiveId] = useState(() =>
-    normalizeMainSection(data.nav.activeId),
+    requestedSheet ? "trips" : normalizeMainSection(data.nav.activeId),
   );
   const route=useParams<{tripId:string}>(),navigate=useNavigate(),[routeQuery]=useSearchParams();
   const activeId=route.tripId?`trip-detail:${route.tripId}:dispatches${routeQuery.get("stop")?`:stop:${routeQuery.get("stop")}`:""}`:localActiveId;
   const setActiveId=useCallback((next:string)=>{
     if(next.startsWith("trip-detail:")){const [,trip,,scope,stop]=next.split(":");navigate(`/trips/${encodeURIComponent(trip)}${scope==="stop"&&stop?`?stop=${encodeURIComponent(stop)}`:""}`);}
-    else {setLocalActiveId(next);if(route.tripId)navigate("/");}
-  },[navigate,route.tripId]);
-  const [tripView, setTripView] = useState<
-    "dispatches" | "monitoring" | "deliveries"
-  >("dispatches");
+    else {setLocalActiveId(next);if(route.tripId||location.pathname!=="/")navigate("/");}
+  },[navigate,route.tripId,location.pathname]);
   const [reportView, setReportView] = useState<
     | "combined"
     | "dispatch-monitoring"
     | "dispatch"
     | "trip-booking"
     | "store-calling"
-  >("combined");
+  >(requestedSheet ?? (["combined","dispatch-monitoring","dispatch","trip-booking","store-calling"].includes(data.nav.activeId) ? data.nav.activeId as "combined"|"dispatch-monitoring"|"dispatch"|"trip-booking"|"store-calling" : "combined"));
+  const [seenRequestedSheet,setSeenRequestedSheet]=useState(requestedSheet);
+  if(seenRequestedSheet!==requestedSheet){setSeenRequestedSheet(requestedSheet);if(requestedSheet){setReportView(requestedSheet);setLocalActiveId("trips");}}
   useEffect(()=>{
     if(!accessToken||!profile)return;
     const feature=activeId==="overview"?"home":activeId==="trips"||activeId.startsWith("trip-detail:")?"trips":activeId==="reports"?"reports":activeId==="truckers"?"users":undefined;
@@ -352,7 +355,16 @@ export default function DashboardPage({
     }
   };
 
-  const handleNotificationOpen = (item: AdminNotification) => {
+  const handleNotificationOpen = async (item: AdminNotification) => {
+    const source=String(item.reference_type??"").replace(/s$/i,"").toUpperCase();
+    if(["OFFLOAD","BACKLOAD","DEMURRAGE","INCIDENT"].includes(source)&&accessToken){
+      try{
+        const response=await apiGet<ApiResponse<{trip_id:string;trip_stop_id:string|null}>>(`/reports/trip-issues/${source}/${encodeURIComponent(item.reference_id)}`,accessToken);
+        if(!response.success||!response.data)return;
+        const target=`trip-detail:${response.data.trip_id}:dispatches${response.data.trip_stop_id?`:stop:${response.data.trip_stop_id}`:""}`;
+        setNotificationTarget(null);setActiveId(target);onNavigate(target);return;
+      }catch{setActiveId("trips");setReportView("combined");onNavigate("trips");return;}
+    }
     const validReports = [
       "combined",
       "dispatch-monitoring",
@@ -381,8 +393,8 @@ export default function DashboardPage({
             : undefined,
       });
       setReportView(reportKey);
-      setActiveId("reports");
-      onNavigate("reports");
+      setActiveId("trips");
+      onNavigate("trips");
       return;
     }
     setNotificationTarget(null);
@@ -423,11 +435,6 @@ export default function DashboardPage({
       },
       { id: "trips", label: "Trips", icon: <Truck className="h-4 w-4" /> },
       { id: "truckers", label: "Users", icon: <Users className="h-4 w-4" /> },
-      {
-        id: "reports",
-        label: "Reports",
-        icon: <BarChart3 className="h-4 w-4" />,
-      },
       {
         id: "billing",
         label: "Billing",
@@ -503,16 +510,18 @@ export default function DashboardPage({
   const handleNavigate = (id: string) => {
     const nextSection = normalizeMainSection(id);
     if (nextSection === "notifications" && profile?.role !== "ADMIN") return;
-    if (nextSection === "trips") setTripView("dispatches");
+    if (["combined","dispatch-monitoring","dispatch","trip-booking","store-calling"].includes(id)) setReportView(id as typeof reportView);
+    else if (id === "reports") setReportView("combined");
     setActiveId(nextSection);
     onNavigate(nextSection);
   };
 
   const handleMetricNavigate = (id: string) => {
     const nextSection = normalizeMainSection(id);
-    if (id === "dispatches") setTripView("dispatches");
-    if (id === "monitoring") setTripView("monitoring");
+    if (id === "dispatches") setReportView("combined");
+    if (id === "monitoring") setReportView("dispatch-monitoring");
     if (id === "combined") setReportView("combined");
+    if (id === "dispatch-monitoring") setReportView("dispatch-monitoring");
     if (id === "dispatch") setReportView("dispatch");
     if (id === "trip-booking") setReportView("trip-booking");
     if (id === "store-calling") setReportView("store-calling");
@@ -632,8 +641,7 @@ export default function DashboardPage({
                 onMetricNavigate={handleMetricNavigate}
               />
             </div></RetainedFeature>
-            <RetainedFeature key={`trips:${profile?.id}:${profile?.role}`} active={!isClientWebsite&&activeId==="trips"}><ResourceView id={tripView} data={filteredData} onNavigate={handleNavigate}/></RetainedFeature>
-            <RetainedFeature key={`reports:${profile?.id}:${profile?.role}`} active={!isClientWebsite&&activeId==="reports"}><ResourceView id={reportView} data={filteredData} onNavigate={handleNavigate} notificationTarget={notificationTarget} onReportScopeChange={next=>{setReportView(next);setActiveId("reports");}}/></RetainedFeature>
+            <RetainedFeature key={`trips:${profile?.id}:${profile?.role}`} active={!isClientWebsite&&activeId==="trips"}><ResourceView id="dispatches" workspaceReport={reportView} data={filteredData} onNavigate={handleNavigate} notificationTarget={notificationTarget} onReportScopeChange={setReportView}/></RetainedFeature>
             <div key={`${workspace}:${activeId}:${clientTab}`} className="page-enter" hidden={showOverview}>
               {isClientWebsite ? (
                 <ClientWebsiteWorkspace

@@ -1,0 +1,367 @@
+[    7204ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=df9c932f:14335
+[ 3102157ms] [ERROR] WebSocket connection to 'ws://localhost:5000/socket.io/?EIO=4&transport=websocket' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/node_modules/.vite/deps/socket__io-client.js?v=d104452c:980
+[ 3104171ms] [ERROR] WebSocket connection to 'ws://localhost:5000/socket.io/?EIO=4&transport=websocket' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/node_modules/.vite/deps/socket__io-client.js?v=d104452c:980
+[ 3105806ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:5173/src/index.css?t=1792486417260:0
+[ 3105807ms] [ERROR] [vite] Failed to reload /src/index.css. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3105822ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:5173/src/components/admin/OperationsReportsView.tsx?t=1792486417260:0
+[ 3105823ms] [ERROR] [vite] Failed to reload /src/components/admin/OperationsReportsView.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3105854ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/index.css?t=1792486417264:0
+[ 3105855ms] [ERROR] [vite] Failed to reload /src/index.css. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3105864ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792486417264:0
+[ 3105865ms] [ERROR] [vite] Failed to reload /src/components/admin/ReportDataView.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3105899ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/index.css?t=1792486417485:0
+[ 3105901ms] [ERROR] [vite] Failed to reload /src/index.css. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3105902ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/components/admin/ReportDropdownEditor.tsx?t=1792486417485:0
+[ 3105903ms] [ERROR] [vite] Failed to reload /src/components/admin/ReportDropdownEditor.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3105925ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/index.css?t=1792486417488:0
+[ 3105926ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/components/admin/ReportSpreadsheetShared.tsx?t=1792486417488:0
+[ 3105927ms] [ERROR] [vite] Failed to reload /src/index.css. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3105928ms] [ERROR] [vite] Failed to reload /src/components/admin/ReportSpreadsheetShared.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3105951ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/index.css?t=1792486417491:0
+[ 3105951ms] [ERROR] [vite] Failed to reload /src/index.css. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3105958ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/components/admin/ReportsWorkspace.tsx?t=1792486417491:0
+[ 3105958ms] [ERROR] [vite] Failed to reload /src/components/admin/ReportsWorkspace.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3105991ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/index.css?t=1792486417493:0
+[ 3105992ms] [ERROR] [vite] Failed to reload /src/index.css. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3105994ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/components/admin/DashboardPrimitives.tsx?t=1792486417493:0
+[ 3105994ms] [ERROR] [vite] Failed to reload /src/components/admin/DashboardPrimitives.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106030ms] [ERROR] Failed to load resource: net::ERR_SOCKET_NOT_CONNECTED @ http://localhost:5173/src/index.css?t=1792486417495:0
+[ 3106031ms] [ERROR] [vite] Failed to reload /src/index.css. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106048ms] [ERROR] Failed to load resource: net::ERR_SOCKET_NOT_CONNECTED @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792486417495:0
+[ 3106048ms] [ERROR] [vite] Failed to reload /src/components/admin/ReportDataView.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106089ms] [ERROR] Failed to load resource: net::ERR_SOCKET_NOT_CONNECTED @ http://localhost:5173/src/components/admin/DashboardPrimitives.tsx?t=1792486417623:0
+[ 3106090ms] [ERROR] [vite] Failed to reload /src/components/admin/DashboardPrimitives.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106093ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_RESET @ http://localhost:5173/src/index.css?t=1792486417623:0
+[ 3106094ms] [ERROR] [vite] Failed to reload /src/index.css. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106111ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/index.css?t=1792486417629:0
+[ 3106111ms] [ERROR] [vite] Failed to reload /src/index.css. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106130ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/index.css?t=1792486417632:0
+[ 3106131ms] [ERROR] [vite] Failed to reload /src/index.css. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106137ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/components/admin/SpreadsheetPresentation.tsx?t=1792486417632:0
+[ 3106138ms] [ERROR] [vite] Failed to reload /src/components/admin/SpreadsheetPresentation.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106154ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/index.css?t=1792486417643:0
+[ 3106155ms] [ERROR] [vite] Failed to reload /src/index.css. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106156ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/components/admin/TransmittalTrackerView.tsx?t=1792486417643:0
+[ 3106157ms] [ERROR] [vite] Failed to reload /src/components/admin/TransmittalTrackerView.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106176ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/index.css?t=1792486417646:0
+[ 3106177ms] [ERROR] [vite] Failed to reload /src/index.css. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106191ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/components/admin/OperationsReportsView.tsx?t=1792486417646:0
+[ 3106192ms] [ERROR] [vite] Failed to reload /src/components/admin/OperationsReportsView.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106193ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/components/admin/TransmittalTrackerView.tsx?t=1792486417646:0
+[ 3106194ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/pages/Admin/views/FlexibleTablesView.tsx?t=1792486417646:0
+[ 3106194ms] [ERROR] [vite] Failed to reload /src/components/admin/TransmittalTrackerView.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106196ms] [ERROR] [vite] Failed to reload /src/pages/Admin/views/FlexibleTablesView.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106226ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/pages/Admin/DashboardPage.tsx?t=1792486417650:0
+[ 3106227ms] [ERROR] [vite] Failed to reload /src/pages/Admin/DashboardPage.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106228ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/index.css?t=1792486417650:0
+[ 3106228ms] [ERROR] [vite] Failed to reload /src/index.css. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106242ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/index.css?t=1792486418140:0
+[ 3106244ms] [ERROR] [vite] Failed to reload /src/index.css. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106278ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/pages/Admin/views/FlexibleTablesView.tsx?t=1792486418140:0
+[ 3106278ms] [ERROR] [vite] Failed to reload /src/pages/Admin/views/FlexibleTablesView.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106320ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/index.css?t=1792486418159:0
+[ 3106320ms] [ERROR] [vite] Failed to reload /src/index.css. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106322ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/context/AuthContext.tsx?t=1792486418159:0
+[ 3106322ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/pages/Admin/DashboardPage.tsx?t=1792486418159:0
+[ 3106323ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/components/admin/ReportSpreadsheetShared.tsx?t=1792486418159:0
+[ 3106325ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/components/admin/TransmittalTrackerView.tsx?t=1792486418159:0
+[ 3106325ms] [ERROR] [vite] Failed to reload /src/context/AuthContext.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106326ms] [ERROR] [vite] Failed to reload /src/pages/Admin/DashboardPage.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106327ms] [ERROR] [vite] Failed to reload /src/components/admin/ReportSpreadsheetShared.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106328ms] [ERROR] [vite] Failed to reload /src/components/admin/TransmittalTrackerView.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106372ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/index.css?t=1792486418271:0
+[ 3106373ms] [ERROR] [vite] Failed to reload /src/index.css. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106375ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792486418271:0
+[ 3106376ms] [ERROR] [vite] Failed to reload /src/components/admin/ReportDataView.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106404ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/index.css?t=1792486418280:0
+[ 3106405ms] [ERROR] [vite] Failed to reload /src/index.css. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106411ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/pages/Admin/views/FlexibleTablesView.tsx?t=1792486418280:0
+[ 3106412ms] [ERROR] [vite] Failed to reload /src/pages/Admin/views/FlexibleTablesView.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106464ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/index.css?t=1792486418283:0
+[ 3106465ms] [ERROR] [vite] Failed to reload /src/index.css. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106469ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/components/admin/FlexibleTableSectionTabs.tsx?t=1792486418283:0
+[ 3106469ms] [ERROR] [vite] Failed to reload /src/components/admin/FlexibleTableSectionTabs.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106477ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/pages/Admin/views/FlexibleTablesView.tsx?t=1792486418283:0
+[ 3106478ms] [ERROR] [vite] Failed to reload /src/pages/Admin/views/FlexibleTablesView.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106525ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/index.css?t=1792486418286:0
+[ 3106526ms] [ERROR] [vite] Failed to reload /src/index.css. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106555ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/pages/Admin/DashboardPage.tsx?t=1792486418286:0
+[ 3106555ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/components/admin/OperationsReportsView.tsx?t=1792486418286:0
+[ 3106556ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/pages/Admin/views/OverviewView.tsx?t=1792486418286:0
+[ 3106557ms] [ERROR] [vite] Failed to reload /src/pages/Admin/DashboardPage.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106558ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/components/admin/TransmittalTrackerView.tsx?t=1792486418286:0
+[ 3106559ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/pages/Admin/views/MasterDataView.tsx?t=1792486418286:0
+[ 3106560ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/pages/Admin/views/TruckersView.tsx?t=1792486418286:0
+[ 3106560ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/pages/Admin/views/FlexibleTablesView.tsx?t=1792486418286:0
+[ 3106561ms] [ERROR] [vite] Failed to reload /src/components/admin/OperationsReportsView.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106562ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/components/admin/LiveTripAlerts.tsx?t=1792486418286:0
+[ 3106563ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/components/admin/FlexibleTableSectionTabs.tsx?t=1792486418286:0
+[ 3106564ms] [ERROR] [vite] Failed to reload /src/pages/Admin/views/OverviewView.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106565ms] [ERROR] [vite] Failed to reload /src/components/admin/TransmittalTrackerView.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106566ms] [ERROR] [vite] Failed to reload /src/pages/Admin/views/MasterDataView.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106567ms] [ERROR] [vite] Failed to reload /src/pages/Admin/views/TruckersView.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106568ms] [ERROR] [vite] Failed to reload /src/pages/Admin/views/FlexibleTablesView.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106569ms] [ERROR] [vite] Failed to reload /src/components/admin/LiveTripAlerts.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106571ms] [ERROR] [vite] Failed to reload /src/components/admin/FlexibleTableSectionTabs.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106574ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/pages/Admin/views/CalendarView.tsx?t=1792486418286:0
+[ 3106575ms] [ERROR] [vite] Failed to reload /src/pages/Admin/views/CalendarView.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106581ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/pages/Admin/views/TripDetailView.tsx?t=1792486418286:0
+[ 3106582ms] [ERROR] [vite] Failed to reload /src/pages/Admin/views/TripDetailView.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106592ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/components/admin/ReceiptReviewCard.tsx?t=1792486418286:0
+[ 3106593ms] [ERROR] [vite] Failed to reload /src/components/admin/ReceiptReviewCard.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106819ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/context/AuthContext.tsx?t=1792486418295:0
+[ 3106821ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/pages/Admin/DashboardPage.tsx?t=1792486418295:0
+[ 3106821ms] [ERROR] [vite] Failed to reload /src/context/AuthContext.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106823ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/pages/Driver/DriverPortal.tsx?t=1792486418295:0
+[ 3106823ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/components/admin/OperationsReportsView.tsx?t=1792486418295:0
+[ 3106824ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/components/admin/ReportTripDialog.tsx?t=1792486418295:0
+[ 3106825ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/components/admin/OffloadCleanupNotice.tsx?t=1792486418295:0
+[ 3106825ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/components/admin/OperationsEventSubmissionForm.tsx?t=1792486418295:0
+[ 3106826ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/components/admin/OperationsReporterEditor.tsx?t=1792486418295:0
+[ 3106827ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/pages/Admin/views/TripDetailView.tsx?t=1792486418295:0
+[ 3106828ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/pages/Admin/views/OverviewView.tsx?t=1792486418295:0
+[ 3106828ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/components/admin/TransmittalTrackerView.tsx?t=1792486418295:0
+[ 3106829ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/pages/Admin/views/MasterDataView.tsx?t=1792486418295:0
+[ 3106830ms] [ERROR] [vite] Failed to reload /src/pages/Admin/DashboardPage.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106832ms] [ERROR] [vite] Failed to reload /src/pages/Driver/DriverPortal.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106833ms] [ERROR] [vite] Failed to reload /src/components/admin/OperationsReportsView.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106835ms] [ERROR] [vite] Failed to reload /src/components/admin/ReportTripDialog.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106835ms] [ERROR] [vite] Failed to reload /src/components/admin/OffloadCleanupNotice.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106836ms] [ERROR] [vite] Failed to reload /src/components/admin/OperationsEventSubmissionForm.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106837ms] [ERROR] [vite] Failed to reload /src/components/admin/OperationsReporterEditor.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106838ms] [ERROR] [vite] Failed to reload /src/pages/Admin/views/TripDetailView.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106838ms] [ERROR] [vite] Failed to reload /src/pages/Admin/views/OverviewView.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106839ms] [ERROR] [vite] Failed to reload /src/components/admin/TransmittalTrackerView.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106840ms] [ERROR] [vite] Failed to reload /src/pages/Admin/views/MasterDataView.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106845ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/pages/Admin/views/TruckersView.tsx?t=1792486418295:0
+[ 3106845ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/pages/Admin/views/FlexibleTablesView.tsx?t=1792486418295:0
+[ 3106846ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/components/admin/LiveTripAlerts.tsx?t=1792486418295:0
+[ 3106846ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/components/admin/FlexibleTableSectionTabs.tsx?t=1792486418295:0
+[ 3106847ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/pages/Admin/views/CalendarView.tsx?t=1792486418295:0
+[ 3106848ms] [ERROR] [vite] Failed to reload /src/pages/Admin/views/TruckersView.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106849ms] [ERROR] [vite] Failed to reload /src/pages/Admin/views/FlexibleTablesView.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106850ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/components/admin/ReceiptReviewCard.tsx?t=1792486418295:0
+[ 3106851ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/pages/Admin/views/ResourceView.tsx?t=1792486418295:0
+[ 3106851ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/components/admin/TransactionCleanupNotice.tsx?t=1792486418295:0
+[ 3106852ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/components/admin/ReportsWorkspace.tsx?t=1792486418295:0
+[ 3106852ms] [ERROR] [vite] Failed to reload /src/components/admin/LiveTripAlerts.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106853ms] [ERROR] [vite] Failed to reload /src/components/admin/FlexibleTableSectionTabs.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106854ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/components/admin/WholeTripDeletionDialog.tsx?t=1792486418295:0
+[ 3106855ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/components/admin/PodDecisionControls.tsx?t=1792486418295:0
+[ 3106856ms] [ERROR] [vite] Failed to reload /src/pages/Admin/views/CalendarView.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106856ms] [ERROR] [vite] Failed to reload /src/components/admin/ReceiptReviewCard.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106857ms] [ERROR] [vite] Failed to reload /src/pages/Admin/views/ResourceView.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106858ms] [ERROR] [vite] Failed to reload /src/components/admin/TransactionCleanupNotice.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106859ms] [ERROR] [vite] Failed to reload /src/components/admin/ReportsWorkspace.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106859ms] [ERROR] [vite] Failed to reload /src/components/admin/WholeTripDeletionDialog.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106860ms] [ERROR] [vite] Failed to reload /src/components/admin/PodDecisionControls.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106862ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/index.css?t=1792486418295:0
+[ 3106862ms] [ERROR] [vite] Failed to reload /src/index.css. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106916ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/index.css?t=1792486418302:0
+[ 3106917ms] [ERROR] [vite] Failed to reload /src/index.css. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106918ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/context/AuthContext.tsx?t=1792486418302:0
+[ 3106919ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/components/admin/OperationsReportsView.tsx?t=1792486418302:0
+[ 3106919ms] [ERROR] [vite] Failed to reload /src/context/AuthContext.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106920ms] [ERROR] [vite] Failed to reload /src/components/admin/OperationsReportsView.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106948ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/components/admin/TransmittalTrackerView.tsx?t=1792486418302:0
+[ 3106949ms] [ERROR] [vite] Failed to reload /src/components/admin/TransmittalTrackerView.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106951ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/pages/Admin/views/MasterDataView.tsx?t=1792486418302:0
+[ 3106952ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/pages/Admin/views/TruckersView.tsx?t=1792486418302:0
+[ 3106952ms] [ERROR] [vite] Failed to reload /src/pages/Admin/views/MasterDataView.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106954ms] [ERROR] [vite] Failed to reload /src/pages/Admin/views/TruckersView.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106979ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/pages/Admin/views/FlexibleTablesView.tsx?t=1792486418302:0
+[ 3106981ms] [ERROR] [vite] Failed to reload /src/pages/Admin/views/FlexibleTablesView.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[ 3106986ms] [LOG] [vite] server connection lost. Polling for restart... @ http://localhost:5173/@vite/client:1002
+[ 3126764ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=4710ba6e:14335
+[ 5508129ms] Error: useAuth must be used within an AuthProvider
+    at useAuth (http://localhost:5173/src/context/AuthContext.tsx:417:9)
+    at AdminRoute (http://localhost:5173/src/components/AdminRoute.tsx:8:37)
+    at Object.react_stack_bottom_frame (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=4710ba6e:12866:12)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=4710ba6e:4213:19)
+    at updateFunctionComponent (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=4710ba6e:5569:16)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=4710ba6e:6140:20)
+    at runWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=4710ba6e:851:66)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=4710ba6e:8429:92)
+    at workLoopSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=4710ba6e:8325:37)
+    at renderRootSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=4710ba6e:8309:6)
+[ 5508126ms] [WARNING] %s
+
+%s
+ An error occurred in the <AdminRoute> component. Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries. @ http://localhost:5173/@vite/client:532
+[ 5508532ms] Error: useAuth must be used within an AuthProvider
+    at useAuth (http://localhost:5173/src/context/AuthContext.tsx:417:9)
+    at AdminRoute (http://localhost:5173/src/components/AdminRoute.tsx:8:37)
+    at Object.react_stack_bottom_frame (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=4710ba6e:12866:12)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=4710ba6e:4213:19)
+    at updateFunctionComponent (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=4710ba6e:5569:16)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=4710ba6e:6140:20)
+    at runWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=4710ba6e:851:66)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=4710ba6e:8429:92)
+    at workLoopSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=4710ba6e:8325:37)
+    at renderRootSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=4710ba6e:8309:6)
+[ 5508530ms] [WARNING] %s
+
+%s
+ An error occurred in the <AdminRoute> component. Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries. @ http://localhost:5173/@vite/client:532
+[ 5508608ms] Error: useAuth must be used within an AuthProvider
+    at useAuth (http://localhost:5173/src/context/AuthContext.tsx:417:9)
+    at AdminRoute (http://localhost:5173/src/components/AdminRoute.tsx:8:37)
+    at Object.react_stack_bottom_frame (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=4710ba6e:12866:12)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=4710ba6e:4213:19)
+    at updateFunctionComponent (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=4710ba6e:5569:16)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=4710ba6e:6140:20)
+    at runWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=4710ba6e:851:66)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=4710ba6e:8429:92)
+    at workLoopSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=4710ba6e:8325:37)
+    at renderRootSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=4710ba6e:8309:6)
+[ 5508606ms] [WARNING] %s
+
+%s
+ An error occurred in the <AdminRoute> component. Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries. @ http://localhost:5173/@vite/client:532
+[ 5509296ms] Error: useAuth must be used within an AuthProvider
+    at useAuth (http://localhost:5173/src/context/AuthContext.tsx:417:9)
+    at AdminRoute (http://localhost:5173/src/components/AdminRoute.tsx:8:37)
+    at Object.react_stack_bottom_frame (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=4710ba6e:12866:12)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=4710ba6e:4213:19)
+    at updateFunctionComponent (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=4710ba6e:5569:16)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=4710ba6e:6140:20)
+    at runWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=4710ba6e:851:66)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=4710ba6e:8429:92)
+    at workLoopSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=4710ba6e:8325:37)
+    at renderRootSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=4710ba6e:8309:6)
+[ 5509295ms] [WARNING] %s
+
+%s
+ An error occurred in the <AdminRoute> component. Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries. @ http://localhost:5173/@vite/client:532
+[ 5759120ms] [WARNING] Realtime unavailable for public.admin_notifications; periodic report refresh remains active. Error: socket closed: 1006
+    at normalizeChannelError (http://localhost:5173/node_modules/.vite/deps/@supabase_supabase-js.js?v=a788b144:6664:11)
+    at http://localhost:5173/node_modules/.vite/deps/@supabase_supabase-js.js?v=a788b144:7064:99
+    at Object.callback (http://localhost:5173/node_modules/.vite/deps/@supabase_supabase-js.js?v=a788b144:5122:52)
+    at Channel.trigger (http://localhost:5173/node_modules/.vite/deps/@supabase_supabase-js.js?v=a788b144:5294:67)
+    at http://localhost:5173/node_modules/.vite/deps/@supabase_supabase-js.js?v=a788b144:6364:85
+    at Array.forEach (<anonymous>)
+    at Socket.triggerChanError (http://localhost:5173/node_modules/.vite/deps/@supabase_supabase-js.js?v=a788b144:6363:17)
+    at Socket.onConnClose (http://localhost:5173/node_modules/.vite/deps/@supabase_supabase-js.js?v=a788b144:6342:8)
+    at conn.onclose (http://localhost:5173/node_modules/.vite/deps/@supabase_supabase-js.js?v=a788b144:6214:39) @ http://localhost:5173/@vite/client:532
+[ 6722481ms] [ERROR] WebSocket connection to 'ws://localhost:5000/socket.io/?EIO=4&transport=websocket' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/node_modules/.vite/deps/socket__io-client.js?v=0de49498:980
+[ 6724410ms] [ERROR] WebSocket connection to 'ws://localhost:5000/socket.io/?EIO=4&transport=websocket' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/node_modules/.vite/deps/socket__io-client.js?v=0de49498:980
+[13331726ms] [WARNING] Realtime unavailable for public.admin_notifications; periodic report refresh remains active. Error: socket closed: 1006
+    at normalizeChannelError (http://localhost:5173/node_modules/.vite/deps/@supabase_supabase-js.js?v=a788b144:6664:11)
+    at http://localhost:5173/node_modules/.vite/deps/@supabase_supabase-js.js?v=a788b144:7064:99
+    at Object.callback (http://localhost:5173/node_modules/.vite/deps/@supabase_supabase-js.js?v=a788b144:5122:52)
+    at Channel.trigger (http://localhost:5173/node_modules/.vite/deps/@supabase_supabase-js.js?v=a788b144:5294:67)
+    at http://localhost:5173/node_modules/.vite/deps/@supabase_supabase-js.js?v=a788b144:6364:85
+    at Array.forEach (<anonymous>)
+    at Socket.triggerChanError (http://localhost:5173/node_modules/.vite/deps/@supabase_supabase-js.js?v=a788b144:6363:17)
+    at Socket.onConnClose (http://localhost:5173/node_modules/.vite/deps/@supabase_supabase-js.js?v=a788b144:6342:8)
+    at conn.onclose (http://localhost:5173/node_modules/.vite/deps/@supabase_supabase-js.js?v=a788b144:6214:39) @ http://localhost:5173/@vite/client:532
+[14677080ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5000/api/trips/dd0c7c28-a82a-422f-a412-fb076c4d0b3e/events:0
+[14677083ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5000/api/trips/3f54c7a7-6877-4c11-b3d6-cfc8c71558b1/images:0
+[14677087ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5000/api/auth/session/bootstrap:0
+[14677088ms] [ERROR] Failed to refresh auth session: TypeError: Failed to fetch
+    at request (http://localhost:5173/src/services/api.service.ts:105:20)
+    at apiPost (http://localhost:5173/src/services/api.service.ts:210:9)
+    at http://localhost:5173/src/context/AuthContext.tsx:135:27 @ http://localhost:5173/@vite/client:532
+[14677092ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5000/api/reports/dispatch-monitoring/columns:0
+[14677095ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5000/api/trips/3f54c7a7-6877-4c11-b3d6-cfc8c71558b1/events:0
+[14677098ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5000/api/trips/dd0c7c28-a82a-422f-a412-fb076c4d0b3e/images:0
+[14677111ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5000/api/trips/b4eb84fc-ee08-4d7b-8db9-6ce0210591ce/events:0
+[14677130ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5000/api/trips/b4eb84fc-ee08-4d7b-8db9-6ce0210591ce/images:0
+[14677147ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5000/api/trips/7c245699-90d4-4bda-827c-bd7cadae28fb/events:0
+[14677148ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5000/api/trips/7c245699-90d4-4bda-827c-bd7cadae28fb/images:0
+[14682100ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5000/api/auth/session/bootstrap:0
+[14682101ms] [ERROR] Failed to refresh auth session: TypeError: Failed to fetch
+    at request (http://localhost:5173/src/services/api.service.ts:105:20)
+    at apiPost (http://localhost:5173/src/services/api.service.ts:210:9)
+    at Object.current (http://localhost:5173/src/context/AuthContext.tsx:135:27) @ http://localhost:5173/@vite/client:532
+[14687120ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5000/api/auth/session/bootstrap:0
+[14687121ms] [ERROR] Failed to refresh auth session: TypeError: Failed to fetch
+    at request (http://localhost:5173/src/services/api.service.ts:105:20)
+    at apiPost (http://localhost:5173/src/services/api.service.ts:210:9)
+    at Object.current (http://localhost:5173/src/context/AuthContext.tsx:135:27) @ http://localhost:5173/@vite/client:532
+[14688916ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/index.css?t=1792497993867:0
+[14688917ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/pages/Admin/DashboardPage.tsx?t=1792497998619:0
+[14688919ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/App.tsx?t=1792497998619:0
+[14688920ms] [ERROR] [vite] Failed to reload /src/index.css. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[14688922ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/components/admin/DashboardPrimitives.tsx?t=1792497994506:0
+[14688923ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/components/admin/ReportTripDialog.tsx?t=1792497998377:0
+[14688925ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/components/admin/TruckerNotifications.tsx?t=1792497998377:0
+[14688927ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/components/admin/OperationsReportsView.tsx?t=1792497998377:0
+[14688928ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/services/operations-report.service.ts?t=1792497998363:0
+[14688929ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/services/admin-preload.service.ts?t=1792497998363:0
+[14688929ms] [ERROR] [vite] Failed to reload /src/App.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[14688935ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/services/report.service.ts?t=1792497998363:0
+[14688935ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/services/shared-table-widths.ts?t=1792497998377:0
+[14688947ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/components/admin/ColumnFinder.tsx?t=1792497993874:0
+[14688948ms] [ERROR] [vite] Failed to reload /src/components/admin/ColumnFinder.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[14688949ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/index.css?t=1792497993874:0
+[14688950ms] [ERROR] [vite] Failed to reload /src/index.css. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[14688966ms] [ERROR] Failed to load resource: net::ERR_SOCKET_NOT_CONNECTED @ http://localhost:5173/src/index.css?t=1792497994423:0
+[14688967ms] [ERROR] [vite] Failed to reload /src/index.css. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[14688969ms] [ERROR] Failed to load resource: net::ERR_SOCKET_NOT_CONNECTED @ http://localhost:5173/src/App.tsx?t=1792497994423:0
+[14688969ms] [ERROR] [vite] Failed to reload /src/App.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[14688987ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/index.css?t=1792497994476:0
+[14688988ms] [ERROR] [vite] Failed to reload /src/index.css. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[14688989ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/components/admin/OperationsReportsView.tsx?t=1792497994476:0
+[14688989ms] [ERROR] [vite] Failed to reload /src/components/admin/OperationsReportsView.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[14688995ms] [ERROR] [vite] Failed to reload /src/components/admin/DashboardPrimitives.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[14689001ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/index.css?t=1792497994506:0
+[14689002ms] [ERROR] [vite] Failed to reload /src/index.css. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[14689016ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/index.css?t=1792497994524:0
+[14689017ms] [ERROR] [vite] Failed to reload /src/index.css. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[14689019ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792497994524:0
+[14689019ms] [ERROR] [vite] Failed to reload /src/components/admin/ReportDataView.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[14689033ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/components/admin/ColumnFinder.tsx?t=1792497994538:0
+[14689034ms] [ERROR] [vite] Failed to reload /src/components/admin/ColumnFinder.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[14689035ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/index.css?t=1792497994538:0
+[14689036ms] [ERROR] [vite] Failed to reload /src/index.css. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[14689052ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/index.css?t=1792497994952:0
+[14689053ms] [ERROR] [vite] Failed to reload /src/index.css. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[14689054ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792497994952:0
+[14689054ms] [ERROR] [vite] Failed to reload /src/components/admin/ReportDataView.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[14689069ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/index.css?t=1792497995527:0
+[14689070ms] [ERROR] [vite] Failed to reload /src/index.css. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[14689074ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/pages/Admin/DashboardPage.tsx?t=1792497995527:0
+[14689076ms] [ERROR] [vite] Failed to reload /src/pages/Admin/DashboardPage.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[14689088ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/pages/Admin/views/FlexibleTablesView.tsx?t=1792497995692:0
+[14689089ms] [ERROR] [vite] Failed to reload /src/pages/Admin/views/FlexibleTablesView.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[14689090ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/index.css?t=1792497995692:0
+[14689091ms] [ERROR] [vite] Failed to reload /src/index.css. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[14689105ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/index.css?t=1792497995893:0
+[14689106ms] [ERROR] [vite] Failed to reload /src/index.css. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[14689110ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/context/AuthContext.tsx?t=1792497995893:0
+[14689111ms] [ERROR] [vite] Failed to reload /src/context/AuthContext.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[14689118ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/pages/Admin/DashboardPage.tsx?t=1792497995893:0
+[14689119ms] [ERROR] [vite] Failed to reload /src/pages/Admin/DashboardPage.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[14689132ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/index.css?t=1792497996391:0
+[14689133ms] [ERROR] [vite] Failed to reload /src/index.css. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[14689146ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/index.css?t=1792497996865:0
+[14689147ms] [ERROR] [vite] Failed to reload /src/index.css. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[14689148ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/components/admin/ReportDropdownEditor.tsx?t=1792497996865:0
+[14689149ms] [ERROR] [vite] Failed to reload /src/components/admin/ReportDropdownEditor.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[14689168ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/index.css?t=1792497997114:0
+[14689169ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/components/admin/TransmittalTrackerView.tsx?t=1792497997114:0
+[14689169ms] [ERROR] [vite] Failed to reload /src/index.css. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[14689170ms] [ERROR] [vite] Failed to reload /src/components/admin/TransmittalTrackerView.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[14689185ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/components/admin/ReportSpreadsheetShared.tsx?t=1792497997929:0
+[14689186ms] [ERROR] [vite] Failed to reload /src/components/admin/ReportSpreadsheetShared.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[14689187ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/index.css?t=1792497997929:0
+[14689187ms] [ERROR] [vite] Failed to reload /src/index.css. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[14689197ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/pages/Admin/views/FlexibleTablesView.tsx?t=1792497997942:0
+[14689198ms] [ERROR] [vite] Failed to reload /src/pages/Admin/views/FlexibleTablesView.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[14689208ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/components/admin/OperationsReportsView.tsx?t=1792497997942:0
+[14689209ms] [ERROR] [vite] Failed to reload /src/components/admin/OperationsReportsView.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[14689215ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/components/admin/TransmittalTrackerView.tsx?t=1792497997942:0
+[14689216ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/src/index.css?t=1792497997942:0
+[14689217ms] [ERROR] [vite] Failed to reload /src/components/admin/TransmittalTrackerView.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[14689223ms] [ERROR] [vite] Failed to reload /src/index.css. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:532
+[14698679ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:5173/src/pages/Admin/views/ResourceView.tsx:0
+[15807964ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:5173/src/pages/Admin/views/ResourceView.tsx:0
+[15881825ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:5173/src/pages/Admin/views/ResourceView.tsx:0
+[15922022ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:5173/src/pages/Admin/views/ResourceView.tsx:0
+[15972425ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:5173/src/pages/Admin/views/ResourceView.tsx:0
+[16018950ms] The requested module '/node_modules/.vite/deps/react-dom.js?v=1b88a65f' does not provide an export named 't'

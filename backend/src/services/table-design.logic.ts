@@ -16,7 +16,13 @@ export function validateFormat(value:unknown){
 export function validateDesignPatch(value:unknown){
  const v=object(value);if(Buffer.byteLength(JSON.stringify(v))>250000)fail();
  for(const [key,item] of Object.entries(v)){
-  if(key==="hidden"){if(typeof item!=="boolean")fail();}
+  if(key==="alias"){if(item!==null&&(typeof item!=="string"||!item.trim()||item.length>100||/[\x00-\x1f]/.test(item)))fail();}
+  else if(key==="combined"){if(typeof item!=="boolean")fail();}
+  else if(key==="input"){
+   const config=object(item);if(Object.keys(config).some(key=>!["type","options"].includes(key))||!["TEXT","DROPDOWN"].includes(String(config.type)))fail();
+   if(config.options!==undefined){if(!Array.isArray(config.options)||config.options.length>100)fail();const seen=new Set<string>();for(const raw of config.options as unknown[]){const option=object(raw);if(Object.keys(option).some(key=>!["value","label","color","active"].includes(key))||typeof option.value!=="string"||!option.value.trim()||option.value.length>500||typeof option.label!=="string"||!option.label.trim()||option.label.length>100||!color(option.color)||typeof option.active!=="boolean"||seen.has(option.value))fail();seen.add(option.value as string);}}
+  }
+  else if(key==="hidden"){if(typeof item!=="boolean")fail();}
   else if(key==="position"){if(!Number.isInteger(item)||Number(item)<0||Number(item)>1000)fail();}
   else if(key==="pin"){if(item!==null&&item!=="left"&&item!=="right")fail();}
   else if(key==="alignment"){if(item!==null&&!["left","center","right"].includes(String(item)))fail();}
@@ -41,6 +47,6 @@ export function mergeDesign(current:Record<string,unknown>,patch:Record<string,u
  const next={...current,...patch};
  if(patch.header)next.header={...object(current.header??{}),...object(patch.header)};
  if(patch.format)next.format={...object(current.format??{}),...object(patch.format)};
- if(patch.cells){const cells={...object(current.cells??{}),...object(patch.cells)};for(const [key,value] of Object.entries(cells))if(value===null)delete cells[key];if(Object.keys(cells).length>1000)fail();next.cells=cells;}
+ if(patch.cells){const cells={...object(current.cells??{}),...object(patch.cells)};for(const [key,value] of Object.entries(object(patch.cells)))if(value===null)delete cells[key];else cells[key]={...object(object(current.cells??{})[key]??{}),...object(value)};if(Object.keys(cells).length>1000)fail();next.cells=cells;}
  if(Buffer.byteLength(JSON.stringify(next))>250000)fail();return next;
 }

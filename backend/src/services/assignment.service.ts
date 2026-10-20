@@ -1,3 +1,4 @@
+import {getTruckAvailability} from "./truck-availability.service.js";
 import { supabaseAdmin } from "../config/supabase.js";
 import { collaborationSelect } from "./collaboration-events.js";
 import type {
@@ -393,6 +394,16 @@ export async function createTripAssignment(
     }
   }
 
+  if(payload.truck_id){
+    const schedule=await supabaseAdmin.from("trips").select("loading_date,estimated_delivery_date").eq("id",tripId).single();
+    if(schedule.error)throw new Error("Unable to verify the trip schedule.");
+    const options=await getTruckAvailability(schedule.data.loading_date??undefined,schedule.data.estimated_delivery_date??undefined,tripId,[String(payload.truck_id)]);
+    if(!options.length)throw new Error("Choose an active truck.");
+    if(options[0].availability==="CONFLICT")throw new Error("This truck has a conflicting active assignment. Choose another truck.");
+    const duplicate=await supabaseAdmin.from("trip_truck_assignments").select("id").eq("trip_id",tripId).eq("truck_id",String(payload.truck_id)).is("unassigned_at",null).limit(1);
+    if(duplicate.error)throw new Error("Unable to verify existing truck assignments.");
+    if(duplicate.data?.length)throw new Error("This truck is already assigned to the trip.");
+  }
   const { data, error } = await supabaseAdmin
     .from("trip_truck_assignments")
     .insert(payload)
@@ -438,7 +449,7 @@ export async function updateTripAssignment(
 
   const existing = await supabaseAdmin
     .from("trip_truck_assignments")
-    .select("id, trip_id")
+    .select("id, trip_id, driver_id")
     .eq("id", assignmentId)
     .maybeSingle();
 
@@ -512,6 +523,16 @@ export async function updateTripAssignment(
 
   if (Object.keys(payload).length === 0) {
     throw new Error("No valid assignment fields were provided for update.");
+  }
+
+  // Preserve an explicitly assigned driver. Only fill an absent driver from one
+  // unambiguous active physical assignment for the selected truck, never its plate text.
+  if(payload.truck_id && payload.driver_id===undefined && !existing.data.driver_id){
+    const related=await supabaseAdmin.from("trip_truck_assignments").select("driver_id").eq("truck_id",String(payload.truck_id)).neq("id",assignmentId).is("unassigned_at",null).not("driver_id","is",null).limit(100);
+    if(related.error)throw new Error("Unable to verify the selected truck assignment.");
+    const drivers=[...new Set((related.data??[]).map(item=>item.driver_id).filter(Boolean))];
+    if(drivers.length!==1 || related.data?.length===100)throw new Error("Select a driver explicitly before changing this truck.");
+    payload.driver_id=drivers[0];
   }
 
   if (payload.driver_id !== undefined && payload.driver_id !== null) {

@@ -1,9 +1,10 @@
+import type { CellFormula } from "./spreadsheet-formula";
 import { apiDelete, apiGet,apiGetCached,getCachedApiResponse,invalidateApiCache, apiPatch, apiPost, type ApiResponse } from "./api.service";
 
 export type FlexValueType = "TEXT" | "NUMBER" | "DATE" | "DATETIME" | "BOOLEAN";
 export type FlexInputMode = "TEXT" | "DROPDOWN" | "NUMBER" | "DATE" | "DATETIME" | "BOOLEAN";
 export type FlexColumn = { id: string; table_id: string; name: string; position: number; value_type: FlexValueType; input_mode: FlexInputMode; binding_scope: string; settings: Record<string, unknown>; is_hidden: boolean; is_archived: boolean; version: number };
-export type FlexCell = { id: string; row_id: string; column_id: string; value: unknown; version: number; updated_by: string | null };
+export type FlexCell = { id: string; row_id: string; column_id: string; value: unknown; formula?: CellFormula | null; version: number; updated_by: string | null };
 export type FlexOption = { id: string; column_id: string; label: string; stored_value: string; position: number; color: string | null; is_active: boolean };
 export type FlexRow = { id: string; table_id: string; row_kind: "CUSTOM" | "SOURCE"; position: number; version: number; cells: FlexCell[] };
 export type FlexTable = { id: string; name: string; table_kind: "CUSTOM" | "REPORT"; report_key: string | null; settings: Record<string, unknown>; created_by: string; version: number; created_at: string; updated_at: string; archived_at: string | null; access?: { can_view: boolean; can_edit: boolean; can_manage: boolean; is_owner: boolean } };
@@ -42,7 +43,7 @@ export const archiveFlexColumn = (token: string, id: string, columnId: string, e
 export const createFlexRow = (token: string, id: string) => getData(apiPost<ApiResponse<FlexRow>>(`${path(id)}/rows`, {}, token));
 export const reorderFlexRow = (token: string, id: string, rowId: string, position: number, expected_version: number) => getData(apiPatch<ApiResponse<FlexRow>>(`${path(id)}/rows/${rowId}`, { position, expected_version }, token));
 export const archiveFlexRow = (token: string, id: string, rowId: string, expected_version: number) => getData(apiDelete<ApiResponse<FlexRow>>(`${path(id)}/rows/${rowId}`, token, { expected_version }));
-export const saveFlexCell = (token: string, id: string, rowId: string, columnId: string, value: unknown, expected_version: number) => getData(apiPatch<ApiResponse<FlexCell>>(`${path(id)}/rows/${rowId}/cells/${columnId}`, { value, expected_version }, token));
+export const saveFlexCell = (token: string, id: string, rowId: string, columnId: string, value: unknown, expected_version: number, formula: CellFormula | null = null) => getData(apiPatch<ApiResponse<FlexCell>>(`${path(id)}/rows/${rowId}/cells/${columnId}`, { value, formula, expected_version }, token));
 export const getFlexPermissions = (token: string, id: string) => getData(apiGet<ApiResponse<FlexPermission[]>>(`${path(id)}/permissions`, token));
 export const createFlexPermission = (token: string, id: string, input: Partial<FlexPermission>) => getData(apiPost<ApiResponse<FlexPermission>>(`${path(id)}/permissions`, input, token));
 export const updateFlexPermission = (token: string, id: string, permissionId: string, input: Pick<FlexPermission, "can_view" | "can_edit" | "can_manage">) => getData(apiPatch<ApiResponse<FlexPermission>>(`${path(id)}/permissions/${permissionId}`, input, token));
@@ -51,3 +52,5 @@ export const createFlexOption = (token: string, id: string, columnId: string, in
 export const getFlexOptions = (token: string, id: string, columnId: string) => getData(apiGet<ApiResponse<FlexOption[]>>(`${path(id)}/columns/${columnId}/options`, token));
 export const updateFlexOption = (token: string, id: string, columnId: string, optionId: string, input: Partial<Pick<FlexOption, "label" | "stored_value" | "position" | "color" | "is_active">>) => getData(apiPatch<ApiResponse<FlexOption>>(`${path(id)}/columns/${columnId}/options/${optionId}`, input, token));
 export const listFlexProfiles = (token: string) => getData(apiGet<ApiResponse<FlexProfile[]>>(`/lookups/assignees`, token));
+
+export const saveFlexFormulaBatch=(token:string,id:string,changes:Array<{row_id:string;column_id:string;formula:CellFormula;expected_version:number}>)=>getData(apiPost<ApiResponse<{saved:FlexCell[];failure:{index:number;message:string}|null;atomic:false}>>(`${path(id)}/formulas/batch`,{changes},token));

@@ -547,3 +547,25 @@ input[type="checkbox"] { width: 14px; height: 14px; min-width: 14px; min-height:
 .spreadsheet-grid .spreadsheet-relationship-editor > svg { display: none; }
 .spreadsheet-grid .spreadsheet-cell-editor[role="combobox"] { padding-right: 0 !important; }
 .spreadsheet-grid select.spreadsheet-cell-editor { appearance: none; -webkit-appearance: none; background-image: none !important; }
+
+/* Default alignment; explicit shared alignment on the cell remains higher priority. */
+.spreadsheet-grid > :is(thead,tbody) > tr > :is(th,td):not(.spreadsheet-gutter) { text-align: left; }
+.spreadsheet-grid > tbody > tr > td:not(.spreadsheet-gutter) :where(input,textarea,button,span,select) { text-align: inherit; }
+.spreadsheet-grid th.spreadsheet-gutter,.spreadsheet-grid td.spreadsheet-gutter { text-align: center; }
+
+/* Operational calculated overlays keep physical source records and normal grid geometry. */
+.spreadsheet-grid td[data-formula-selected="true"] { outline:2px solid #2678b9; outline-offset:-2px; }
+.spreadsheet-grid td[data-formula-fill="true"] { box-shadow:inset 0 0 0 2px #60a5fa; }
+
+/* Trips alone: one-line report-sized headings; data rows and other report headers are untouched. */
+.spreadsheet-grid[data-compact-headers="true"] > thead > tr > th { padding-block:4px; line-height:1.333333; vertical-align:middle; }
+.spreadsheet-grid[data-compact-headers="true"] > thead > tr > th > .spreadsheet-header-content { min-height:0; }
+.spreadsheet-grid[data-compact-headers="true"] [data-spreadsheet-header-title] { flex:1 1 auto; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; padding-block:0; }
+
+/* Formula references are ephemeral and never replace selection outlines. */
+.spreadsheet-grid td[data-formula-reference="true"] { box-shadow: inset 0 0 0 2px #10b981; }
+
+/* Spreadsheet numbers keep native numeric validation without browser stepper chrome. */
+.spreadsheet-grid input[type="number"] { appearance: textfield; -moz-appearance: textfield; }
+.spreadsheet-grid input[type="number"]::-webkit-inner-spin-button,
+.spreadsheet-grid input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }

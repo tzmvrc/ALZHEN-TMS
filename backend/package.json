@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "dev": "tsx watch src/server.ts",
+    "dev": "node scripts/dev.cjs",
     "start": "node dist/server.js",
     "build": "tsc && node scripts/copy-pdf-worker.cjs",
     "verify:api": "tsx scripts/verify-api.ts"
