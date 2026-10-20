@@ -1,3 +1,4 @@
+import { reportColumnAppearance } from "./ReportSpreadsheetUtils";
 import { Children, cloneElement, Fragment, isValidElement, type ReactElement, type ReactNode, useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { EyeOff, EllipsisVertical } from "lucide-react";
 import { useSharedTableWidths } from "./useSharedTableWidths";
@@ -17,7 +18,7 @@ function readHidden(key: string) {
  * record IDs, editing and permissions remain owned by each management view. */
 export function useManagementTableColumns(options: {
   table: string; token: string | null; profileId?: string; columns: readonly ManagementColumn[];
-  enabled?: boolean; omitsHiddenCells?: boolean; leadingColumns?: number; trailingWidth?: number;
+  enabled?: boolean; omitsHiddenCells?: boolean; leadingColumns?: number; leadingWidth?: number; trailingWidth?: number;
   hiddenKeys?: readonly string[]; onReveal?: (key: string) => void; onRestoreAll?: () => void;
   rowSearch?:RowSearch; paused?:boolean; supportsDesign?:boolean; onResizeChange?:(active:boolean)=>void;
 }) {
@@ -85,6 +86,7 @@ export function useManagementTableColumns(options: {
     window.addEventListener("pointermove", move); window.addEventListener("pointerup", finish, { once: true }); window.addEventListener("pointercancel", cancel, { once: true });
   };
   const leading = options.leadingColumns ?? 0;
+  const leadingWidth = options.leadingWidth ?? 44;
   const visibleColumns = orderedColumns.filter((column) => !hidden.includes(column.key));
   const finderColumns = orderedColumns.map((column, index) => ({ ...column, index: options.omitsHiddenCells ? visibleColumns.findIndex((visible) => visible.key === column.key) : index, hidden: hidden.includes(column.key) }));
   const hiddenColumns = finderColumns.filter((column) => column.hidden);
@@ -92,13 +94,13 @@ export function useManagementTableColumns(options: {
     const child = column.index + leading + 1;
     return `[data-management-columns="${scope}"] table>thead>tr>th:nth-child(${child}),[data-management-columns="${scope}"] table>tbody>tr>td:not([colspan]):nth-child(${child}){display:none}`;
   }).join("\n");
-  const tableWidth = options.columns.filter((column) => !hidden.includes(column.key)).reduce((total, column) => total + width(column.key), leading * 44 + (options.trailingWidth ?? 0));
+  const tableWidth = options.columns.filter((column) => !hidden.includes(column.key)).reduce((total, column) => total + width(column.key), leading * leadingWidth + (options.trailingWidth ?? 0));
   const cellStyle=(key:string,header=false):CSSProperties=>{
     if(!canDesign)return header?{position:"relative",width:width(key)}:{};
     const column=design.columns[key]??{},pin=column.pin;
     const pinned=visibleColumns.filter(c=>design.columns[c.key]?.pin===pin),index=pinned.findIndex(c=>c.key===key);
-    const offset=pin==="left"?leading*44+pinned.slice(0,index).reduce((n,c)=>n+width(c.key),0):pinned.slice(index+1).reduce((n,c)=>n+width(c.key),options.trailingWidth??0);
-    return {position:pin?"sticky":header?"relative":undefined,...(pin?{[pin]:offset,zIndex:header?45:20}:{}),width:width(key),backgroundColor:column.color??(pin?(header?"#eaf2fb":"#ffffff"):undefined)};
+    const offset=pin==="left"?leading*leadingWidth+pinned.slice(0,index).reduce((n,c)=>n+width(c.key),0):pinned.slice(index+1).reduce((n,c)=>n+width(c.key),options.trailingWidth??0);
+    return {position:pin?"sticky":header?"relative":undefined,...(pin?{[pin]:offset,zIndex:header?45:20}:{}),width:width(key),backgroundColor:pin?(header?"#eaf2fb":"#ffffff"):undefined,...reportColumnAppearance(column)};
   };
   const moveColumn=(key:string,direction:number)=>{
     const order=orderedColumns.map(c=>c.key),index=order.indexOf(key),destination=index+direction;
@@ -119,7 +121,7 @@ export function useManagementTableColumns(options: {
     tableStyle: { tableLayout: "fixed", width: tableWidth, minWidth: "100%" } as CSSProperties,
     controls: <><style>{css}</style>{colorColumn&&<ReportColumnColorDialog columnName={options.columns.find(c=>c.key===colorColumn)?.title??colorColumn} color={design.columns[colorColumn]?.color??""} onChange={color=>void design.save(colorColumn,{color},width(colorColumn))} onReset={()=>void design.save(colorColumn,{color:null},width(colorColumn))} onClose={()=>setColorColumn(null)} />}<ColumnFinder tableKey={options.enabled===false?undefined:options.table} key={options.table} rowSearch={options.rowSearch} leadingColumns={leading} columns={finderColumns} viewport={viewport} getHeader={(key) => headers.current.get(key)} onReveal={reveal} />{shared.feedback}{design.feedback}</>,
     hiddenControl: <HiddenColumnsControl columns={hiddenColumns} onRestore={reveal} onRestoreAll={restoreAll} />,
-    colgroup: <colgroup>{Array.from({ length: leading }, (_, index) => <col key={`leading-${index}`} style={{ width: 44 }} />)}{orderedColumns.filter((column) => !hidden.includes(column.key)).map((column) => <col key={column.key} style={{ width: width(column.key) }} />)}{Boolean(options.trailingWidth) && <col style={{ width: options.trailingWidth }} />}</colgroup>,
+    colgroup: <colgroup>{Array.from({ length: leading }, (_, index) => <col key={`leading-${index}`} style={{ width: leadingWidth }} />)}{orderedColumns.filter((column) => !hidden.includes(column.key)).map((column) => <col key={column.key} style={{ width: width(column.key) }} />)}{Boolean(options.trailingWidth) && <col style={{ width: options.trailingWidth }} />}</colgroup>,
     headerProps: (key: string) => ({ ref: (element: HTMLTableCellElement | null) => { if (element) headers.current.set(key, element); else headers.current.delete(key); }, style: cellStyle(key,true) }),
     headerControls: (column: ManagementColumn) => <>
       {canDesign&&<span className="inline-block"><button type="button" aria-label={`${column.title} column options`} aria-expanded={menu===column.key} onClick={event=>{event.stopPropagation();const rect=event.currentTarget.getBoundingClientRect();menuPosition.current={left:Math.min(rect.left,window.innerWidth-180),top:Math.min(rect.bottom,window.innerHeight-260)};setMenu(menu===column.key?null:column.key);}} className="ml-1 rounded p-1 text-slate-500 hover:bg-slate-100"><EllipsisVertical className="h-3 w-3" /></button>{menu===column.key&&<div role="menu" style={{position:"fixed",...menuPosition.current}} aria-label={`${column.title} design`} onKeyDown={event=>{if(event.key==="Escape")setMenu(null);}} className="absolute left-0 top-full z-[90] min-w-40 rounded-lg border border-slate-200 bg-white p-1 text-xs font-normal text-slate-700 shadow-lg">{[["Move left",()=>moveColumn(column.key,-1)],["Move right",()=>moveColumn(column.key,1)],["Pin left",()=>void design.save(column.key,{pin:"left"},width(column.key))],["Pin right",()=>void design.save(column.key,{pin:"right"},width(column.key))],["Unpin",()=>void design.save(column.key,{pin:null},width(column.key))],["Column color",()=>setColorColumn(column.key)]] .map(([label,run])=><button key={String(label)} type="button" role="menuitem" onClick={event=>{event.stopPropagation();(run as ()=>void)();setMenu(null);}} className="block w-full rounded px-3 py-2 text-left hover:bg-slate-100">{String(label)}</button>)}</div>}</span>}

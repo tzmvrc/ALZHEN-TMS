@@ -28,7 +28,7 @@ async function clean(job: Job) {
   return publicResult(!error && data ? data as unknown as Job : job);
 }
 async function cleanOnce(job: Job) {
-  if (!running.has(job.id)) running.set(job.id, clean(job).finally(() => { running.delete(job.id); }));
+  if (!running.has(job.id)) running.set(job.id, clean(job).catch(() => publicResult(job)).finally(() => { running.delete(job.id); }));
   return running.get(job.id)!;
 }
 async function remove(actor: ReportActor, recordIdValue: string) {

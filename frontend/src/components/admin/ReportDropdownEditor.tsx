@@ -27,6 +27,7 @@ type ReportDropdownEditorProps = {
   onAdd?: (displayLabel: string) => Promise<boolean>;
   onEditOption?: (option: DropdownOption, displayLabel: string) => Promise<boolean>;
   onClose?: () => void;
+  onCancel?: () => void;
 };
 
 export default function ReportDropdownEditor({
@@ -51,6 +52,7 @@ export default function ReportDropdownEditor({
   onAdd,
   onEditOption,
   onClose,
+  onCancel,
 }: ReportDropdownEditorProps) {
   const listId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -96,16 +98,18 @@ export default function ReportDropdownEditor({
     const updatePosition = () => {
       const rect = rootRef.current?.getBoundingClientRect();
       if (!rect) return;
+      const width = Math.min(Math.max(rect.width, 240), Math.max(0, window.innerWidth - 16));
       setPosition({
-        left: Math.max(8, Math.min(rect.left, window.innerWidth - Math.max(rect.width, 240) - 8)),
-        top: Math.min(rect.bottom + 4, window.innerHeight - 290),
-        width: Math.max(rect.width, 240),
+        left: Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)),
+        top: Math.max(8, Math.min(rect.bottom + 4, window.innerHeight - 290)),
+        width,
       });
     };
     updatePosition();
     window.addEventListener("resize", updatePosition);
     window.addEventListener("scroll", updatePosition, true);
     const onPointerDown = (event: PointerEvent) => {
+      if ((event.target as Element).closest?.("[data-spreadsheet-formatting]")) return;
       if (rootRef.current?.contains(event.target as Node) || popoverRef.current?.contains(event.target as Node)) return;
       setOpen(false);
       onClose?.();
@@ -188,6 +192,7 @@ export default function ReportDropdownEditor({
       else if (addingOption) setAddingOption(false);
       else {
         close(false);
+        onCancel?.();
         requestAnimationFrame(() => triggerRef.current?.focus());
       }
       setManagementError("");
@@ -256,11 +261,21 @@ export default function ReportDropdownEditor({
 
   return (
     <>
-      <div ref={rootRef} className="relative min-w-[150px] max-w-full">
+      <div ref={rootRef} className="spreadsheet-dropdown-editor relative min-w-0 w-full max-w-full">
         {open ? (
-          <input ref={inputRef} type="text" role="combobox" aria-label={`Search ${label} options`} aria-autocomplete="list" aria-expanded="true" aria-controls={listId} autoComplete="off" disabled={disabled || busy} value={query} onChange={(event) => { setQuery(event.target.value); onSearch?.(event.target.value); setActiveIndex(0); }} onKeyDown={handleKeyDown} placeholder={(displayValue ?? value) ? `Current: ${displayValue ?? value}` : `Search ${label.toLowerCase()}`} className="w-full rounded-md border border-amber-300 bg-white px-2.5 py-1.5 pr-8 text-xs font-medium text-slate-800 shadow-sm outline-none transition focus:border-amber-500 focus:ring-2 focus:ring-amber-100 disabled:opacity-60" />
+          <input ref={inputRef} type="text" role="combobox" aria-label={`Search ${label} options`} aria-autocomplete="list" aria-expanded="true" aria-controls={listId} autoComplete="off" disabled={disabled || busy} value={query} onChange={(event) => { setQuery(event.target.value); onSearch?.(event.target.value); setActiveIndex(0); }} onKeyDown={handleKeyDown} onBlur={(event) => {
+            const next = event.relatedTarget as Element | null;
+            if (!next || rootRef.current?.contains(next) || popoverRef.current?.contains(next) || next.closest("[data-spreadsheet-formatting]")) return;
+            close();
+          }} placeholder={(displayValue ?? value) ? `Current: ${displayValue ?? value}` : `Search ${label.toLowerCase()}`} className="spreadsheet-cell-editor w-full rounded-md border border-amber-300 bg-white px-2.5 py-1.5 pr-8 text-xs font-medium text-slate-800 shadow-sm outline-none transition focus:border-amber-500 focus:ring-2 focus:ring-amber-100 disabled:opacity-60" />
         ) : (
-          <button ref={triggerRef} type="button" disabled={disabled} onBlur={() => onCommitBlur?.()} onClick={() => { setQuery(""); onSearch?.(""); setActiveIndex(Math.max(0, options.findIndex((option) => option.value === value))); setOpen(true); }} className="flex w-full items-center justify-between gap-1.5 rounded-md border border-amber-300 bg-white px-2.5 py-1.5 text-left text-xs font-medium text-slate-800 shadow-sm hover:bg-amber-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 disabled:opacity-60">
+          <button ref={triggerRef} type="button" disabled={disabled} onBlur={(event) => {
+            if ((event.relatedTarget as Element | null)?.closest("[data-spreadsheet-formatting]")) return;
+            onCommitBlur?.();
+          }} onKeyDown={(event) => {
+            if (event.key === "Escape") { event.preventDefault(); onCancel?.(); }
+            else if (event.key === "Enter" && onCommitBlur) { event.preventDefault(); onCommitBlur(); }
+          }} onClick={() => { setQuery(""); onSearch?.(""); setActiveIndex(Math.max(0, options.findIndex((option) => option.value === value))); setOpen(true); }} className="spreadsheet-cell-editor spreadsheet-dropdown-trigger flex w-full items-center justify-between gap-1.5 rounded-md border border-amber-300 bg-white px-2.5 py-1.5 text-left text-xs font-medium text-slate-800 shadow-sm hover:bg-amber-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 disabled:opacity-60">
             <span className="truncate">{(displayValue ?? value) || `Choose ${label.toLowerCase()}`}</span><ChevronDown aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-amber-700" />
           </button>
         )}

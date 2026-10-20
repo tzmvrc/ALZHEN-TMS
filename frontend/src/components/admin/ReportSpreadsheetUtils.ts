@@ -1,3 +1,5 @@
+import type { CSSProperties } from "react";
+import type { ColumnDesign } from "../../services/shared-table-design";
 export const REPORT_COLUMN_COLORS = [
   "#fef2f2", "#fecaca", "#f87171", "#b91c1c",
   "#fff7ed", "#fed7aa", "#fb923c", "#c2410c",
@@ -12,9 +14,9 @@ export const REPORT_COLUMN_COLORS = [
   "#f8fafc", "#cbd5e1", "#64748b", "#1e293b",
 ];
 
-export const REPORT_GRID_VIEWPORT_CLASS = "relative min-h-48 max-h-[min(68vh,calc(100vh-18rem))] min-w-0 overflow-auto overscroll-contain rounded-xl border border-slate-200 bg-white";
-export const REPORT_GRID_HEADER_CELL_CLASS = "sticky top-0 z-30 whitespace-nowrap border-b border-r border-slate-200 bg-slate-50 px-4 py-3.5 text-[11px] font-semibold uppercase tracking-wider text-slate-600 last:border-r-0";
-export const REPORT_GRID_BODY_CELL_CLASS = "border-b border-r border-slate-100 px-4 py-3.5 align-top text-[13px] text-slate-800 last:border-r-0";
+export const REPORT_GRID_VIEWPORT_CLASS = "spreadsheet-viewport relative min-h-0 min-w-0 overflow-auto overscroll-contain rounded-sm border border-slate-200 bg-white";
+export const REPORT_GRID_HEADER_CELL_CLASS = "sticky top-0 z-30 whitespace-normal break-words border-b border-r border-slate-200 bg-slate-50 px-3 py-1 align-middle text-[12px] leading-4 font-semibold uppercase tracking-wide text-slate-600 last:border-r-0";
+export const REPORT_GRID_BODY_CELL_CLASS = "border-b border-r border-slate-100 px-4 py-1 align-middle text-[12px] leading-5 text-slate-800 last:border-r-0";
 export const REPORT_GRID_ROW_CLASS = "border-b border-slate-100/80 transition-colors last:border-0";
 
 export type {CellDesign as ReportCellFormat} from "../../services/shared-table-design";
@@ -32,7 +34,7 @@ export function readReportCellFormats(storageKey: string): Record<string, Report
       const item = value as Record<string, unknown>;
       const color = typeof item.color === "string" && /^#[0-9a-f]{6}$/i.test(item.color) ? item.color : undefined;
       const backgroundColor = typeof item.backgroundColor === "string" && /^#[0-9a-f]{6}$/i.test(item.backgroundColor) ? item.backgroundColor : undefined;
-      return [[key, { bold: item.bold === true, color, backgroundColor } satisfies ReportCellFormat]];
+      return [[key, { ...(typeof item.bold === "boolean" ? { bold: item.bold } : {}), ...(typeof item.italic === "boolean" ? { italic: item.italic } : {}), ...(typeof item.underline === "boolean" ? { underline: item.underline } : {}), fontFamily: typeof item.fontFamily === "string" ? item.fontFamily : undefined, fontSize: typeof item.fontSize === "number" && Number.isFinite(item.fontSize) ? item.fontSize : undefined, color, backgroundColor } satisfies ReportCellFormat]];
     }));
   } catch {
     return {};
@@ -73,3 +75,35 @@ export function parseSpreadsheetClipboard(value: string): string[][] {
   const normalized = value.replace(/\r\n?/g, "\n").replace(/\n+$/, "");
   return normalized ? normalized.split("\n").map((line) => line.split("\t")) : [];
 }
+
+/** Column defaults apply to the header and blanks; only body cells receive cell overrides. */
+export function reportColumnAppearance(column?: ColumnDesign, cell?: ReportCellFormat, legacyBackground?: string): CSSProperties {
+  const defaults = column?.format;
+  const background = cell?.backgroundColor || defaults?.backgroundColor || column?.color || legacyBackground;
+  const foreground = cell?.color || defaults?.color;
+  const bold = cell?.bold ?? defaults?.bold;
+  const italic = cell?.italic ?? defaults?.italic;
+  const underline = cell?.underline ?? defaults?.underline;
+  let contrast: string | undefined;
+  if (background && /^#[0-9a-f]{6}$/i.test(background)) {
+    const [r, g, b] = [1, 3, 5].map(index => Number.parseInt(background.slice(index, index + 2), 16));
+    contrast = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 < 0.55 ? "#ffffff" : "#172b43";
+  }
+  return {
+    ...(background ? { backgroundColor: background } : {}),
+    ...(foreground || contrast ? { color: foreground || contrast } : {}),
+    ...(bold !== undefined ? { fontWeight: bold ? 700 : 400 } : {}),
+    ...(italic !== undefined ? { fontStyle: italic ? "italic" : "normal" } : {}),
+    ...(underline !== undefined ? { textDecoration: underline ? "underline" : "none" } : {}),
+    ...(cell?.fontFamily ?? defaults?.fontFamily ? { fontFamily: cell?.fontFamily ?? defaults?.fontFamily ?? undefined } : {}),
+    ...(cell?.fontSize ?? defaults?.fontSize ? { fontSize: cell?.fontSize ?? defaults?.fontSize ?? undefined } : {}),
+    ...(column?.alignment ? { textAlign: column.alignment } : {}),
+  };
+}
+
+/** Separate header appearance overrides never leak into data cells. */
+export function reportHeaderAppearance(column?: ColumnDesign, legacyBackground?: string): CSSProperties {
+  return { ...reportColumnAppearance(column, column?.header, legacyBackground) };
+}
+
+export const REPORT_TOOLBAR_ROW_CLASS = "report-toolbar-row flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-2";

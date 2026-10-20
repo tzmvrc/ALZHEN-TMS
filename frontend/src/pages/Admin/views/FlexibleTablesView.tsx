@@ -1,7 +1,14 @@
+import { useSpreadsheetHeaderFormatting } from "../../../components/admin/useSpreadsheetHeaderFormatting";
+import { reportHeaderAppearance } from "../../../components/admin/ReportSpreadsheetUtils";
+import type { HeaderDesign } from "../../../services/shared-table-design";
+import { reportColumnAppearance, reorderColumnKeys } from "../../../components/admin/ReportSpreadsheetUtils";
+import { useSpreadsheetRowHeights } from "../../../components/admin/useSpreadsheetRowHeights";
+import { SPREADSHEET_NUMBER_GUTTER_WIDTH, SpreadsheetRowNumber, SpreadsheetBlankRows, useSpreadsheetViewport, useSpreadsheetFeedback } from "../../../components/admin/SpreadsheetPresentation";
+import type { ReportCellFormat } from "../../../components/admin/ReportSpreadsheetUtils";
 import {flexColumnAppearance,patchFlexColumnAppearance} from "../../../services/flex-column-appearance";
-import { ReportColumnColorDialog } from "../../../components/admin/ReportSpreadsheetShared";
+import { ReportCellFormattingToolbar, ReportColumnColorDialog } from "../../../components/admin/ReportSpreadsheetShared";
 import { TableSkeleton, SkeletonBlock } from "../../../components/admin/DashboardPrimitives";
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useManagementTableColumns } from "../../../components/admin/useManagementTableColumns";
 import { subscribeToAdminRealtime } from "../../../services/realtime.service";
 import { useDeferredRealtimeRefresh } from "../../../components/admin/useDeferredRealtimeRefresh";
@@ -65,6 +72,8 @@ export default function FlexibleTablesView({ accessToken, role, embeddedTableId,
   const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [formatSaving, setFormatSaving] = useState(false);
+  const formatSavingRef = useRef(false);
   const [resizing,setResizing]=useState(false);
   const [appearanceColumn,setAppearanceColumn]=useState<string|null>(null);
   const [error, setError] = useState("");
@@ -105,7 +114,7 @@ export default function FlexibleTablesView({ accessToken, role, embeddedTableId,
   const realtimeGate = useDeferredRealtimeRefresh(async () => {
     if (selectedTableId) await loadTable(selectedTableId, true);
     await loadTables(true);
-  }, Boolean(resizing || appearanceColumn || saving || Object.keys(drafts).length || columnEditor || optionsColumn || permissionsOpen));
+  }, Boolean(resizing || appearanceColumn || saving || formatSaving || Object.keys(drafts).length || columnEditor || optionsColumn || permissionsOpen));
   useEffect(() => subscribeToAdminRealtime((event) => {
     const tables = event.kind === "batch" ? event.tables : event.kind === "change" ? [event.payload.table] : event.kind === "recovered" ? [event.table] : [];
     if (event.kind === "resume" || tables.some((table) => table.startsWith("flex_") || ["trips", "trip_stops", "trip_line_items", "trip_truck_assignments", "billings", "store_calls", "profiles"].includes(table))) realtimeGate.request();
@@ -160,16 +169,18 @@ export default function FlexibleTablesView({ accessToken, role, embeddedTableId,
     await run(() => renameFlexibleTable(accessToken!, tableData.table.id, name, tableData.table.version), "Table renamed.");
   };
 
-  const visibleColumns = useMemo(() => (tableData?.columns ?? []).filter((column) => showHidden || !column.is_hidden || (revealedColumns[tableData?.table.id ?? ""] ?? []).includes(column.id)), [tableData, showHidden, revealedColumns]);
-  const layoutColumns = useMemo(() => (tableData?.columns ?? []).map((column) => ({ key: column.id, title: column.name, width: 220 })), [tableData]);
-  const { attachViewport, viewportProps, tableStyle, controls: columnControls, hiddenControl, colgroup, headerProps, headerControls, columnWidth } = useManagementTableColumns({ table: `flex:${tableData?.table.id ?? "none"}`, token: accessToken, columns: layoutColumns, enabled: Boolean(tableData) && ["ADMIN", "STAFF"].includes(role), leadingColumns: 1, trailingWidth: tableData?.access.canEdit ? 88 : 0, omitsHiddenCells: true, supportsDesign: false, onResizeChange:setResizing, paused: Boolean(saving || Object.keys(drafts).length || columnEditor || appearanceColumn),
+  const columnOrderSaving = useRef(false);
+  const [draggedFlexColumn, setDraggedFlexColumn] = useState<string | null>(null);
+  const visibleColumns = useMemo(() => [...(tableData?.columns ?? [])].sort((a,b)=>a.position-b.position).filter((column) => showHidden || !column.is_hidden || (revealedColumns[tableData?.table.id ?? ""] ?? []).includes(column.id)), [tableData, showHidden, revealedColumns]);
+  const layoutColumns = useMemo(() => [...(tableData?.columns ?? [])].sort((a,b)=>a.position-b.position).map((column) => ({ key: column.id, title: column.name, width: 220 })), [tableData]);
+  const { attachViewport, viewportProps, tableStyle, controls: columnControls, hiddenControl, colgroup, headerProps, headerControls, columnWidth } = useManagementTableColumns({ table: `flex:${tableData?.table.id ?? "none"}`, token: accessToken, columns: layoutColumns, enabled: Boolean(tableData) && ["ADMIN", "STAFF"].includes(role), leadingColumns: 1, leadingWidth: SPREADSHEET_NUMBER_GUTTER_WIDTH, trailingWidth: tableData?.access.canEdit ? 88 : 0, omitsHiddenCells: true, supportsDesign: false, onResizeChange:setResizing, paused: Boolean(saving || Object.keys(drafts).length || columnEditor || appearanceColumn),
     hiddenKeys: (tableData?.columns ?? []).filter((column) => !visibleColumns.some((visible) => visible.id === column.id)).map((column) => column.id),
     onReveal: (key) => { if (tableData) setRevealedColumns((current) => ({ ...current, [tableData.table.id]: [...(current[tableData.table.id] ?? []), key] })); }, onRestoreAll: () => setShowHidden(true) });
-  const flexStyle=(column:FlexColumn,header=false):CSSProperties=>{
+  const flexStyle=(column:FlexColumn,header=false,cellFormat?:ReportCellFormat):CSSProperties=>{
     const appearance=flexColumnAppearance(column.settings??{}),pin=appearance.pin;
     const peers=visibleColumns.filter(c=>flexColumnAppearance(c.settings??{}).pin===pin),index=peers.findIndex(c=>c.id===column.id);
-    const offset=pin==="left"?44+peers.slice(0,index).reduce((n,c)=>n+columnWidth(c.id),0):peers.slice(index+1).reduce((n,c)=>n+columnWidth(c.id),tableData?.access.canEdit?88:0);
-    return {width:columnWidth(column.id),position:pin?"sticky":header?"relative":undefined,...(pin?{[pin]:offset,zIndex:header?25:10}:{}),backgroundColor:appearance.color??(pin?header?"#f8fafc":"#ffffff":undefined)};
+    const offset=pin==="left"?SPREADSHEET_NUMBER_GUTTER_WIDTH+peers.slice(0,index).reduce((n,c)=>n+columnWidth(c.id),0):peers.slice(index+1).reduce((n,c)=>n+columnWidth(c.id),tableData?.access.canEdit?88:0);
+    return {width:columnWidth(column.id),position:pin?"sticky":header?"relative":undefined,...(pin?{[pin]:offset,zIndex:header?25:10}:{}),backgroundColor:pin?header?"#f8fafc":"#ffffff":undefined,...(header ? reportHeaderAppearance({color:appearance.color,format:appearance.format,header:appearance.header}) : reportColumnAppearance({color:appearance.color,format:appearance.format},cellFormat))};
   };
   const saveAppearance=async(column:FlexColumn,patch:{color?:string|null;pin?:"left"|"right"|null})=>{
     if(!tableData?.access.canManage||saving)return;
@@ -183,6 +194,51 @@ export default function FlexibleTablesView({ accessToken, role, embeddedTableId,
     if (!needle) return tableData?.rows ?? [];
     return (tableData?.rows ?? []).filter((row) => row.cells.some((cell) => String(cell.value ?? "").toLowerCase().includes(needle)));
   }, [tableData, search]);
+
+  const rowHeights = useSpreadsheetRowHeights(`${accessToken ?? "guest"}:flex:${tableData?.table.id ?? "none"}`, Boolean(tableData?.access.canEdit));
+  const spreadsheetViewport = useRef<HTMLDivElement | null>(null);
+  const [formatSelection, setFormatSelection] = useState<{ tableId: string; rowId: string; columnId: string } | null>(null);
+  const formatColumn = tableData?.columns.find(column => column.id === formatSelection?.columnId && tableData.table.id === formatSelection.tableId);
+  const savedFormats = (formatColumn?.settings.cell_formats ?? {}) as Record<string, ReportCellFormat>;
+  const selectedFormat = formatSelection ? savedFormats[formatSelection.rowId] ?? {} : {};
+  const applyCellFormat = async (patch: Partial<ReportCellFormat>) => {
+    if (!tableData?.access.canManage || !formatColumn || !formatSelection || saving || formatSavingRef.current) return;
+    const tableId = tableData.table.id;
+    const original = formatColumn;
+    const optimistic = { ...original, settings: { ...original.settings, cell_formats: { ...savedFormats, [formatSelection.rowId]: { ...selectedFormat, ...patch } } } };
+    formatSavingRef.current = true;
+    setFormatSaving(true);
+    setError("");
+    // Update only the design metadata, without disabling or replacing the value editor.
+    setTableData(current => current?.table.id === tableId ? { ...current, columns: current.columns.map(column => column.id === original.id ? optimistic : column) } : current);
+    try {
+      const updated = await updateFlexColumn(accessToken!, tableId, original.id, { settings: optimistic.settings, expected_version: original.version });
+      setTableData(current => current?.table.id === tableId ? { ...current, columns: current.columns.map(column => column === optimistic ? updated : column) } : current);
+    } catch (cause) {
+      setTableData(current => current?.table.id === tableId ? { ...current, columns: current.columns.map(column => column === optimistic ? original : column) } : current);
+      setError(messageOf(cause, "Unable to save cell formatting."));
+    } finally { formatSavingRef.current = false; setFormatSaving(false); }
+  };
+  const saveHeaderColors = async (key: string, header: HeaderDesign) => {
+    if (!tableData?.access.canManage || saving || formatSavingRef.current) return;
+    const original = tableData.columns.find(column => column.id === key);
+    if (!original) return;
+    const tableId = tableData.table.id;
+    const optimistic = { ...original, settings: patchFlexColumnAppearance(original.settings, { header: { ...flexColumnAppearance(original.settings).header, ...header } }) };
+    formatSavingRef.current = true; setFormatSaving(true); setError("");
+    setTableData(current => current?.table.id === tableId ? { ...current, columns: current.columns.map(column => column.id === key ? optimistic : column) } : current);
+    try {
+      const updated = await updateFlexColumn(accessToken!, tableId, key, { settings: optimistic.settings, expected_version: original.version });
+      setTableData(current => current?.table.id === tableId ? { ...current, columns: current.columns.map(column => column === optimistic ? updated : column) } : current);
+    } catch (cause) {
+      setTableData(current => current?.table.id === tableId ? { ...current, columns: current.columns.map(column => column === optimistic ? original : column) } : current);
+      setError(messageOf(cause, "Unable to save header colors."));
+    } finally { formatSavingRef.current = false; setFormatSaving(false); }
+  };
+  const headerFormatting = useSpreadsheetHeaderFormatting(`flex:${tableData?.table.id ?? "none"}`, Boolean(tableData?.access.canManage), Object.fromEntries((tableData?.columns ?? []).map(column => [column.id, { header: flexColumnAppearance(column.settings).header }])), (key, header) => { void saveHeaderColors(key, header); });
+  const spreadsheetPadding = useSpreadsheetViewport(spreadsheetViewport, filteredRows.length, Boolean(tableData));
+  useSpreadsheetFeedback(notice);
+  useSpreadsheetFeedback(error, "error");
 
   const saveCellValue = async (row: FlexRow, column: FlexColumn, raw: string, existing?: FlexCell) => {
     let value: unknown = raw;
@@ -205,7 +261,7 @@ export default function FlexibleTablesView({ accessToken, role, embeddedTableId,
             : [...item.cells, saved],
         }),
       } : current);
-      setNotice("Cell saved.");
+      setNotice("");
       setDrafts((current) => { const next = { ...current }; delete next[key]; return next; });
     } catch (cause) {
       const text = messageOf(cause, "Unable to save cell."); setError(text);
@@ -232,22 +288,35 @@ export default function FlexibleTablesView({ accessToken, role, embeddedTableId,
   };
 
   const toggleColumnHidden = (column: FlexColumn) => run(() => updateFlexColumn(accessToken!, tableData!.table.id, column.id, { is_hidden: !column.is_hidden, expected_version: column.version }), column.is_hidden ? "Column shown." : "Column hidden.");
+  const reorderFlexibleColumn = async (sourceId: string, targetId: string, after = false) => {
+    if (!tableData?.access.canManage || saving || columnOrderSaving.current) return;
+    const table = tableData;
+    const columns = [...table.columns].sort((a, b) => a.position - b.position);
+    const keys = columns.map(column => column.id);
+    if (!keys.includes(sourceId) || !keys.includes(targetId) || sourceId === targetId) return;
+    const order = after ? keys.filter(key => key !== sourceId) : reorderColumnKeys(keys, sourceId, targetId);
+    if (after) order.splice(order.indexOf(targetId) + 1, 0, sourceId);
+    if (order.every((key, index) => key === columns[index]?.id)) return;
+    if (new Set(columns.map(column => column.position)).size !== columns.length) { setError("Column positions need review before reordering. Nothing was changed."); return; }
+    const byId = new Map(columns.map(column => [column.id, column]));
+    const changes = order.map((key, index) => ({ column: byId.get(key)!, position: columns[index].position })).filter(change => change.column.position !== change.position);
+    setSaving(true); setError(""); setNotice("");
+    columnOrderSaving.current = true;
+    setTableData(current => current?.table.id === table.table.id ? { ...current, columns: order.map((key, index) => ({ ...byId.get(key)!, position: columns[index].position })) } : current);
+    try {
+      for (const { column, position } of changes) {
+        const updated = await updateFlexColumn(accessToken!, table.table.id, column.id, { position, expected_version: column.version });
+        byId.set(column.id, updated);
+      }
+      setTableData(current => current?.table.id === table.table.id ? { ...current, columns: [...byId.values()].sort((a, b) => a.position - b.position) } : current);
+      setNotice("Column order saved.");
+    } catch { await loadTable(table.table.id, true); setError("Column order could not be fully saved. Review the reloaded layout before retrying."); }
+    finally { columnOrderSaving.current = false; setSaving(false); }
+  };
   const shiftColumn = (column: FlexColumn, delta: number) => {
-    const columns = [...(tableData?.columns ?? [])].sort((a, b) => a.position - b.position);
-    const index = columns.findIndex((item) => item.id === column.id);
-    const target = index + delta;
-    if (target < 0 || target >= columns.length) return;
-    const other = columns[target];
-    void (async () => {
-      setSaving(true); setError("");
-      try {
-        const first = await updateFlexColumn(accessToken!, tableData!.table.id, column.id, { position: other.position, expected_version: column.version });
-        const second = await updateFlexColumn(accessToken!, tableData!.table.id, other.id, { position: column.position, expected_version: other.version });
-        setTableData((current) => current ? { ...current, columns: current.columns.map((item) => item.id === first.id ? first : item.id === second.id ? second : item).sort((a, b) => a.position - b.position) } : current);
-        setNotice("Column order saved.");
-      } catch (cause) { setError(messageOf(cause, "Unable to reorder columns.")); await loadTable(tableData!.table.id, true); }
-      finally { setSaving(false); }
-    })();
+    const index = visibleColumns.findIndex(item => item.id === column.id);
+    const target = visibleColumns[index + delta];
+    if (target) void reorderFlexibleColumn(column.id, target.id, delta > 0);
   };
 
   const openOptions = async (column: FlexColumn) => {
@@ -353,8 +422,6 @@ export default function FlexibleTablesView({ accessToken, role, embeddedTableId,
         {tableData?.access.canManage && <div className="flex flex-wrap gap-2"><button type="button" className={buttonClass} onClick={() => void renameTable()}><Settings2 className="h-4 w-4" />Rename</button><button type="button" className={buttonClass} onClick={() => void openPermissions()}><Users className="h-4 w-4" />Permissions</button><button type="button" className={`${buttonClass} text-rose-700`} onClick={() => void archiveTable()}><Archive className="h-4 w-4" />Archive</button></div>}
       </header>
 
-      {error && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">{error}</div>}
-      {notice && <div role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{notice}</div>}
 
       {!tableData && embeddedTableId ? (
         loading ? <TableSkeleton columns={5} rows={5} showToolbar /> : <div role="alert" className={`${panel} p-6 text-sm text-rose-700`}>{error || "This table is no longer available to your account."}</div>
@@ -366,26 +433,29 @@ export default function FlexibleTablesView({ accessToken, role, embeddedTableId,
           </div>
           {loading && !tables.length ? <div role="status" aria-label="Loading flexible tables" className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{[0,1,2].map(key=><SkeletonBlock key={key} className="h-36 rounded-xl" />)}</div> : tables.length ? <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{tables.map((table) => <button type="button" key={table.id} onClick={() => void loadTable(table.id)} className="rounded-xl border border-slate-200 p-4 text-left transition hover:border-[#2678b9]/40 hover:bg-slate-50"><span className="flex items-center gap-2 text-sm font-semibold text-[#0b2341]"><Table2 className="h-4 w-4 text-[#2678b9]" />{table.name}</span><span className="mt-2 block text-[11px] text-slate-500">Updated {new Date(table.updated_at).toLocaleString()}</span><span className="mt-3 block text-[11px] font-medium text-slate-500">{table.access?.is_owner ? "Owner" : table.access?.can_manage ? "Can manage" : table.access?.can_edit ? "Can edit" : "View only"}</span></button>)}</div> : <div className="mt-5 rounded-xl border border-dashed border-slate-200 py-12 text-center text-sm text-slate-500">No tables are shared with you yet. Create one or ask a table owner for access.</div>}
         </div>
-      ) : loading ? <TableSkeleton columns={(tableData?.columns.length??4)+1} rows={5} showToolbar /> : (
+      ) : loading && !tableData ? <TableSkeleton columns={5} rows={5} showToolbar /> : (
         <div className={`${panel} overflow-hidden`}>
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 p-3 sm:px-4">
             <div className="min-w-0"><h2 className="truncate font-semibold text-[#0b2341]">{tableData.table.name}</h2><p className="text-[11px] text-slate-500">{tableData.rows.length} rows · {tableData.columns.length} columns</p></div>
             <div className="flex flex-wrap items-center gap-2">{columnControls}<label className="sr-only" htmlFor="flex-search">Search rows</label><input id="flex-search" className="w-40 rounded-lg border border-slate-200 px-3 py-2 text-xs sm:w-56" value={search} placeholder="Filter rows…" onChange={(event) => setSearch(event.target.value)} /><button type="button" onClick={() => setShowHidden((shown) => !shown)} className={buttonClass}>{showHidden ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}{showHidden ? "Hide hidden" : "Show hidden"}</button><button type="button" className={buttonClass} onClick={() => void addRow()} disabled={!tableData.access.canEdit || saving}><Plus className="h-4 w-4" />Add row</button><button type="button" className={buttonClass} onClick={() => openColumn("new")} disabled={!tableData.access.canManage || saving}><Columns3 className="h-4 w-4" />Add column</button></div>
           </div>
-          {saving && <div className="h-0.5 w-full overflow-hidden bg-slate-100"><div className="h-full w-1/3 animate-pulse bg-[#2678b9]" /></div>}
-          <div ref={attachViewport} {...viewportProps} className="max-h-[68vh] overflow-auto">
-            <table style={tableStyle} className="min-w-full border-separate border-spacing-0 text-left text-xs">{colgroup}
-              <thead className="sticky top-0 z-20 bg-slate-50"><tr><th className="sticky left-0 z-30 w-11 min-w-11 border-b border-r border-slate-200 bg-slate-50 px-2 py-2 text-[10px] font-bold uppercase text-slate-500">Row</th>{visibleColumns.map((column, index) => <th key={column.id} {...headerProps(column.id)} style={flexStyle(column,true)} className={`min-w-44 border-b border-r border-slate-200 px-2 py-2 align-top ${column.is_hidden ? "bg-amber-50" : "bg-slate-50"}`}><div className="flex items-center gap-1"><span className="min-w-0 flex-1 truncate font-semibold text-slate-700" title={column.name}>{column.name}</span>{tableData.access.canManage && <span className="flex shrink-0 items-center gap-0.5"><button type="button" title="Move column left" disabled={index === 0 || saving} onClick={() => shiftColumn(column, -1)} className="rounded p-1 text-slate-400 hover:bg-slate-200 disabled:opacity-30"><ArrowUp className="h-3 w-3" /></button><button type="button" title="Move column right" disabled={index === visibleColumns.length - 1 || saving} onClick={() => shiftColumn(column, 1)} className="rounded p-1 text-slate-400 hover:bg-slate-200 disabled:opacity-30"><ArrowDown className="h-3 w-3" /></button><button type="button" title="Configure column" onClick={() => openColumn(column)} className="rounded p-1 text-slate-400 hover:bg-slate-200"><Settings2 className="h-3.5 w-3.5" /></button></span>}</div><div className="mt-1 text-[9px] font-medium uppercase tracking-wide text-slate-400">{column.input_mode === "DROPDOWN" ? "Dropdown" : column.value_type}</div>{headerControls({ key: column.id, title: column.name })}{tableData.access.canManage&&<span className="mt-1 flex items-center gap-1"><button type="button" aria-label={`Color ${column.name} column`} disabled={saving} onClick={()=>setAppearanceColumn(column.id)} className="rounded p-1 text-slate-500 hover:bg-slate-100"><Palette className="h-3 w-3"/></button><select aria-label={`Pin ${column.name} column`} disabled={saving} value={flexColumnAppearance(column.settings??{}).pin??""} onChange={event=>void saveAppearance(column,{pin:event.target.value==="left"?"left":event.target.value==="right"?"right":null})} className="rounded border border-slate-200 bg-white p-1 text-[10px]"><option value="">Unpinned</option><option value="left">Pin left</option><option value="right">Pin right</option></select></span>}</th>)}{tableData.access.canEdit && <th className="min-w-12 border-b border-slate-200 bg-slate-50" />}</tr></thead>
-              <tbody>{filteredRows.map((row, rowIndex) => <tr key={row.id} className="group hover:bg-blue-50/30"><th className="sticky left-0 z-10 border-b border-r border-slate-100 bg-white px-2 py-1 text-[10px] font-medium text-slate-400 group-hover:bg-blue-50/30">{rowIndex + 1}</th>{visibleColumns.map((column) => {
+          <ReportCellFormattingToolbar selectedCellCount={tableData.access.canManage && formatColumn && !saving && !formatSaving ? 1 : 0} selectionIsBold={Boolean(selectedFormat.bold)} selectionIsItalic={Boolean(selectedFormat.italic)} selectionIsUnderlined={Boolean(selectedFormat.underline)} selectedTextColor={selectedFormat.color ?? null} selectedBackgroundColor={selectedFormat.backgroundColor ?? null} onApply={patch => void applyCellFormat(patch)} {...headerFormatting.toolbarProps} />
+          <div ref={element => { spreadsheetViewport.current = element; attachViewport(element); }} {...viewportProps} className="relative min-h-0 overflow-auto">
+            <table {...headerFormatting.tableProps} style={tableStyle} className="spreadsheet-grid min-w-full border-separate border-spacing-0 text-left text-xs">{colgroup}
+              <thead className="sticky top-0 z-20 bg-slate-50"><tr><th style={{ width: SPREADSHEET_NUMBER_GUTTER_WIDTH, minWidth: SPREADSHEET_NUMBER_GUTTER_WIDTH }} className="spreadsheet-gutter sticky left-0 z-30 border-b border-r border-slate-200 bg-slate-50 px-1 py-2 text-center text-[11px] font-semibold uppercase text-slate-500"><SpreadsheetRowNumber value="#" /></th>{visibleColumns.map((column, index) => <th key={column.id} {...headerProps(column.id)} {...headerFormatting.props(column.id)} draggable={tableData.access.canManage && !saving}
+                onDragStart={event => { if ((event.target as HTMLElement).closest("button,input,select,[role=separator]")) { event.preventDefault(); return; } setDraggedFlexColumn(column.id); event.dataTransfer.effectAllowed = "move"; }}
+                onDragOver={event => { if (draggedFlexColumn) event.preventDefault(); }} onDragEnd={() => setDraggedFlexColumn(null)}
+                onDrop={event => { event.preventDefault(); const source = draggedFlexColumn; setDraggedFlexColumn(null); if (source) void reorderFlexibleColumn(source, column.id); }} style={flexStyle(column,true)} className={`min-w-0 border-b border-r border-slate-200 px-3 py-1 align-middle ${column.is_hidden ? "bg-amber-50" : "bg-slate-50"}`}><div className="spreadsheet-header-content flex min-w-0 items-center gap-1"><span data-spreadsheet-header-title className="min-w-0 flex-1 whitespace-normal break-words font-semibold text-inherit" title={column.name}>{column.name}</span>{tableData.access.canManage && <span className="flex shrink-0 items-center gap-0.5"><button type="button" title="Move column left" disabled={index === 0 || saving} onClick={() => shiftColumn(column, -1)} className="rounded p-1 text-slate-400 hover:bg-slate-200 disabled:opacity-30"><ArrowUp className="h-3 w-3" /></button><button type="button" title="Move column right" disabled={index === visibleColumns.length - 1 || saving} onClick={() => shiftColumn(column, 1)} className="rounded p-1 text-slate-400 hover:bg-slate-200 disabled:opacity-30"><ArrowDown className="h-3 w-3" /></button><button type="button" title="Configure column" onClick={() => openColumn(column)} className="rounded p-1 text-slate-400 hover:bg-slate-200"><Settings2 className="h-3.5 w-3.5" /></button></span>}{tableData.access.canManage&&<details className="relative inline-block shrink-0"><summary title="Column appearance" aria-label={`Appearance for ${column.name}`} className="cursor-pointer list-none rounded p-1 text-slate-500"><Palette className="h-3 w-3" /></summary><span className="absolute right-0 top-full z-50 flex items-center gap-1 rounded border border-slate-200 bg-white p-2 shadow-sm"><button type="button" aria-label={`Color ${column.name} column`} disabled={saving} onClick={()=>setAppearanceColumn(column.id)} className="rounded p-1 text-slate-500 hover:bg-slate-100"><Palette className="h-3 w-3"/></button><select aria-label={`Pin ${column.name} column`} disabled={saving} value={flexColumnAppearance(column.settings??{}).pin??""} onChange={event=>void saveAppearance(column,{pin:event.target.value==="left"?"left":event.target.value==="right"?"right":null})} className="rounded border border-slate-200 bg-white p-1 text-[10px]"><option value="">Unpinned</option><option value="left">Pin left</option><option value="right">Pin right</option></select></span></details>}{headerControls({ key: column.id, title: column.name })}</div></th>)}{tableData.access.canEdit && <th className="min-w-12 border-b border-slate-200 bg-slate-50" />}</tr></thead>
+              <tbody>{filteredRows.map((row, rowIndex) => <tr key={row.id} style={rowHeights.style(row.id)} className="group hover:bg-blue-50/30"><th style={{ width: SPREADSHEET_NUMBER_GUTTER_WIDTH, minWidth: SPREADSHEET_NUMBER_GUTTER_WIDTH }} className="spreadsheet-gutter sticky left-0 z-10 border-b border-r border-slate-100 bg-slate-50 px-1 py-1 text-[10px] font-medium text-slate-400 group-hover:bg-blue-50/30"><SpreadsheetRowNumber value={rowIndex + 1} />{rowHeights.handle(row.id)}</th>{visibleColumns.map((column) => {
                 const cell = cellFor(row, column.id);
                 const key = `${row.id}:${column.id}`;
                 const valueText = drafts[key] ?? cellInputValue(cell?.value);
                 const disabled = !tableData.access.canEdit || saving;
                 const options = tableData.options.filter((option) => option.column_id === column.id && option.is_active);
-                return <td key={column.id} style={flexStyle(column)} className="border-b border-r border-slate-100 p-1.5 align-middle">{column.input_mode === "DROPDOWN" ? <select aria-label={`${column.name}, row ${rowIndex + 1}`} disabled={disabled} className="w-full rounded-md border border-transparent bg-transparent px-2 py-1.5 text-xs hover:border-slate-200 focus:border-blue-400 focus:bg-white disabled:cursor-not-allowed" value={valueText} onChange={(event) => void saveCellValue(row, column, event.target.value, cell)}><option value="">—</option>{options.map((option) => <option key={option.id} value={option.stored_value}>{option.label}</option>)}</select> : column.value_type === "BOOLEAN" ? <input aria-label={`${column.name}, row ${rowIndex + 1}`} disabled={disabled} type="checkbox" checked={cell?.value === true} onChange={(event) => void saveCellValue(row, column, String(event.target.checked), cell)} className="ml-2 h-4 w-4 accent-[#2678b9]" /> : <input aria-label={`${column.name}, row ${rowIndex + 1}`} disabled={disabled} type={column.value_type === "NUMBER" ? "number" : column.value_type === "DATE" ? "date" : column.value_type === "DATETIME" ? "datetime-local" : "text"} step={column.value_type === "NUMBER" ? "any" : undefined} className="w-full min-w-36 rounded-md border border-transparent bg-transparent px-2 py-1.5 text-xs hover:border-slate-200 focus:border-blue-400 focus:bg-white disabled:cursor-not-allowed" value={valueText} onChange={(event) => setDrafts((current) => ({ ...current, [key]: event.target.value }))} onBlur={(event) => { if (event.target.value !== cellInputValue(cell?.value)) void saveCellValue(row, column, event.target.value, cell); }} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} />}</td>;
-              })}{tableData.access.canEdit && <td className="border-b border-slate-100 px-1"><div className="flex items-center gap-1 opacity-50 transition group-hover:opacity-100"><button type="button" title="Move row up" className="rounded p-1 text-slate-500 hover:bg-slate-100" disabled={rowIndex === 0 || saving} onClick={() => void moveRow(row, -1)}><ArrowUp className="h-3 w-3" /></button><button type="button" title="Move row down" className="rounded p-1 text-slate-500 hover:bg-slate-100" disabled={rowIndex === filteredRows.length - 1 || saving} onClick={() => void moveRow(row, 1)}><ArrowDown className="h-3 w-3" /></button><button type="button" title="Archive row" className="rounded p-1 text-rose-600 hover:bg-rose-50" onClick={() => void archiveRowAction(row)}><Trash2 className="h-3.5 w-3.5" /></button></div></td>}</tr>)}</tbody>
+                const format = (column.settings.cell_formats as Record<string, ReportCellFormat> | undefined)?.[row.id];
+                return <td key={column.id} onFocus={() => setFormatSelection({ tableId: tableData.table.id, rowId: row.id, columnId: column.id })} onClick={() => setFormatSelection({ tableId: tableData.table.id, rowId: row.id, columnId: column.id })} style={flexStyle(column,false,format)} className="border-b border-r border-slate-100 px-1.5 py-0.5 align-middle">{column.input_mode === "DROPDOWN" ? <select aria-label={`${column.name}, row ${rowIndex + 1}`} disabled={disabled} className="spreadsheet-cell-editor w-full rounded-md border border-transparent bg-transparent px-2 py-0.5 text-xs hover:border-slate-200 focus:border-blue-400 focus:bg-white disabled:cursor-not-allowed" value={valueText} onChange={(event) => void saveCellValue(row, column, event.target.value, cell)}><option value=""></option>{options.map((option) => <option key={option.id} value={option.stored_value}>{option.label}</option>)}</select> : column.value_type === "BOOLEAN" ? <input aria-label={`${column.name}, row ${rowIndex + 1}`} disabled={disabled} type="checkbox" checked={cell?.value === true} onChange={(event) => void saveCellValue(row, column, String(event.target.checked), cell)} className="h-3.5 w-3.5 accent-[#2678b9]" /> : <input aria-label={`${column.name}, row ${rowIndex + 1}`} disabled={disabled} type={column.value_type === "NUMBER" ? "number" : column.value_type === "DATE" ? "date" : column.value_type === "DATETIME" ? "datetime-local" : "text"} step={column.value_type === "NUMBER" ? "any" : undefined} className="spreadsheet-cell-editor w-full min-w-0 rounded-md border border-transparent bg-transparent px-2 py-0.5 text-xs hover:border-slate-200 focus:border-blue-400 focus:bg-white disabled:cursor-not-allowed" value={valueText} onChange={(event) => setDrafts((current) => ({ ...current, [key]: event.target.value }))} onBlur={(event) => { if (event.target.value !== cellInputValue(cell?.value)) void saveCellValue(row, column, event.target.value, cell); }} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); event.currentTarget.blur(); } else if (event.key === "Escape") { event.preventDefault(); event.currentTarget.value = cellInputValue(cell?.value); setDrafts(current => { const next = { ...current }; delete next[key]; return next; }); event.currentTarget.blur(); } }} />}</td>;
+              })}{tableData.access.canEdit && <td className="border-b border-slate-100 px-1"><div className="flex items-center gap-1 opacity-50 transition group-hover:opacity-100"><button type="button" title="Move row up" className="rounded p-1 text-slate-500 hover:bg-slate-100" disabled={rowIndex === 0 || saving} onClick={() => void moveRow(row, -1)}><ArrowUp className="h-3 w-3" /></button><button type="button" title="Move row down" className="rounded p-1 text-slate-500 hover:bg-slate-100" disabled={rowIndex === filteredRows.length - 1 || saving} onClick={() => void moveRow(row, 1)}><ArrowDown className="h-3 w-3" /></button><button type="button" title="Archive row" className="rounded p-1 text-rose-600 hover:bg-rose-50" onClick={() => void archiveRowAction(row)}><Trash2 className="h-3.5 w-3.5" /></button></div></td>}</tr>)}<SpreadsheetBlankRows gutterWidth={SPREADSHEET_NUMBER_GUTTER_WIDTH} count={spreadsheetPadding.count} height={spreadsheetPadding.height} start={filteredRows.length + 1} columns={[...visibleColumns.map(column => ({ key: column.id, width: columnWidth(column.id), style: flexStyle(column) })), ...(tableData.access.canEdit ? [{ key: "row-actions", width: 88 }] : [])]} /></tbody>
             </table>
-            {!filteredRows.length && <div className="p-8 text-center text-sm text-slate-500">{search ? "No rows match this filter." : "No custom rows yet. Add a row to get started."}</div>}
           </div>
           {hiddenControl}
           {tableData.access.canManage && <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 bg-slate-50/70 px-3 py-2"><span className="mr-1 text-[10px] font-semibold uppercase text-slate-400">Columns</span>{tableData.columns.map((column) => <div key={column.id} className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1"><span className="max-w-32 truncate text-[10px] text-slate-600">{column.name}</span><button type="button" title={column.is_hidden ? "Show column" : "Hide column"} onClick={() => void toggleColumnHidden(column)} className="text-slate-400 hover:text-slate-700">{column.is_hidden ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}</button><button type="button" title="Configure column" onClick={() => openColumn(column)} className="text-slate-400 hover:text-slate-700"><Settings2 className="h-3 w-3" /></button><button type="button" title="Archive column" onClick={() => void archiveColumnAction(column)} className="text-rose-400 hover:text-rose-700"><Archive className="h-3 w-3" /></button></div>)}</div>}

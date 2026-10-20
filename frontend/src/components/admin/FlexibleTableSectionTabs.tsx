@@ -1,3 +1,4 @@
+import { useSpreadsheetFeedback } from "./SpreadsheetPresentation";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Link2Off, Table2 } from "lucide-react";
 import FlexibleTablesView from "../../pages/Admin/views/FlexibleTablesView";
@@ -20,7 +21,7 @@ type Props = {
   hideSectionTab?: boolean;
 };
 
-const tabClass = "max-w-[15rem] shrink-0 truncate border-b-2 px-3 py-2 text-xs font-semibold transition";
+const tabClass = "max-w-[15rem] shrink-0 truncate border-b-2 px-3 py-1.5 text-xs font-semibold transition";
 
 export default function FlexibleTableSectionTabs({ sectionKey, sectionLabel, accessToken, role, children, hideSectionTab = false }: Props) {
   const cached=accessToken?getCachedSectionFlexibleTables(accessToken,sectionKey):null;
@@ -65,11 +66,12 @@ export default function FlexibleTableSectionTabs({ sectionKey, sectionLabel, acc
     finally { setBusy(false); }
   };
 
+  useSpreadsheetFeedback(error, "error");
   if (!accessToken || !["ADMIN", "STAFF"].includes(role)) {
     return <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">Flexible tables are available to ADMIN and STAFF accounts.</div>;
   }
 
-  return <div className="space-y-3">
+  return <div className="space-y-2">
     {(!hideSectionTab || connected.length > 0) && <div className="flex min-w-0 items-center gap-1 border-b border-slate-200">
       <div role="tablist" aria-label={`${sectionLabel} tables`} className="flex min-w-0 flex-1 items-end gap-1 overflow-x-auto">
         <button role="tab" aria-selected={!activeTableId} type="button" title={hideSectionTab ? `Show ${sectionLabel} table` : undefined} aria-label={hideSectionTab ? `Show ${sectionLabel} table` : undefined} className={`${tabClass} ${!activeTableId ? "border-[#2678b9] text-[#0b2341]" : "border-transparent text-slate-500 hover:text-slate-800"}`} onClick={() => setActiveTableId(null)}>{hideSectionTab ? <Table2 aria-hidden="true" className="mx-auto h-4 w-4" /> : sectionLabel}</button>
@@ -79,8 +81,8 @@ export default function FlexibleTableSectionTabs({ sectionKey, sectionLabel, acc
         </div>)}
       </div>
     </div>}
-    {loading && <div aria-label="Loading connected table tabs" className="h-8 w-40 animate-pulse rounded bg-slate-100" />}
-    {error && <div role="alert" className="flex items-center justify-between rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800"><span>{error}</span><button type="button" title="Retry loading connected tables" aria-label="Retry loading connected tables" className="underline" onClick={() => void reload()}>Retry</button></div>}
+    {loading && !hideSectionTab && <div aria-label="Loading connected table tabs" className="h-8 w-40 animate-pulse rounded bg-slate-100" />}
+    {error && <button type="button" onClick={() => void reload()} className="text-xs font-semibold text-blue-700 underline">Retry loading tables</button>}
     {activeTableId ? <FlexibleTablesView key={activeTableId} accessToken={accessToken} role={role} embeddedTableId={activeTableId} onExit={() => { setActiveTableId(null); void reload(); }} /> : children}
 
   </div>;

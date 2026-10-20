@@ -85,13 +85,11 @@ export default function SearchableRelationshipEditor({
     const updatePosition = () => {
       const rect = inputRef.current?.getBoundingClientRect();
       if (!rect) return;
+      const width = Math.min(Math.max(rect.width, 220), Math.max(0, window.innerWidth - 16));
       setPosition({
-        left: Math.max(
-          8,
-          Math.min(rect.left, window.innerWidth - rect.width - 8),
-        ),
-        top: Math.min(rect.bottom + 4, window.innerHeight - 220),
-        width: Math.max(rect.width, 220),
+        left: Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)),
+        top: Math.max(8, Math.min(rect.bottom + 4, window.innerHeight - 220)),
+        width,
       });
     };
     updatePosition();
@@ -181,7 +179,7 @@ export default function SearchableRelationshipEditor({
 
   return (
     <>
-      <div className="relative inline-flex max-w-full">
+      <div className="spreadsheet-relationship-editor relative block min-w-0 w-full max-w-full">
       <input
         ref={inputRef}
         autoFocus={autoFocus}
@@ -206,13 +204,14 @@ export default function SearchableRelationshipEditor({
           setQuery(event.target.value);
           setIsOpen(true);
         }}
-        onBlur={() => {
+        onBlur={(event) => {
+          if ((event.relatedTarget as Element | null)?.closest("[data-spreadsheet-formatting]")) { requestAnimationFrame(() => inputRef.current?.focus()); return; }
           setIsOpen(false);
           setQuery("");
           onCommitBlur();
         }}
         onKeyDown={handleKeyDown}
-        className="min-w-[170px] max-w-[min(22rem,70vw)] rounded-lg border border-amber-300 bg-white px-3 py-2 pr-9 text-sm font-medium text-slate-800 shadow-sm outline-none transition hover:border-amber-400 focus:border-amber-500 focus:ring-2 focus:ring-amber-100 disabled:cursor-wait disabled:opacity-60"
+        className="spreadsheet-cell-editor w-full min-w-0 max-w-full rounded-lg border border-amber-300 bg-white px-3 py-2 pr-9 text-sm font-medium text-slate-800 shadow-sm outline-none transition hover:border-amber-400 focus:border-amber-500 focus:ring-2 focus:ring-amber-100 disabled:cursor-wait disabled:opacity-60"
       />
         <ChevronDown
           aria-hidden="true"

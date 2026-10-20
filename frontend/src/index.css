@@ -466,3 +466,84 @@ select {
     animation: none !important;
   }
 }
+
+/* Shared spreadsheet presentation; scoped away from dashboard headings and dialogs. */
+input[type="checkbox"] { width: 14px; height: 14px; min-width: 14px; min-height: 14px; vertical-align: middle; flex-shrink: 0; }
+.spreadsheet-grid { height: auto; min-height: 0; font-size: 12px; line-height: 1.4; align-self: start; }
+.spreadsheet-grid > thead, .spreadsheet-grid > tbody { height: auto; vertical-align: middle; }
+.spreadsheet-grid > thead > tr > th { white-space: normal; overflow-wrap: anywhere; vertical-align: middle; }
+.spreadsheet-grid > thead > tr > th :where(button, span) { font-size: inherit; font-family: inherit; line-height: inherit; color: inherit; }
+.spreadsheet-grid > tbody > tr > td :where(button, a, input, select, textarea, span) { font-size: inherit; font-family: inherit; line-height: inherit; }
+.spreadsheet-grid :is(td, th).spreadsheet-gutter { text-align: center; vertical-align: middle; white-space: nowrap; }
+.spreadsheet-grid .spreadsheet-row-number { font-size: 11px; line-height: 1; text-align: center; vertical-align: middle; }
+.spreadsheet-gutter > input[type="checkbox"] { margin-left: 4px; vertical-align: middle; }
+.spreadsheet-grid > tbody > tr > td:has(> input[type="checkbox"]) { text-align: center; vertical-align: middle; }
+.spreadsheet-grid > tbody > tr > td:not(.spreadsheet-gutter) > input[type="checkbox"] { margin-inline: auto; }
+/* Preserve selection/focus visibility without erasing user column fills. */
+.spreadsheet-grid tr[aria-selected="true"] > td { box-shadow: inset 0 0 0 1px rgba(38,120,185,.3); }
+
+.spreadsheet-grid :is(th, td)[style*="font-weight"] :where(button, a, input, select, textarea, span) { font-weight: inherit; }
+.spreadsheet-grid :is(th, td)[style*="font-style"] :where(button, a, input, select, textarea, span) { font-style: inherit; }
+.spreadsheet-grid :is(th, td)[style*="color:"] :where(button, a, input, select, textarea, span) { color: inherit; }
+.spreadsheet-grid td[style*="color:"] :where(input, textarea, select) { background-color: transparent; }
+.spreadsheet-grid td select option { color: #172b43; background-color: white; }
+
+.spreadsheet-grid :is(th, td)[style*="text-decoration"] :where(button, a, input, select, textarea, span) { text-decoration: inherit; }
+
+/* Cell editors stay in the column track; option lists alone use a portal. */
+.spreadsheet-grid .spreadsheet-editor-host,
+.spreadsheet-grid .spreadsheet-dropdown-editor,
+.spreadsheet-grid .spreadsheet-relationship-editor {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+.spreadsheet-grid .spreadsheet-cell-editor {
+  box-sizing: border-box;
+  display: block;
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  min-height: 20px;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  outline: none !important;
+  font: inherit !important;
+  color: inherit !important;
+  text-align: inherit;
+  text-decoration: inherit;
+}
+.spreadsheet-grid textarea.spreadsheet-cell-editor {
+  resize: none;
+  overflow: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.spreadsheet-grid .spreadsheet-dropdown-trigger { display: flex; }
+.spreadsheet-grid .spreadsheet-cell-editor[role="combobox"] { padding-right: 20px !important; }
+.spreadsheet-grid thead th { padding-top: 4px; padding-bottom: 4px; }
+.spreadsheet-grid thead th > div { min-height: 0; }
+.spreadsheet-viewport { scrollbar-gutter: stable; }
+
+/* Combined Report is the shared header reference: 24px controls plus 4px padding. */
+.spreadsheet-grid > thead > tr > th { padding-top: 4px; padding-bottom: 4px; font-size: 12px; line-height: 1.333333; text-align: center; }
+.spreadsheet-grid > thead > tr > th [data-spreadsheet-header-title] { padding-block: 0; line-height: inherit; text-align: inherit; white-space: normal; overflow-wrap: anywhere; }
+.spreadsheet-grid th[data-header-selected="true"] { outline: 2px solid #2678b9; outline-offset: -2px; }
+
+.spreadsheet-grid > thead > tr > th > .spreadsheet-header-content { min-height: 24px; }
+.report-toolbar-row [data-report-toolbar-leading] { max-width: 100%; }
+.report-toolbar-row [data-report-toolbar-actions] { max-width: 100%; }
+
+/* Subtle vertical separators only; horizontal rules and selection outlines stay intact. */
+.spreadsheet-grid > :is(thead, tbody) > tr > :is(th, td) {
+  border-right-color: #cbd5e1;
+}
+/* Clean spreadsheet dropdowns; form/navigation dropdowns keep their own affordances. */
+.spreadsheet-grid .spreadsheet-dropdown-editor > button > svg,
+.spreadsheet-grid .spreadsheet-dropdown-editor > svg,
+.spreadsheet-grid .spreadsheet-relationship-editor > svg { display: none; }
+.spreadsheet-grid .spreadsheet-cell-editor[role="combobox"] { padding-right: 0 !important; }
+.spreadsheet-grid select.spreadsheet-cell-editor { appearance: none; -webkit-appearance: none; background-image: none !important; }

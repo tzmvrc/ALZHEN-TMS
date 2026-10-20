@@ -1,3 +1,4 @@
+import { useSpreadsheetFeedback } from "./SpreadsheetPresentation";
 import { useCallback, useEffect, useSyncExternalStore } from "react";
 import { emptyWidths, readSharedWidths, refreshSharedWidths, retrySharedWidths, saveSharedWidth, subscribeSharedWidths } from "../../services/shared-table-widths";
 import { subscribeToAdminRealtime } from "../../services/realtime.service";
@@ -35,7 +36,8 @@ export function useSharedTableWidths(table: string, token: string | null, enable
     return startPolling(token!, table);
   }, [active, token, table]);
   const save = useCallback((column: string, width: number) => active ? saveSharedWidth(token!, table, column, width) : Promise.resolve(), [active, token, table]);
+  useSpreadsheetFeedback(snapshot.error ? "Unable to load or save the table layout." : null, "error");
   return { ...snapshot, save,
-    feedback: snapshot.error ? <p role="alert" className="text-xs text-amber-800">{snapshot.error} <button type="button" className="underline" onClick={() => void retrySharedWidths(token!, table)}>Retry shared layout</button></p> : null,
+    feedback: snapshot.error ? <button type="button" aria-label="Retry table layout" title="Retry table layout" onClick={() => void retrySharedWidths(token!, table)} className="inline-flex h-9 items-center justify-center rounded px-2 text-xs border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-500">Retry layout</button> : null,
   };
 }

@@ -256,6 +256,11 @@ export function startAdminRealtime(
       invalidateForTable("trips");invalidateForTable("transaction_deletion_jobs");
       emitAdminRealtime({kind:"batch",tables:["trips","transaction_deletion_jobs"]});
     }
+      if(event.kind==="commit"&&event.commit.operation==="DELETE"&&["offloads","backloads","loading_reports","unloading_reports"].includes(event.commit.source)) {
+        const tables = [event.commit.source, "report_receipts", ...(event.commit.source === "offloads" ? ["offload_items", "offload_deletion_jobs"] : event.commit.source === "backloads" ? ["backload_items", "backload_deletion_jobs"] : [])];
+        tables.forEach(invalidateForTable);
+        emitAdminRealtime({kind:"batch",tables});
+      }
   });
   const connect = async () => {
     const version = ++connectionVersion;

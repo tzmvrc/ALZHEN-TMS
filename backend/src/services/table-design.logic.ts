@@ -21,6 +21,14 @@ export function validateDesignPatch(value:unknown){
   else if(key==="pin"){if(item!==null&&item!=="left"&&item!=="right")fail();}
   else if(key==="alignment"){if(item!==null&&!["left","center","right"].includes(String(item)))fail();}
   else if(key==="color"){if(!color(item))fail();}
+  else if(key==="header"){
+   const header=object(item);
+   for(const [field,value] of Object.entries(header)){
+    if(["color","backgroundColor"].includes(field)){if(!color(value))fail();}
+    else if(field==="fontSize"){if(value!==null&&(!Number.isInteger(value)||Number(value)<9||Number(value)>32))fail();}
+    else fail();
+   }
+  }
   else if(key==="format")validateFormat(item);
   else if(key==="cells"){
    const cells=object(item);if(Object.keys(cells).length>1000)fail();
@@ -31,6 +39,7 @@ export function validateDesignPatch(value:unknown){
 }
 export function mergeDesign(current:Record<string,unknown>,patch:Record<string,unknown>){
  const next={...current,...patch};
+ if(patch.header)next.header={...object(current.header??{}),...object(patch.header)};
  if(patch.format)next.format={...object(current.format??{}),...object(patch.format)};
  if(patch.cells){const cells={...object(current.cells??{}),...object(patch.cells)};for(const [key,value] of Object.entries(cells))if(value===null)delete cells[key];if(Object.keys(cells).length>1000)fail();next.cells=cells;}
  if(Buffer.byteLength(JSON.stringify(next))>250000)fail();return next;

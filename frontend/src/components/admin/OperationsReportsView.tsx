@@ -1,7 +1,14 @@
+import { REPORT_TOOLBAR_ROW_CLASS } from "./ReportSpreadsheetUtils";
+import { useSpreadsheetHeaderFormatting } from "./useSpreadsheetHeaderFormatting";
+import { reportHeaderAppearance } from "./ReportSpreadsheetUtils";
+import { reportColumnAppearance } from "./ReportSpreadsheetUtils";
+import { useSpreadsheetRowHeights } from "./useSpreadsheetRowHeights";
+import { tableUi } from "./dashboardStyles";
+import { SPREADSHEET_GUTTER_WIDTH, SPREADSHEET_PANEL_CLASS, SPREADSHEET_ATTACHED_VIEWPORT_CLASS, SpreadsheetFooter, SpreadsheetDetailsAction, spreadsheetFeedbackMessage, SpreadsheetBlankRows, SpreadsheetRowNumber, useSpreadsheetViewport, useSpreadsheetFeedback } from "./SpreadsheetPresentation";
 import { CollaborativeCell } from "./CollaborativeCell";
 import EditStepNavigation from "./EditStepNavigation";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
-import { MoreVertical } from "lucide-react";
+import { LoaderCircle, MoreVertical } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import {
   deleteOperationsReports,
@@ -30,9 +37,9 @@ import {
   type OperationsReceipt,
   type ScopeReport,
 } from "../../services/operations-report.service";
-import { ReportColumnActionsMenu, ReportColumnColorDialog, ReportTextCellEditor, ReportRowActionButton } from "./ReportSpreadsheetShared";
+import { ReportCellFormattingToolbar, ReportColumnActionsMenu, ReportColumnColorDialog, ReportTextCellEditor, ReportRowActionButton } from "./ReportSpreadsheetShared";
 import ReportDropdownEditor, { type ReportDropdownChoice } from "./ReportDropdownEditor";
-import { REPORT_GRID_BODY_CELL_CLASS, REPORT_GRID_HEADER_CELL_CLASS, REPORT_GRID_ROW_CLASS, REPORT_GRID_VIEWPORT_CLASS, chooseAutomaticPinSide, reorderColumnKeys } from "./ReportSpreadsheetUtils";
+import { REPORT_GRID_BODY_CELL_CLASS, REPORT_GRID_HEADER_CELL_CLASS, REPORT_GRID_ROW_CLASS, REPORT_GRID_VIEWPORT_CLASS, chooseAutomaticPinSide, reorderColumnKeys, type ReportCellFormat } from "./ReportSpreadsheetUtils";
 import SearchableRelationshipEditor from "./SearchableRelationshipEditor";
 import type { RelationshipOption } from "../../services/lookup.service";
 import { subscribeToAdminRealtime } from "../../services/realtime.service";
@@ -40,8 +47,6 @@ import { useDeferredRealtimeRefresh } from "./useDeferredRealtimeRefresh";
 import { deleteConfirmedOperationsReports, operationsDeleteTargets } from "../../services/operations-report-delete";
 import SlidingSegmentedControl from "./SlidingSegmentedControl";
 import OperationsEventSubmissionForm from "./OperationsEventSubmissionForm";
-import TableState from "./TableState";
-import { TableSkeleton } from "./DashboardPrimitives";
 import { useSharedTableWidths } from "./useSharedTableWidths";
 import {useSharedTableDesign} from "./useSharedTableDesign";
 import {designLayout,designChanges} from "../../services/shared-table-design";
@@ -101,7 +106,7 @@ function pendingOffloadItemId(reportId: string, sourceItemId: string | null) {
   }
 }
 
-export default function OperationsReportsView({ mode, onOpenTrip, refreshVersion = 0 }: { mode: Mode; refreshVersion?: number; onOpenTrip?: (tripId: string, stopId?: string | null) => void }) {
+export default function OperationsReportsView({ mode, onOpenTrip, refreshVersion = 0, toolbarLeading }: { toolbarLeading?: ReactNode; mode: Mode; refreshVersion?: number; onOpenTrip?: (tripId: string, stopId?: string | null) => void }) {
   const { accessToken, profile } = useAuth();
   const [active, setActive] = useState<Kind>("loading");
   const [pageQuery,setPageQuery]=useState<OperationsPageOptions>({page:1,limit:50,search:"",filter:"All",sortBy:"date",sortOrder:"desc"});
@@ -260,18 +265,18 @@ export default function OperationsReportsView({ mode, onOpenTrip, refreshVersion
   }
 
   const filteredTrips = data.trips;
+  useSpreadsheetFeedback(notice, notice?.startsWith("Finish or cancel") ? "warning" : "success");
+  useSpreadsheetFeedback(mode === "trucker" ? error : null, "error");
   const cargoReports = active === "backloads" ? data.backloads : data.offloads;
   const addReportButton = <button type="button" onClick={() => void openSubmission()} className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-full bg-[#ffd43b] px-4 text-sm font-semibold text-[#0b2341] transition hover:bg-[#f2c200] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0b2341]/40"><span aria-hidden="true" className="text-base leading-none">+</span>Add Report</button>;
 
-  return <section className="space-y-4" aria-label="Loading, unloading, backload and offload reports">
+  return <section className="space-y-2" aria-label="Loading, unloading, backload and offload reports">
     {mode === "trucker" && <div className="flex flex-wrap items-center justify-between gap-3">
       {mode === "trucker" && <h2 className="text-lg font-bold text-[#0b2341]">Trip reports</h2>}
       {mode === "trucker" && <SlidingSegmentedControl aria-label="Operational report type" options={tabs} value={active} onChange={(value) => setActive(value)} />}
       {addReportButton}
     </div>}
-    {error && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800"><span>{error}</span><button type="button" className="font-semibold underline" onClick={() => void load(false)} disabled={loading}>Retry loading reports</button></div>}
-    {notice && <div role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{notice}</div>}
-    {mode === "management" && <OperationsEventsTable rows={data.event_rows} loading={loading} hasLoaded={hasLoaded} loadError={error} token={accessToken ?? ""} profileId={profile?.id} canManageReports={["ADMIN", "STAFF"].includes(profile?.role ?? "")} onOpenTrip={onOpenTrip} onSaved={() => load(true, true)} toolbarActions={addReportButton} serverPage={paged?{query:pageQuery,pagination:data.pagination,pending:loading||(dataState.pageKey!==pageKey&&!cached),onChange:next=>{if(gridInteraction.current()){setNotice("Finish or cancel the active edit before changing pages or filters.");return;}setPageQuery(current=>({...current,...next}));}}:undefined} onInteractionCheck={registerGridInteraction} />}
+    {mode === "management" && <OperationsEventsTable toolbarLeading={toolbarLeading} rows={data.event_rows} loading={loading} hasLoaded={hasLoaded} loadError={error} token={accessToken ?? ""} profileId={profile?.id} canManageReports={["ADMIN", "STAFF"].includes(profile?.role ?? "")} onOpenTrip={onOpenTrip} onSaved={() => load(true, true)} toolbarActions={addReportButton} serverPage={paged?{query:pageQuery,pagination:data.pagination,pending:loading||(dataState.pageKey!==pageKey&&!cached),onChange:next=>{if(gridInteraction.current()){setNotice("Finish or cancel the active edit before changing pages or filters.");return;}setPageQuery(current=>({...current,...next}));}}:undefined} onInteractionCheck={registerGridInteraction} />}
     {mode === "trucker" && loading ? <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500">Loading assigned trip reports…</div> : null}
     {mode === "trucker" && <details open className={`${cardClass} group`}>
     <div className="space-y-4">
@@ -303,6 +308,7 @@ export default function OperationsReportsView({ mode, onOpenTrip, refreshVersion
 
 function EventTypeEditor({ token, sourceType, recordId, eventType, onSaved, style, className }: { token: string; sourceType: OperationsSourceType; recordId: string; eventType: OperationsEventType; onSaved: () => void | Promise<void>; style?: CSSProperties; className: string }) {
   const [value, setValue] = useState(eventType);
+  const [draftValue, setDraftValue] = useState(eventType);
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
@@ -334,7 +340,6 @@ function EventTypeEditor({ token, sourceType, recordId, eventType, onSaved, styl
     if (saving.current) return;
     if (nextValue === value) { setEditing(false); return; }
     saving.current = true;
-    setValue(nextValue);
     setMessage("Saving…");
     setHasError(false);
     setBusy(true);
@@ -345,6 +350,7 @@ function EventTypeEditor({ token, sourceType, recordId, eventType, onSaved, styl
         throw new Error("The server did not confirm the saved Event Type.");
       }
       setValue(confirmed);
+      setDraftValue(confirmed);
       setMessage("Saved");
       setEditing(false);
       try {
@@ -354,8 +360,7 @@ function EventTypeEditor({ token, sourceType, recordId, eventType, onSaved, styl
         setHasError(true);
       }
     } catch (cause) {
-      setValue(eventType);
-      setEditing(false);
+      setEditing(true);
       setMessage(cause instanceof Error ? cause.message : "Unable to save Event Type.");
       setHasError(true);
     } finally {
@@ -364,17 +369,18 @@ function EventTypeEditor({ token, sourceType, recordId, eventType, onSaved, styl
     }
   }
 
+  useSpreadsheetFeedback(message && !busy && hasError ? message : null, "error");
   return <td style={style} data-cell-hover-disabled={!editing ? undefined : "true"} tabIndex={editing ? undefined : 0}
     onClick={() => { if (!editing && !busy) setEditing(true); }}
     onKeyDown={(event) => {
       if (!editing && (event.key === "Enter" || event.key === "F2")) { event.preventDefault(); setEditing(true); }
-      else if (editing && event.key === "Escape") setEditing(false);
+      else if (editing && event.key === "Escape") { setDraftValue(value); setEditing(false); }
     }}
     className={className + " relative cursor-text " + (!editing ? "hover:bg-blue-50/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2678b9] " : "")} title="Edit Event Type">
-    {editing ? <><style>{dropdownOptionColors}</style><ReportDropdownEditor label={`Event Type for report ${recordId}`} value={value} displayValue={value} options={options} disabled={busy}
-      onSelect={(next) => { const selected = next as OperationsEventType; void save(selected); }}
+    {editing ? <><style>{dropdownOptionColors}</style><ReportDropdownEditor label={`Event Type for report ${recordId}`} value={draftValue} displayValue={draftValue} options={options} disabled={busy}
+      onSelect={(next) => setDraftValue(next as OperationsEventType)}
       onCommitSelection={(next) => void save(next as OperationsEventType)}
-      onCommitBlur={() => setEditing(false)} onClose={() => setEditing(false)} /></> : <><span className={`inline-block rounded-sm px-1 text-sm font-medium ${valueColors[value]}`}>{value}</span>{message && <span role={hasError ? "alert" : "status"} className={`ml-2 text-[10px] ${hasError ? "text-rose-700" : busy ? "text-slate-500" : "text-emerald-700"}`}>{message}</span>}</>}
+      onCommitBlur={() => void save(draftValue)} onClose={() => void save(draftValue)} onCancel={() => { setDraftValue(value); setEditing(false); }} /></> : <><span className={`inline-block rounded-sm px-1 text-sm font-medium ${valueColors[value]}`}>{value}</span></>}
   </td>;
 }
 
@@ -394,8 +400,10 @@ function OperationsReceiptGallery({ token, kind, recordId }: { token: string; ki
       .catch((cause) => { if (current) setResult({ scope, receipts: [], error: cause instanceof Error ? cause.message : "Unable to load report images." }); });
     return () => { current = false; };
   }, [receiptType, recordId, token, scope]);
-  if (result?.scope !== scope) return <p role="status" className="mt-2 text-xs text-slate-500">Loading report images…</p>;
-  if (result.error) return <p role="alert" className="mt-2 text-xs text-rose-700">Images could not be loaded: {result.error} <button type="button" className="font-semibold underline" onClick={() => setAttempt((value) => value + 1)}>Retry images</button></p>;
+  useSpreadsheetFeedback(result?.scope === scope ? result.error : null, "error");
+  useSpreadsheetFeedback(resumeError, "error");
+  if (result?.scope !== scope) return <div aria-label="Loading report images" className="mt-2 h-12 animate-pulse rounded-sm bg-slate-100 motion-reduce:animate-none" />;
+  if (result.error) return <button type="button" className="mt-2 text-xs font-semibold text-blue-700 underline" onClick={() => setAttempt(value => value + 1)}>Retry images</button>;
   return <><ReportImageGallery images={result.receipts} />
     {result.receipts.filter(receipt => receipt.upload_status === "PENDING" && receipt.upload_request_id).map(receipt => <label key={receipt.id} className="mt-2 block text-xs text-amber-800">
       Resume {receipt.file_name} with the original file
@@ -410,8 +418,7 @@ function OperationsReceiptGallery({ token, kind, recordId }: { token: string; ki
           .finally(() => setResuming(false));
       }} className="mt-1 block max-w-full" />
     </label>)}
-    {resuming && <p role="status" className="mt-2 text-xs text-slate-500">Recovering image upload…</p>}
-    {resumeError && <p role="alert" className="mt-2 text-xs text-rose-700">{resumeError}</p>}
+    {resuming && <div aria-label="Resuming image upload" className="mt-2 h-1 animate-pulse bg-blue-100 motion-reduce:animate-none" />}
   </>;
 }
 
@@ -452,17 +459,18 @@ function OffloadItemFieldEditor({ token, model, field, onSaved }: { token: strin
       setHasError(true);
     } finally { saving.current = false; setBusy(false); }
   };
+  useSpreadsheetFeedback(message && !busy && hasError ? message : null, "error");
   return <CollaborativeCell target={{table:"operations",source:model.persisted?"offload_items":"offloads",recordId:model.persisted?model.id:model.report.id,field:model.persisted?field:`item.${field}`,tripId:model.report.trip_id,stopId:model.report.trip_stop_id??undefined,reportId:model.report.id}}><div className="min-w-0 text-left">
     {editing ? <ReportTextCellEditor value={value} type="number" step="any" label={`${label} for Offload ${model.report.id} item ${model.id}`} disabled={busy} saveState={hasError?"error":undefined}
       onChange={setValue} onCommit={() => void save()} onCancel={() => { setValue(original == null ? "" : String(original)); setEditing(false); }}
-      className="w-full min-w-20 rounded-md border border-blue-300 bg-white px-2 py-1.5 text-left text-sm tabular-nums text-slate-800 outline-none focus:ring-2 focus:ring-blue-100" /> : <button type="button" disabled={busy} onClick={() => { setMessage(""); setHasError(false); setEditing(true); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === "F2") { event.preventDefault(); setMessage(""); setHasError(false); setEditing(true); } }}
-      className="w-full cursor-text rounded-sm px-1 py-0.5 text-left text-sm tabular-nums text-slate-800 hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9]" title={`Edit ${label}`}>{original == null ? "—" : String(original)}</button>}
-    {message && <p role={hasError ? "alert" : "status"} className={`text-left text-[10px] ${hasError ? "text-rose-700" : busy ? "text-slate-500" : "text-emerald-700"}`}>{message}</p>}
+      className="spreadsheet-cell-editor w-full min-w-0 rounded-md border border-blue-300 bg-white px-2 py-1.5 text-left text-sm tabular-nums text-slate-800 outline-none focus:ring-2 focus:ring-blue-100" /> : <button type="button" disabled={busy} onClick={() => { setMessage(""); setHasError(false); setEditing(true); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === "F2") { event.preventDefault(); setMessage(""); setHasError(false); setEditing(true); } }}
+      className="w-full cursor-text rounded-sm px-1 py-0.5 text-left text-sm tabular-nums text-inherit hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9]" title={`Edit ${label}`}>{original == null ? "" : String(original)}</button>}
+    
   </div></CollaborativeCell>;
 }
 
 function dateLabelSafe(value: string | null) {
-  if (!value) return "—";
+  if (!value) return "";
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? "—" : new Intl.DateTimeFormat("en-PH", { dateStyle: "medium", ...(/^\d{4}-\d{2}-\d{2}$/.test(value) ? {} : { timeStyle: "short" as const }), timeZone: "Asia/Manila" }).format(date);
 }
@@ -483,7 +491,7 @@ const OPERATIONS_COLUMNS: Array<{ key: EventColumnKey; label: string; width: num
   { key: "report_type", label: "Report / Event Type", width: 210, sortable: true },
   { key: "remarks", label: "Remarks", width: 380, sortable: true },
   { key: "reported_by", label: "Reported By", width: 220, sortable: true },
-  { key: "details", label: "Details", width: 160, sortable: false },
+  { key: "details", label: "Details", width: 80, sortable: false },
 ];
 const OPERATIONS_COLUMN_STORAGE_KEY = "alzhen:operations-report-column-layout:v1";
 
@@ -501,7 +509,7 @@ function readOperationsColumnLayout(storageKey = OPERATIONS_COLUMN_STORAGE_KEY) 
     const saved = JSON.parse(localStorage.getItem(storageKey) ?? localStorage.getItem(OPERATIONS_COLUMN_STORAGE_KEY) ?? "null") as Partial<typeof initial> | null;
     if (!saved) return initial;
     return {
-      order: Array.isArray(saved.order) ? [...initial.order.filter((key) => saved.order?.includes(key)), ...initial.order.filter((key) => !saved.order?.includes(key))] : initial.order,
+      order: Array.isArray(saved.order) ? [...saved.order.filter((key): key is EventColumnKey => initial.order.includes(key as EventColumnKey)), ...initial.order.filter((key) => !saved.order?.includes(key))] : initial.order,
       hidden: Array.isArray(saved.hidden) ? saved.hidden.filter((key): key is EventColumnKey => initial.order.includes(key as EventColumnKey)) : initial.hidden,
       widths: saved.widths ?? initial.widths,
       pins: saved.pins ?? initial.pins,
@@ -510,10 +518,8 @@ function readOperationsColumnLayout(storageKey = OPERATIONS_COLUMN_STORAGE_KEY) 
   } catch { return initial; }
 }
 
-export function OperationsEventsTable({ rows, loading, hasLoaded, loadError, token, profileId, canManageReports = false, onOpenTrip, onSaved, toolbarActions, onInteractionCheck, serverPage }: { rows: OperationsEventRow[]; loading: boolean; hasLoaded: boolean; loadError: string | null; token: string; profileId?: string; canManageReports?: boolean; onOpenTrip?: (tripId: string, stopId?: string | null) => void; onSaved: () => void | Promise<void>; toolbarActions?: ReactNode; onInteractionCheck?: (check: () => boolean) => void; serverPage?: {query:OperationsPageOptions;pagination:OperationsReportData["pagination"];pending:boolean;onChange:(next:OperationsPageOptions)=>void} }) {
-  const [localFilter, setLocalFilter] = useState<EventFilter>("All");
-  const filter=(serverPage?.query.filter??localFilter) as EventFilter;
-  const setFilter=(value:EventFilter)=>serverPage?serverPage.onChange({filter:value,page:1}):setLocalFilter(value);
+export function OperationsEventsTable({ rows, loading, hasLoaded, loadError, token, profileId, canManageReports = false, onOpenTrip, onSaved, toolbarActions, toolbarLeading, onInteractionCheck, serverPage }: { toolbarLeading?: ReactNode; rows: OperationsEventRow[]; loading: boolean; hasLoaded: boolean; loadError: string | null; token: string; profileId?: string; canManageReports?: boolean; onOpenTrip?: (tripId: string, stopId?: string | null) => void; onSaved: () => void | Promise<void>; toolbarActions?: ReactNode; onInteractionCheck?: (check: () => boolean) => void; serverPage?: {query:OperationsPageOptions;pagination:OperationsReportData["pagination"];pending:boolean;onChange:(next:OperationsPageOptions)=>void} }) {
+  const filter = (serverPage?.query.filter ?? "All") as EventFilter;
   const [localSearch, setLocalSearch] = useState("");
   const search=serverPage?.query.search??localSearch;
   const setSearch=(value:string)=>serverPage?serverPage.onChange({search:value,page:1}):setLocalSearch(value);
@@ -527,7 +533,8 @@ export function OperationsEventsTable({ rows, loading, hasLoaded, loadError, tok
   const [detailRow, setDetailRow] = useState<OperationsEventRow | null>(null);
   const [feedback, setFeedback] = useState<{ rowId: string; field: string; kind: "saving" | "saved" | "error"; message: string } | null>(null);
   const [localSnapshot, setLocalSnapshot] = useState<{ source: OperationsEventRow[]; rows: OperationsEventRow[] }>(() => ({ source: rows, rows }));
-  const localRows = localSnapshot.source === rows ? localSnapshot.rows : rows;
+  const [deletedReports, setDeletedReports] = useState<{ token: string; keys: Set<string> }>({ token, keys: new Set() });
+  const localRows = useMemo(() => (localSnapshot.source === rows ? localSnapshot.rows : rows).filter(row => deletedReports.token !== token || !deletedReports.keys.has(`${row.source_type}:${row.source_record_id}`)), [localSnapshot, rows, deletedReports, token]);
   const selectedOption = useRef<RelationshipOption | null>(null);
   const saving = useRef(false);
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -546,9 +553,11 @@ export function OperationsEventsTable({ rows, loading, hasLoaded, loadError, tok
   const [editingCargoRecord, setEditingCargoRecord] = useState<string | null>(null);
   const [cargoRecordDrafts, setCargoRecordDrafts] = useState<Record<string, ScopeReport>>({});
   const [rowEdit, setRowEdit] = useState<OperationsRowEditDraft | null>(null);
+  const rowHeights = useSpreadsheetRowHeights(`${profileId ?? "guest"}:operations`, canManageReports);
   const sharedDesign=useSharedTableDesign("operations",token,canManageReports,Boolean(editing||rowEdit||draggingWidth||draggedColumn));
+  const headerFormatting = useSpreadsheetHeaderFormatting("operations", sharedDesign.canEdit, sharedDesign.columns, (key, header) => { void sharedDesign.save(key, { header }, columns.find(column => column.key === key)?.width ?? 180); });
   const layout=useMemo(()=>({...designLayout(localLayout,OPERATIONS_COLUMNS.map(c=>c.key),sharedDesign.columns,sharedDesign.loaded),widths:draggingWidth?localLayout.widths:{...(sharedWidths.loaded?{}:localLayout.widths),...sharedWidths.widths}}),[localLayout,sharedDesign.columns,sharedDesign.loaded,draggingWidth,sharedWidths.loaded,sharedWidths.widths]);
-  const setLayout=(update:typeof layout|((current:typeof layout)=>typeof layout))=>{const next=typeof update==="function"?update(layout):update;setLayoutState({key:layoutKey,value:next});for(const [key,patch] of Object.entries(designChanges(layout,next)))void sharedDesign.save(key,patch,layout.widths[key]??OPERATIONS_COLUMNS.find(c=>c.key===key)?.width??180);};
+  const setLayout=(update:typeof layout|((current:typeof layout)=>typeof layout))=>{if(!sharedDesign.canEdit)return;const next=typeof update==="function"?update(layout):update;setLayoutState({key:layoutKey,value:next});if(layout.order.join("\u0000")!==next.order.join("\u0000"))void sharedDesign.saveOrder(next.order,key=>layout.widths[key]??OPERATIONS_COLUMNS.find(c=>c.key===key)?.width??180);for(const [key,patch] of Object.entries(designChanges(layout,next))){delete patch.position;if(Object.keys(patch).length)void sharedDesign.save(key,patch,layout.widths[key]??OPERATIONS_COLUMNS.find(c=>c.key===key)?.width??180);}};
   const [rowEditBusy, setRowEditBusy] = useState(false);
   const [rowEditStep, setRowEditStep] = useState(0);
   const rowEditBaseline = useRef("");
@@ -569,13 +578,12 @@ export function OperationsEventsTable({ rows, loading, hasLoaded, loadError, tok
   }, [onInteractionCheck]);
   const [deleteMessage, setDeleteMessage] = useState<string | null>(null);
   const [cleanupVersion, setCleanupVersion] = useState(0);
-  const [deleteOutcomes, setDeleteOutcomes] = useState<Array<{ id: string; label: string; message: string }>>([]);
+  const [deleteFeedbackKind, setDeleteFeedbackKind] = useState<"success" | "warning" | "error">("error");
   const deleteSaving = useRef(false);
 
   useEffect(() => { if (resizing.current) return; try { localStorage.setItem(layoutKey, JSON.stringify(layout)); } catch { /* layout remains available for this session */ } }, [layout, layoutKey]);
   useEffect(() => () => resizeCleanup.current?.(), []);
 
-  const filters: EventFilter[] = ["All", "Backload", "Offload"];
   const columns = layout.order.flatMap((key) => {
     const column = OPERATIONS_COLUMNS.find((item) => item.key === key);
     return column && !layout.hidden.includes(key) ? [{ ...column, width: layout.widths[key] ?? column.width }] : [];
@@ -583,7 +591,7 @@ export function OperationsEventsTable({ rows, loading, hasLoaded, loadError, tok
   const leftPins = columns.filter((column) => layout.pins[column.key] === "left");
   const rightPins = columns.filter((column) => layout.pins[column.key] === "right");
   const leftOffsets = new Map<EventColumnKey, number>();
-  let leftOffset = 44;
+  let leftOffset = SPREADSHEET_GUTTER_WIDTH;
   leftPins.forEach((column) => { leftOffsets.set(column.key, leftOffset); leftOffset += column.width; });
   const rightOffsets = new Map<EventColumnKey, number>();
   let rightOffset = 0;
@@ -621,9 +629,11 @@ export function OperationsEventsTable({ rows, loading, hasLoaded, loadError, tok
     return [row.id, editors] as const;
   })), [localRows]);
   const sortBy = (key: EventSortKey) => setSort((current) => ({ key, direction: current.key === key && current.direction === "asc" ? "desc" : "asc" }));
-  const selectionDatasetKey = JSON.stringify([serverPage?.query.page,serverPage?.query.limit,filter, search, visibleRows.map((row) => [row.id, row.source_type, row.source_record_id, row.trip_id, row.trip_stop_id]).sort()]);
-  const selectedRows = !serverPage?.pending && selectedRowState.datasetKey === selectionDatasetKey ? selectedRowState.ids : new Set<string>();
+  const selectionDatasetKey = JSON.stringify([token, serverPage?.query.page, serverPage?.query.limit, filter, search, sort.key, sort.direction]);
+  const selectedRows = !serverPage?.pending && selectedRowState.datasetKey === selectionDatasetKey ? new Set([...selectedRowState.ids].filter(id => visibleRows.some(row => row.id === id))) : new Set<string>();
+  const selectableReportRows = visibleRows.filter(row => ["OFFLOAD", "BACKLOAD"].includes(row.source_type));
   const selectedTargets = operationsDeleteTargets(visibleRows, selectedRows);
+  const canDeleteSelectedReports = Boolean(selectedTargets?.length) && selectedTargets!.every(target => ["OFFLOAD", "BACKLOAD"].includes(target.source_type));
   const setSelectedRows = (update: Set<string> | ((current: Set<string>) => Set<string>)) => setSelectedRowState((currentState) => {
     const current = currentState.datasetKey === selectionDatasetKey ? currentState.ids : new Set<string>();
     const next = typeof update === "function" ? update(current) : update;
@@ -673,16 +683,19 @@ export function OperationsEventsTable({ rows, loading, hasLoaded, loadError, tok
     setRowEditError(null);
   };
   const deleteSelectedRows = async () => {
-    if (!token || deleteSaving.current || !selectedRows.size || !deletePassword || selectedRows.size > 20) return;
+    if (!token || deleteSaving.current || !selectedRows.size || !deletePassword || !selectedTargets?.length || selectedTargets.length > 20) return;
     const selected = [...selectedRows].map((id) => visibleRows.find((row) => row.id === id)).filter((row): row is OperationsEventRow => Boolean(row));
     const targets = operationsDeleteTargets(visibleRows, selectedRows);
+    if (targets?.some(target => !["OFFLOAD", "BACKLOAD"].includes(target.source_type))) { setDeleteFeedbackKind("error"); setDeleteMessage("Select only Offload or Backload reports."); return; }
     if (!targets || selected.length !== selectedRows.size) {
-      setDeleteMessage("One or more selected rows do not have a verified source report. Nothing was deleted; reload and select the rows again.");
+      setDeleteFeedbackKind("error");
+      setDeleteMessage("Unable to verify the selected reports. Refresh and select them again.");
       setDeleteConfirmation(false);
       return;
     }
     deleteSaving.current = true;
     setDeleteBusy(true);
+    setDeleteFeedbackKind("error");
     setDeleteMessage(null);
     try {
       const response = await deleteOperationsReports(token, targets.map(target=>({source_type:target.source_type,record_id:target.record_id})),deletePassword);
@@ -692,22 +705,26 @@ export function OperationsEventsTable({ rows, loading, hasLoaded, loadError, tok
         return {source_type:sourceType,record_id:recordId,...entry.result};
       });
       const deletedIds = new Set(outcome.deletedRowIds);
-      const failures = outcome.failures.map(({ target, message }) => `${target.label}: ${message}`);
-      setDeleteOutcomes(targets.map((target) => ({ id: target.row_id, label: target.label, message: outcome.failures.find((failure) => failure.target.row_id === target.row_id)?.message ?? (outcome.cleanupPending.some((pending) => pending.target.row_id === target.row_id) ? "Database record deleted; image cleanup pending." : "Permanently deleted.") })));
-      if (outcome.cleanupPending.length) {
-        failures.push(`${outcome.cleanupPending.length} report(s) were deleted from the database, but image cleanup is pending. Use Retry image cleanup below; do not create replacement reports.`);
-        setCleanupVersion((current) => current + 1);
-      }
+      const failedCount = outcome.failures.length;
+      if (outcome.cleanupPending.length) setCleanupVersion(current => current + 1);
+      let refreshFailed = false;
       if (deletedIds.size) {
-        setLocalSnapshot({ source: rows, rows: localRows.filter((row) => !deletedIds.has(row.id)) });
-        setSelectedRows((current) => new Set([...current].filter((id) => !deletedIds.has(id))));
-        try { await onSaved(); }
-        catch (cause) { failures.push(`Deleted records could not be refreshed: ${cause instanceof Error ? cause.message : "Refresh failed."}`); }
+        const removed = new Set(targets.filter(target => !outcome.failures.some(failure => failure.target.source_type === target.source_type && failure.target.record_id === target.record_id)).map(target => `${target.source_type}:${target.record_id}`));
+        setDeletedReports(current => ({ token, keys: new Set([...(current.token === token ? current.keys : []), ...removed]) }));
+        setLocalSnapshot({ source: rows, rows: localRows.filter(row => !deletedIds.has(row.id)) });
+        setSelectedRows(current => new Set([...current].filter(id => !deletedIds.has(id))));
+        try { await onSaved(); } catch { refreshFailed = true; }
       }
-      const summary = outcome.cleanupPending.length ? `${deletedIds.size - outcome.cleanupPending.length} report(s) fully deleted. ${outcome.cleanupPending.length} database record(s) deleted with image cleanup pending.` : deletedIds.size ? `${deletedIds.size} of ${selected.length} report${selected.length === 1 ? "" : "s"} deleted.` : "No reports were deleted.";
-      setDeleteMessage(failures.length ? `${summary} ${failures.join(" ")}` : summary);
+      const deletedCount = targets.length - failedCount;
+      const summary = deletedCount ? `${deletedCount} report${deletedCount === 1 ? "" : "s"} deleted.` : "No reports were deleted.";
+      const failedMessage = failedCount ? ` ${failedCount} report${failedCount === 1 ? " could" : "s could"} not be deleted. Review the selection before retrying.` : "";
+      const pendingMessage = outcome.cleanupPending.length ? " Image cleanup is pending. Use the image cleanup action to review it." : "";
+      const refreshMessage = refreshFailed ? " The table could not be refreshed. Retry loading it." : "";
+      setDeleteFeedbackKind(failedCount || outcome.cleanupPending.length || refreshFailed ? deletedIds.size ? "warning" : "error" : "success");
+      setDeleteMessage(summary + failedMessage + pendingMessage + refreshMessage);
     } catch(cause) {
-      setDeleteMessage(cause instanceof Error?cause.message:"No deletion was confirmed. Refresh before retrying.");
+      setDeleteFeedbackKind("error");
+      setDeleteMessage(spreadsheetFeedbackMessage(cause instanceof Error ? cause.message : "Delete failed.", "error"));
     } finally {
       setDeletePassword("");
       setDeleteConfirmation(false);
@@ -800,7 +817,7 @@ export function OperationsEventsTable({ rows, loading, hasLoaded, loadError, tok
     }
   };
 
-  const numberLabel = (value: number | null) => value === null ? "—" : new Intl.NumberFormat(undefined, { maximumFractionDigits: 12 }).format(value);
+  const numberLabel = (value: number | null) => value === null ? "" : new Intl.NumberFormat(undefined, { maximumFractionDigits: 12 }).format(value);
   const saveCargoRecord = async (kind: "backloads" | "offloads", record: ScopeReport) => {
     if (!token) return;
     const draft = cargoRecordDrafts[record.id] ?? record;
@@ -858,6 +875,7 @@ export function OperationsEventsTable({ rows, loading, hasLoaded, loadError, tok
     window.addEventListener("pointercancel", finish, { once: true });
   };
   const reorderByDrop = (target: EventColumnKey) => {
+    if (!sharedDesign.canEdit || !sharedDesign.loaded) return;
     if (!draggedColumn || draggedColumn === target) return;
     setLayout((current) => ({ ...current, order: reorderColumnKeys(current.order, draggedColumn, target) as EventColumnKey[] }));
     setDraggedColumn(null);
@@ -866,11 +884,12 @@ export function OperationsEventsTable({ rows, loading, hasLoaded, loadError, tok
     const side = layout.pins[column.key];
     const color = layout.colors[column.key];
     return {
-      width: column.width, minWidth: column.width, maxWidth: column.width,
+      boxSizing: "border-box", width: column.width, minWidth: column.width, maxWidth: column.width,
       backgroundColor: color ?? (side || header ? "#ffffff" : undefined),
       ...(color ? { color: operationsColumnForeground(color) } : {}),
       ...(side ? { position: "sticky", ...(side === "left" ? { left: leftOffsets.get(column.key) ?? 0 } : { right: rightOffsets.get(column.key) ?? 0 }), zIndex: header ? 60 : 20 } : header ? { position: "sticky", top: 0, zIndex: 30 } : {}),
       ...(header ? { top: 0 } : {}),
+      ...(header ? reportHeaderAppearance(sharedDesign.columns[column.key], color) : reportColumnAppearance(sharedDesign.columns[column.key], undefined, color)),
     };
   };
   const canEdit = (row: OperationsEventRow, field: EditableEventField) => {
@@ -965,7 +984,7 @@ export function OperationsEventsTable({ rows, loading, hasLoaded, loadError, tok
       onClick={() => editable && !active && beginEdit(row, field)}
       onKeyDown={(event) => { if (editable && !active && (event.key === "Enter" || event.key === "F2")) { event.preventDefault(); beginEdit(row, field); } }}
       style={style}
-      className={REPORT_GRID_BODY_CELL_CLASS + " relative border-r border-slate-100/70 align-top text-slate-800 last:border-r-0 " + (editable ? "cursor-text " : "") + (selected ? "outline outline-2 outline-inset outline-blue-500 " : "") + (columnColor ? "bg-white " : "") + extra}
+      className={REPORT_GRID_BODY_CELL_CLASS + " relative border-r border-slate-100/70 align-middle text-slate-800 last:border-r-0 " + (editable ? "cursor-text " : "") + (selected ? "outline outline-2 outline-inset outline-blue-500 " : "") + (columnColor ? "bg-white " : "") + extra}
       title={editable ? "Edit " + label : undefined}>
       <CollaborativeCell target={draftTarget}>
       {active && editing ? <>{field === "reported_by" ? <OperationsReporterEditor token={token} value={editing.reporterId ?? exactOffloadReport(row)?.reported_by_id ?? ""} name={editing.value || "Name not recorded"} autoOpen disabled={status?.kind === "saving"} onSelect={(id, name) => { const option = { id, label: name }; selectedOption.current = option; setEditing((current) => current ? { ...current, value: name, reporterId: id } : current); void saveCell(row, field, name, option); }} onClose={() => { if (!saving.current && status?.kind !== "error") setEditing(null); }} /> : (field === "plate_number" || field === "driver_name") ? <SearchableRelationshipEditor
@@ -979,54 +998,56 @@ export function OperationsEventsTable({ rows, loading, hasLoaded, loadError, tok
         buffered value={editing.value} type={field === "delivery_date" ? "datetime-local" : "text"}
         saveState={status?.kind==="error"?"error":undefined}
         multiline={field === "remarks"} label={"Edit " + label} disabled={status?.kind === "saving"}
-        className="w-full min-w-32 rounded-md border border-blue-300 bg-white px-2 py-1.5 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-blue-100"
+        className="spreadsheet-cell-editor w-full min-w-0 rounded-md border border-blue-300 bg-white px-2 py-1.5 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-blue-100"
         placeholder={field === "remarks" ? "Enter remarks" : undefined}
         onChange={() => {}}
         onCommit={(value) => saveCell(row, field, value)} onCancel={() => setEditing(null)} />}
-        {status && <span role={status.kind === "error" ? "alert" : "status"} className={"block text-[10px] font-medium " + (status.kind === "error" ? "text-rose-600" : status.kind === "saved" ? "text-emerald-600" : "text-slate-400")}>{status.message}</span>}
-      </> : <>{content}{status && <span role={status.kind === "error" ? "alert" : "status"} className={"ml-2 text-[10px] font-medium " + (status.kind === "error" ? "text-rose-600" : status.kind === "saved" ? "text-emerald-600" : "text-slate-400")}>{status.message}</span>}</>}
+        
+      </> : <>{content}</>}
       </CollaborativeCell>
     </td>;
   };
 
-  if ((loading || !hasLoaded) && !hasLoaded && !loadError && !visibleRows.length) return <TableSkeleton columns={columns.length + 1} columnWidths={[44, ...columns.map((column) => column.width)]} rows={6} showToolbar toolbarActions={toolbarActions} />;
+  const spreadsheetPadding = useSpreadsheetViewport(viewportRef, visibleRows.length);
+  useSpreadsheetFeedback(feedback?.kind === "error" ? feedback.message : null, feedback?.kind === "error" ? "error" : "success");
+  useSpreadsheetFeedback(loadError, "error");
+  useSpreadsheetFeedback(deleteMessage, deleteFeedbackKind);
+  const formatColumnKey = selectedCell?.field === "dispatch_number" ? "trip" : selectedCell?.field === "delivery_date" ? "date" : selectedCell?.field;
+  const selectedFormat = selectedCell && formatColumnKey ? sharedDesign.columns[formatColumnKey]?.cells?.[selectedCell.rowId] ?? {} : {};
+  const applyCellFormat = (patch: Partial<ReportCellFormat>) => {
+    if (!selectedCell || !formatColumnKey || !canManageReports) return;
+    void sharedDesign.save(formatColumnKey, { cells: { [selectedCell.rowId]: { ...selectedFormat, ...patch } } }, columns.find(column => column.key === formatColumnKey)?.width ?? 180);
+  };
 
-  return <section aria-label="Unified operations reports" className="space-y-3">
-    {sharedWidths.feedback}
-    {sharedDesign.feedback}
-    <OffloadCleanupNotice key={token} token={token} enabled={canManageReports} version={cleanupVersion} />
-    <div className="flex flex-wrap items-center justify-between gap-3">
-      <div className="flex flex-wrap gap-1" role="group" aria-label="Filter operations reports by type">
-        {filters.map((item) => <button key={item} type="button" aria-pressed={filter === item} onClick={() => { setSelectedRows(new Set()); setFilter(item); if (item === "Offload") setExpandedLineItemsRow(null); }} className={"rounded-full px-3 py-1.5 text-xs font-semibold transition " + (filter === item ? "bg-[#0b2341] text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200")}>{item}</button>)}
-      </div>
-      <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto"><ColumnFinder tableKey="operations" rowSearch={{value:search,onSearch:value=>{setSelectedRows(new Set());setSearch(value);},placeholder:"Search rows or columns…"}} columns={OPERATIONS_COLUMNS.map(column=>({key:column.key,title:column.label,hidden:layout.hidden.includes(column.key),index:columns.findIndex(item=>item.key===column.key)}))} viewport={viewportRef} getHeader={key=>viewportRef.current?.querySelector<HTMLElement>(`[data-ops-column="${key}"]`)} onReveal={key=>setLayout(current=>({...current,hidden:current.hidden.filter(item=>item!==key)}))} />{canManageReports && selectedRows.size>0 && Boolean(selectedTargets?.length) && <><ReportRowActionButton action="edit" disabled={selectedRows.size !== 1 || selectedTargets?.length !== 1 || rowEditBusy || deleteBusy || Boolean(editing)} onClick={editSelectedRow} /><ReportRowActionButton action="delete" disabled={!selectedTargets?.length || rowEditBusy || deleteBusy || Boolean(editing)} onClick={() => { setDeletePassword(""); setDeleteMessage(null); setDeleteConfirmation(true); }} /></>}{toolbarActions}</div>
+
+  return <section aria-label="Unified operations reports" className="min-h-0 space-y-2">
+    <div className={REPORT_TOOLBAR_ROW_CLASS}>
+      {toolbarLeading && <div className="shrink-0" data-report-toolbar-leading>{toolbarLeading}</div>}
+      <div data-report-toolbar-actions className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2">{sharedWidths.feedback}{sharedDesign.feedback}<ColumnFinder tableKey="operations" rowSearch={{value:search,onSearch:value=>{setSelectedRows(new Set());setSearch(value);},placeholder:"Search rows or columns…"}} columns={OPERATIONS_COLUMNS.map(column=>({key:column.key,title:column.label,hidden:layout.hidden.includes(column.key),index:columns.findIndex(item=>item.key===column.key)}))} viewport={viewportRef} getHeader={key=>viewportRef.current?.querySelector<HTMLElement>(`[data-ops-column="${key}"]`)} onReveal={key=>setLayout(current=>({...current,hidden:current.hidden.filter(item=>item!==key)}))} />{canManageReports && visibleRows.some(row => selectedRows.has(row.id)) && Boolean(selectedTargets?.length) && <><ReportRowActionButton action="edit" disabled={selectedRows.size !== 1 || selectedTargets?.length !== 1 || rowEditBusy || deleteBusy || Boolean(editing)} onClick={editSelectedRow} />{canDeleteSelectedReports && <ReportRowActionButton action="delete" disabled={!selectedTargets?.length || rowEditBusy || deleteBusy || Boolean(editing)} onClick={() => { setDeletePassword(""); setDeleteMessage(null); setDeleteConfirmation(true); }} />}</>}{toolbarActions}<OffloadCleanupNotice key={token} token={token} enabled={canManageReports} version={cleanupVersion} /></div>
     </div>
-    {loading && hasLoaded && <p role="status" className="text-xs text-slate-500">Refreshing reports…</p>}
-    {deleteMessage && <p role="status" className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">{deleteMessage}</p>}
-    {deleteOutcomes.length > 0 && <ul aria-label="Per-report deletion results" className="space-y-1 text-xs text-slate-600">{deleteOutcomes.map((outcome) => <li key={outcome.id}>{outcome.label}: {outcome.message}</li>)}</ul>}
-    {visibleRows.length === 0 ? <TableState loading={loading || !hasLoaded} error={loadError ? "Reports could not be loaded. Review the error above and retry." : null} message="No operational report rows available" description={filter === "Offload" && !localRows.some((row) => row.report_types.includes("Offload")) ? "Offload reports will appear here once they are added." : "Try changing the report type or search if you expected to see records."} /> : <div ref={viewportRef} className={REPORT_GRID_VIEWPORT_CLASS}>
-      <table className="table-fixed border-separate border-spacing-0" style={{ width: tableWidth + 44, minWidth: tableWidth + 44 }}>
-        <colgroup><col style={{ width: 44 }} />{columns.map((column) => <col key={column.key} style={{ width: column.width }} />)}</colgroup>
-        <thead><tr><th scope="col" className={`${REPORT_GRID_HEADER_CELL_CLASS} sticky left-0 z-[70] w-11 min-w-11 text-center`}><input type="checkbox" disabled={serverPage?.pending} aria-label="Select all visible operations rows" checked={visibleRows.length > 0 && visibleRows.every((row) => selectedRows.has(row.id))} onChange={(event) => setSelectedRows((current) => { const next = new Set(current); visibleRows.forEach((row) => event.target.checked ? next.add(row.id) : next.delete(row.id)); return next; })} className="h-4 w-4 rounded border-slate-300 accent-[#2678b9]" /></th>{columns.map((column) => {
+    <div className={SPREADSHEET_PANEL_CLASS}>
+    <ReportCellFormattingToolbar selectedCellCount={canManageReports && selectedCell ? 1 : 0} selectionIsBold={Boolean(selectedFormat.bold)} selectionIsItalic={Boolean(selectedFormat.italic)} selectionIsUnderlined={Boolean(selectedFormat.underline)} selectedTextColor={selectedFormat.color ?? null} selectedBackgroundColor={selectedFormat.backgroundColor ?? null} onApply={applyCellFormat} {...headerFormatting.toolbarProps} />
+    <div ref={viewportRef} className={`${REPORT_GRID_VIEWPORT_CLASS} ${SPREADSHEET_ATTACHED_VIEWPORT_CLASS}`}>
+      <table {...headerFormatting.tableProps} className="spreadsheet-grid table-fixed border-separate border-spacing-0" style={{ width: tableWidth + SPREADSHEET_GUTTER_WIDTH, minWidth: tableWidth + SPREADSHEET_GUTTER_WIDTH, height: "auto" }}>
+        <colgroup><col style={{ width: SPREADSHEET_GUTTER_WIDTH }} />{columns.map((column) => <col key={column.key} style={{ width: column.width }} />)}</colgroup>
+        <thead><tr><th scope="col" className={`${REPORT_GRID_HEADER_CELL_CLASS} sticky left-0 z-[70] spreadsheet-gutter whitespace-nowrap text-center !px-1`}><SpreadsheetRowNumber value="#" /><input type="checkbox" disabled={serverPage?.pending} aria-label="Select all visible Offload and Backload reports" checked={selectableReportRows.length > 0 && selectableReportRows.every((row) => selectedRows.has(row.id))} onChange={(event) => setSelectedRows((current) => { const next = new Set(current); selectableReportRows.forEach((row) => event.target.checked ? next.add(row.id) : next.delete(row.id)); return next; })} className="h-4 w-4 rounded border-slate-300 accent-[#2678b9]" /></th>{columns.map((column) => {
           const pinned = layout.pins[column.key];
-          return <th key={column.key} data-ops-column={column.key} scope="col" draggable onDragStart={(event) => { setDraggedColumn(column.key); event.dataTransfer.effectAllowed = "move"; }} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); reorderByDrop(column.key); }}
+          return <th key={column.key} {...headerFormatting.props(column.key)} data-ops-column={column.key} scope="col" draggable={sharedDesign.canEdit && sharedDesign.loaded} onDragStart={(event) => { setDraggedColumn(column.key); event.dataTransfer.effectAllowed = "move"; }} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); reorderByDrop(column.key); }}
             className={`${REPORT_GRID_HEADER_CELL_CLASS} relative ${pinned ? "z-50" : "z-30"}`} style={cellStyle(column, true)}>
-            <div className="flex min-w-0 items-center justify-center gap-2 pr-2">
-              {column.sortable && filter !== "Backload" ? <button type="button" className="min-w-0 flex-1 truncate text-center" title={column.label} onClick={() => sortBy(column.key as EventSortKey)}>{column.label}{sort.key === column.key && column.key !== "date" ? (sort.direction === "asc" ? " ↑" : " ↓") : ""}</button> : <span className="min-w-0 flex-1 truncate text-center" title={column.label}>{column.label}</span>}
+            <div className="spreadsheet-header-content flex min-w-0 items-center justify-between gap-2">
+              {column.sortable && filter !== "Backload" ? <button type="button" className="min-w-0 whitespace-normal break-words text-inherit" data-spreadsheet-header-title title={column.label} onClick={() => sortBy(column.key as EventSortKey)}>{column.label}{sort.key === column.key && column.key !== "date" ? (sort.direction === "asc" ? " ↑" : " ↓") : ""}</button> : <span data-spreadsheet-header-title className="min-w-0 whitespace-normal break-words text-inherit" title={column.label}>{column.label}</span>}
               <button type="button" title={`${column.label} options`} aria-label={`${column.label} column options`} aria-haspopup="menu" aria-expanded={openColumnMenu?.key === column.key} onMouseDown={(event) => event.stopPropagation()} onClick={(event) => openMenu(event, column.key)} className="shrink-0 rounded p-1 text-slate-500 hover:bg-slate-100 hover:text-[#0b2341] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9]"><MoreVertical aria-hidden="true" className="h-4 w-4" /></button>
             </div>
             <span role="separator" aria-orientation="vertical" aria-label={`Resize ${column.label}`} onPointerDown={(event) => resizeColumn(event, column.key, column.width)} className="absolute inset-y-0 right-0 z-[70] w-1.5 cursor-col-resize touch-none hover:bg-[#2678b9]/40" />
           </th>;
         })}</tr></thead>
         <tbody>
-          {loading && !loadError && localRows.length === 0 && <tr><td colSpan={columns.length + 1} className={REPORT_GRID_BODY_CELL_CLASS + " text-center text-slate-500"}>Loading operations reports…</td></tr>}
-          {loadError && visibleRows.length === 0 && <tr><td colSpan={columns.length + 1} className={REPORT_GRID_BODY_CELL_CLASS + " text-center text-rose-700"}>Reports could not be loaded. Review the error above and retry.</td></tr>}
-          {!loading && hasLoaded && !loadError && visibleRows.length === 0 && <tr><td colSpan={columns.length + 1} className={REPORT_GRID_BODY_CELL_CLASS + " text-center text-slate-500"}>{filter === "Offload" && !localRows.some((row) => row.report_types.includes("Offload")) ? <div className="mx-auto max-w-md rounded-xl border border-dashed border-slate-200 bg-slate-50 px-6 py-8"><p className="text-sm font-semibold text-[#0b2341]">No offload data or reports yet.</p></div> : localRows.length ? "No reports match this filter." : "No operational report rows are available."}</td></tr>}
-          {visibleRows.map((row) => <Fragment key={row.id}><tr aria-selected={selectedRows.has(row.id)} tabIndex={0} onClick={(event) => { if (!serverPage?.pending && !(event.target as HTMLElement).closest("button,input,select,textarea,a,[role=combobox]")) setSelectedRows(new Set([row.id])); }} onKeyDown={(event) => { if (event.target === event.currentTarget && ["Enter", " "].includes(event.key)) { event.preventDefault(); setSelectedRows(new Set([row.id])); } }} className={`report-data-row ${REPORT_GRID_ROW_CLASS} focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500 ${selectedRows.has(row.id) ? "bg-blue-50 [&>td]:!bg-blue-50" : ""}`}>
-            <td data-cell-hover-disabled="true" className={`${REPORT_GRID_BODY_CELL_CLASS} sticky left-0 z-20 w-11 min-w-11 border-r border-slate-100 text-center ${selectedRows.has(row.id) ? "!bg-blue-50" : "bg-white"}`}><input type="checkbox" disabled={serverPage?.pending} aria-label={`Select row ${row.dispatch_number || row.trip_number || row.id}`} checked={selectedRows.has(row.id)} onClick={(event) => event.stopPropagation()} onChange={() => toggleRowSelection(row.id)} className="h-4 w-4 rounded border-slate-300 accent-[#2678b9]" /></td>
+          {visibleRows.map((row, rowIndex) => <Fragment key={row.id}><tr style={rowHeights.style(row.id)} aria-selected={selectedRows.has(row.id)} className={`report-data-row ${REPORT_GRID_ROW_CLASS} focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500 ${selectedRows.has(row.id) ? "bg-blue-50 [&>td]:!bg-blue-50" : ""}`}>
+            <td data-cell-hover-disabled="true" style={{ width: SPREADSHEET_GUTTER_WIDTH, minWidth: SPREADSHEET_GUTTER_WIDTH, maxWidth: SPREADSHEET_GUTTER_WIDTH }} className={`${REPORT_GRID_BODY_CELL_CLASS} spreadsheet-gutter sticky left-0 z-20 whitespace-nowrap border-r border-slate-100 text-center !px-1 ${selectedRows.has(row.id) ? "!bg-blue-50" : "bg-slate-50"}`}><SpreadsheetRowNumber value={((serverPage?.pagination?.page ?? 1) - 1) * (serverPage?.query.limit ?? 50) + rowIndex + 1} /><input type="checkbox" disabled={serverPage?.pending} aria-label={`Select row ${row.dispatch_number || row.trip_number || row.id}`} checked={selectedRows.has(row.id)} onClick={(event) => event.stopPropagation()} onChange={() => toggleRowSelection(row.id)} className="h-4 w-4 rounded border-slate-300 accent-[#2678b9]" />{rowHeights.handle(row.id)}</td>
             {columns.map((column) => {
-              const style = cellStyle(column);
-              const className = `${REPORT_GRID_BODY_CELL_CLASS} border-r border-slate-100/70 align-top text-slate-800 ${layout.pins[column.key] ? "bg-white shadow-sm" : ""}`;
+              const format = sharedDesign.columns[column.key]?.cells?.[row.id];
+              const style: CSSProperties = { ...cellStyle(column), ...reportColumnAppearance(sharedDesign.columns[column.key], format, layout.colors[column.key]) };
+              const className = `${REPORT_GRID_BODY_CELL_CLASS} border-r border-slate-100/70 align-middle text-slate-800 ${layout.pins[column.key] ? "bg-white shadow-sm" : ""}`;
               const offloadItems = offloadItemsByRow.get(row.id) ?? [];
               const eventRecord = row.event_type_records.length === 1
                 && row.event_type_records[0].id === row.source_record_id
@@ -1035,27 +1056,32 @@ export function OperationsEventsTable({ rows, loading, hasLoaded, loadError, tok
                 : null;
               switch (column.key) {
                 case "date": return renderEditCell(row, "delivery_date", dateLabelSafe(row.date), Boolean(row.trip_stop_id), "whitespace-nowrap text-center text-slate-700", style);
-                case "trip": return renderEditCell(row, "dispatch_number", <span className="block font-semibold text-[#0b2341]">{row.dispatch_number || "—"}</span>, canEdit(row, "dispatch_number"), "text-center", style);
-                case "plate_number": return renderEditCell(row, "plate_number", row.plate_number || "—", canEdit(row, "plate_number"), "", style);
-                case "driver_name": return renderEditCell(row, "driver_name", row.driver_name || "—", canEdit(row, "driver_name"), "", style);
-                case "route": return <td key={column.key} data-cell-hover-disabled="true" style={style} className={`${className} whitespace-normal break-words`}>{row.route || "—"}</td>;
-                case "dr_number": return <td key={column.key} data-cell-hover-disabled="true" style={style} className={`${className} whitespace-normal break-words`}>{row.dr_number || "—"}</td>;
+                case "trip": return renderEditCell(row, "dispatch_number", <span className="block font-semibold text-inherit">{row.dispatch_number || ""}</span>, canEdit(row, "dispatch_number"), "text-center", style);
+                case "plate_number": return renderEditCell(row, "plate_number", row.plate_number || "", canEdit(row, "plate_number"), "", style);
+                case "driver_name": return renderEditCell(row, "driver_name", row.driver_name || "", canEdit(row, "driver_name"), "", style);
+                case "route": return <td key={column.key} data-cell-hover-disabled="true" style={style} className={`${className} whitespace-normal break-words`}>{row.route || ""}</td>;
+                case "dr_number": return <td key={column.key} data-cell-hover-disabled="true" style={style} className={`${className} whitespace-normal break-words`}>{row.dr_number || ""}</td>;
                 case "quantity": case "total_cbm": {
                   const field = column.key;
-                  return <td key={column.key} style={style} className={`${className} ${row.offload_records.length ? "text-left" : "text-right tabular-nums"}`}>
+                  return <td key={column.key} onFocus={() => { if (canManageReports && row.offload_records.length) setSelectedCell({ rowId: row.id, field: column.key }); }} onClick={() => { if (canManageReports && row.offload_records.length) setSelectedCell({ rowId: row.id, field: column.key }); }} style={style} className={`${className} ${row.offload_records.length ? "text-left" : "text-right tabular-nums"}`}>
                     {row.offload_records.length ? offloadItems.map((item) => <OffloadItemFieldEditor key={`${item.report.id}:${item.id}:${item.persisted?.[field] ?? ""}:${field}`} token={token} model={item} field={field} onSaved={onSaved} />) : numberLabel(row[field])}
                   </td>;
                 }
-                case "report_type": return eventRecord && ["OFFLOAD", "BACKLOAD"].includes(eventRecord.source_type) ? <td key={column.key} style={style} className={className}>{eventRecord.event_type}</td> : eventRecord ? <EventTypeEditor key={`${eventRecord.source_type}:${eventRecord.id}`} token={token} sourceType={eventRecord.source_type} recordId={eventRecord.id} eventType={eventRecord.event_type} onSaved={onSaved} style={style} className={className} /> : <td key={column.key} style={style} className={className}><span role="alert" className="text-xs text-rose-700">Invalid report identity</span></td>;
-                case "remarks": return renderEditCell(row, "remarks", row.remarks || "—", canEdit(row, "remarks"), "whitespace-normal break-words", style);
-                case "reported_by": return renderEditCell(row, "reported_by", row.reported_by || "—", canEdit(row, "reported_by"), "", style);
-                case "details": return <td key={column.key} data-cell-hover-disabled="true" style={style} className={className}><button type="button" className="whitespace-nowrap text-xs font-semibold text-[#2678b9] underline" onClick={() => setDetailRow(row)}>View Details</button></td>;
+                case "report_type": return eventRecord && ["OFFLOAD", "BACKLOAD"].includes(eventRecord.source_type) ? <td key={column.key} style={style} className={className}>{eventRecord.event_type}</td> : eventRecord ? <EventTypeEditor key={`${eventRecord.source_type}:${eventRecord.id}`} token={token} sourceType={eventRecord.source_type} recordId={eventRecord.id} eventType={eventRecord.event_type} onSaved={onSaved} style={style} className={className} /> : <td key={column.key} style={style} className={className}><span aria-label="Report is unavailable" title="Report is unavailable" /></td>;
+                case "remarks": return renderEditCell(row, "remarks", row.remarks || "", canEdit(row, "remarks"), "whitespace-normal break-words", style);
+                case "reported_by": return renderEditCell(row, "reported_by", row.reported_by || "", canEdit(row, "reported_by"), "", style);
+                case "details": return <td key={column.key} data-cell-hover-disabled="true" style={style} className={`${className} text-center`}><SpreadsheetDetailsAction label="View report details" onClick={event => { event.stopPropagation(); setDetailRow(row); }} /></td>;
               }
             })}
-          </tr>{expandedLineItemsRow === row.id && <tr><td colSpan={columns.length + 1} className="border-b border-slate-200 bg-slate-50 px-4 py-3"><div className="overflow-x-auto">{row.line_items.length > 0 && <><div className="mb-2 text-xs font-bold text-[#0b2341]">Source line items · {row.dispatch_number || "Trip"}{row.trip_stop_id ? ` · Stop ${row.stop_sequence ?? "—"}` : " · trip scope"}</div>{row.line_items.map((item) => <div key={item.id} className="grid min-w-[440px] grid-cols-[minmax(160px,1fr)_120px_120px] gap-3 border-b border-slate-200 py-2 text-xs last:border-0"><span>{item.dr_number || `Line item ${item.id}`}</span><span>Quantity: {item.quantity ?? "—"}</span><span>CBM: {item.cbm ?? "—"}</span></div>)}</>}{[...row.backload_records.map((record) => ({ record, kind: "backloads" as const })), ...row.offload_records.map((record) => ({ record, kind: "offloads" as const }))].map(({ record, kind }) => { const report: ScopeReport = record; const draft = cargoRecordDrafts[record.id] ?? report; const isEditing = editingCargoRecord === record.id; const status = feedback?.rowId === record.id ? feedback : null; return <section key={record.id} className="mt-3 rounded-lg border border-slate-200 bg-white p-3"><div className="flex flex-wrap items-center justify-between gap-2"><div className="text-xs font-semibold text-slate-700">{kind === "backloads" ? "Backload" : "Offload"} · {record.trip_stop_id ? `Stop ${row.stop_sequence ?? "—"}` : "Whole trip"} · record {record.id}</div><button type="button" onClick={() => { if (isEditing) setEditingCargoRecord(null); else { setEditingCargoRecord(record.id); setCargoRecordDrafts((current) => ({ ...current, [record.id]: { ...report } })); } }} className="text-xs font-semibold text-[#2678b9] underline">{isEditing ? "Close editor" : "Edit Row"}</button></div>{isEditing ? <div className="mt-3 grid gap-2 sm:grid-cols-3"><label className="text-xs font-semibold text-slate-600">Reason<input value={draft.reason ?? ""} onChange={(event) => setCargoRecordDrafts((current) => ({ ...current, [record.id]: { ...draft, reason: event.target.value || null } }))} className="mt-1 h-9 w-full rounded border border-slate-300 px-2 text-sm font-normal" /></label><label className="text-xs font-semibold text-slate-600">Number of boxes<input type="number" min="0" step="1" value={draft.number_of_boxes ?? ""} onChange={(event) => setCargoRecordDrafts((current) => ({ ...current, [record.id]: { ...draft, number_of_boxes: event.target.value === "" ? null : Number(event.target.value) } }))} className="mt-1 h-9 w-full rounded border border-slate-300 px-2 text-sm font-normal" /></label><label className="text-xs font-semibold text-slate-600">Comments<input value={draft.comments ?? ""} onChange={(event) => setCargoRecordDrafts((current) => ({ ...current, [record.id]: { ...draft, comments: event.target.value || null } }))} className="mt-1 h-9 w-full rounded border border-slate-300 px-2 text-sm font-normal" /></label><div className="sm:col-span-3"><button type="button" onClick={() => void saveCargoRecord(kind, report)} className="rounded bg-[#0b2341] px-3 py-1.5 text-xs font-semibold text-white">Save changes</button><button type="button" onClick={() => setEditingCargoRecord(null)} className="ml-2 rounded border border-slate-200 px-3 py-1.5 text-xs">Cancel</button></div></div> : <div className="mt-2 grid gap-2 text-xs sm:grid-cols-3"><span>Reason: {record.reason || "—"}</span><span>Boxes: {record.number_of_boxes ?? "—"}</span><span>Comments: {record.comments || "—"}</span></div>}<OperationsReceiptGallery token={token} kind={kind} recordId={record.id} />{status && <p role={status.kind === "error" ? "alert" : "status"} className={`mt-2 text-xs ${status.kind === "error" ? "text-rose-700" : "text-emerald-700"}`}>{status.message}</p>}</section>; })}{!row.line_items.length && !row.backload_records.length && !row.offload_records.length && <p className="text-xs text-slate-500">No editable source records are associated with this row.</p>}</div></td></tr>}</Fragment>)}
+          </tr>{expandedLineItemsRow === row.id && <tr><td colSpan={columns.length + 1} className="border-b border-slate-200 bg-slate-50 px-4 py-3"><div className="overflow-x-auto">{row.line_items.length > 0 && <><div className="mb-2 text-xs font-bold text-[#0b2341]">Source line items · {row.dispatch_number || "Trip"}{row.trip_stop_id ? ` · Stop ${row.stop_sequence ?? ""}` : " · trip scope"}</div>{row.line_items.map((item) => <div key={item.id} className="grid min-w-[440px] grid-cols-[minmax(160px,1fr)_120px_120px] gap-3 border-b border-slate-200 py-2 text-xs last:border-0"><span>{item.dr_number || `Line item ${item.id}`}</span><span>Quantity: {item.quantity ?? ""}</span><span>CBM: {item.cbm ?? ""}</span></div>)}</>}{[...row.backload_records.map((record) => ({ record, kind: "backloads" as const })), ...row.offload_records.map((record) => ({ record, kind: "offloads" as const }))].map(({ record, kind }) => { const report: ScopeReport = record; const draft = cargoRecordDrafts[record.id] ?? report; const isEditing = editingCargoRecord === record.id; return <section key={record.id} className="mt-3 rounded-lg border border-slate-200 bg-white p-3"><div className="flex flex-wrap items-center justify-between gap-2"><div className="text-xs font-semibold text-slate-700">{kind === "backloads" ? "Backload" : "Offload"} · {record.trip_stop_id ? `Stop ${row.stop_sequence ?? ""}` : "Whole trip"} · record {record.id}</div><button type="button" onClick={() => { if (isEditing) setEditingCargoRecord(null); else { setEditingCargoRecord(record.id); setCargoRecordDrafts((current) => ({ ...current, [record.id]: { ...report } })); } }} className="text-xs font-semibold text-[#2678b9] underline">{isEditing ? "Close editor" : "Edit Row"}</button></div>{isEditing ? <div className="mt-3 grid gap-2 sm:grid-cols-3"><label className="text-xs font-semibold text-slate-600">Reason<input value={draft.reason ?? ""} onChange={(event) => setCargoRecordDrafts((current) => ({ ...current, [record.id]: { ...draft, reason: event.target.value || null } }))} className="mt-1 h-9 w-full rounded border border-slate-300 px-2 text-sm font-normal" /></label><label className="text-xs font-semibold text-slate-600">Number of boxes<input type="number" min="0" step="1" value={draft.number_of_boxes ?? ""} onChange={(event) => setCargoRecordDrafts((current) => ({ ...current, [record.id]: { ...draft, number_of_boxes: event.target.value === "" ? null : Number(event.target.value) } }))} className="mt-1 h-9 w-full rounded border border-slate-300 px-2 text-sm font-normal" /></label><label className="text-xs font-semibold text-slate-600">Comments<input value={draft.comments ?? ""} onChange={(event) => setCargoRecordDrafts((current) => ({ ...current, [record.id]: { ...draft, comments: event.target.value || null } }))} className="mt-1 h-9 w-full rounded border border-slate-300 px-2 text-sm font-normal" /></label><div className="sm:col-span-3"><button type="button" onClick={() => void saveCargoRecord(kind, report)} className="rounded bg-[#0b2341] px-3 py-1.5 text-xs font-semibold text-white">Save changes</button><button type="button" onClick={() => setEditingCargoRecord(null)} className="ml-2 rounded border border-slate-200 px-3 py-1.5 text-xs">Cancel</button></div></div> : <div className="mt-2 grid gap-2 text-xs sm:grid-cols-3"><span>Reason: {record.reason || ""}</span><span>Boxes: {record.number_of_boxes ?? ""}</span><span>Comments: {record.comments || ""}</span></div>}<OperationsReceiptGallery token={token} kind={kind} recordId={record.id} /></section>; })}{!row.line_items.length && !row.backload_records.length && !row.offload_records.length && <p className="text-xs text-slate-500">No editable source records are associated with this row.</p>}</div></td></tr>}</Fragment>)}
+          <SpreadsheetBlankRows count={spreadsheetPadding.count} height={spreadsheetPadding.height} start={((serverPage?.pagination?.page ?? 1) - 1) * (serverPage?.query.limit ?? 50) + visibleRows.length + 1} loading={(loading || !hasLoaded) && !visibleRows.length} columns={columns.map(column => ({ key: column.key, width: column.width, style: cellStyle(column) }))} />
         </tbody>
       </table>
-    </div>}
+    </div>
+    <SpreadsheetFooter label="Operations pagination" total={serverPage?.pagination?.total ?? visibleRows.length} page={serverPage?.pagination?.page ?? serverPage?.query.page ?? 1} totalPages={serverPage?.pagination?.totalPages ?? 1}>
+      {serverPage && <><label>Rows <select aria-label="Operations page size" disabled={serverPage.pending||Boolean(editing||rowEdit)} value={serverPage.query.limit??50} onChange={event=>serverPage.onChange({limit:Number(event.target.value),page:1})} className="h-8 rounded border border-slate-200 bg-white px-2 text-slate-600">{[25,50,100].map(size=><option key={size}>{size}</option>)}</select></label><button type="button" disabled={serverPage.pending||Boolean(editing||rowEdit)||Number(serverPage.query.page??1)<=1} onClick={()=>serverPage.onChange({page:Number(serverPage.query.page??1)-1})} className={`${tableUi.pageBtn} w-auto px-2`}>Previous</button><button type="button" disabled={serverPage.pending||Boolean(editing||rowEdit)||Number(serverPage.query.page??1)>=(serverPage.pagination?.totalPages??1)} onClick={()=>serverPage.onChange({page:Number(serverPage.query.page??1)+1})} className={`${tableUi.pageBtn} w-auto px-2`}>Next</button></>}
+    </SpreadsheetFooter>
+    </div>
     {detailRow && <div className="fixed inset-0 z-[2050] flex items-center justify-center bg-[#0b2341]/45 p-4 backdrop-blur-sm" role="presentation">
       <section role="dialog" aria-modal="true" aria-labelledby="operations-report-details-title" className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
         <header className="border-b border-slate-100 px-5 py-4"><h2 id="operations-report-details-title" className="text-lg font-bold text-[#0b2341]">Report details</h2><p className="mt-1 text-xs text-slate-600">{detailRow.dispatch_number || detailRow.trip_number || detailRow.trip_id}{detailRow.trip_stop_id ? ` · Stop ${detailRow.stop_sequence ?? "—"}` : " · Whole trip"}</p></header>
@@ -1080,7 +1106,7 @@ export function OperationsEventsTable({ rows, loading, hasLoaded, loadError, tok
         <footer className="flex justify-end gap-2 border-t border-slate-100 px-5 py-4"><button type="button" onClick={() => setDetailRow(null)} className="rounded-full border border-slate-200 px-4 py-2 text-sm text-slate-700">Close</button>{onOpenTrip && <button type="button" onClick={() => { const { trip_id, trip_stop_id } = detailRow; setDetailRow(null); onOpenTrip(trip_id, trip_stop_id); }} className="rounded-full bg-[#ffd43b] px-4 py-2 text-sm font-semibold text-[#0b2341]">Open associated trip</button>}</footer>
       </section>
     </div>}
-    {serverPage&&<footer className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 py-3 text-xs text-slate-600"><span>{serverPage.pagination?.total??0} reports · Page {serverPage.query.page??1} of {serverPage.pagination?.totalPages??1}{serverPage.pending?" · Refreshing…":""} · Selection applies to this page only</span><div className="flex items-center gap-2"><label>Rows <select aria-label="Operations page size" disabled={serverPage.pending||Boolean(editing||rowEdit)} value={serverPage.query.limit??50} onChange={event=>serverPage.onChange({limit:Number(event.target.value),page:1})} className="rounded border border-slate-200 p-1">{[25,50,100].map(size=><option key={size}>{size}</option>)}</select></label><button type="button" disabled={serverPage.pending||Boolean(editing||rowEdit)||Number(serverPage.query.page??1)<=1} onClick={()=>serverPage.onChange({page:Number(serverPage.query.page??1)-1})} className="rounded border px-3 py-1 disabled:opacity-40">Previous</button><button type="button" disabled={serverPage.pending||Boolean(editing||rowEdit)||Number(serverPage.query.page??1)>=(serverPage.pagination?.totalPages??1)} onClick={()=>serverPage.onChange({page:Number(serverPage.query.page??1)+1})} className="rounded border px-3 py-1 disabled:opacity-40">Next</button></div></footer>}
+
     <HiddenColumnsControl columns={layout.hidden.map((key) => ({ key, title: OPERATIONS_COLUMNS.find((column) => column.key === key)?.label ?? key }))} onRestore={(key) => setLayout((current) => ({ ...current, hidden: current.hidden.filter((item) => item !== key) }))} onRestoreAll={() => setLayout((current) => ({ ...current, hidden: [] }))} />
     {rowEdit && <div className="fixed inset-0 z-[2000] flex items-start justify-center overflow-y-auto bg-slate-900/20 p-3 backdrop-blur-[2px] sm:items-center sm:p-6" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !rowEditBusy) closeRowEditor(); }}>
       <section onKeyDown={(event) => { if (event.key === "Escape") { event.stopPropagation(); closeRowEditor(); } }} role="dialog" aria-modal="true" aria-labelledby="operations-row-edit-title" className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-lg ring-1 ring-slate-100">
@@ -1123,14 +1149,13 @@ export function OperationsEventsTable({ rows, loading, hasLoaded, loadError, tok
     {deleteConfirmation && <div className="fixed inset-0 z-[2100] flex items-center justify-center bg-[#0b2341]/45 p-4 backdrop-blur-sm" role="presentation">
       <section role="alertdialog" aria-modal="true" aria-labelledby="operations-delete-title" aria-describedby="operations-delete-description" className="w-full max-w-md rounded-xl border border-slate-200 bg-white shadow-2xl">
         <header className="border-b border-slate-100 px-5 py-4"><h2 id="operations-delete-title" className="text-lg font-semibold text-[#0b2341]">Delete selected reports?</h2></header>
-        <div className="space-y-3 px-5 py-4 text-sm text-slate-700"><p id="operations-delete-description">Permanently delete {selectedRows.size} selected report record{selectedRows.size === 1 ? "" : "s"}? This cannot be undone. Eligible Offloads include their owned items and receipt images. Protected historical records will be retained, and failures will be reported individually. Other report types retain their existing receipt protections.</p><p>Trips, sibling stops, other reports, POD and Transmittal records will not be deleted. Image cleanup may require a separate retry after database deletion.</p>{deleteMessage && <p role="alert" className="rounded bg-rose-50 p-2 text-rose-800">{deleteMessage}</p>}</div>
+        <div className="space-y-3 px-5 py-4 text-sm text-slate-700"><p id="operations-delete-description">Permanently delete {selectedTargets?.length ?? 0} selected report record{selectedTargets?.length === 1 ? "" : "s"}? This cannot be undone. Eligible Offloads include their owned items and receipt images. Protected historical records will be retained, and failures will be reported individually. Other report types retain their existing receipt protections.</p><p>Trips, sibling stops, other reports, POD and Transmittal records will not be deleted. Image cleanup may require a separate retry after database deletion.</p>{deleteMessage && <p role="alert" className="rounded bg-rose-50 p-2 text-rose-800">{deleteMessage}</p>}</div>
         <div className="max-h-40 overflow-y-auto px-5 text-xs text-slate-600">{selectedRows.size ? <ul className="space-y-1">{visibleRows.filter((row) => selectedRows.has(row.id)).map((row) => <li key={row.id}>{row.source_type} · {row.dispatch_number || row.trip_number || "Dispatch unavailable"} · {row.source_record_id}</li>)}</ul> : <p role="alert">The dataset or filter changed. Cancel and select the reports again.</p>}</div>
-        <label className="block px-5 pb-4 text-sm font-medium">Current account password<input autoFocus type="password" autoComplete="current-password" value={deletePassword} disabled={deleteBusy} onChange={event=>setDeletePassword(event.target.value)} className="mt-1 w-full rounded border border-slate-300 p-2" /></label>{selectedRows.size>20&&<p role="alert" className="px-5 text-sm text-rose-700">Select at most 20 reports per confirmation.</p>}
-        <footer className="flex justify-end gap-2 border-t border-slate-100 px-5 py-4"><button type="button" disabled={deleteBusy} onClick={() => { setDeletePassword(""); setDeleteConfirmation(false); }} className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 disabled:opacity-50">Cancel</button><button type="button" disabled={deleteBusy || !deletePassword || selectedRows.size === 0 || selectedRows.size > 20} onClick={() => void deleteSelectedRows()} className="rounded-md bg-rose-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">{deleteBusy ? "Deleting…" : `Delete ${selectedRows.size} report${selectedRows.size === 1 ? "" : "s"}`}</button></footer>
+        <label className="block px-5 pb-4 text-sm font-medium">Current account password<input autoFocus type="password" autoComplete="current-password" value={deletePassword} disabled={deleteBusy} onChange={event=>setDeletePassword(event.target.value)} className="mt-1 w-full rounded border border-slate-300 p-2" /></label>{(selectedTargets?.length ?? 0)>20&&<p role="alert" className="px-5 text-sm text-rose-700">Select at most 20 reports per confirmation.</p>}
+        <footer className="flex justify-end gap-2 border-t border-slate-100 px-5 py-4"><button type="button" disabled={deleteBusy} onClick={() => { setDeletePassword(""); setDeleteConfirmation(false); }} className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 disabled:opacity-50">Cancel</button><button type="button" disabled={deleteBusy || !deletePassword || !selectedTargets?.length || selectedTargets.length > 20} onClick={() => void deleteSelectedRows()} className="inline-flex items-center gap-2 rounded-md bg-rose-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">{deleteBusy && <LoaderCircle aria-hidden="true" className="h-4 w-4 animate-spin" />}{deleteBusy ? "Deleting…" : `Delete ${selectedTargets?.length ?? 0} report${selectedTargets?.length === 1 ? "" : "s"}`}</button></footer>
       </section>
     </div>}
     {openColumnMenu && (() => { const column = OPERATIONS_COLUMNS.find((item) => item.key === openColumnMenu.key); if (!column) return null; return <ReportColumnActionsMenu title={column.label} position={openColumnMenu} onClose={() => setOpenColumnMenu(null)} sortActions={column.sortable ? (["asc", "desc"] as const).map((direction) => ({ label: direction === "asc" ? "Sort ascending" as const : "Sort descending" as const, active: sort.key === column.key && sort.direction === direction, onClick: () => setSort({ key: column.key as EventSortKey, direction }) })) : undefined} pinned={Boolean(layout.pins[column.key])} onTogglePin={() => togglePin(column.key)} onEditColumn={() => setEditingColumnColor(column.key)} canHide={column.key !== "details" && columns.length > 1} onHide={() => setLayout((current) => ({ ...current, hidden: [...current.hidden, column.key], pins: Object.fromEntries(Object.entries(current.pins).filter(([key]) => key !== column.key)) }))} />; })()}
     {editingColumnColor && <ReportColumnColorDialog columnName={OPERATIONS_COLUMNS.find((column) => column.key === editingColumnColor)?.label ?? editingColumnColor} color={layout.colors[editingColumnColor] ?? ""} onChange={(color) => setLayout((current) => ({ ...current, colors: { ...current.colors, [editingColumnColor]: color } }))} onReset={() => setLayout((current) => { const colors = { ...current.colors }; delete colors[editingColumnColor]; return { ...current, colors }; })} onClose={() => setEditingColumnColor(null)} />}
-    <p className="text-[11px] text-slate-500">Each row is one existing physical report with its own report type and record ID. Stop-scoped reports use only that stop's dispatch number and line-item context. Offload Quantity and CBM come from the Offload's own items; Loading and Unloading totals are read-only trip or stop line-item summaries.</p>
   </section>;
 }

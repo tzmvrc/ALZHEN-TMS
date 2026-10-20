@@ -26,13 +26,13 @@ export default function ReportsWorkspace(props: Props) {
     />
   );
   return (
-    <section className="space-y-3">
+    <section className="space-y-2">
       <header>
         <h1 className="text-xl font-bold leading-tight tracking-tight text-[#0b2341]">
           {props.pageTitle ?? "Reports"}
         </h1>
         {props.pageSubtitle && (
-          <p className="mt-1 text-xs leading-snug text-slate-600">
+          <p className="mt-0.5 text-xs leading-snug text-slate-600">
             {props.pageSubtitle}
           </p>
         )}
@@ -40,8 +40,8 @@ export default function ReportsWorkspace(props: Props) {
       <RetainedFeature active={activeTab === "reports"}><div role="tabpanel">
         <ReportDataView {...props} pageTitle={undefined} pageSubtitle={undefined} toolbarLeading={tabs} />
       </div></RetainedFeature>
-      <RetainedFeature active={activeTab === "transmittal"}><div role="tabpanel" className="space-y-3"><TransmittalTrackerView toolbarLeading={tabs} /></div></RetainedFeature>
-      <RetainedFeature active={activeTab === "operations"}><div role="tabpanel" className="space-y-3">{tabs}<OperationsReportsView mode="management" onOpenTrip={props.onOpenTrip} /></div></RetainedFeature>
+      <RetainedFeature active={activeTab === "transmittal"}><div role="tabpanel" className="space-y-2"><TransmittalTrackerView toolbarLeading={tabs} /></div></RetainedFeature>
+      <RetainedFeature active={activeTab === "operations"}><div role="tabpanel" className="space-y-2"><OperationsReportsView toolbarLeading={tabs} mode="management" onOpenTrip={props.onOpenTrip} /></div></RetainedFeature>
     </section>
   );
 }

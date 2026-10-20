@@ -158,11 +158,11 @@ export function PageIntro({
   subtitle: string;
 }) {
   return (
-    <div className="mb-4">
+    <div className="mb-2">
       <h1 className="text-xl font-bold leading-tight tracking-tight text-[#0b2341]">
         {title}
       </h1>
-      <p className="mt-1 text-xs leading-snug text-slate-600">{subtitle}</p>
+      <p className="mt-0.5 text-xs leading-snug text-slate-600">{subtitle}</p>
     </div>
   );
 }
@@ -205,7 +205,7 @@ export function SectionHeader({
   onAction?: () => void;
 }) {
   return (
-    <div className="mb-4 flex items-center justify-between gap-3">
+    <div className="mb-2 flex items-center justify-between gap-2">
       <h2 className={surface.heading}>{title}</h2>
       {action ? (
         <button

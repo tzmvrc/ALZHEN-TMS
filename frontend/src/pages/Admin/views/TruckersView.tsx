@@ -177,7 +177,7 @@ function UsersTable() {
       </div>
 
       {error && (category==="staff" ? profiles.length>0 : rows.length>0) && <div role="alert" className="flex items-center justify-between rounded-lg bg-rose-50 px-4 py-3 text-sm text-rose-700"><span>{error}</span><button type="button" onClick={refreshList} className="underline">Retry</button></div>}
-      <div className={`${tableUi.shell} relative z-0`}>
+      <div className={`${tableUi.shell} relative z-0 !rounded-sm`}>
         <div ref={attachViewport} {...viewportProps} className="overflow-x-auto">
           <table style={tableStyle} className="min-w-full text-left">{colgroup}
             <thead className={tableUi.thead}>

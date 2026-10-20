@@ -617,8 +617,8 @@ export default function DashboardPage({
           onCollapseChange={setSidebarCollapsed}
         />
 
-        <main className="min-h-[calc(100vh-5.5rem)] w-full px-2 pb-4 pt-2 sm:px-4 sm:pt-3 lg:px-6">
-          <div className="mx-auto min-h-[calc(100vh-7rem)] w-full max-w-[1680px] rounded-[1.75rem] p-2 sm:p-4 lg:p-5">
+        <main className="min-h-[calc(100vh-5.5rem)] w-full px-2 pb-4 pt-2 sm:px-4 lg:px-6">
+          <div className="mx-auto min-h-[calc(100vh-7rem)] w-full max-w-[1680px] rounded-[1.75rem] px-0 py-1 sm:px-1 lg:px-2">
             <RetainedFeature key={`home:${profile?.id}:${profile?.role}`} active={showOverview}><div
               className={showOverview ? "page-enter" : "hidden"}
             >

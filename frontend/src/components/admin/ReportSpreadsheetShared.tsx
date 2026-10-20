@@ -1,5 +1,5 @@
 import { useLiveCellEditor } from "./useLiveCellEditor";
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent, type FocusEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { ArrowDown, ArrowUp, Bold,Italic,Underline, EyeOff, LoaderCircle, Paintbrush, Palette, Pencil, Pin, RotateCcw, Search, SlidersHorizontal, Trash2, X } from "lucide-react";
 import { addDropdownOption, editDropdownOption, fetchDropdownOptions, type DropdownField, type DropdownOption } from "../../services/dropdown-option.service";
@@ -14,30 +14,31 @@ export function ReportRowActionButton({ action, disabled, onClick, label: custom
   </button>;
 }
 
-export function ReportCellFormattingToolbar({ selectedCellCount, selectionIsBold, selectedTextColor, selectedBackgroundColor, onApply,advanced=false,selectionIsItalic=false,selectionIsUnderlined=false }: {
+export function ReportCellFormattingToolbar({ selectedCellCount, selectionIsBold, selectedTextColor, selectedBackgroundColor, onApply,advanced=true,selectionIsItalic=false,selectionIsUnderlined=false, headerOnly=false, selectedFontSize=12 }: {
   selectedCellCount: number;
   selectionIsBold: boolean;
   selectedTextColor: string | null;
   selectedBackgroundColor: string | null;
   onApply: (change: Partial<ReportCellFormat>) => void;
-  advanced?:boolean;selectionIsItalic?:boolean;selectionIsUnderlined?:boolean;
+  advanced?:boolean;selectionIsItalic?:boolean;selectionIsUnderlined?:boolean;headerOnly?:boolean;selectedFontSize?:number;
 }) {
   const [openColorPicker, setOpenColorPicker] = useState<"text" | "background" | null>(null);
   const apply = (change: Partial<ReportCellFormat>) => { onApply(change); setOpenColorPicker(null); };
-  const toolbarButtonClass = "inline-flex h-7 w-7 items-center justify-center rounded border disabled:cursor-not-allowed disabled:opacity-40";
+  const toolbarButtonClass = "inline-flex h-7 w-7 items-center justify-center rounded-sm border disabled:cursor-not-allowed disabled:opacity-40";
   const plainFormatButtonClass = (active: boolean) => `inline-flex h-7 w-7 items-center justify-center border-0 bg-transparent p-0 shadow-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:cursor-not-allowed disabled:opacity-40 ${active ? "text-blue-700 hover:text-blue-800" : "text-slate-500 hover:text-slate-900"}`;
-  return <div role="toolbar" aria-label="Cell formatting" className="flex min-h-9 items-center gap-1 border-b border-slate-100 bg-slate-50/70 px-3 py-1.5">
-    {advanced&&<><button type="button" title="Italic selected cells" aria-label="Italic selected cells" aria-pressed={selectionIsItalic} disabled={!selectedCellCount} onMouseDown={e=>e.preventDefault()} onClick={()=>apply({italic:!selectionIsItalic})} className={plainFormatButtonClass(selectionIsItalic)}><Italic className="h-4 w-4" /></button><button type="button" aria-label="Underline selected cells" title="Underline selected cells" aria-pressed={selectionIsUnderlined} disabled={!selectedCellCount} onMouseDown={e=>e.preventDefault()} onClick={()=>apply({underline:!selectionIsUnderlined})} className={plainFormatButtonClass(selectionIsUnderlined)}><Underline className="h-4 w-4"/></button></>}
-    <button type="button" title="Bold selected cells" aria-label="Bold selected cells" aria-pressed={selectionIsBold} disabled={!selectedCellCount} onMouseDown={(event) => event.preventDefault()} onClick={() => apply({ bold: !selectionIsBold })} className={`${toolbarButtonClass} ${selectionIsBold ? "border-blue-300 bg-blue-100 text-blue-800" : "border-transparent text-slate-600 hover:bg-white hover:text-slate-900"}`}><Bold aria-hidden="true" className="h-4 w-4" /></button>
+  return <div role="toolbar" data-spreadsheet-formatting="true" aria-label="Cell formatting" className="flex h-9 shrink-0 items-center gap-1 border-b border-slate-200 bg-slate-50 px-3 py-1">
+    {advanced&&!headerOnly&&<><button type="button" title="Italic selected cells" aria-label="Italic selected cells" aria-pressed={selectionIsItalic} disabled={!selectedCellCount} onMouseDown={e=>e.preventDefault()} onClick={()=>apply({italic:!selectionIsItalic})} className={plainFormatButtonClass(selectionIsItalic)}><Italic className="h-4 w-4" /></button><button type="button" aria-label="Underline selected cells" title="Underline selected cells" aria-pressed={selectionIsUnderlined} disabled={!selectedCellCount} onMouseDown={e=>e.preventDefault()} onClick={()=>apply({underline:!selectionIsUnderlined})} className={plainFormatButtonClass(selectionIsUnderlined)}><Underline className="h-4 w-4"/></button></>}
+    {!headerOnly && <button type="button" title="Bold selected cells" aria-label="Bold selected cells" aria-pressed={selectionIsBold} disabled={!selectedCellCount} onMouseDown={(event) => event.preventDefault()} onClick={() => apply({ bold: !selectionIsBold })} className={`${toolbarButtonClass} ${selectionIsBold ? "border-blue-300 bg-blue-100 text-blue-800" : "border-transparent text-slate-600 hover:bg-white hover:text-slate-900"}`}><Bold aria-hidden="true" className="h-4 w-4" /></button>}
     <div className="relative">
       <button type="button" title="Text color" aria-label="Text color" aria-expanded={openColorPicker === "text"} disabled={!selectedCellCount} onMouseDown={(event) => event.preventDefault()} onClick={() => setOpenColorPicker((current) => current === "text" ? null : "text")} className={`${toolbarButtonClass} ${openColorPicker === "text" ? "border-blue-300 bg-blue-100 text-blue-800" : "border-transparent text-slate-600 hover:bg-white hover:text-slate-900"}`}><Palette aria-hidden="true" className="h-4 w-4" /></button>
       {openColorPicker === "text" && <div className="absolute left-0 top-full z-50 mt-1 flex gap-1 rounded-lg border border-slate-200 bg-white p-2 shadow-lg" aria-label="Text color palette">{["#111827", "#b91c1c", "#d97706", "#15803d", "#1d4ed8", "#7e22ce"].map((color) => <button key={color} type="button" title={`Text color ${color}`} aria-label={`Text color ${color}`} aria-pressed={selectedTextColor === color} onMouseDown={(event) => event.preventDefault()} onClick={() => apply({ color })} className={`h-5 w-5 rounded-full border border-slate-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${selectedTextColor === color ? "ring-2 ring-slate-800 ring-offset-1" : ""}`} style={{ backgroundColor: color }} />)}<button type="button" title="Reset text color" aria-label="Reset text color" aria-pressed={selectedTextColor === ""} onMouseDown={(event) => event.preventDefault()} onClick={() => apply({ color: "" })} className="rounded px-1.5 text-[10px] text-slate-600 hover:bg-slate-100">Reset</button></div>}
     </div>
     <div className="relative">
       <button type="button" title="Cell color" aria-label="Cell color" aria-expanded={openColorPicker === "background"} disabled={!selectedCellCount} onMouseDown={(event) => event.preventDefault()} onClick={() => setOpenColorPicker((current) => current === "background" ? null : "background")} className={`${toolbarButtonClass} ${openColorPicker === "background" ? "border-blue-300 bg-blue-100 text-blue-800" : "border-transparent text-slate-600 hover:bg-white hover:text-slate-900"}`}><Paintbrush aria-hidden="true" className="h-4 w-4" /></button>
-      {openColorPicker === "background" && <div className="absolute left-0 top-full z-50 mt-1 flex gap-1 rounded-lg border border-slate-200 bg-white p-2 shadow-lg" aria-label="Cell color palette">{["#ffffff", "#fef3c7", "#dcfce7", "#dbeafe", "#fce7f3", "#e5e7eb"].map((color) => <button key={color} type="button" title={`Cell color ${color}`} aria-label={`Cell color ${color}`} aria-pressed={selectedBackgroundColor === (color === "#ffffff" ? "" : color)} onMouseDown={(event) => event.preventDefault()} onClick={() => apply({ backgroundColor: color === "#ffffff" ? "" : color })} className={`h-5 w-5 rounded-full border border-slate-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${selectedBackgroundColor === (color === "#ffffff" ? "" : color) ? "ring-2 ring-slate-800 ring-offset-1" : ""}`} style={{ backgroundColor: color }} />)}<button type="button" title="Reset cell color" aria-label="Reset cell color" aria-pressed={selectedBackgroundColor === ""} onMouseDown={(event) => event.preventDefault()} onClick={() => apply({ backgroundColor: "" })} className="rounded px-1.5 text-[10px] text-slate-600 hover:bg-slate-100">Reset</button></div>}
+      {openColorPicker === "background" && <div className="absolute left-0 top-full z-50 mt-1 flex gap-1 rounded-lg border border-slate-200 bg-white p-2 shadow-lg" aria-label="Cell color palette">{["#ffffff", "#fef3c7", "#dcfce7", "#dbeafe", "#fce7f3", "#e5e7eb"].map((color) => <button key={color} type="button" title={`Cell color ${color}`} aria-label={`Cell color ${color}`} aria-pressed={selectedBackgroundColor === (color === "#ffffff" && !headerOnly ? "" : color)} onMouseDown={(event) => event.preventDefault()} onClick={() => apply({ backgroundColor: color === "#ffffff" && !headerOnly ? "" : color })} className={`h-5 w-5 rounded-full border border-slate-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${selectedBackgroundColor === (color === "#ffffff" && !headerOnly ? "" : color) ? "ring-2 ring-slate-800 ring-offset-1" : ""}`} style={{ backgroundColor: color }} />)}<button type="button" title="Reset cell color" aria-label="Reset cell color" aria-pressed={selectedBackgroundColor === ""} onMouseDown={(event) => event.preventDefault()} onClick={() => apply({ backgroundColor: "" })} className="rounded px-1.5 text-[10px] text-slate-600 hover:bg-slate-100">Reset</button></div>}
     </div>
-    {selectedCellCount > 0 && <span className="ml-2 text-[10px] text-slate-500">{selectedCellCount} cell{selectedCellCount === 1 ? "" : "s"} selected</span>}
+    {headerOnly && <label className="ml-1 inline-flex items-center gap-1 text-[11px] text-slate-600"><span className="sr-only">Header font size</span><select aria-label="Header font size" title="Header font size" disabled={!selectedCellCount} value={selectedFontSize} onChange={event => apply({ fontSize: Number(event.target.value) })} className="h-7 rounded-sm border border-slate-300 bg-white px-1 text-xs focus-visible:outline-2 focus-visible:outline-blue-500">{[...new Set([10,11,12,13,14,16,18,20,selectedFontSize])].sort((a,b) => a-b).map(size => <option key={size} value={size}>{size}px</option>)}</select></label>}
+    {selectedCellCount > 0 && <span className="ml-2 text-[10px] text-slate-500">{headerOnly ? "Header selected" : `${selectedCellCount} cell${selectedCellCount === 1 ? "" : "s"} selected`}</span>}
   </div>;
 }
 
@@ -129,6 +130,13 @@ export function ReportTextCellEditor({
   if(draft.base!==value)setDraft({base:value,text:value});
   const displayed=buffered&&draft.base===value?draft.text:value;
   const live=useLiveCellEditor(displayed,saveState);
+  const editorRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
+  useLayoutEffect(() => {
+    const element = editorRef.current;
+    if (!(element instanceof HTMLTextAreaElement)) return;
+    element.style.height = "auto";
+    element.style.height = `${Math.max(20, element.scrollHeight)}px`;
+  });
   const skipBlurCommit = useRef(false);
   const keyHandlers = (event: ReactKeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     if (event.key === "Enter" && (!multiline || !event.shiftKey)) {
@@ -142,6 +150,7 @@ export function ReportTextCellEditor({
     }
   };
   const common = {
+    ref: (element: HTMLInputElement | HTMLTextAreaElement | null) => { editorRef.current = element; },
     autoFocus: true,
     "aria-label": label,
     disabled,
@@ -151,15 +160,19 @@ export function ReportTextCellEditor({
     ...(!multiline && type === "number" ? { step } : {}),
     onFocus: live.focus,
     onChange: (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => { const next=event.target.value; if(buffered)setDraft({base:value,text:next}); live.change(next); onChange(next); },
-    onBlur: () => {
+    onBlur: (event: FocusEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+      if ((event.relatedTarget as Element | null)?.closest("[data-spreadsheet-formatting]")) {
+        requestAnimationFrame(() => editorRef.current?.focus());
+        return;
+      }
       live.blur();
       if (skipBlurCommit.current) { skipBlurCommit.current = false; return; }
       if (commitOnBlur) live.commit(()=>onCommit(displayed));
     },
     onKeyDown: keyHandlers,
-    className,
+    className: `spreadsheet-cell-editor ${className}`,
   };
-  return multiline ? <textarea {...common} rows={4} /> : <input {...common} type={type} />;
+  return multiline ? <textarea {...common} rows={1} /> : <input {...common} type={type} />;
 }
 
 type OptionDraft = DropdownOption & { draftKey: string; originalLabel: string; isNew: boolean };

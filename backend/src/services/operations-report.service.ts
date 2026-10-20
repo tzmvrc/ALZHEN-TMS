@@ -1,3 +1,4 @@
+import { collaborationEvents } from "./collaboration-events.js";
 import { withCurrentUserPassword, type DeletionCredentials } from "./deletion-password.service.js";
 import { operationsPageRequest, parseOperationsPageQuery } from "./operations-pagination.js";
 import { randomUUID } from "node:crypto";
@@ -587,7 +588,7 @@ async function deleteReportRecord(actor: ReportActor, sourceTypeValue: unknown, 
   if (identity.source_type === "BACKLOAD") return deleteBackloadPermanently(actor, identity.record_id);
   const target = EVENT_REPORT_TABLE[identity.source_type];
   const { data: report, error: readError } = await (supabaseAdmin.from(target.table) as any)
-    .select("id, trip_id, trip_stop_id").eq("id", identity.record_id).maybeSingle();
+    .select(identity.source_type === "LOADING" ? "id, trip_id" : "id, trip_id, trip_stop_id").eq("id", identity.record_id).maybeSingle();
   if (readError) throwDb(readError, "read report before delete");
   if (!report) throw new ApiError("Operational report was not found.", 404, "REPORT_NOT_FOUND");
   const trip = await getTrip(actor, String(report.trip_id));
@@ -917,8 +918,13 @@ export function createOperationsReportDeleter(verify=withCurrentUserPassword){
   return verify({id:owner.profileId,role:owner.role},credentials,async()=>{
     const outcomes=[];
     for(const target of targets){
-      try{outcomes.push({...target,success:true as const,result:await deleteReportRecord(owner,target.source_type,target.record_id)});}
-      catch(error){if(!(error instanceof ApiError))throw error;outcomes.push({...target,success:false as const,message:error.message,code:error.code});}
+      try{
+        const result = await deleteReportRecord(owner,target.source_type,target.record_id);
+        outcomes.push({...target,success:true as const,result});
+        try { collaborationEvents.emit("commit", { source: EVENT_REPORT_TABLE[target.source_type].table, recordId: target.record_id, tripId: result.trip_id, stopId: result.trip_stop_id ?? undefined, fields: [], version: null, actorId: owner.profileId, operation: "DELETE", eventId: `${EVENT_REPORT_TABLE[target.source_type].table}:${target.record_id}:deleted` }); }
+        catch { console.warn("Report deletion committed; realtime notification requires reconciliation."); }
+      }
+      catch(error){outcomes.push({...target,success:false as const,message:error instanceof ApiError ? error.message : "This report deletion could not be confirmed. Refresh before retrying.",code:error instanceof ApiError ? error.code : "REPORT_DELETE_UNCONFIRMED"});}
     }
     return {outcomes};
   });

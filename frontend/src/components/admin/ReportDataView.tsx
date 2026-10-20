@@ -1,3 +1,9 @@
+import { REPORT_TOOLBAR_ROW_CLASS } from "./ReportSpreadsheetUtils";
+import { useSpreadsheetHeaderFormatting } from "./useSpreadsheetHeaderFormatting";
+import { reportHeaderAppearance } from "./ReportSpreadsheetUtils";
+import { reportColumnAppearance } from "./ReportSpreadsheetUtils";
+import { useSpreadsheetRowHeights } from "./useSpreadsheetRowHeights";
+import { SPREADSHEET_GUTTER_WIDTH, SPREADSHEET_PANEL_CLASS, SPREADSHEET_ATTACHED_VIEWPORT_CLASS, SpreadsheetFooter, SpreadsheetDetailsAction, SpreadsheetBlankRows, SpreadsheetRowNumber, useSpreadsheetViewport, useSpreadsheetFeedback } from "./SpreadsheetPresentation";
 import {withTripDetailsColumn,tripDetailsTarget} from "../../services/report-action-columns";
 import { CollaborativeCell } from "./CollaborativeCell";
 import { useDraftTrackerColumns } from "./useDraftTrackerColumns";
@@ -16,7 +22,6 @@ import {
   Building2,
   CalendarDays,
   ArrowUpRight,
-  Eye,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -35,7 +40,6 @@ import {
 } from "lucide-react";
 import type ExcelJS from "exceljs";
 import { useAuth } from "../../context/AuthContext";
-import TableState from "./TableState";
 import { TRIP_EDIT_STEPS, REPORT_EDIT_STEPS, tripEditFieldStep, tripEditFieldChanged, validateTripEditField } from "../../services/trip-edit-wizard";
 import WholeTripDeletionDialog from "./WholeTripDeletionDialog";
 import FlexibleTableSectionTabs from "./FlexibleTableSectionTabs";
@@ -415,16 +419,18 @@ const ReportSelectionToolbar = memo(function ReportSelectionToolbar({
   columns,
   onEdit,
   onDeleteTrips,
+  canManage,
 }: {
   reportKey: ReportKey;
   rows: ReportRow[];
   columns: ReportColumn[];
   onEdit: () => void;
   onDeleteTrips?: (rows:ReportRow[])=>void;
+  canManage: boolean;
 }) {
   useSyncExternalStore(reportSelection.subscribe, reportSelection.revision, reportSelection.revision);
   const keys = reportSelection.getKeys(reportKey);
-  if (!keys.length) return null;
+  if (!canManage || !keys.length || !rows.some(candidate => keys.includes(getReportRowKey(reportKey, candidate) ?? ""))) return null;
   const row = rows.find((candidate) => getReportRowKey(reportKey, candidate) === keys[0]);
   const hasEditableFields = Boolean(row && columns.some((column) => getEditableCellTarget(row, column.key, reportKey)));
   const canEdit = keys.length === 1 && Boolean(row) && hasEditableFields;
@@ -444,6 +450,7 @@ function rowText(row: ReportRow, ...keys: string[]): string {
 }
 
 function defaultReportColumnWidth(column: ReportColumn): number {
+  if (column.type === "action" || column.key === "trip_details") return 80;
   if (/remarks|comment|notes/i.test(column.key)) return 360;
   if (/customer_name|store_name|ship_to/i.test(column.key)) return 300;
   return Math.max(144, Math.min(360, column.title.length * 8 + 76));
@@ -543,14 +550,7 @@ function readReportColumnLayout(storageKey: string): ReportColumnLayout {
   }
 }
 
-function columnForeground(color?: string): string | undefined {
-  if (!color || !/^#[0-9a-f]{6}$/i.test(color)) return undefined;
-  const red = Number.parseInt(color.slice(1, 3), 16);
-  const green = Number.parseInt(color.slice(3, 5), 16);
-  const blue = Number.parseInt(color.slice(5, 7), 16);
-  const luminance = (0.2126 * red + 0.7152 * green + 0.0722 * blue) / 255;
-  return luminance < 0.55 ? "#ffffff" : "#172b43";
-}
+
 
 function getEditableCellTarget(
   row: ReportRow,
@@ -1131,7 +1131,9 @@ export default function ReportDataView({
   const [retryVersion, setRetryVersion] = useState(0);
   const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
   const bufferedTextDraft = useRef<EditingCell | null>(null);
+  const rowHeights = useSpreadsheetRowHeights(`${profile?.id ?? "guest"}:${transactionView ? "trips" : reportKey}`, ["ADMIN", "STAFF"].includes(profile?.role ?? ""));
   const sharedDesign=useSharedTableDesign(transactionView?"trips":`report:${reportKey}`,accessToken,["ADMIN","STAFF"].includes(profile?.role??""),Boolean(editingCell||editModalOpen||columnResize||draggedColumnKey||fillGesture));
+  const headerFormatting = useSpreadsheetHeaderFormatting(transactionView ? "trips" : `report:${reportKey}`, sharedDesign.canEdit, sharedDesign.columns, (key, header) => { void sharedDesign.save(key, { header }, getColumnWidth(key)); });
   const columnLayout=useMemo(()=>{
     const design=sharedDesign.columns;
     const layout=sharedDesign.loaded?{order:columns.map(c=>c.key).sort((a,b)=>(design[a]?.position??1001)-(design[b]?.position??1001)),hidden:Object.keys(design).filter(k=>design[k].hidden),colors:Object.fromEntries(Object.entries(design).filter(([,v])=>v.color).map(([k,v])=>[k,v.color!]))}:localColumnLayout;
@@ -1370,7 +1372,7 @@ export default function ReportDataView({
   useLayoutEffect(() => {
     const measurePinnedColumns = () => {
       const viewportWidth = tableViewportRef.current?.clientWidth ?? window.innerWidth;
-      const selectionWidth = selectionColumnRef.current?.getBoundingClientRect().width ?? 44;
+      const selectionWidth = selectionColumnRef.current?.getBoundingClientRect().width ?? SPREADSHEET_GUTTER_WIDTH;
       let pinnedWidth = selectionWidth + [...leftPinnedColumnKeys, ...rightPinnedColumnKeys].reduce(
         (total, key) => total + (headerCellRefs.current.get(key)?.getBoundingClientRect().width ?? 160),
         0,
@@ -1390,7 +1392,7 @@ export default function ReportDataView({
           return;
         }
       }
-      let left = selectionColumnRef.current?.getBoundingClientRect().width ?? 44;
+      let left = selectionColumnRef.current?.getBoundingClientRect().width ?? SPREADSHEET_GUTTER_WIDTH;
       const nextLeftOffsets: Record<string, number> = {};
       for (const key of leftPinnedColumnKeys) {
         nextLeftOffsets[key] = left;
@@ -1892,7 +1894,7 @@ export default function ReportDataView({
     const pinnedWidth = gridColumns.reduce((total, column) => {
       if (!next[column.key]) return total;
       return total + (headerCellRefs.current.get(column.key)?.getBoundingClientRect().width ?? 160);
-    }, selectionColumnRef.current?.getBoundingClientRect().width ?? 44);
+    }, selectionColumnRef.current?.getBoundingClientRect().width ?? SPREADSHEET_GUTTER_WIDTH);
     if (pinnedWidth > Math.max(180, viewportWidth - 120)) {
       setPinningNotice("Unpin a column to keep room for horizontal scrolling.");
       return;
@@ -1914,11 +1916,12 @@ export default function ReportDataView({
   }
 
   function saveColumnLayout(next: ReportColumnLayout) {
+    if (!sharedDesign.canEdit) return;
     setColumnLayout(next);
     const reordered=next.order.join("\u0000")!==layoutColumnKeys.join("\u0000");
-    for(const [position,key] of next.order.entries()){
+    if (reordered) void sharedDesign.saveOrder(next.order, getColumnWidth);
+    for(const key of next.order){
       const patch:import("../../services/shared-table-design").ColumnDesign={};
-      if(reordered)patch.position=position;
       if(next.hidden.includes(key)!==columnLayout.hidden.includes(key))patch.hidden=next.hidden.includes(key);
       if((next.colors?.[key]??null)!==(columnLayout.colors?.[key]??null))patch.color=next.colors?.[key]??null;
       if(Object.keys(patch).length)void sharedDesign.save(key,patch,getColumnWidth(key));
@@ -2004,6 +2007,7 @@ export default function ReportDataView({
   }
 
   function reorderReportColumn(sourceKey: string, targetKey: string) {
+    if (!sharedDesign.canEdit || !sharedDesign.loaded) return;
     const nextOrder = reorderColumnKeys(layoutColumnKeys, sourceKey, targetKey);
     if (nextOrder === layoutColumnKeys) return;
     saveColumnLayout({ ...columnLayout, order: nextOrder });
@@ -2830,6 +2834,11 @@ export default function ReportDataView({
         ? "Your session has expired. Please log in again."
         : null;
   const isLoading = Boolean(accessToken) && loadedQueryKey !== queryKey;
+  const spreadsheetPadding = useSpreadsheetViewport(tableViewportRef, displayedRows.length, viewMode === "table");
+  useSpreadsheetFeedback(cellSaveState && (cellSaveState.status === "error" || cellSaveState.status === "warning") ? cellSaveState.message : null, cellSaveState?.status === "error" ? "error" : cellSaveState?.status === "warning" ? "warning" : "success");
+  useSpreadsheetFeedback(activeError, "error");
+  useSpreadsheetFeedback(collaboration.notice ? "Another user saved changes to this cell. Your unsaved draft has been kept." : null, "warning", collaboration.notice);
+  useSpreadsheetFeedback(pinningNotice, "warning");
 
   useEffect(() => {
     if (!notificationTarget || notificationTarget.reportKey !== reportKey || appliedNotificationTarget.current === notificationTarget.navigationKey) return;
@@ -2905,20 +2914,19 @@ export default function ReportDataView({
   }
 
   return (
-    <div className="space-y-4">
-      {sharedWidths.feedback}
-      <div className={`${tableUi.toolbar} flex-wrap items-center justify-between gap-3`}>
+    <div className="space-y-2">
+      <div className={REPORT_TOOLBAR_ROW_CLASS}>
         {pageTitle && (
           <div className="min-w-0 w-full lg:flex-1">
             <h1 className="truncate text-xl font-bold leading-tight tracking-tight text-[#0b2341]">{pageTitle}</h1>
             {pageSubtitle && <p className="mt-1 text-xs leading-snug text-slate-600">{pageSubtitle}</p>}
           </div>
         )}
-        {toolbarLeading}
-        {sharedDesign.feedback}
+        {toolbarLeading && <div className="shrink-0" data-report-toolbar-leading>{toolbarLeading}</div>}
 
-        {collaboration.notice&&<div role="status" className="max-w-md rounded border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-900">{collaboration.notice.text}{collaboration.notice.latest!==undefined&&<span className="block">Latest persisted value: {String(collaboration.notice.latest??"(blank)")}</span>}<button type="button" onClick={collaboration.dismissNotice} className="ml-2 underline">Dismiss</button></div>}
-        <div className="flex w-full min-w-0 flex-wrap items-center justify-end gap-2 lg:flex-[1_1_36rem] lg:flex-nowrap">
+
+        <div data-report-toolbar-actions className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2">
+          {sharedWidths.feedback}{sharedDesign.feedback}
           <ColumnFinder tableKey={transactionView?"trips":reportKey} key={reportKey} rowSearch={{value:search,placeholder:"Search rows or columnsâ€¦",onSearch:value=>{setSearch(value);setAppliedSearch(value);setPage(1);}}} columns={columns.filter((column) => !(transactionView && column.key === "warehouse_code")).map((column) => ({ ...column, hidden: hiddenColumnKeys.has(column.key), index: renderedGridColumns.findIndex((item) => item.key === column.key) }))} viewport={tableViewportRef} getHeader={(key) => headerCellRefs.current.get(key)} onReveal={restoreReportColumn} />
           {showReportPicker && (
             <label className="sr-only" htmlFor="report-select">
@@ -2944,14 +2952,15 @@ export default function ReportDataView({
               />
             </div>
           )}
+          {activeError && <button type="button" onClick={() => setRetryVersion(value => value + 1)} className="h-9 rounded border border-slate-200 px-3 text-xs text-slate-600">Retry loading</button>}
           <ReportSelectionToolbar
             reportKey={reportKey}
+            canManage={["ADMIN", "STAFF"].includes(profile?.role ?? "")}
             rows={displayedRows}
             columns={columns}
             onDeleteTrips={(transactionView||reportKey==="combined")&&profile?.role==="ADMIN"?selected=>{const ids=selectedParentTripIds(selected);if(ids){deletionRowKeys.current=reportSelection.getKeys(reportKey);setWholeTripRowCount(selected.length);setWholeTripIds(ids);}}:undefined}
             onEdit={openSelectedRowEditor} />
-        </div>
-        <div className="flex min-w-0 flex-wrap items-center justify-end gap-2 lg:flex-none">
+
           {viewMode === "visual" && (
             <>
                     <div className="relative">
@@ -3201,26 +3210,12 @@ export default function ReportDataView({
         accessToken={accessToken}
         role={profile?.role ?? ""}>
       <section
-        className={viewMode === "visual" ? "" : tableUi.shell}
+        className={viewMode === "visual" ? "" : `${SPREADSHEET_PANEL_CLASS} flex min-h-0 flex-col`}
       >
-      {activeError && displayedRows.length > 0 && <p role="alert" className="border-b border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">Showing the last loaded records. Refresh failed: {activeError}</p>}
-      {activeError && displayedRows.length === 0 ? (
-        <div className="flex min-h-48 flex-col items-center justify-center gap-3 p-6 text-center">
-          <p role="alert" className="text-sm text-rose-700">
-            {activeError}
-          </p>
-          <button
-            type="button"
-            onClick={() => setRetryVersion((value) => value + 1)}
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
-            Retry
-          </button>
-        </div>
-      ) : (
+
         <>
-          {viewMode === "table" && <ReportCellFormattingToolbar advanced selectionIsItalic={selectedFormats.length>0&&selectedFormats.every(f=>f.italic)} selectionIsUnderlined={selectedFormats.length>0&&selectedFormats.every(f=>f.underline)} selectedCellCount={selectedFormatCellKeys.size} selectionIsBold={selectionIsBold} selectedTextColor={selectedTextColor} selectedBackgroundColor={selectedBackgroundColor} onApply={applyCellFormat} />}
-          <div ref={tableViewportRef} onPaste={(event) => void handleReportPaste(event)} onCopy={handleReportCopy} className={`${viewMode === "table" ? REPORT_GRID_VIEWPORT_CLASS : "relative min-h-48 w-full min-w-0 max-w-full overflow-x-auto overscroll-x-contain"} w-full`}>
-            {pinningNotice && <p role="status" className="sticky left-2 z-40 w-fit rounded-md bg-amber-50 px-2.5 py-1.5 text-xs text-amber-900 shadow-sm">{pinningNotice}</p>}
+          {viewMode === "table" && <ReportCellFormattingToolbar advanced selectionIsItalic={selectedFormats.length>0&&selectedFormats.every(f=>f.italic)} selectionIsUnderlined={selectedFormats.length>0&&selectedFormats.every(f=>f.underline)} selectedCellCount={selectedFormatCellKeys.size} selectionIsBold={selectionIsBold} selectedTextColor={selectedTextColor} selectedBackgroundColor={selectedBackgroundColor} onApply={applyCellFormat} {...headerFormatting.toolbarProps} />}
+          <div ref={tableViewportRef} onPaste={(event) => void handleReportPaste(event)} onCopy={handleReportCopy} className={`${viewMode === "table" ? `${REPORT_GRID_VIEWPORT_CLASS} ${SPREADSHEET_ATTACHED_VIEWPORT_CLASS}` : "relative min-h-48 w-full min-w-0 max-w-full overflow-x-auto overscroll-x-contain"} w-full`}>
             {viewMode === "visual" ? (
               isLoading ? (
                 <div className="p-3">
@@ -3244,24 +3239,16 @@ export default function ReportDataView({
                   onOpenTrip={onOpenTrip}
                 />
               )
-            ) : isLoading ? (
-              <div className="p-3">
-                <TableSkeleton
-                    columns={Math.max(gridColumns.length || 5, 5)}
-                  rows={6}
-                />
-              </div>
-            ) : displayedRows.length === 0 ? (
-              <TableState message={Boolean(appliedSearch.trim()) || hasAppliedFilters ? "No matching records found." : "No report rows available"} />
             ) : (
-              <table className="w-max min-w-full border-separate border-spacing-0 text-left">
+              <table {...headerFormatting.tableProps} className="spreadsheet-grid w-max min-w-full border-separate border-spacing-0 text-left">
                 <thead className={`${tableUi.thead} bg-white`}>
                   <tr>
                     <th
                       ref={selectionColumnRef}
+                      style={{ width: SPREADSHEET_GUTTER_WIDTH, minWidth: SPREADSHEET_GUTTER_WIDTH }}
                       scope="col"
-                      className="sticky left-0 top-0 z-[70] w-11 min-w-11 border-b border-r border-slate-100/70 bg-white px-4 py-3.5">
-                      <ReportSelectAllCheckbox rowKeys={visibleSelectionKeys} />
+                      className="spreadsheet-gutter sticky left-0 top-0 z-[70] whitespace-nowrap border-b border-r border-slate-100/70 bg-slate-50 px-1 py-3.5">
+                      <SpreadsheetRowNumber value="#" /><ReportSelectAllCheckbox rowKeys={visibleSelectionKeys} />
                     </th>
                     {renderedGridColumns.map((column) => {
                       const columnWidth = columnLayout.widths?.[column.key] ?? defaultReportColumnWidth(column);
@@ -3281,6 +3268,7 @@ export default function ReportDataView({
                       return (
                       <th
                         key={column.key}
+                        {...headerFormatting.props(column.key)}
                         ref={(element) => {
                           if (element) headerCellRefs.current.set(column.key, element);
                           else headerCellRefs.current.delete(column.key);
@@ -3289,7 +3277,7 @@ export default function ReportDataView({
                         draggable={false}
                         onDragOver={(event) => { if (draggedColumnKey) event.preventDefault(); }}
                         onDrop={(event) => { event.preventDefault(); if (draggedColumnKey) reorderReportColumn(draggedColumnKey, column.key); setDraggedColumnKey(null); }}
-                        style={{ width: columnWidth, minWidth: columnWidth, maxWidth: columnWidth, position: "sticky", top: 0, ...(columnColor ? { "--report-column-color": columnColor, color: columnForeground(columnColor) } as CSSProperties : {}), ...(isPinned ? { ...(pinSide === "left" ? { left: leftPinOffsets[column.key] ?? 44 } : { right: rightPinOffsets[column.key] ?? 0 }), zIndex: 60 } : { zIndex: 40 }) }}
+                        style={{ width: columnWidth, minWidth: columnWidth, maxWidth: columnWidth, position: "sticky", top: 0, ...(columnColor ? { "--report-column-color": columnColor } as CSSProperties : {}), ...reportHeaderAppearance(sharedDesign.columns[column.key], columnColor), ...(isPinned ? { ...(pinSide === "left" ? { left: leftPinOffsets[column.key] ?? SPREADSHEET_GUTTER_WIDTH } : { right: rightPinOffsets[column.key] ?? 0 }), zIndex: 60 } : { zIndex: 40 }) }}
                         className={`${REPORT_GRID_HEADER_CELL_CLASS} ${columnColor ? "bg-[var(--report-column-color)]" : "bg-white"} ${isPinned ? `${isOuterPinnedEdge ? pinSide === "left" ? "shadow-[4px_0_8px_-6px_rgba(11,35,65,0.35)]" : "shadow-[-4px_0_8px_-6px_rgba(11,35,65,0.35)]" : ""}` : ""} ${
                           column.type === "number" ||
                           ["quantity", "cbm", "subcon_rate_manual"].includes(
@@ -3298,11 +3286,11 @@ export default function ReportDataView({
                             ? "text-right"
                             : "text-left"
                         }`}>
-                        <div className="flex min-w-0 items-center justify-between gap-2">
+                        <div className="spreadsheet-header-content flex min-w-0 items-center justify-between gap-2">
                           <button
                             type="button"
-                            draggable
-                            title={`Drag to reorder ${column.title}`}
+                            draggable={sharedDesign.canEdit && sharedDesign.loaded}
+                            data-spreadsheet-header-title title={`Drag to reorder ${column.title}`}
                             aria-label={`Drag to reorder ${column.title}`}
                             onDragStart={(event) => { event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/plain", column.key); setDraggedColumnKey(column.key); }}
                             onDragEnd={() => setDraggedColumnKey(null)}
@@ -3329,30 +3317,20 @@ export default function ReportDataView({
                   </tr>
                 </thead>
                 <tbody>
-                  {displayedRows.length === 0 && (
-                    <tr>
-                      <td
-                        colSpan={Math.max(gridColumns.length + 1, 1)}
-                        className={tableUi.empty}>
-                        {appliedSearch ||
-                        Object.values(appliedFilters).some((value) => value.trim())
-                          ? "No matching records found."
-                          : "No report rows found."}
-                      </td>
-                    </tr>
-                  )}
                   {displayedRows.map((row, index) => {
                     const currentRowKey = rowKey(reportKey, row, index);
                     const selectionKey = getReportRowKey(reportKey, row);
                     return (
                       <tr
                         key={currentRowKey}
+                        style={rowHeights.style(selectionKey ?? currentRowKey)}
                         data-report-selection-key={selectionKey ?? undefined}
                         className={`group report-data-row ${REPORT_GRID_ROW_CLASS}`}>
-                        <td className="sticky left-0 z-30 w-11 min-w-11 border-r border-slate-100/70 bg-white px-3 py-3.5 shadow-[3px_0_5px_-5px_rgba(11,35,65,0.65)]">
-                          <ReportRowSelectionCheckbox
+                        <td style={{ width: SPREADSHEET_GUTTER_WIDTH, minWidth: SPREADSHEET_GUTTER_WIDTH }} className="spreadsheet-gutter sticky left-0 z-30 whitespace-nowrap border-r border-slate-100/70 bg-slate-50 px-1 py-1 shadow-[3px_0_5px_-5px_rgba(11,35,65,0.65)]">
+                          <SpreadsheetRowNumber value={(page - 1) * pageOptions.limit + index + 1} /><ReportRowSelectionCheckbox
                             rowKey={selectionKey}
                             label={rowText(row, "dispatch_number", "trip_number", "store_call_id")} />
+                          {selectionKey && rowHeights.handle(selectionKey)}
                         </td>
                         {renderedGridColumns.map((column) => {
                           const columnWidth = columnLayout.widths?.[column.key] ?? defaultReportColumnWidth(column);
@@ -3402,15 +3380,9 @@ export default function ReportDataView({
                                 minWidth: columnWidth,
                                 maxWidth: columnWidth,
                                 ...(remoteEditors.length?{boxShadow:`inset 0 0 0 2px ${remoteEditors[0].color}`} : {}),
-                                ...(isPinned ? { position: "sticky" as const, ...(pinSide === "left" ? { left: leftPinOffsets[column.key] ?? 44 } : { right: rightPinOffsets[column.key] ?? 0 }), zIndex: 20 } : {}),
-                                ...(cellFormat?.bold ? { fontWeight: 700 } : {}),
-                                ...(cellFormat?.color ? { color: cellFormat.color } : {}),
-                                fontStyle:cellFormat?.italic?"italic":undefined,
-                                textDecoration:cellFormat?.underline?"underline":undefined,
-                                fontSize:cellFormat?.fontSize??undefined,
-                                fontFamily:cellFormat?.fontFamily??undefined,
-                                ...(columnColor ? { "--report-column-color": columnColor, color: cellFormat?.color ?? columnForeground(columnColor) } as CSSProperties : {}),
-                                ...(cellFormat?.backgroundColor ? { backgroundColor: cellFormat.backgroundColor } : {}),
+                                ...(isPinned ? { position: "sticky" as const, ...(pinSide === "left" ? { left: leftPinOffsets[column.key] ?? SPREADSHEET_GUTTER_WIDTH } : { right: rightPinOffsets[column.key] ?? 0 }), zIndex: 20 } : {}),
+                                ...(columnColor ? { "--report-column-color": columnColor } as CSSProperties : {}),
+                                ...reportColumnAppearance(sharedDesign.columns[column.key], cellFormat, columnColor),
                               }}
                               onPointerEnter={() => extendFillGesture(row, column)}
                               onClick={(event) => {
@@ -3437,7 +3409,7 @@ export default function ReportDataView({
                               <CollaborativeCell target={liveDraftCell(transactionView?"trips":reportKey,editableTarget,draftTrackerColumns.transmittal_ref)} selectionPresence={remoteEditors}>
                               {column.key==="trip_details"?(()=>{
                                 const target=tripDetailsTarget(row);
-                                return target?<a href={target.href} title="View Trip Details" aria-label={`View Trip Details for ${rowText(row,"dispatch_number","trip_number")||target.tripId}`} onClick={event=>{event.stopPropagation();if(!event.ctrlKey&&!event.metaKey&&!event.shiftKey&&!event.altKey){event.preventDefault();if(onOpenTrip)onOpenTrip(target.tripId,target.stopId);else navigate(target.href);}}} className="inline-flex items-center gap-1.5 rounded px-1 py-1 text-inherit hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"><Eye aria-hidden="true" className="h-4 w-4 shrink-0"/><span>View Details</span></a>:<span className="text-slate-400">Unavailable</span>;
+                                return target ? <SpreadsheetDetailsAction href={target.href} label={`View trip details for ${rowText(row,"dispatch_number","trip_number") || "trip"}`} onClick={event => { event.stopPropagation(); if (!event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) { event.preventDefault(); if (onOpenTrip) onOpenTrip(target.tripId, target.stopId); else navigate(target.href); } }} /> : <span aria-label="Trip details unavailable" />;
                               })():isEditing && editingCell ? (
                                 editingCell.definition.editor ===
                                   "relationship" &&
@@ -3541,10 +3513,11 @@ export default function ReportDataView({
                                     onCommitBlur={() => void commitEditableCell()}
                                     onAdd={(value) => addTypedOptionAndSave(editingCell, value)}
                                     onEditOption={editOptionDisplayLabel}
+                                    onCancel={() => { cancelNextBlur.current = true; setEditingCell(null); setCellSaveState(null); }}
                                     onClose={() => void commitEditableCell()}
                                   />
                                 ) : (
-                                  <div className="grid min-w-[150px] gap-1">
+                                  <div className="spreadsheet-editor-host grid min-w-0 w-full gap-1">
                                   <ReportTextCellEditor
                                     buffered
                                     value={editingCell.value}
@@ -3559,9 +3532,7 @@ export default function ReportDataView({
                                     onChange={(value) => keepTextDraftLocal({ ...editingCell, value })}
                                     onCommit={(value) => commitEditableCell({ ...editingCell, value })}
                                     onCancel={() => { bufferedTextDraft.current=null; setEditingCell(null); setCellSaveState(null); }}
-                                    className={editingCell.definition.sourceField === "remarks"
-                                      ? "w-[min(36rem,70vw)] min-w-[min(24rem,70vw)] max-w-[70vw] resize-y rounded-md border border-[#9cc3e3] bg-white px-2 py-1 text-sm font-medium text-slate-800 shadow-sm outline-none ring-2 ring-[#cfe1f1]"
-                                      : "min-w-[120px] rounded-md border border-[#9cc3e3] bg-white px-2 py-1 text-sm font-medium text-slate-800 shadow-sm outline-none ring-2 ring-[#cfe1f1]"}
+                                    className="w-full min-w-0 text-inherit"
                                   />
                                   {(editingCell.tripId || editingCell.storeCallId) && editingCell.definition.sourceField === "remarks" && (
                                     <>
@@ -3587,7 +3558,6 @@ export default function ReportDataView({
                                         </select>
                                       )}
                                       {mentionLoading && <span className="text-[10px] text-slate-500">Loading usersâ€¦</span>}
-                                      {cellSaveState?.status === "error" && cellSaveState.message.includes("eligible admin") && <span role="alert" className="text-[10px] text-rose-600">{cellSaveState.message}</span>}
                                     </>
                                   )}
                                   </div>
@@ -3624,14 +3594,6 @@ export default function ReportDataView({
                                           )}
                                     </span>
                                   )}
-                                  {cellSaveState?.rowKey === currentRowKey &&
-                                  cellSaveState.field === column.key &&
-                                  cellSaveState.status !== "saving" ? (
-                                    <span
-                                      className={`text-[10px] font-medium ${cellSaveState.status === "error" ? "text-rose-600" : cellSaveState.status === "warning" ? "text-amber-700" : "text-emerald-600"}`}>
-                                      {cellSaveState.message}
-                                    </span>
-                                  ) : null}
                                 </div>
                               ) : (
                                 <span
@@ -3643,16 +3605,7 @@ export default function ReportDataView({
                                   {displayValue(row[column.key], column.type,column.key)}
                                 </span>
                               )}
-                              {isEditing &&
-                              cellSaveState?.rowKey === currentRowKey &&
-                              cellSaveState.field === column.key &&
-                              cellSaveState.status !== "saving" ? (
-                                <span
-                                  role="status"
-                                  className={`ml-2 text-[10px] font-medium ${cellSaveState.status === "error" ? "text-rose-600" : cellSaveState.status === "warning" ? "text-amber-700" : cellSaveState.status === "saved" ? "text-emerald-600" : "text-slate-400"}`}>
-                                  {cellSaveState.message}
-                                </span>
-                              ) : null}
+                              </CollaborativeCell>
                               {isEditable && !isEditing && (
                                 <button
                                   type="button"
@@ -3664,11 +3617,11 @@ export default function ReportDataView({
                                     beginFillGesture(row, index, column);
                                   }}
                                   onClick={(event) => event.stopPropagation()}
-                                  className="absolute bottom-0.5 right-0.5 z-10 flex h-4 w-4 touch-none items-center justify-center rounded-sm border border-blue-300 bg-white text-blue-600 opacity-0 shadow-sm transition group-hover/cell:opacity-100 focus:opacity-100">
+                                  className="absolute bottom-0 right-0 z-10 flex h-4 w-4 touch-none items-center justify-center rounded-sm border border-blue-300 bg-white text-blue-600 opacity-0 shadow-sm transition group-hover/cell:opacity-100 focus:opacity-100">
                                   <GripVertical aria-hidden="true" className="h-3 w-3 rotate-90" />
                                 </button>
                               )}
-                              </CollaborativeCell>
+
                             </td>
                           );
                         })}
@@ -3676,17 +3629,13 @@ export default function ReportDataView({
                       </tr>
                     );
                   })}
+                  <SpreadsheetBlankRows count={spreadsheetPadding.count} height={spreadsheetPadding.height} loading={isLoading && !displayedRows.length} start={(page - 1) * pageOptions.limit + displayedRows.length + 1} columns={renderedGridColumns.length ? renderedGridColumns.map(column => ({ key: column.key, width: columnLayout.widths?.[column.key] ?? defaultReportColumnWidth(column), style: { ...reportColumnAppearance(sharedDesign.columns[column.key], undefined, columnLayout.colors?.[column.key]), ...(pinnedColumnSides[column.key] ? { position: "sticky", backgroundColor: reportColumnAppearance(sharedDesign.columns[column.key], undefined, columnLayout.colors?.[column.key]).backgroundColor ?? "white", left: pinnedColumnSides[column.key] === "left" ? leftPinOffsets[column.key] : undefined, right: pinnedColumnSides[column.key] === "right" ? rightPinOffsets[column.key] : undefined, zIndex: 20 } : {}) } })) : Array.from({ length: 5 }, (_, index) => ({ key: `initial-${index}`, width: 180 }))} />
                 </tbody>
               </table>
             )}
           </div>
           <HiddenColumnsControl columns={hiddenColumns} onRestore={restoreReportColumn} onRestoreAll={() => saveColumnLayout({ ...columnLayout, order: layoutColumnKeys, hidden: [] })} />
-          <footer className={tableUi.footer}>
-            <span>
-              {pagination
-                ? `${pagination.total.toLocaleString()} rows Â· Page ${pagination.page} of ${pagination.totalPages}`
-                : ""}
-            </span>
+          <SpreadsheetFooter total={pagination?.total ?? displayedRows.length} page={pagination?.page ?? 1} totalPages={pagination?.totalPages ?? 1}>
             <div className="flex items-center gap-2">
               <button
                 type="button"
@@ -3705,9 +3654,8 @@ export default function ReportDataView({
                 <ChevronRight aria-hidden="true" className="h-4 w-4" />
               </button>
             </div>
-          </footer>
+          </SpreadsheetFooter>
         </>
-      )}
       </section>
       {openColumnMenu && (() => {
         const menuColumn = columns.find((column) => column.key === openColumnMenu.key);

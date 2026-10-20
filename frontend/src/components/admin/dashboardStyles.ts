@@ -136,7 +136,7 @@ export const surface = {
 /* Shared table tokens: every table page (trips, reports, users, database...) uses these */
 export const tableUi = {
   shell: "overflow-hidden rounded-[28px] bg-white ring-1 ring-slate-900/[0.04] shadow-[0_1px_2px_rgba(11,35,65,0.03)]",
-  toolbar: "flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between",
+  toolbar: "flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between",
   search: "h-10 w-full rounded-full border border-transparent bg-white pl-10 pr-4 text-sm text-slate-700 shadow-[0_1px_2px_rgba(11,35,65,0.06)] outline-none placeholder:text-slate-400 focus:border-[#2678b9]/40 focus:ring-2 focus:ring-[#2678b9]/15",
   select: "h-10 appearance-none rounded-full border border-transparent bg-white pl-4 pr-9 text-sm text-slate-600 shadow-[0_1px_2px_rgba(11,35,65,0.06)] outline-none transition focus:border-[#2678b9]/40 focus:ring-2 focus:ring-[#2678b9]/15",
   segment: "inline-flex items-center rounded-full bg-white p-1 shadow-[0_1px_2px_rgba(11,35,65,0.06)]",

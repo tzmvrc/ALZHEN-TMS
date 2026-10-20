@@ -254,7 +254,7 @@ const TABLE_PAGE_IDS = new Set([
 /* Heading under the top bar, left aligned like the Home page. */
 function PageHeading({ title, subtitle }: { title: string; subtitle?: string }) {
   return (
-    <header className="mb-4 min-w-0">
+    <header className="mb-2 min-w-0">
       <h1 className="truncate text-xl font-bold leading-tight tracking-tight text-[#0b2341]">
         {title}
       </h1>
