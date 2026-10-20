@@ -20,6 +20,8 @@ import {
 } from "../controllers/assignment.controller.js";
 import {
   createTrip,
+  nextDispatchNumber,
+  listDispatches,
   createTripLineItem,
   createTripStop,
   deleteTripLineItem,
@@ -75,6 +77,9 @@ router.delete(
 );
 router.get("/", authMiddleware, requireRole("ADMIN", "STAFF"), listTrips);
 router.post("/", authMiddleware, requireRole("ADMIN", "STAFF"), createTrip);
+// Must stay above "/:id" routes, otherwise "next-dispatch-number" is read as a trip id.
+router.get("/next-dispatch-number", authMiddleware, requireRole("ADMIN", "STAFF"), nextDispatchNumber);
+router.get("/dispatches", authMiddleware, requireRole("ADMIN", "STAFF"), listDispatches);
 router.get(
   "/dispatch/:dispatchNumber",
   authMiddleware,

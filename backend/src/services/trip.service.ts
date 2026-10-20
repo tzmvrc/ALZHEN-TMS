@@ -579,6 +579,8 @@ export async function getTripByDispatchNumber(dispatchNumberInput: string) {
     .from("trips")
     .select("id, dispatch_number")
     .eq("dispatch_number", dispatchNumber)
+    .order("trip_number", { ascending: true, nullsFirst: false })
+    .limit(1)
     .maybeSingle();
 
   if (error) {
@@ -587,6 +589,169 @@ export async function getTripByDispatchNumber(dispatchNumberInput: string) {
   }
   if (!data) throw new Error("Trip not found");
   return data;
+}
+
+const DISPATCH_PREFIX_PATTERN = /^TRIP\d{6}$/;
+
+/** Next dispatch reference for a day, e.g. prefix "TRIP260305" -> "TRIP260305-3". */
+export async function getNextDispatchNumber(prefixInput: string) {
+  const prefix = String(prefixInput ?? "").trim().toUpperCase();
+  if (!DISPATCH_PREFIX_PATTERN.test(prefix)) {
+    throw new Error("Invalid dispatch prefix");
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("trips")
+    .select("dispatch_number")
+    .like("dispatch_number", `${prefix}-%`)
+    .limit(5000);
+
+  if (error) {
+    console.error("Next dispatch number query error:", { prefix, error });
+    throw new Error("Unable to generate dispatch number");
+  }
+
+  const pattern = new RegExp(`^${prefix}-(\\d+)$`);
+  let highest = 0;
+  for (const row of data ?? []) {
+    const match = pattern.exec(String(row.dispatch_number ?? ""));
+    if (match) highest = Math.max(highest, Number(match[1]));
+  }
+  return `${prefix}-${highest + 1}`;
+}
+
+export type DispatchOption = {
+  dispatch_number: string;
+  trip_count: number;
+  next_trip_number: number;
+  loading_date: string | null;
+  warehouse_id: string | null;
+  trip_type_id: string | null;
+};
+
+/** Existing dispatches (most recent first) with how many trips each already has. */
+export async function listDispatchOptions(queryInput?: unknown): Promise<DispatchOption[]> {
+  const q = typeof queryInput === "string" ? queryInput.trim().slice(0, 100) : "";
+  let builder = supabaseAdmin
+    .from("trips")
+    .select("dispatch_number, trip_number, loading_date, warehouse_id, trip_type_id, created_at")
+    .not("dispatch_number", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(3000);
+  if (q) builder = builder.ilike("dispatch_number", `%${q.replace(/[\\%_]/g, "\\$&")}%`);
+
+  const { data, error } = await builder;
+  if (error) {
+    console.error("Dispatch list query error:", { q, error });
+    throw new Error("Unable to fetch dispatches");
+  }
+
+  const groups = new Map<string, DispatchOption & { highest: number }>();
+  for (const row of data ?? []) {
+    const key = String(row.dispatch_number);
+    let group = groups.get(key);
+    if (!group) {
+      // rows arrive newest first, so the first row seen is the latest trip of that dispatch
+      group = {
+        dispatch_number: key, trip_count: 0, next_trip_number: 1, highest: 0,
+        loading_date: row.loading_date ?? null, warehouse_id: row.warehouse_id ?? null, trip_type_id: row.trip_type_id ?? null,
+      };
+      groups.set(key, group);
+    }
+    group.trip_count += 1;
+    if (typeof row.trip_number === "number") group.highest = Math.max(group.highest, row.trip_number);
+    if (!group.loading_date && row.loading_date) group.loading_date = row.loading_date;
+  }
+
+  return [...groups.values()].slice(0, 200).map(({ highest, ...group }) => ({
+    ...group,
+    next_trip_number: Math.max(highest, group.trip_count) + 1,
+  }));
+}
+
+/** Find a trip type by name (case-insensitive) or create it. Returns its id. */
+export async function resolveTripTypeByName(nameInput: unknown): Promise<string> {
+  const name = sanitizeString(nameInput, "trip_type_name", 100);
+  if (!name) throw new Error("trip_type_name is required.");
+
+  const findExisting = async () => {
+    const escaped = name.replace(/[\\%_]/g, "\\$&"); // exact, case-insensitive match
+    const { data, error } = await supabaseAdmin
+      .from("trip_types")
+      .select("id, active")
+      .ilike("name", escaped)
+      .limit(1)
+      .maybeSingle();
+    if (error) throw new Error("Unable to look up trip type.");
+    return data;
+  };
+
+  const existing = await findExisting();
+  if (existing) {
+    if (existing.active !== true) throw new Error("Trip type must be active.");
+    return existing.id as string;
+  }
+
+  const code = name.toUpperCase().replace(/[^A-Z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 50);
+  const { data, error } = await supabaseAdmin
+    .from("trip_types")
+    .insert({ name, code: code || null, active: true })
+    .select("id")
+    .single();
+
+  if (error) {
+    if (error.code === "23505") {
+      const raced = await findExisting(); // someone created it at the same moment
+      if (raced) return raced.id as string;
+    }
+    console.error("Trip type create error:", { name, error });
+    throw new Error("Unable to create trip type");
+  }
+  return data.id as string;
+}
+
+/** Find a product by model code (or SKU), case-insensitive, or create it. Returns its id. */
+export async function resolveProductByCode(codeInput: unknown, categoryInput?: unknown): Promise<string> {
+  const code = sanitizeString(codeInput, "product code", 100);
+  if (!code) throw new Error("Product code is required.");
+  const category = sanitizeString(categoryInput, "product category", 100);
+  const escaped = code.replace(/[\\%_]/g, "\\$&"); // exact, case-insensitive match
+
+  const findExisting = async () => {
+    for (const column of ["model_code", "sku"] as const) {
+      const { data, error } = await supabaseAdmin
+        .from("products")
+        .select("id, status")
+        .ilike(column, escaped)
+        .limit(1)
+        .maybeSingle();
+      if (error) throw new Error("Unable to look up product.");
+      if (data) return data;
+    }
+    return null;
+  };
+
+  const existing = await findExisting();
+  if (existing) {
+    if (String(existing.status).toUpperCase() !== "ACTIVE") throw new Error("Product must be active.");
+    return existing.id as string;
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("products")
+    .insert({ name: code, sku: code, model_code: code, category: category ?? null, status: "ACTIVE" })
+    .select("id")
+    .single();
+
+  if (error) {
+    if (error.code === "23505") {
+      const raced = await findExisting(); // created by someone else at the same moment
+      if (raced) return raced.id as string;
+    }
+    console.error("Product create error:", { code, error });
+    throw new Error("Unable to create product");
+  }
+  return data.id as string;
 }
 
 export async function createTripRecord(
@@ -610,7 +775,9 @@ export async function createTripRecord(
   }
 
   if (!payload.dispatch_number) {
-    throw new Error("dispatch_number is required.");
+    const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila", year: "2-digit", month: "2-digit", day: "2-digit" }).formatToParts(new Date());
+    const part = (type: string) => parts.find(value => value.type === type)?.value ?? "";
+    payload.dispatch_number = await getNextDispatchNumber(`TRIP${part("year")}${part("month")}${part("day")}`);
   }
 
   const { data, error } = await supabaseAdmin

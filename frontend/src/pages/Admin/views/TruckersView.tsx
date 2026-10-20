@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { SlidersHorizontal, UserRound, Pencil, Plus, X } from "lucide-react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { ChevronLeft, ChevronRight, Truck, UserRound, Pencil, Plus, X } from "lucide-react";
 import { useAuth } from "../../../context/AuthContext";
 import { tableUi } from "../../../components/admin/dashboardStyles";
 import SlidingSegmentedControl from "../../../components/admin/SlidingSegmentedControl";
@@ -7,15 +7,17 @@ import TruckerDetailDrawer from "../../../components/admin/TruckerDetailDrawer";
 import { getCachedApiResponse,invalidateApiCache,cacheApiSnapshot,apiCacheGeneration, type ApiResponse } from "../../../services/api.service";
 import { fetchTruckerDetail, getCachedTruckerDetail,truckerDetailFromSummary,type TruckerListItem } from "../../../services/trucker.service";
 import UserManagementModal from "../../../components/admin/UserManagementModal";
+import VehicleManagementModal from "../../../components/admin/VehicleManagementModal";
 import { fetchUsersDirectory,getCachedUsersDirectory,filterDirectoryTruckers,type ManagedUser } from "../../../services/user-management.service";
 import { subscribeToAdminRealtime } from "../../../services/realtime.service";
 import { useDeferredRealtimeRefresh } from "../../../components/admin/useDeferredRealtimeRefresh";
-
+import { fetchMasterData, getCachedMasterData, type MasterDataRow } from "../../../services/master-data.service";
 import { useManagementTableColumns } from "../../../components/admin/useManagementTableColumns";
 
 const userCategoryOptions = [
   { value: "staff", label: "Admin & Staff" },
-  { value: "truckers", label: "Truckers" },
+  { value: "truckers", label: "Drivers" },
+  { value: "vehicles", label: "Vehicles" },
 ] as const;
 
 type ProfileLookupRow = {
@@ -39,16 +41,151 @@ export default function TruckersView(){
  const {accessToken,profile}=useAuth();
  return <UsersTable key={`${profile?.id}:${profile?.role}:${accessToken??""}`}/>;
 }
+
+function UsersToolbar({ categories, children }: { categories: ReactNode; children: ReactNode }) {
+ return <div className="relative z-20 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+  <div className="flex flex-wrap items-center gap-2">{categories}</div>
+  <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">{children}</div>
+ </div>;
+}
+
+function VehiclesTable({ categories }: { categories: ReactNode }) {
+ const { accessToken, profile } = useAuth();
+ const cached = accessToken ? getCachedMasterData(accessToken, "trucks") : null;
+ const [rows, setRows] = useState<MasterDataRow[]>(cached?.rows ?? []);
+ const [page, setPage] = useState(cached?.pagination.page ?? 1);
+ const [totalPages, setTotalPages] = useState(cached?.pagination.totalPages ?? 1);
+ const [total, setTotal] = useState(cached?.pagination.total ?? 0);
+ const [search, setSearch] = useState("");
+ const [refresh, setRefresh] = useState(0);
+ const [vehicleModalOpen, setVehicleModalOpen] = useState(false);
+ const [notice, setNotice] = useState("");
+ const canManage = ["ADMIN", "STAFF"].includes(profile?.role ?? "");
+ const requestKey = `${accessToken ?? ""}:${page}:${search}:${refresh}`;
+ const [requestStatus, setRequestStatus] = useState<{ key: string; error: string }>({ key: "", error: "" });
+ const loading = Boolean(accessToken) && requestStatus.key !== requestKey;
+ const error = !accessToken
+  ? "Your session has expired. Please log in again."
+  : requestStatus.key === requestKey
+   ? requestStatus.error
+   : "";
+ const columns = useMemo(() => [
+  { key: "truck_type", title: "Truck type", width: 280 },
+  { key: "plate_number", title: "Plate number", width: 240 },
+  { key: "capacity_cbm", title: "CBM max", width: 180 },
+ ], []);
+ const {
+  attachViewport,
+  viewportProps,
+  tableStyle,
+  controls: columnControls,
+  hiddenControl,
+  colgroup,
+  headerProps,
+  headerControls,
+  orderedColumns,
+  renderCells,
+ } = useManagementTableColumns({
+  table: "master:trucks",
+  token: accessToken,
+  profileId: profile?.id,
+  columns,
+  enabled: canManage,
+  paused: vehicleModalOpen,
+  rowSearch: { value: search, onSearch: (value) => { setSearch(value); setPage(1); }, placeholder: "Search vehicles or columns…" },
+ });
+
+ useEffect(() => {
+  if (!accessToken) return;
+  let active = true;
+  void fetchMasterData(accessToken, "trucks", search, page)
+   .then((result) => {
+    if (!active) return;
+    setRows(result.rows);
+    setTotalPages(result.pagination.totalPages);
+    setTotal(result.pagination.total);
+    setRequestStatus({ key: requestKey, error: "" });
+   })
+   .catch((cause: unknown) => {
+    if (active) setRequestStatus({
+     key: requestKey,
+     error: cause instanceof Error ? cause.message : "Unable to load vehicles.",
+    });
+   });
+  return () => { active = false; };
+ }, [accessToken, page, refresh, search, requestKey]);
+
+ return (
+  <section className="space-y-4">
+   {notice && <div role="status" className="flex items-center justify-between rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-800">{notice}<button type="button" aria-label="Dismiss message" onClick={() => setNotice("")}><X className="h-4 w-4" /></button></div>}
+   <UsersToolbar categories={categories}>
+    {columnControls}
+    {canManage && <button type="button" onClick={() => setVehicleModalOpen(true)} className="inline-flex h-10 items-center gap-2 rounded-full bg-[#ffd43b] px-4 text-sm font-semibold text-[#0b2341] hover:bg-[#f2c200]"><Plus className="h-4 w-4" />Add vehicle</button>}
+   </UsersToolbar>
+   {error && rows.length > 0 && (
+    <div role="alert" className="flex items-center justify-between rounded-lg bg-rose-50 px-4 py-3 text-sm text-rose-700">
+     <span>{error}</span>
+     <button type="button" onClick={() => setRefresh((value) => value + 1)} className="underline">Retry</button>
+    </div>
+   )}
+   <div className={`${tableUi.shell} relative z-0 !rounded-sm`}>
+    <div ref={attachViewport} {...viewportProps} className="overflow-x-auto">
+     <table style={tableStyle} className="min-w-full text-left">
+      {colgroup}
+      <thead className={tableUi.thead}>
+       <tr>{orderedColumns.map((column) => <th key={column.key} {...headerProps(column.key)} className={tableUi.th}>{column.title}{headerControls(column)}</th>)}</tr>
+      </thead>
+      <tbody>
+       {loading && rows.length === 0 ? Array.from({ length: 4 }, (_, index) => (
+        <tr key={`vehicle-skeleton-${index}`} className={tableUi.row}>
+         {orderedColumns.map((column) => <td key={column.key} className={tableUi.td}><div className="h-4 w-3/4 animate-pulse rounded bg-slate-200" /></td>)}
+        </tr>
+       )) : error && rows.length === 0 ? (
+        <tr><td colSpan={orderedColumns.length} role="alert" className="px-4 py-12 text-center text-sm text-rose-700">{error}<button type="button" onClick={() => setRefresh((value) => value + 1)} className="ml-2 underline">Retry</button></td></tr>
+       ) : rows.length === 0 ? (
+        <tr><td colSpan={orderedColumns.length} className="px-4 py-14 text-center text-sm text-slate-400">No vehicles found.</td></tr>
+       ) : rows.map((vehicle) => (
+        <tr key={vehicle.id} className={tableUi.row}>
+         {renderCells(<>
+          <td className={tableUi.td}><span className="inline-flex items-center gap-2"><Truck aria-hidden="true" className="h-4 w-4 shrink-0 text-[#2678b9]" />{vehicle.truck_type == null || vehicle.truck_type === "" ? "—" : String(vehicle.truck_type)}</span></td>
+          <td className={tableUi.td}>{vehicle.plate_number == null || vehicle.plate_number === "" ? "—" : String(vehicle.plate_number)}</td>
+          <td className={tableUi.td}>{vehicle.capacity_cbm == null || vehicle.capacity_cbm === "" ? "—" : `${String(vehicle.capacity_cbm)} CBM`}</td>
+         </>)}
+        </tr>
+       ))}
+      </tbody>
+     </table>
+    </div>
+    {hiddenControl}
+    {totalPages > 1 && (
+     <footer className={tableUi.footer}>
+      <span>{total ? `${Math.min((page - 1) * 100 + 1, total)}–${Math.min(page * 100, total)} of ${total} vehicles` : "Vehicles"}</span>
+      <div className="flex items-center gap-1">
+       <button type="button" aria-label="Previous vehicles page" disabled={loading || page <= 1} onClick={() => setPage((value) => value - 1)} className={tableUi.pageBtn}><ChevronLeft aria-hidden="true" className="h-4 w-4" /></button>
+       <span className="min-w-14 text-center text-xs tabular-nums text-slate-500">{page}/{totalPages}</span>
+       <button type="button" aria-label="Next vehicles page" disabled={loading || page >= totalPages} onClick={() => setPage((value) => value + 1)} className={tableUi.pageBtn}><ChevronRight aria-hidden="true" className="h-4 w-4" /></button>
+      </div>
+     </footer>
+    )}
+   </div>
+   {vehicleModalOpen && <VehicleManagementModal onClose={() => setVehicleModalOpen(false)} onSaved={() => {
+    setVehicleModalOpen(false);
+    setNotice("Vehicle saved successfully.");
+    setPage(1);
+    setRefresh((value) => value + 1);
+   }} />}
+  </section>
+ );
+}
+
 function UsersTable() {
   const { accessToken, profile } = useAuth();
   const preferencesKey=`/screen-state/account-table/${profile?.role??"none"}`;
-  const saved=accessToken?getCachedApiResponse<{category:"staff"|"truckers";search:string;status:string;assignment:"all"|"assigned"|"unassigned"}>(preferencesKey,accessToken,300000):null;
-  const [selectedCategory, setSelectedCategory] = useState<"staff" | "truckers">(() => saved?.category??(profile?.role === "ADMIN" ? "staff" : "truckers"));
-  const category = profile?.role === "ADMIN" ? selectedCategory : "truckers";
+  const saved=accessToken?getCachedApiResponse<{category:"staff"|"truckers"|"vehicles";search:string}>(preferencesKey,accessToken,300000):null;
+  const [selectedCategory, setSelectedCategory] = useState<"staff" | "truckers" | "vehicles">(() => saved?.category??(profile?.role === "ADMIN" ? "staff" : "truckers"));
+  const category = profile?.role === "ADMIN" || selectedCategory === "vehicles" ? selectedCategory : "truckers";
   const [search, setSearch] = useState(saved?.search??"");
-  const [status, setStatus] = useState(saved?.status??"all");
-  const [assignment, setAssignment] = useState<"all" | "assigned" | "unassigned">(saved?.assignment??"all");
-  useEffect(()=>{if(accessToken)cacheApiSnapshot(preferencesKey,accessToken,{category,search,status,assignment},apiCacheGeneration());},[accessToken,preferencesKey,category,search,status,assignment]);
+  useEffect(()=>{if(accessToken)cacheApiSnapshot(preferencesKey,accessToken,{category,search},apiCacheGeneration());},[accessToken,preferencesKey,category,search]);
   const cachedDirectory=useMemo(()=>accessToken?getCachedUsersDirectory(accessToken,profile?.role??""):null,[accessToken,profile?.role]);
   const [rows, setRows] = useState<TruckerListItem[]>(cachedDirectory?.truckers??[]);
   const [loading, setLoading] = useState(!cachedDirectory);
@@ -61,7 +198,7 @@ function UsersTable() {
   const [localManagedUsers, setManagedUsers] = useState<ManagedUser[]>(()=>accessToken&&profile?.role==="ADMIN"?getCachedApiResponse<ApiResponse<ManagedUser[]>>("/users",accessToken,5*60_000)?.data??[]:[]);
   const managedUsers=useMemo(()=>profile?.role==="ADMIN"?localManagedUsers:[],[profile?.role,localManagedUsers]);
   const profiles=useMemo<AdminStaffProfile[]>(()=>managedUsers.filter(user=>user.role==="ADMIN"||user.role==="STAFF").map(user=>({...user,role:user.role as "ADMIN"|"STAFF",full_name:[user.first_name,user.last_name].filter(Boolean).join(" ")||"Name not recorded"})),[managedUsers]);
-  const visibleTruckers=useMemo(()=>filterDirectoryTruckers(rows,search,status,assignment),[rows,search,status,assignment]);
+  const visibleTruckers=useMemo(()=>filterDirectoryTruckers(rows,search,"all","all"),[rows,search]);
   const [userModalOpen, setUserModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<ManagedUser | null>(null);
   const [notice, setNotice] = useState("");
@@ -117,7 +254,7 @@ function UsersTable() {
 
   const visibleUserCategories = profile?.role === "ADMIN"
     ? userCategoryOptions
-    : userCategoryOptions.filter((option) => option.value === "truckers");
+    : userCategoryOptions.filter((option) => option.value !== "staff");
   const matchingProfiles = useMemo(() => {
     const term = search.trim().toLocaleLowerCase();
     return profiles.filter((profile) => {
@@ -131,51 +268,30 @@ function UsersTable() {
     setRefreshVersion((current) => current + 1);
   }
 
-  function changeCategory(next: "staff" | "truckers") {
+  function changeCategory(next: "staff" | "truckers" | "vehicles") {
     setSelectedCategory(next);
     setSearch("");
     setSelectedId(null);
   }
 
+  const categories = <SlidingSegmentedControl
+    aria-label="Admin and staff, drivers, or vehicles"
+    options={visibleUserCategories}
+    value={category}
+    onChange={(value) => {
+      if (value !== "staff" || profile?.role === "ADMIN") changeCategory(value);
+    }}
+  />;
+
   return (
     <div className="space-y-4">
       {notice && <div role="status" className="flex items-center justify-between rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-800">{notice}<button type="button" aria-label="Dismiss message" onClick={() => setNotice("")}><X className="h-4 w-4" /></button></div>}
-      <div>
-        <div className="relative z-20 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-          <div className="flex flex-wrap items-center gap-2">
-            <SlidingSegmentedControl
-              aria-label="User category"
-              options={visibleUserCategories}
-              value={category}
-              onChange={(value) => {
-                if (value === "truckers" || profile?.role === "ADMIN") changeCategory(value);
-              }}
-            />
-            {category !== "staff" && (
-              <>
-                <div className="relative">
-                  <SlidersHorizontal aria-hidden="true" className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                  <select aria-label="Filter truckers by status" value={status} onChange={(event) => setStatus(event.target.value)} className={`${tableUi.select} pl-9`}>
-                    <option value="all">All status</option>
-                    <option value="ACTIVE">Active</option>
-                    <option value="INACTIVE">Inactive</option>
-                  </select>
-                </div>
-                <select aria-label="Filter truckers by assignment" value={assignment} onChange={(event) => setAssignment(event.target.value as "all" | "assigned" | "unassigned")} className={`${tableUi.select} pr-4`}>
-                  <option value="all">All assignments</option>
-                  <option value="assigned">Assigned</option>
-                  <option value="unassigned">Unassigned</option>
-                </select>
-              </>
-            )}
-          </div>
-          <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
+      {category !== "vehicles" && <UsersToolbar categories={categories}>
             {columnControls}
             {profile?.role === "ADMIN" && <button type="button" onClick={() => { setEditingUser(null); setUserModalOpen(true); }} className="inline-flex h-10 items-center gap-2 rounded-full bg-[#ffd43b] px-4 text-sm font-semibold text-[#0b2341] hover:bg-[#f2c200]"><Plus className="h-4 w-4" />Add user</button>}
-          </div>
-        </div>
-      </div>
+      </UsersToolbar>}
 
+      {category === "vehicles" ? <VehiclesTable key={`${profile?.id}:${profile?.role}:${accessToken??""}`} categories={categories} /> : <>
       {error && (category==="staff" ? profiles.length>0 : rows.length>0) && <div role="alert" className="flex items-center justify-between rounded-lg bg-rose-50 px-4 py-3 text-sm text-rose-700"><span>{error}</span><button type="button" onClick={refreshList} className="underline">Retry</button></div>}
       <div className={`${tableUi.shell} relative z-0 !rounded-sm`}>
         <div ref={attachViewport} {...viewportProps} className="overflow-x-auto">
@@ -196,7 +312,7 @@ function UsersTable() {
                   <td className={tableUi.td}>{managedUsers.find((item) => item.id === profile.id)?.email ?? "—"}</td><td className={tableUi.td}>{profile.role}</td><td className={tableUi.td}>{managedUsers.some((item) => item.id === profile.id) && <button type="button" aria-label={`Edit ${profile.full_name}`} onClick={() => { setEditingUser(managedUsers.find((item) => item.id === profile.id) ?? null); setUserModalOpen(true); }} className={tableUi.iconBtn}><Pencil className="h-4 w-4" /></button>}</td>
                 </>)} </tr>
               )) : visibleTruckers.length === 0 ? (
-                <tr><td colSpan={6} className="px-4 py-16 text-center text-sm text-slate-400">No truckers found.</td></tr>
+                <tr><td colSpan={6} className="px-4 py-16 text-center text-sm text-slate-400">No drivers found.</td></tr>
               ) : visibleTruckers.map((trucker) => {
                 const avatar = managedUsers.find((item) => item.id === trucker.profile_id)?.profile_picture_url ?? formatAvatarPath(trucker.profile_picture_path);
                 return (
@@ -214,6 +330,7 @@ function UsersTable() {
 
       {selectedId && (detail || detailLoading) ? <TruckerDetailDrawer trucker={detail} loading={detailLoading} error={detailError} onClose={() => setSelectedId(null)} /> : null}
       {userModalOpen && <UserManagementModal user={editingUser} onClose={() => setUserModalOpen(false)} onSaved={(message) => { setUserModalOpen(false); setNotice(message ?? "User saved successfully."); refreshList(); }} />}
+      </>}
     </div>
   );
 }

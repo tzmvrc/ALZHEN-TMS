@@ -995,6 +995,8 @@ export default function ReportDataView({
   onReportScopeChange,
   toolbarLeading,
   toolbarActions,
+  visualOverview,
+  hideVisualPagination = false,
   createdTripReference,
   ongoingOnly = false,
   transactionView = false,
@@ -1011,6 +1013,10 @@ export default function ReportDataView({
   toolbarLeading?: ReactNode;
   /** Extra action buttons rendered at the end of the controls row above the table. */
   toolbarActions?: ReactNode;
+  /** Optional custom visual layout selected by the existing Visual view control. */
+  visualOverview?: ReactNode;
+  /** Hide the shared report pagination footer for a custom visual overview. */
+  hideVisualPagination?: boolean;
   /** Focus the table on a newly persisted trip after creation. */
   createdTripReference?: string | null;
   /** Restrict Dispatch Monitoring to trips with at least one unfinished stop. */
@@ -3217,7 +3223,7 @@ export default function ReportDataView({
           {viewMode === "table" && <ReportCellFormattingToolbar advanced selectionIsItalic={selectedFormats.length>0&&selectedFormats.every(f=>f.italic)} selectionIsUnderlined={selectedFormats.length>0&&selectedFormats.every(f=>f.underline)} selectedCellCount={selectedFormatCellKeys.size} selectionIsBold={selectionIsBold} selectedTextColor={selectedTextColor} selectedBackgroundColor={selectedBackgroundColor} onApply={applyCellFormat} {...headerFormatting.toolbarProps} />}
           <div ref={tableViewportRef} onPaste={(event) => void handleReportPaste(event)} onCopy={handleReportCopy} className={`${viewMode === "table" ? `${REPORT_GRID_VIEWPORT_CLASS} ${SPREADSHEET_ATTACHED_VIEWPORT_CLASS}` : "relative min-h-48 w-full min-w-0 max-w-full overflow-x-auto overscroll-x-contain"} w-full`}>
             {viewMode === "visual" ? (
-              isLoading ? (
+              visualOverview ?? (isLoading ? (
                 <div className="p-3">
                   <TableSkeleton
                     columns={Math.min(columns.length || 5, 5)}
@@ -3238,7 +3244,7 @@ export default function ReportDataView({
                   reportKey={reportKey}
                   onOpenTrip={onOpenTrip}
                 />
-              )
+              ))
             ) : (
               <table {...headerFormatting.tableProps} className="spreadsheet-grid w-max min-w-full border-separate border-spacing-0 text-left">
                 <thead className={`${tableUi.thead} bg-white`}>
@@ -3635,26 +3641,28 @@ export default function ReportDataView({
             )}
           </div>
           <HiddenColumnsControl columns={hiddenColumns} onRestore={restoreReportColumn} onRestoreAll={() => saveColumnLayout({ ...columnLayout, order: layoutColumnKeys, hidden: [] })} />
-          <SpreadsheetFooter total={pagination?.total ?? displayedRows.length} page={pagination?.page ?? 1} totalPages={pagination?.totalPages ?? 1}>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                aria-label="Previous page"
-                disabled={isLoading || page <= 1}
-                onClick={() => setPage((value) => Math.max(1, value - 1))}
-                className={tableUi.pageBtn}>
-                <ChevronLeft aria-hidden="true" className="h-4 w-4" />
-              </button>
-              <button
-                type="button"
-                aria-label="Next page"
-                disabled={isLoading || pageCount === 0 || page >= pageCount}
-                onClick={() => setPage((value) => value + 1)}
-                className={tableUi.pageBtn}>
-                <ChevronRight aria-hidden="true" className="h-4 w-4" />
-              </button>
-            </div>
-          </SpreadsheetFooter>
+          {(viewMode === "table" || !hideVisualPagination) && (
+            <SpreadsheetFooter total={pagination?.total ?? displayedRows.length} page={pagination?.page ?? 1} totalPages={pagination?.totalPages ?? 1}>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  aria-label="Previous page"
+                  disabled={isLoading || page <= 1}
+                  onClick={() => setPage((value) => Math.max(1, value - 1))}
+                  className={tableUi.pageBtn}>
+                  <ChevronLeft aria-hidden="true" className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  aria-label="Next page"
+                  disabled={isLoading || pageCount === 0 || page >= pageCount}
+                  onClick={() => setPage((value) => value + 1)}
+                  className={tableUi.pageBtn}>
+                  <ChevronRight aria-hidden="true" className="h-4 w-4" />
+                </button>
+              </div>
+            </SpreadsheetFooter>
+          )}
         </>
       </section>
       {openColumnMenu && (() => {

@@ -12,6 +12,10 @@ import {
   getTripLineItems,
   getTripList,
   getTripStops,
+  getNextDispatchNumber,
+  listDispatchOptions,
+  resolveTripTypeByName,
+  resolveProductByCode,
   updateTripLineItemRecord,
   updateTripUnscopedLineItemRecord,
   updateTripBillingRecord as updateTripBillingRecordData,
@@ -79,6 +83,27 @@ export async function getTripByDispatch(req: Request, res: Response) {
   }
 }
 
+export async function nextDispatchNumber(req: Request, res: Response) {
+  try {
+    const prefix = typeof req.query.prefix === "string" ? req.query.prefix : "";
+    const dispatchNumber = await getNextDispatchNumber(prefix);
+    return sendSuccess(res, 200, "Dispatch number generated", { dispatch_number: dispatchNumber, trip_number: 1 });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to generate dispatch number";
+    return sendError(res, message.startsWith("Invalid") ? 400 : 500, message, "TRIP_DISPATCH_GENERATE_FAILED");
+  }
+}
+
+export async function listDispatches(req: Request, res: Response) {
+  try {
+    const rows = await listDispatchOptions(req.query.q);
+    return sendSuccess(res, 200, "Dispatches retrieved successfully", rows);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to fetch dispatches";
+    return sendError(res, 500, message, "TRIP_DISPATCH_LIST_FAILED");
+  }
+}
+
 export async function createTrip(req: Request, res: Response) {
   try {
     const result = req.body && "trip" in req.body
@@ -87,6 +112,8 @@ export async function createTrip(req: Request, res: Response) {
           createStop: createTripStopRecord,
           createLine: createTripLineItemRecord,
           createAssignment: createTripAssignment,
+          resolveTripType: resolveTripTypeByName,
+          resolveProduct: resolveProductByCode,
           rollback: async (tripId) => {
             for (const table of ["trip_truck_assignments", "trip_line_items", "trip_stops", "trips"]) {
               const { error } = await supabaseAdmin.from(table).delete().eq(table === "trips" ? "id" : "trip_id", tripId);

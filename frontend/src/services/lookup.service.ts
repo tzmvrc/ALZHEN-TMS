@@ -1,4 +1,4 @@
-import { apiGetCached, type ApiResponse } from "./api.service";
+import { apiGet, apiGetCached, type ApiResponse } from "./api.service";
 
 export type RelationshipKind =
   | "trip-types"
@@ -118,7 +118,13 @@ function toRelationshipOption(
         ]
           .filter(Boolean)
           .join(" · "),
-        values: { plate_number: stringValue(row, "plate_number") },
+        values: {
+          plate_number: stringValue(row, "plate_number"),
+          truck_type: stringValue(row, "truck_type"),
+          capacity_cbm: row.capacity_cbm == null ? "" : String(row.capacity_cbm),
+          trucking_company_id: stringValue(row, "trucking_company_id"),
+          trucking_company_name: stringValue(row, "trucking_company_name"),
+        },
       };
     case "trucking-companies":
       return {
@@ -148,6 +154,36 @@ function toRelationshipOption(
           .join(" · "),
       };
   }
+}
+
+/** Next dispatch reference for a day (e.g. prefix "TRIP260305" -> "TRIP260305-3"). Never cached. */
+export async function getNextDispatchNumber(token: string, prefix: string): Promise<string> {
+  const response = await apiGet<ApiResponse<{ dispatch_number: string }>>(
+    `/trips/next-dispatch-number?prefix=${encodeURIComponent(prefix)}`,
+    token,
+    15_000,
+  );
+  if (!response.success || !response.data?.dispatch_number) {
+    throw new Error(response.message ?? "Could not generate the dispatch reference.");
+  }
+  return response.data.dispatch_number;
+}
+
+export type DispatchOption = {
+  dispatch_number: string;
+  trip_count: number;
+  next_trip_number: number;
+  loading_date: string | null;
+  warehouse_id: string | null;
+  trip_type_id: string | null;
+};
+
+/** Existing dispatches (newest first) so a new trip can be added to one. Never cached. */
+export async function searchDispatches(token: string, query = ""): Promise<DispatchOption[]> {
+  const suffix = query.trim() ? `?q=${encodeURIComponent(query.trim())}` : "";
+  const response = await apiGet<ApiResponse<DispatchOption[]>>(`/trips/dispatches${suffix}`, token, 15_000);
+  if (!response.success || !response.data) throw new Error(response.message ?? "Could not load dispatches.");
+  return response.data;
 }
 
 export async function searchRelationshipOptions(

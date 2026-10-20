@@ -99,6 +99,13 @@ export type TripDetail = {
 };
 
 export type TripChildRecord = Record<string, unknown>;
+export type TripAssignmentRecord = Record<string, unknown> & {
+  id: string;
+  trip_id: string;
+  truck?: Record<string, unknown> | null;
+  driver?: Record<string, unknown> | null;
+  trucking_company?: Record<string, unknown> | null;
+};
 
 export async function fetchTrips(
   token: string,
@@ -108,6 +115,8 @@ export async function fetchTrips(
     archiveScope?: "active";
     status?: string;
     search?: string;
+    dateFrom?: string;
+    dateTo?: string;
     sortBy?: "loading_date" | "dispatch_number";
     sortOrder?: "asc" | "desc";
   },
@@ -119,6 +128,8 @@ export async function fetchTrips(
     sort_order: options.sortOrder ?? "desc",
   });
   if (options.status) params.set("status", options.status);
+  if (options.dateFrom) params.set("loading_date_from", options.dateFrom);
+  if (options.dateTo) params.set("loading_date_to", options.dateTo);
   if (options.archiveScope) params.set("archive_scope", options.archiveScope);
   if (options.search?.trim()) params.set("search", options.search.trim());
 
@@ -172,6 +183,23 @@ export async function fetchTripDetail(
   );
   if (!response.success || !response.data) {
     throw new Error(response.message ?? "Unable to load trip details.");
+  }
+  return response.data;
+}
+
+export async function fetchTripAssignments(
+  token: string,
+  tripId: string,
+): Promise<TripAssignmentRecord[]> {
+  const response = await apiGetCached<ApiResponse<TripAssignmentRecord[]>>(
+    `/trips/${encodeURIComponent(tripId)}/assignments`,
+    token,
+    undefined,
+    undefined,
+    20_000,
+  );
+  if (!response.success || !response.data) {
+    throw new Error(response.message ?? "Unable to load trip truck assignments.");
   }
   return response.data;
 }
@@ -295,6 +323,23 @@ export async function updateTripAssignmentRecord(
     throw new Error(
       response.message ?? "Unable to save trip assignment update.",
     );
+  }
+  invalidateTripRelatedCache();
+  return response.data;
+}
+
+export async function createTripAssignmentRecord(
+  token: string,
+  tripId: string,
+  assignment: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const response = await apiPost<ApiResponse<Record<string, unknown>>>(
+    `/trips/${encodeURIComponent(tripId)}/assignments`,
+    assignment,
+    token,
+  );
+  if (!response.success || !response.data) {
+    throw new Error(response.message ?? "Unable to create trip assignment.");
   }
   invalidateTripRelatedCache();
   return response.data;

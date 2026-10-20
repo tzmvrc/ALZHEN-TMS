@@ -1,0 +1,17 @@
+# Add trip: CSV import and incomplete bookings
+
+Export the relevant Excel worksheet as **CSV UTF-8**, then choose **Import CSV** in Add trip. The importer supports headers from the supplied booking sheets (including Raw Data) and dispatch report sheets. It groups rows by dispatch/trip number; without a dispatch, it groups by date, warehouse, plate, and trip number. Select one group to see its CSV rows in a table, then choose **Preview trip in table**. This replaces the form and opens Review with a table of the resolved values, including dispatch, truck, store, product, references, quantities, and CBM. Edit through the Trip or Stops & products tabs; the preview reflects the current form. Only **Create trip** saves records. A pending CSV selection must be previewed or canceled before the form can be submitted. Preview tables scroll horizontally and paginate at 50 rows.
+
+The importer reads quoted commas, escaped quotes, multiline cells, UTF-8 BOM, and Excel `sep=` declarations. Files are limited to 10 MB. Dates support ISO dates or M/D/YYYY. Supplied quantities must be non-negative whole numbers; supplied CBM must be non-negative.
+
+`Customer Model` maps to the product code. `CBM` is unit CBM; `Total CBM` is the line total. When the total is absent, the importer calculates it only when both quantity and unit CBM are supplied. DR, SAP SO, customer/internal PO, SP, DN, SO, location, and category values are preserved. Additional source columns are retained in line notes. Source delivery statuses are retained as notes; newly created trips start as Planned.
+
+Existing products, stores, warehouses, vehicles, and trip types are matched by exact name/code. New product codes and trip types are created through the existing backend flow when the trip is saved. Unmatched stores, warehouses, and vehicles remain unassigned, with their original names in notes and a message to review selections. The importer searches beyond the initial lookup list. Lookup failures leave the existing form intact.
+
+All user-entered fields may be left blank. An automatic dispatch reference identifies the booking; status and trip number have defaults. Blank quantities/CBM remain null. Empty placeholder stops and product lines are omitted. Validation still rejects invalid supplied numbers, reversed dates, duplicate trucks, and drivers assigned without a truck.
+
+The capacity alert appears at exactly full capacity and above it, using the sum of selected trucks with known positive capacities. **Add another truck** opens the trip step and adds an assignment slot. A separate message identifies missing capacity data. Cargo is not automatically divided between trucks. Alerts do not prevent saving a planned booking.
+
+Apply `backend/migrations/2026_11_15_optional_trip_booking_fields.sql` using the normal database migration process before deploying. This migration removes NOT NULL requirements for booking relationships, dates, and line quantities/CBM; it retains foreign keys and existing values. It has not been applied by this code change.
+
+Validation: backend `tsx --test tests/trip-bundle.test.ts tests/trip-csv.test.ts`; frontend targeted ESLint. Browser checks with mocked API responses cover blank booking submission, CSV group selection and mapping, full-capacity alert, and adding a second truck. Both provided workbooks were read locally and their booking/dispatch sheets were converted in memory to verify parser compatibility.

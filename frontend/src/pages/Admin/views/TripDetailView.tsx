@@ -21,11 +21,13 @@ import { useAuth } from "../../../context/AuthContext";
 import { ApiError, apiGetCached,getCachedApiResponse,cacheApiSnapshot,apiCacheGeneration,type ApiResponse } from "../../../services/api.service";
 import {
   fetchTripDetail,
+  fetchTripAssignments,
   fetchTripEvents,
   fetchTripLineItems,
   fetchTripStops,
   invalidateTripCache,
   type TripChildRecord,
+  type TripAssignmentRecord,
   type TripEvent,
   type TripRecord,
 } from "../../../services/trip.service";
@@ -56,6 +58,7 @@ type BookingPage = {
 
 type DetailState = {
   trip: TripRecord;
+  assignments: TripAssignmentRecord[];
   stops: TripChildRecord[];
   lineItems: TripChildRecord[];
   events: TripEvent[];
@@ -736,7 +739,7 @@ export default function TripDetailView({
   const [photoProduct, setPhotoProduct] = useState<{ id: string; name: string } | null>(null);
   const [viewProduct, setViewProduct] = useState<Record<string, unknown> | null>(null);
   const [productPhotoOverrides, setProductPhotoOverrides] = useState<Record<string, string | null>>({});
-  const [sidePanel, setSidePanel] = useState<"products" | "stops" | "activity">("products");
+  const [sidePanel, setSidePanel] = useState<"trucks" | "products" | "stops" | "activity">("trucks");
   const requestKey = `${accessToken ?? "no-session"}:${tripId}:${retry}`;
   const realtimeGate = useDeferredRealtimeRefresh(() => { invalidateTripCache(tripId); setRetry((value) => value + 1); }, Boolean(selectedCargoItem || photoProduct || viewProduct));
 
@@ -788,14 +791,15 @@ export default function TripDetailView({
         if(!active)return;
         const cached=previousDetail.current.scope===scope?previousDetail.current.value:null;
         // Render authorized core data without waiting for optional section/report reads.
-        setDetailState({scope,value:{stops:[],lineItems:[],events:[],operations:{trips:[],trip_options:[],stops:[],loading:[],unloading:[],backloads:[],offloads:[],event_rows:[]},bookingRows:[],bookingError:null,truckCapacityCbm:null,truckCapacityError:null,sectionErrors:[],...cached,trip:{...tripResponse.trip,warehouse_name:tripResponse.warehouse?.name,warehouse_code:tripResponse.warehouse?.code,trip_type:tripResponse.trip_type?.name}}});
-        const [stopsResult, itemsResult, eventsResult, operationsResult] = await Promise.allSettled([
+        setDetailState({scope,value:{stops:[],lineItems:[],assignments:[],events:[],operations:{trips:[],trip_options:[],stops:[],loading:[],unloading:[],backloads:[],offloads:[],event_rows:[]},bookingRows:[],bookingError:null,truckCapacityCbm:null,truckCapacityError:null,sectionErrors:[],...cached,trip:{...tripResponse.trip,warehouse_name:tripResponse.warehouse?.name,warehouse_code:tripResponse.warehouse?.code,trip_type:tripResponse.trip_type?.name}}});
+        const [stopsResult, itemsResult, assignmentsResult, eventsResult, operationsResult] = await Promise.allSettled([
           fetchTripStops(accessToken, tripId),
           fetchTripLineItems(accessToken, tripId),
+          fetchTripAssignments(accessToken, tripId),
           fetchTripEvents(accessToken, tripId),
           fetchTripOperations(accessToken, tripId),
         ]);
-        const childResults = [stopsResult, itemsResult, eventsResult, operationsResult];
+        const childResults = [stopsResult, itemsResult, assignmentsResult, eventsResult, operationsResult];
         const authFailure = childResults.find(
           (result) =>
             result.status === "rejected" &&
@@ -806,13 +810,14 @@ export default function TripDetailView({
         const previous=previousDetail.current.scope===scope?previousDetail.current.value:null;
         const stops = stopsResult.status === "fulfilled" ? stopsResult.value : previous?.stops??[];
         const lineItems = itemsResult.status === "fulfilled" ? itemsResult.value : previous?.lineItems??[];
+        const assignments = assignmentsResult.status === "fulfilled" ? assignmentsResult.value : previous?.assignments??[];
         const events = eventsResult.status === "fulfilled" ? eventsResult.value : previous?.events??[];
         const operations = operationsResult.status === "fulfilled" ? operationsResult.value : previous?.operations??{
           trips: [], trip_options: [], stops: [], loading: [], unloading: [], backloads: [], offloads: [], event_rows: [],
         };
         const sectionErrors = childResults.flatMap((result, index) => {
           if (result.status !== "rejected") return [];
-          const sections = ["Stops", "Products", "Events", "Operational reports"];
+          const sections = ["Stops", "Products", "Trucks", "Events", "Operational reports"];
           const message = result.reason instanceof Error ? result.reason.message : "Unavailable";
           return [`${sections[index]}: ${message}`];
         });
@@ -877,6 +882,7 @@ export default function TripDetailView({
             warehouse_code: tripResponse.warehouse?.code,
             trip_type: tripResponse.trip_type?.name,
           },
+          assignments,
           stops,
           lineItems,
           events,
@@ -935,6 +941,9 @@ export default function TripDetailView({
   const trip = detail?.trip;
   const dispatchNumber = String(trip?.dispatch_number ?? "Trip details");
   const stops = detail?.stops ?? [];
+  const assignments = detail?.assignments ?? [];
+  const activeAssignments = assignments.filter((assignment) => !assignment.unassigned_at);
+  const hasMultipleActiveTrucks = activeAssignments.length > 1;
   const initialStopIndex = initialStopId ? stops.findIndex((stop) => String(stop.id ?? "") === initialStopId) : -1;
   const activeStopId = stopSelectionChanged
     ? selectedStop
@@ -1011,6 +1020,7 @@ export default function TripDetailView({
   const nextStopIndex = stops.findIndex((stop) => !stopIsDone(stop));
   const company = getBookingValue(reportRows, "trucking_company");
   const sideTabs = [
+    { key: "trucks" as const, label: "Trucks", count: assignments.length },
     { key: "products" as const, label: "Products", count: productRows.length },
     { key: "stops" as const, label: "Stops", count: stops.length },
     { key: "activity" as const, label: "Activity", count: orderedEvents.length },
@@ -1020,7 +1030,7 @@ export default function TripDetailView({
   const nextStopName = nextStop
     ? valueText(rowsForStop(String(nextStop.id ?? ""))[0]?.store_name, "Store not recorded")
     : null;
-  const capacity = detail?.truckCapacityCbm ?? null;
+  const capacity = hasMultipleActiveTrucks ? null : detail?.truckCapacityCbm ?? null;
   const loadPct = capacity !== null && capacity > 0 ? Math.min(100, Math.round((totalCbm / capacity) * 100)) : 0;
   const driverInitials =
     driverName === "Not recorded"
@@ -1096,8 +1106,8 @@ export default function TripDetailView({
           icon={<Boxes />}
           label="Total CBM"
           value={placeholder ?? formatNumber(totalCbm)}
-          sub={placeholder ? undefined : capacity !== null && capacity > 0 ? `${loadPct}% of ${formatNumber(capacity)} CBM` : "Truck capacity not set"}
-          chart={<SegmentMeter percent={loadPct} />}
+          sub={placeholder ? undefined : hasMultipleActiveTrucks ? "Trip-wide cargo · per-truck allocation unavailable" : capacity !== null && capacity > 0 ? `${loadPct}% of ${formatNumber(capacity)} CBM` : "Truck capacity not set"}
+          chart={<SegmentMeter percent={hasMultipleActiveTrucks ? 0 : loadPct} />}
         />
         <KpiCard
           icon={<MapPin />}
@@ -1310,23 +1320,34 @@ export default function TripDetailView({
           </div>
         </section>
 
-        <VehicleLoadCard
-          className="xl:col-span-5"
-          plate={plate}
-          status={trip?.status}
-          cargoRows={cargoRows}
-          selectedItem={selectedCargoItem}
-          onSelectItem={setSelectedCargoItem}
-          loadPercentage={loadPct}
-          truckCapacityCbm={capacity}
-          totalCbm={totalCbm}
-        />
+        {hasMultipleActiveTrucks ? (
+          <section className={`${surface.card} flex min-w-0 flex-col justify-center p-5 xl:col-span-5`}>
+            <CardHeader icon={<Package />} title="Trip cargo summary" />
+            <p className="mt-3 text-2xl font-bold tabular-nums text-[#0b2341]">{formatNumber(totalCbm)} CBM</p>
+            <p className="mt-1 text-xs text-slate-500">{lineItemCount} cargo lines · {formatNumber(totalQty)} units</p>
+            <p className="mt-4 rounded-xl bg-amber-50 px-3 py-2.5 text-xs leading-relaxed text-amber-800">
+              Cargo is shown at trip level. Per-truck allocations are not currently recorded, so individual truck utilization cannot be calculated.
+            </p>
+          </section>
+        ) : (
+          <VehicleLoadCard
+            className="xl:col-span-5"
+            plate={plate}
+            status={trip?.status}
+            cargoRows={cargoRows}
+            selectedItem={selectedCargoItem}
+            onSelectItem={setSelectedCargoItem}
+            loadPercentage={loadPct}
+            truckCapacityCbm={capacity}
+            totalCbm={totalCbm}
+          />
+        )}
       </div>
 
       {/* Products / stops / activity beside trip photos */}
       <div className="grid grid-cols-1 items-stretch gap-4 xl:grid-cols-12">
         <section className={`${surface.card} flex max-h-[640px] min-w-0 flex-col p-4 xl:col-span-7`}>
-          <div role="tablist" aria-label="Products, stops and activity" className="flex shrink-0 items-center gap-1 rounded-full bg-[#eef3f8] p-1">
+          <div role="tablist" aria-label="Trucks, products, stops and activity" className="flex shrink-0 items-center gap-1 overflow-x-auto rounded-full bg-[#eef3f8] p-1">
             {sideTabs.map(({ key, label, count }) => {
               const isActive = sidePanel === key;
               return (
@@ -1350,6 +1371,70 @@ export default function TripDetailView({
               );
             })}
           </div>
+
+          {sidePanel === "trucks" && (
+            <div role="tabpanel" className="mt-3 min-h-0 flex-1 overflow-y-auto">
+              {assignments.length === 0 ? (
+                <p className="rounded-xl bg-[#f7f9fc] px-4 py-8 text-center text-sm text-slate-500">
+                  {placeholder ?? "No trucks are assigned to this trip yet."}
+                </p>
+              ) : (
+                <ul className="space-y-2">
+                  {assignments.map((assignment) => {
+                    const truck = assignment.truck ?? {};
+                    const driver = assignment.driver ?? {};
+                    const company = assignment.trucking_company ?? {};
+                    const plate = valueText(truck.plate_number, "Truck not recorded");
+                    const capacity = Number(truck.capacity_cbm);
+                    const driverLabel = [driver.first_name, driver.last_name]
+                      .filter((part): part is string => typeof part === "string" && Boolean(part.trim()))
+                      .join(" ");
+                    const isActive = !assignment.unassigned_at;
+                    return (
+                      <li key={assignment.id} className="rounded-2xl border border-slate-200/80 bg-white p-3">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div className="flex min-w-0 items-center gap-3">
+                            <span aria-hidden="true" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#e6f0f9] text-[#2678b9]">
+                              <Truck className="h-5 w-5" />
+                            </span>
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-semibold text-[#0b2341]">{plate}</p>
+                              <p className="truncate text-xs text-slate-500">
+                                {valueText(truck.truck_type, "Truck type not recorded")}
+                                {driverLabel ? ` · ${driverLabel}` : " · Driver not assigned"}
+                              </p>
+                            </div>
+                          </div>
+                          <StatusPill
+                            status={isActive ? "ASSIGNED" : "UNASSIGNED"}
+                            fallback="Assignment status unknown"
+                          />
+                        </div>
+                        <dl className="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-3">
+                          <div className="rounded-xl bg-[#f7f9fc] px-3 py-2">
+                            <dt className="text-slate-400">Capacity</dt>
+                            <dd className="mt-0.5 font-semibold text-[#0b2341]">
+                              {Number.isFinite(capacity) && capacity > 0 ? `${formatNumber(capacity)} CBM` : "Not recorded"}
+                            </dd>
+                          </div>
+                          <div className="rounded-xl bg-[#f7f9fc] px-3 py-2">
+                            <dt className="text-slate-400">Trucking company</dt>
+                            <dd className="mt-0.5 truncate font-semibold text-[#0b2341]">
+                              {valueText(company.name, "Not recorded")}
+                            </dd>
+                          </div>
+                          <div className="rounded-xl bg-[#fff9e0] px-3 py-2 sm:col-span-1">
+                            <dt className="text-[#8a7130]">Cargo allocation</dt>
+                            <dd className="mt-0.5 font-semibold text-[#6b5300]">Not tracked per truck</dd>
+                          </div>
+                        </dl>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+          )}
 
           {sidePanel === "products" && (
             <div role="tabpanel" className="mt-3 flex min-h-0 flex-1 flex-col">
