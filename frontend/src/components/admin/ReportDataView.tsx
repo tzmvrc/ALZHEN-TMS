@@ -2924,10 +2924,10 @@ export default function ReportDataView({
         )}
         {toolbarLeading && <div className="shrink-0" data-report-toolbar-leading>{toolbarLeading}</div>}
 
-
-        <div data-report-toolbar-actions className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2">
+        {collaboration.notice&&<div role="status" className="max-w-md rounded border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-900">{collaboration.notice.text}{collaboration.notice.latest!==undefined&&<span className="block">Latest persisted value: {String(collaboration.notice.latest??"(blank)")}</span>}<button type="button" onClick={collaboration.dismissNotice} className="ml-2 underline">Dismiss</button></div>}
+        <div data-report-toolbar-actions className="flex w-full min-w-0 flex-wrap items-center justify-end gap-2 lg:flex-[1_1_36rem] lg:flex-nowrap">
           {sharedWidths.feedback}{sharedDesign.feedback}
-          <ColumnFinder tableKey={transactionView?"trips":reportKey} key={reportKey} rowSearch={{value:search,placeholder:"Search rows or columnsâ€¦",onSearch:value=>{setSearch(value);setAppliedSearch(value);setPage(1);}}} columns={columns.filter((column) => !(transactionView && column.key === "warehouse_code")).map((column) => ({ ...column, hidden: hiddenColumnKeys.has(column.key), index: renderedGridColumns.findIndex((item) => item.key === column.key) }))} viewport={tableViewportRef} getHeader={(key) => headerCellRefs.current.get(key)} onReveal={restoreReportColumn} />
+          <ColumnFinder tableKey={transactionView?"trips":reportKey} key={reportKey} rowSearch={{value:search,placeholder:"Search rows or columns...",onSearch:value=>{setSearch(value);setAppliedSearch(value);setPage(1);}}} columns={columns.filter((column) => !(transactionView && column.key === "warehouse_code")).map((column) => ({ ...column, hidden: hiddenColumnKeys.has(column.key), index: renderedGridColumns.findIndex((item) => item.key === column.key) }))} viewport={tableViewportRef} getHeader={(key) => headerCellRefs.current.get(key)} onReveal={restoreReportColumn} />
           {showReportPicker && (
             <label className="sr-only" htmlFor="report-select">
               Select report
