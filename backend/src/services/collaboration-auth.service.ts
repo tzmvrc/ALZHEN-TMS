@@ -5,8 +5,8 @@ export async function authenticateCollaboration(token:unknown,sessionId:unknown,
  if(typeof token!=="string"||token.length>10000||typeof sessionId!=="string"||sessionId.length>128)throw Error("Authentication required");
  const {data,error}=await supabaseAuth.auth.getUser(token);
  if(error||!data.user)throw Error("Invalid or expired authentication");
- const profile=await supabaseAdmin.from("profiles").select("id,role,first_name,last_name,profile_picture_path").eq("id",data.user.id).maybeSingle();
- if(profile.error||!profile.data||!["ADMIN","STAFF","TRUCKER"].includes(profile.data.role))throw Error("Account unavailable");
+ const profile=await supabaseAdmin.from("profiles").select("id,role,first_name,last_name,profile_picture_path,deactivated_at").eq("id",data.user.id).maybeSingle();
+ if(profile.error||!profile.data||profile.data.deactivated_at||!["ADMIN","STAFF","TRUCKER"].includes(profile.data.role))throw Error("Account unavailable");
  const role=profile.data.role;
  // Expiry is used only after Supabase has validated the JWT signature/issuer.
  const expiry=JSON.parse(Buffer.from(token.split(".")[1]??"","base64url").toString()).exp;

@@ -1,338 +1,47 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { ChevronLeft, ChevronRight, Truck, UserRound, Pencil, Plus, X } from "lucide-react";
-import { useAuth } from "../../../context/AuthContext";
-import { tableUi } from "../../../components/admin/dashboardStyles";
-import SlidingSegmentedControl from "../../../components/admin/SlidingSegmentedControl";
-import TruckerDetailDrawer from "../../../components/admin/TruckerDetailDrawer";
-import { getCachedApiResponse,invalidateApiCache,cacheApiSnapshot,apiCacheGeneration, type ApiResponse } from "../../../services/api.service";
-import { fetchTruckerDetail, getCachedTruckerDetail,truckerDetailFromSummary,type TruckerListItem } from "../../../services/trucker.service";
-import UserManagementModal from "../../../components/admin/UserManagementModal";
-import VehicleManagementModal from "../../../components/admin/VehicleManagementModal";
-import { fetchUsersDirectory,getCachedUsersDirectory,filterDirectoryTruckers,type ManagedUser } from "../../../services/user-management.service";
-import { subscribeToAdminRealtime } from "../../../services/realtime.service";
-import { useDeferredRealtimeRefresh } from "../../../components/admin/useDeferredRealtimeRefresh";
-import { fetchMasterData, getCachedMasterData, type MasterDataRow } from "../../../services/master-data.service";
-import { useManagementTableColumns } from "../../../components/admin/useManagementTableColumns";
-
-const userCategoryOptions = [
-  { value: "staff", label: "Admin & Staff" },
-  { value: "truckers", label: "Drivers" },
-  { value: "vehicles", label: "Vehicles" },
-] as const;
-
-type ProfileLookupRow = {
-  id: string;
-  first_name: string | null;
-  last_name: string | null;
-  full_name: string;
-  role: string | null;
-  is_admin: boolean | null;
-  profile_picture_url?: string | null;
-};
-type AdminStaffProfile = ProfileLookupRow & { role: "ADMIN" | "STAFF" };
-
-function formatAvatarPath(path: string | null) {
-  if (!path) return null;
-  if (/^https?:\/\//i.test(path)) return path;
-  return null;
-}
-
+import {useEffect,useMemo,useRef,useState} from 'react';
+import {useNavigate} from 'react-router-dom';
+import {Eye,History,Plus,Search,UserRound} from 'lucide-react';
+import {useAuth} from '../../../context/AuthContext';
+import DatabaseSpreadsheet,{type DatabaseField,type SpreadsheetDataSource} from '../../../components/admin/DatabaseSpreadsheet';
+import SheetHorizontalScrollbar from '../../../components/admin/SheetHorizontalScrollbar';
+import {SPREADSHEET_PANEL_CLASS} from '../../../components/admin/SpreadsheetPresentation';
+import UserManagementModal from '../../../components/admin/UserManagementModal';
+import TruckerDetailDrawer from '../../../components/admin/TruckerDetailDrawer';
+import UserActivityHistory from '../../../components/admin/UserActivityHistory';
+import {fetchTruckerDetail,type TruckerDetail} from '../../../services/trucker.service';
+import {cachedUserSheet,loadUserSheet,readUserProfile,saveUserProfile,deleteUsers,invalidateUserWorkspace} from '../../../services/user-workspace.service';
+import type {MasterDataRow} from '../../../services/master-data.service';
+import type {ManagedUser} from '../../../services/user-management.service';
+import {subscribeToAdminRealtime} from '../../../services/realtime.service';
+import {invalidateApiCache} from '../../../services/api.service';
+import {useDeferredRealtimeRefresh} from '../../../components/admin/useDeferredRealtimeRefresh';
+import {tableUi} from '../../../components/admin/dashboardStyles';
+const noop=()=>{};
+const common:DatabaseField[]=[{key:'first_name',label:'First name',required:true},{key:'last_name',label:'Last name',required:true},{key:'email',label:'Email',readOnly:true},{key:'contact_number',label:'Contact number'},{key:'role',label:'Role',readOnly:true},{key:'account_status',label:'Account status',readOnly:true}];
+const fields:Record<string,DatabaseField[]>={staff:[...common,{key:'created_at',label:'Joined',readOnly:true},{key:'actions',label:'Actions',readOnly:true}],truckers:[...common,{key:'license_number',label:'License number'},{key:'trucking_company_id',label:'Trucking company',kind:'relation',source:'trucking-companies'},{key:'plate_number',label:'Assigned truck',readOnly:true},{key:'driver_status',label:'Driver status',kind:'select',options:['ACTIVE','INACTIVE'],required:true},{key:'driver_notes',label:'Notes',kind:'textarea'},{key:'actions',label:'Actions',readOnly:true}]};
 export default function TruckersView(){
- const {accessToken,profile}=useAuth();
- return <UsersTable key={`${profile?.id}:${profile?.role}:${accessToken??""}`}/>;
-}
-
-function UsersToolbar({ categories, children }: { categories: ReactNode; children: ReactNode }) {
- return <div className="relative z-20 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-  <div className="flex flex-wrap items-center gap-2">{categories}</div>
-  <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">{children}</div>
- </div>;
-}
-
-function VehiclesTable({ categories }: { categories: ReactNode }) {
- const { accessToken, profile } = useAuth();
- const cached = accessToken ? getCachedMasterData(accessToken, "trucks") : null;
- const [rows, setRows] = useState<MasterDataRow[]>(cached?.rows ?? []);
- const [page, setPage] = useState(cached?.pagination.page ?? 1);
- const [totalPages, setTotalPages] = useState(cached?.pagination.totalPages ?? 1);
- const [total, setTotal] = useState(cached?.pagination.total ?? 0);
- const [search, setSearch] = useState("");
- const [refresh, setRefresh] = useState(0);
- const [vehicleModalOpen, setVehicleModalOpen] = useState(false);
- const [notice, setNotice] = useState("");
- const canManage = ["ADMIN", "STAFF"].includes(profile?.role ?? "");
- const requestKey = `${accessToken ?? ""}:${page}:${search}:${refresh}`;
- const [requestStatus, setRequestStatus] = useState<{ key: string; error: string }>({ key: "", error: "" });
- const loading = Boolean(accessToken) && requestStatus.key !== requestKey;
- const error = !accessToken
-  ? "Your session has expired. Please log in again."
-  : requestStatus.key === requestKey
-   ? requestStatus.error
-   : "";
- const columns = useMemo(() => [
-  { key: "truck_type", title: "Truck type", width: 280 },
-  { key: "plate_number", title: "Plate number", width: 240 },
-  { key: "capacity_cbm", title: "CBM max", width: 180 },
- ], []);
- const {
-  attachViewport,
-  viewportProps,
-  tableStyle,
-  controls: columnControls,
-  hiddenControl,
-  colgroup,
-  headerProps,
-  headerControls,
-  orderedColumns,
-  renderCells,
- } = useManagementTableColumns({
-  table: "master:trucks",
-  token: accessToken,
-  profileId: profile?.id,
-  columns,
-  enabled: canManage,
-  paused: vehicleModalOpen,
-  rowSearch: { value: search, onSearch: (value) => { setSearch(value); setPage(1); }, placeholder: "Search vehicles or columns…" },
- });
-
- useEffect(() => {
-  if (!accessToken) return;
-  let active = true;
-  void fetchMasterData(accessToken, "trucks", search, page)
-   .then((result) => {
-    if (!active) return;
-    setRows(result.rows);
-    setTotalPages(result.pagination.totalPages);
-    setTotal(result.pagination.total);
-    setRequestStatus({ key: requestKey, error: "" });
-   })
-   .catch((cause: unknown) => {
-    if (active) setRequestStatus({
-     key: requestKey,
-     error: cause instanceof Error ? cause.message : "Unable to load vehicles.",
-    });
-   });
-  return () => { active = false; };
- }, [accessToken, page, refresh, search, requestKey]);
-
- return (
-  <section className="space-y-4">
-   {notice && <div role="status" className="flex items-center justify-between rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-800">{notice}<button type="button" aria-label="Dismiss message" onClick={() => setNotice("")}><X className="h-4 w-4" /></button></div>}
-   <UsersToolbar categories={categories}>
-    {columnControls}
-    {canManage && <button type="button" onClick={() => setVehicleModalOpen(true)} className="inline-flex h-10 items-center gap-2 rounded-full bg-[#ffd43b] px-4 text-sm font-semibold text-[#0b2341] hover:bg-[#f2c200]"><Plus className="h-4 w-4" />Add vehicle</button>}
-   </UsersToolbar>
-   {error && rows.length > 0 && (
-    <div role="alert" className="flex items-center justify-between rounded-lg bg-rose-50 px-4 py-3 text-sm text-rose-700">
-     <span>{error}</span>
-     <button type="button" onClick={() => setRefresh((value) => value + 1)} className="underline">Retry</button>
-    </div>
-   )}
-   <div className={`${tableUi.shell} relative z-0 !rounded-sm`}>
-    <div ref={attachViewport} {...viewportProps} className="overflow-x-auto">
-     <table style={tableStyle} className="min-w-full text-left">
-      {colgroup}
-      <thead className={tableUi.thead}>
-       <tr>{orderedColumns.map((column) => <th key={column.key} {...headerProps(column.key)} className={tableUi.th}>{column.title}{headerControls(column)}</th>)}</tr>
-      </thead>
-      <tbody>
-       {loading && rows.length === 0 ? Array.from({ length: 4 }, (_, index) => (
-        <tr key={`vehicle-skeleton-${index}`} className={tableUi.row}>
-         {orderedColumns.map((column) => <td key={column.key} className={tableUi.td}><div className="h-4 w-3/4 animate-pulse rounded bg-slate-200" /></td>)}
-        </tr>
-       )) : error && rows.length === 0 ? (
-        <tr><td colSpan={orderedColumns.length} role="alert" className="px-4 py-12 text-center text-sm text-rose-700">{error}<button type="button" onClick={() => setRefresh((value) => value + 1)} className="ml-2 underline">Retry</button></td></tr>
-       ) : rows.length === 0 ? (
-        <tr><td colSpan={orderedColumns.length} className="px-4 py-14 text-center text-sm text-slate-400">No vehicles found.</td></tr>
-       ) : rows.map((vehicle) => (
-        <tr key={vehicle.id} className={tableUi.row}>
-         {renderCells(<>
-          <td className={tableUi.td}><span className="inline-flex items-center gap-2"><Truck aria-hidden="true" className="h-4 w-4 shrink-0 text-[#2678b9]" />{vehicle.truck_type == null || vehicle.truck_type === "" ? "—" : String(vehicle.truck_type)}</span></td>
-          <td className={tableUi.td}>{vehicle.plate_number == null || vehicle.plate_number === "" ? "—" : String(vehicle.plate_number)}</td>
-          <td className={tableUi.td}>{vehicle.capacity_cbm == null || vehicle.capacity_cbm === "" ? "—" : `${String(vehicle.capacity_cbm)} CBM`}</td>
-         </>)}
-        </tr>
-       ))}
-      </tbody>
-     </table>
-    </div>
-    {hiddenControl}
-    {totalPages > 1 && (
-     <footer className={tableUi.footer}>
-      <span>{total ? `${Math.min((page - 1) * 100 + 1, total)}–${Math.min(page * 100, total)} of ${total} vehicles` : "Vehicles"}</span>
-      <div className="flex items-center gap-1">
-       <button type="button" aria-label="Previous vehicles page" disabled={loading || page <= 1} onClick={() => setPage((value) => value - 1)} className={tableUi.pageBtn}><ChevronLeft aria-hidden="true" className="h-4 w-4" /></button>
-       <span className="min-w-14 text-center text-xs tabular-nums text-slate-500">{page}/{totalPages}</span>
-       <button type="button" aria-label="Next vehicles page" disabled={loading || page >= totalPages} onClick={() => setPage((value) => value + 1)} className={tableUi.pageBtn}><ChevronRight aria-hidden="true" className="h-4 w-4" /></button>
-      </div>
-     </footer>
-    )}
-   </div>
-   {vehicleModalOpen && <VehicleManagementModal onClose={() => setVehicleModalOpen(false)} onSaved={() => {
-    setVehicleModalOpen(false);
-    setNotice("Vehicle saved successfully.");
-    setPage(1);
-    setRefresh((value) => value + 1);
-   }} />}
-  </section>
- );
-}
-
-function UsersTable() {
-  const { accessToken, profile } = useAuth();
-  const preferencesKey=`/screen-state/account-table/${profile?.role??"none"}`;
-  const saved=accessToken?getCachedApiResponse<{category:"staff"|"truckers"|"vehicles";search:string}>(preferencesKey,accessToken,300000):null;
-  const [selectedCategory, setSelectedCategory] = useState<"staff" | "truckers" | "vehicles">(() => saved?.category??(profile?.role === "ADMIN" ? "staff" : "truckers"));
-  const category = profile?.role === "ADMIN" || selectedCategory === "vehicles" ? selectedCategory : "truckers";
-  const [search, setSearch] = useState(saved?.search??"");
-  useEffect(()=>{if(accessToken)cacheApiSnapshot(preferencesKey,accessToken,{category,search},apiCacheGeneration());},[accessToken,preferencesKey,category,search]);
-  const cachedDirectory=useMemo(()=>accessToken?getCachedUsersDirectory(accessToken,profile?.role??""):null,[accessToken,profile?.role]);
-  const [rows, setRows] = useState<TruckerListItem[]>(cachedDirectory?.truckers??[]);
-  const [loading, setLoading] = useState(!cachedDirectory);
-  const [error, setError] = useState("");
-  const [refreshVersion, setRefreshVersion] = useState(0);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [detail, setDetail] = useState<Awaited<ReturnType<typeof fetchTruckerDetail>> | null>(null);
-  const [detailLoading, setDetailLoading] = useState(false);
-  const [detailError,setDetailError]=useState("");
-  const [localManagedUsers, setManagedUsers] = useState<ManagedUser[]>(()=>accessToken&&profile?.role==="ADMIN"?getCachedApiResponse<ApiResponse<ManagedUser[]>>("/users",accessToken,5*60_000)?.data??[]:[]);
-  const managedUsers=useMemo(()=>profile?.role==="ADMIN"?localManagedUsers:[],[profile?.role,localManagedUsers]);
-  const profiles=useMemo<AdminStaffProfile[]>(()=>managedUsers.filter(user=>user.role==="ADMIN"||user.role==="STAFF").map(user=>({...user,role:user.role as "ADMIN"|"STAFF",full_name:[user.first_name,user.last_name].filter(Boolean).join(" ")||"Name not recorded"})),[managedUsers]);
-  const visibleTruckers=useMemo(()=>filterDirectoryTruckers(rows,search,"all","all"),[rows,search]);
-  const [userModalOpen, setUserModalOpen] = useState(false);
-  const [editingUser, setEditingUser] = useState<ManagedUser | null>(null);
-  const [notice, setNotice] = useState("");
-  const tableColumns = useMemo(() => (category === "staff" ? ["User", "Email", "Role", "Actions"] : ["User", "Contact", "Assigned truck", "Trip no.", "Delivery status"]).map((title) => ({ key: title.toLowerCase().replaceAll(" ", "-"), title, width: title === "User" ? 280 : title === "Actions" ? 110 : 200 })), [category]);
-  const { attachViewport, viewportProps, tableStyle, controls: columnControls, hiddenControl, colgroup, headerProps, headerControls, orderedColumns, renderCells } = useManagementTableColumns({ table: `users:${category}`, token: accessToken, profileId: profile?.id, columns: tableColumns, paused: Boolean(userModalOpen || selectedId), enabled: ["ADMIN", "STAFF"].includes(profile?.role ?? ""),rowSearch:{value:search,onSearch:setSearch,placeholder:"Search users or columns…"} });
-  const realtimeGate = useDeferredRealtimeRefresh(() => setRefreshVersion((version) => version + 1), Boolean(userModalOpen || selectedId));
-
-  useEffect(() => subscribeToAdminRealtime((event) => {
-    if (event.kind === "batch") {
-      if (event.tables.some((table) => ["profiles", "drivers", "trips", "trip_stops", "trip_line_items", "trip_truck_assignments", "trucks"].includes(table))) realtimeGate.request();
-      return;
-    }
-    if (event.kind === "resume") { invalidateApiCache("/users");invalidateApiCache("/truckers");realtimeGate.request(); return; }
-    const table = event.kind === "recovered" ? event.table : event.payload.table;
-    if (["profiles", "drivers", "trips", "trip_stops", "trip_line_items", "trip_truck_assignments", "trucks"].includes(table)) {
-      realtimeGate.request();
-    }
-  }), [realtimeGate]);
-
-  useEffect(() => {
-    const role=profile?.role??"";
-    if(!accessToken||!["ADMIN","STAFF"].includes(role))return;
-    let active=true;
-    queueMicrotask(()=>{if(active){setLoading(!getCachedUsersDirectory(accessToken,role));setError("");}});
-    void fetchUsersDirectory(accessToken,role).then(directory=>{
-      if(active){setManagedUsers(directory.users);setRows(directory.truckers);setSelectedId(current=>current&&!directory.truckers.some(row=>row.id===current)?null:current);}
-    }).catch(cause=>{if(active)setError(cause instanceof Error?cause.message:"Unable to load users.");})
-      .finally(()=>{if(active)setLoading(false);});
-    return()=>{active=false;};
-  },[accessToken,profile?.role,refreshVersion]);
-
-  useEffect(() => {
-    if (!selectedId || !accessToken || category !== "truckers") {
-      queueMicrotask(()=>setDetail(null));
-      return;
-    }
-    let active = true;
-    const cached=getCachedTruckerDetail(accessToken,selectedId);
-    const summary=rows.find(row=>row.id===selectedId);
-    queueMicrotask(()=>{if(active){setDetailError("");setDetail(previous=>cached??(summary?truckerDetailFromSummary(summary,previous):previous?.id===selectedId?previous:null));setDetailLoading(!cached);}});
-    void (async () => {
-      try {
-        const nextDetail = await fetchTruckerDetail(accessToken, selectedId);
-        if (active) setDetail(nextDetail);
-      } catch (cause) {
-        if (active) {const message=cause instanceof Error?cause.message:"Unable to refresh user details. Previous details are retained.";setError(message);setDetailError(message);}
-      } finally {
-        if (active) setDetailLoading(false);
-      }
-    })();
-    return () => { active = false; };
-  }, [accessToken, category, selectedId, refreshVersion, rows]);
-
-  const visibleUserCategories = profile?.role === "ADMIN"
-    ? userCategoryOptions
-    : userCategoryOptions.filter((option) => option.value !== "staff");
-  const matchingProfiles = useMemo(() => {
-    const term = search.trim().toLocaleLowerCase();
-    return profiles.filter((profile) => {
-      return !term || `${profile.full_name} ${profile.role}`.toLocaleLowerCase().includes(term);
-    });
-  }, [profiles, search]);
-  function refreshList() {
-    invalidateApiCache("/users");
-    invalidateApiCache("/lookups/profiles");
-    invalidateApiCache("/truckers");
-    setRefreshVersion((current) => current + 1);
-  }
-
-  function changeCategory(next: "staff" | "truckers" | "vehicles") {
-    setSelectedCategory(next);
-    setSearch("");
-    setSelectedId(null);
-  }
-
-  const categories = <SlidingSegmentedControl
-    aria-label="Admin and staff, drivers, or vehicles"
-    options={visibleUserCategories}
-    value={category}
-    onChange={(value) => {
-      if (value !== "staff" || profile?.role === "ADMIN") changeCategory(value);
-    }}
-  />;
-
-  return (
-    <div className="space-y-4">
-      {notice && <div role="status" className="flex items-center justify-between rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-800">{notice}<button type="button" aria-label="Dismiss message" onClick={() => setNotice("")}><X className="h-4 w-4" /></button></div>}
-      {category !== "vehicles" && <UsersToolbar categories={categories}>
-            {columnControls}
-            {profile?.role === "ADMIN" && <button type="button" onClick={() => { setEditingUser(null); setUserModalOpen(true); }} className="inline-flex h-10 items-center gap-2 rounded-full bg-[#ffd43b] px-4 text-sm font-semibold text-[#0b2341] hover:bg-[#f2c200]"><Plus className="h-4 w-4" />Add user</button>}
-      </UsersToolbar>}
-
-      {category === "vehicles" ? <VehiclesTable key={`${profile?.id}:${profile?.role}:${accessToken??""}`} categories={categories} /> : <>
-      {error && (category==="staff" ? profiles.length>0 : rows.length>0) && <div role="alert" className="flex items-center justify-between rounded-lg bg-rose-50 px-4 py-3 text-sm text-rose-700"><span>{error}</span><button type="button" onClick={refreshList} className="underline">Retry</button></div>}
-      <div className={`${tableUi.shell} relative z-0 !rounded-sm`}>
-        <div ref={attachViewport} {...viewportProps} className="overflow-x-auto">
-          <table style={tableStyle} className="min-w-full text-left">{colgroup}
-            <thead className={tableUi.thead}>
-              <tr>{orderedColumns.map((column) => <th key={column.key} {...headerProps(column.key)} className={tableUi.th}>{column.title}{headerControls(column)}</th>)}</tr>
-            </thead>
-            <tbody>
-              {loading && !(category==="staff" ? profiles.length : rows.length) ? Array.from({ length: 5 }).map((_, index) => (
-                <tr key={`skeleton-${index}`} className={tableUi.row}>{orderedColumns.map((column) => <td key={column.key} className="px-4 py-3"><div className="h-4 w-3/4 animate-pulse rounded bg-slate-200" /></td>)}</tr>
-              )) : error && !(category==="staff" ? profiles.length : rows.length) ? (
-                <tr><td colSpan={orderedColumns.length} role="alert" className="px-4 py-12 text-center text-sm text-rose-700">{error}</td></tr>
-              ) : category === "staff" ? matchingProfiles.length === 0 ? (
-                <tr><td colSpan={4} className="px-4 py-16 text-center text-sm text-slate-400">No admin or staff users found.</td></tr>
-              ) : matchingProfiles.map((profile) => (
-                <tr key={profile.id} className={tableUi.row}>
-                  {renderCells(<><td className="px-4 py-3.5"><div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-[#e6f0f9]">{profile.profile_picture_url ? <img src={profile.profile_picture_url} alt="" className="h-full w-full object-cover" /> : <UserRound aria-hidden="true" className="h-5 w-5 text-[#2678b9]" />}</div><div><div className="text-[13px] font-medium text-[#0b2341]">{profile.full_name}</div><div className="text-xs text-slate-500">{profile.role === "ADMIN" && profile.is_admin ? "Admin" : profile.role === "ADMIN" ? "Administrator" : "Staff"}</div></div></div></td>
-                  <td className={tableUi.td}>{managedUsers.find((item) => item.id === profile.id)?.email ?? "—"}</td><td className={tableUi.td}>{profile.role}</td><td className={tableUi.td}>{managedUsers.some((item) => item.id === profile.id) && <button type="button" aria-label={`Edit ${profile.full_name}`} onClick={() => { setEditingUser(managedUsers.find((item) => item.id === profile.id) ?? null); setUserModalOpen(true); }} className={tableUi.iconBtn}><Pencil className="h-4 w-4" /></button>}</td>
-                </>)}
-                </tr>
-              )) : visibleTruckers.length === 0 ? (
-                <tr><td colSpan={orderedColumns.length} className="px-4 py-16 text-center text-sm text-slate-400">No drivers found.</td></tr>
-              ) : visibleTruckers.map((trucker) => {
-                const avatar = managedUsers.find((item) => item.id === trucker.profile_id)?.profile_picture_url ?? formatAvatarPath(trucker.profile_picture_path);
-                return (
-                  <tr key={trucker.id} onClick={() => { const cached=accessToken?getCachedTruckerDetail(accessToken,trucker.id):null;setDetail(cached??truckerDetailFromSummary({...trucker,profile_picture_path:avatar??trucker.profile_picture_path}));setDetailLoading(!cached);setSelectedId(trucker.id); }} className={`cursor-pointer ${tableUi.row}`}>
-                    {renderCells(<><td className="px-4 py-3.5"><div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-[#e6f0f9]">{avatar ? <img src={avatar} alt={trucker.full_name} className="h-full w-full object-cover" /> : <UserRound aria-hidden="true" className="h-5 w-5 text-[#2678b9]" />}</div><div><div className="text-[13px] font-medium text-[#0b2341]">{trucker.full_name}</div><div className="text-xs text-slate-500">{trucker.email || "No email"}</div></div></div></td>
-                    <td className={tableUi.td}>{trucker.contact_number || "—"}</td><td className={tableUi.td}>{trucker.plate_number || "—"}</td><td className={tableUi.td}>{trucker.active_trip_number || "—"}</td><td className={tableUi.td}>{trucker.delivery_status || trucker.current_trip_status || "—"}</td>
-                  </>)}
-                </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-        {hiddenControl}
-      </div>
-
-      {selectedId && !userModalOpen && (detail || detailLoading) ? <TruckerDetailDrawer key={selectedId} trucker={detail} loading={detailLoading} error={detailError} onClose={() => setSelectedId(null)} canAssignTruck={["ADMIN", "STAFF"].includes(profile?.role ?? "")} onAssigned={refreshList} onEdit={profile?.role === "ADMIN" && managedUsers.some(user => user.id === detail?.profile_id) ? () => { setEditingUser(managedUsers.find(user => user.id === detail?.profile_id) ?? null); setUserModalOpen(true); } : undefined} /> : null}
-      {userModalOpen && <UserManagementModal user={editingUser} onClose={() => setUserModalOpen(false)} onSaved={(message) => { setUserModalOpen(false); setNotice(message ?? "User saved successfully."); refreshList(); }} />}
-      </>}
-    </div>
-  );
+ const {accessToken,profile}=useAuth(),navigate=useNavigate(),workspace=useRef<HTMLDivElement>(null);
+ const [category,setCategory]=useState<'staff'|'truckers'>(()=>profile?.role==='ADMIN'?'staff':'truckers'),[visited,setVisited]=useState(()=>new Set([profile?.role==='ADMIN'?'staff':'truckers']));
+ const [search,setSearch]=useState<Record<string,string>>({}),[revision,setRevision]=useState(0),[modal,setModal]=useState<{user:ManagedUser|null}|null>(null),[activity,setActivity]=useState<{id:string;name:string}|null>(null);
+ const [trucker,setTrucker]=useState<TruckerDetail|null>(null),[driverId,setDriverId]=useState<string|null>(null),[detailError,setDetailError]=useState(''),[detailLoading,setDetailLoading]=useState(false),[detailRevision,setDetailRevision]=useState(0),[error,setError]=useState('');
+ const detailsGate=useDeferredRealtimeRefresh(()=>{if(driverId){invalidateApiCache(`/truckers/${driverId}`);setDetailRevision(v=>v+1);}},!!modal);
+ useEffect(()=>subscribeToAdminRealtime(event=>{if(!driverId)return;const tables=event.kind==='batch'?event.tables:event.kind==='change'?[event.payload.table]:event.kind==='recovered'?[event.table]:[];if(event.kind==='resume'||tables.some(table=>['profiles','drivers','trucks','trip_truck_assignments','trips','trip_stops'].includes(table)))detailsGate.request();}),[driverId,detailsGate]);
+ const admin=profile?.role==='ADMIN',allowed=admin||profile?.role==='STAFF';
+ const refresh=()=>{invalidateUserWorkspace();setRevision(v=>v+1);};
+ const fullProfile=(row:MasterDataRow)=>navigate(`/users/${row.id}`);
+ const openTrucker=(row:MasterDataRow)=>{if(typeof row.driver_id==='string'){setTrucker(null);setDriverId(row.driver_id);setDetailLoading(true);setDetailError('');}};
+ useEffect(()=>{if(!driverId||!accessToken)return;let live=true;void fetchTruckerDetail(accessToken,driverId).then(value=>{if(live)setTrucker(value);}).catch(()=>{if(live)setDetailError('Driver details could not load. Please close and retry.');}).finally(()=>{if(live)setDetailLoading(false);});return()=>{live=false;};},[accessToken,driverId,revision,detailRevision]);
+ const edit=async(row:MasterDataRow)=>{if(!accessToken||!admin)return;try{const value=await readUserProfile(accessToken,row.id);setModal({user:value as unknown as ManagedUser});setError('');}catch{setError('User details could not load. Please retry.');}};
+ const sources=useMemo(()=>Object.fromEntries(['staff','truckers'].map(sheet=>[sheet,{
+  tableKey:`users:${sheet}`,sheetId:`users-${sheet}`,topics:['profiles','drivers','trucks','trucking_companies'],recordNoun:'user',deleteDescription:'The selected accounts will be deactivated. Current truck assignments will be released. Previous trips, deliveries, PODs, cargo and activity history are retained. Your own account and required administrators cannot be deleted.',
+  load:(query:string,page:number,sort:string,direction:string)=>loadUserSheet(accessToken!,sheet,query,page,sort,direction),cached:(query:string,sort:string,direction:string)=>cachedUserSheet(accessToken!,sheet,query,sort,direction),read:async(id:string)=>{try{return await readUserProfile(accessToken!,id);}catch{return null;}},
+  save:(id:string,values:Record<string,unknown>)=>saveUserProfile(accessToken!,id,values),remove:(ids:string[])=>deleteUsers(accessToken!,ids),invalidate:invalidateUserWorkspace,
+  canEditField:(_row:MasterDataRow,field:DatabaseField)=>admin&&!field.readOnly,canEditRow:()=>admin,canDeleteRow:(row:MasterDataRow)=>admin&&row.id!==profile?.id&&!row.is_admin,
+  sortKeys:['first_name','last_name','email','contact_number','role','created_at','license_number','plate_number','driver_status'],
+  onViewProfile:(row:MasterDataRow)=>sheet==='truckers'?openTrucker(row):fullProfile(row),onViewActivity:admin?(row:MasterDataRow)=>setActivity({id:row.id,name:[row.first_name,row.last_name].filter(Boolean).join(' ')}):undefined,
+  renderCell:(row:MasterDataRow,field:DatabaseField)=>field.key==='actions'?<span className="inline-flex items-center gap-1">{(admin||row.id===profile?.id)&&<button aria-label="View full profile" title="View full profile" onClick={()=>fullProfile(row)} className="rounded p-1 hover:bg-blue-50"><UserRound className="h-3.5 w-3.5"/></button>}{sheet==='truckers'&&<button aria-label="View trucker profile" title="Trucker profile and assignments" onClick={()=>openTrucker(row)} className="rounded p-1 hover:bg-blue-50"><Eye className="h-3.5 w-3.5"/></button>}{admin&&<button aria-label="View activity history" title="Activity history" onClick={()=>setActivity({id:row.id,name:[row.first_name,row.last_name].filter(Boolean).join(' ')})} className="rounded p-1 hover:bg-blue-50"><History className="h-3.5 w-3.5"/></button>}</span>:undefined,
+ } satisfies SpreadsheetDataSource])),[accessToken,admin,profile?.id,navigate]);
+ if(!accessToken||!allowed)return null;
+ const tabs=admin?[['staff','Admin & Staff'],['truckers','Truckers']]:[['truckers','Truckers']];
+ return <div ref={workspace} data-database-workspace className="database-workspace flex min-h-0 min-w-0 flex-1 flex-col gap-2"><header className={tableUi.toolbar}><div><h1 className="text-xl font-bold text-[#0b2341]">Users</h1><p className="mt-1 text-xs text-slate-500">Accounts, current driver assignments and recorded activity</p></div><div className="flex flex-wrap items-center gap-2"><label className="relative"><Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400"/><input aria-label="Search users" placeholder="Search users" value={search[category]??''} onChange={e=>setSearch(v=>({...v,[category]:e.target.value}))} className={`${tableUi.search} !rounded-md`}/></label>{admin&&<button onClick={()=>setModal({user:null})} className="inline-flex h-9 items-center gap-2 rounded-md bg-[#ffd43b] px-3 text-xs font-semibold text-[#0b2341]"><Plus className="h-4 w-4"/>Add user</button>}</div></header>{error&&<p role="alert" className="text-xs text-rose-700">{error}</p>}<section className={`${SPREADSHEET_PANEL_CLASS} database-sheet-panel flex min-h-0 flex-1 flex-col`}>{tabs.filter(([key])=>visited.has(key)).map(([key])=><DatabaseSpreadsheet key={key} resource="drivers" dataSource={sources[key]} fields={fields[key]} token={accessToken} profileId={profile?.id} canEdit={allowed} active={category===key} search={search[key]??''} revision={revision} onEdit={row=>void edit(row)} onMetadata={noop}/>)}<div data-sheet-tabs className="flex min-w-0 items-stretch border-t border-slate-200 bg-slate-100"><nav role="tablist" aria-label="Users sheets" className="flex min-w-0 flex-1 overflow-x-auto">{tabs.map(([key,label])=><button key={key} role="tab" aria-selected={category===key} onClick={()=>{setVisited(v=>new Set([...v,key]));setCategory(key as typeof category);}} className={`shrink-0 border-r border-slate-200 px-3 py-1.5 text-[11px] ${category===key?'relative -mt-px border-t border-t-white bg-white text-[#0b2341]':'bg-slate-100 text-slate-500 hover:bg-slate-50'}`}>{label}</button>)}</nav><button title="Fit columns to loaded content" onClick={()=>workspace.current?.querySelector(`#trip-sheet-users-${category} .spreadsheet-viewport`)?.dispatchEvent(new Event('sheet:auto-fit'))} className="border-l border-slate-200 px-2 text-[11px] text-slate-600">Auto Fit</button><SheetHorizontalScrollbar arrows workspace={workspace} sheet={`users-${category}`}/></div></section>{modal&&<UserManagementModal user={modal.user} onClose={()=>setModal(null)} onSaved={()=>{setModal(null);refresh();}}/>}{driverId&&<><TruckerDetailDrawer trucker={trucker} loading={detailLoading} error={detailError} onClose={()=>setDriverId(null)} canAssignTruck={allowed} onAssigned={refresh} onEdit={admin&&trucker?.profile_id?()=>{void edit({id:trucker.profile_id}as MasterDataRow);setDriverId(null);}:undefined}/>{!detailLoading&&!trucker&&detailError&&<div role="alert" className="fixed bottom-6 right-6 z-[2100] rounded-md border border-rose-200 bg-white p-3 text-xs text-rose-700">{detailError}<button onClick={()=>setDriverId(null)} className="ml-2 underline">Close</button></div>}</>}{activity&&<UserActivityHistory modal userId={activity.id} name={activity.name} onClose={()=>setActivity(null)}/>}</div>;
 }

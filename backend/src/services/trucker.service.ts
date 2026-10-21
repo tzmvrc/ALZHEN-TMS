@@ -1016,7 +1016,7 @@ export async function getTruckerList(query: Record<string, unknown>) {
   let driverQuery = supabaseAdmin
     .from("drivers")
     .select(
-      "id, profile_id, first_name, last_name, contact_number, license_number, status, trucking_company_id, created_at, updated_at",
+      "id, profile_id, first_name, last_name, contact_number, license_number, status, trucking_company_id, assigned_truck_id, created_at, updated_at",
       { count: "exact" },
     );
 
@@ -1152,7 +1152,7 @@ export async function getTruckerList(query: Record<string, unknown>) {
         ),
     ),
   ];
-  const truckMap = await getTruckMap(truckIds);
+  const truckMap = await getTruckMap([...new Set([...truckIds,...drivers.flatMap(row=>typeof row.assigned_truck_id==="string"?[row.assigned_truck_id]:[])])]);
 
   const items: TruckerListItem[] = [];
   const drNumbers = await getDriverTripDrNumbers([...new Set([...assignmentByDriver.values()].flatMap(assignment => typeof assignment?.trip_id === "string" ? [assignment.trip_id] : []))]);
@@ -1169,10 +1169,7 @@ export async function getTruckerList(query: Record<string, unknown>) {
         ? assignment.trip_id
         : null;
     const trip = tripId ? (tripMap.get(tripId) ?? null) : null;
-    const truckId =
-      assignment && typeof assignment.truck_id === "string"
-        ? assignment.truck_id
-        : null;
+    const truckId=typeof row.assigned_truck_id==="string"?row.assigned_truck_id:null;
     const truck = truckId ? (truckMap.get(truckId) ?? null) : null;
     const fullName = formatFullName(
       typeof row.first_name === "string"
@@ -1253,7 +1250,7 @@ export async function getTruckerById(id: string) {
   const { data: driver, error: driverError } = await supabaseAdmin
     .from("drivers")
     .select(
-      "id, profile_id, first_name, last_name, contact_number, license_number, status, trucking_company_id, created_at, updated_at",
+      "id, profile_id, first_name, last_name, contact_number, license_number, status, trucking_company_id, assigned_truck_id, created_at, updated_at",
     )
     .eq("id", id)
     .maybeSingle();
@@ -1344,7 +1341,7 @@ export async function getTruckerById(id: string) {
         ),
     ),
   ];
-  const truckMap = await getTruckMap(truckIds);
+  const truckMap = await getTruckMap([...new Set([...truckIds,...(typeof driver.assigned_truck_id==="string"?[driver.assigned_truck_id]:[])])]);
 
   const activeAssignment =
     sortedAssignments.find((assignment) => {
@@ -1364,10 +1361,7 @@ export async function getTruckerById(id: string) {
       : null;
 
   const activeDrNumbers = await getDriverTripDrNumbers(activeTrip ? [String(activeTrip.id)] : []);
-  const activeTruck =
-    activeAssignment && typeof activeAssignment.truck_id === "string"
-      ? (truckMap.get(String(activeAssignment.truck_id)) ?? null)
-      : null;
+  const activeTruck=typeof driver.assigned_truck_id==="string"?truckMap.get(driver.assigned_truck_id)??null:null;
 
   const tripHistoryPayload = await Promise.all(
     sortedAssignments.map(async (assignment) => {
@@ -1453,7 +1447,9 @@ export async function getTruckerById(id: string) {
     ),
     profile_picture_path:
       profile && typeof profile.profile_picture_path === "string"
-        ? profile.profile_picture_path
+        ? /^https?:\/\//i.test(profile.profile_picture_path)
+          ? profile.profile_picture_path
+          : (await supabaseAdmin.storage.from("profile-pictures").createSignedUrl(profile.profile_picture_path,3600)).data?.signedUrl ?? null
         : null,
     trucking_company: company
       ? {

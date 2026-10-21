@@ -15,7 +15,8 @@ export function ReportRowActionButton({ action, disabled, onClick, label: custom
   </button>;
 }
 
-export function ReportCellFormattingToolbar({ selectedCellCount, selectionIsBold, selectedTextColor, selectedBackgroundColor, onApply,advanced=true,selectionIsItalic=false,selectionIsUnderlined=false, headerOnly=false, selectedFontSize=12, formulaBar, compact=false }: {
+export function ReportCellFormattingToolbar({ selectedCellCount, selectionIsBold, selectedTextColor, selectedBackgroundColor, onApply,advanced=true,selectionIsItalic=false,selectionIsUnderlined=false, headerOnly=false, headerSelection=false, selectedFontSize=12, formulaBar, compact=false, actions }: {
+  actions?:ReactNode;
   formulaBar?:ReactNode;
   compact?:boolean;
   selectedCellCount: number;
@@ -23,7 +24,7 @@ export function ReportCellFormattingToolbar({ selectedCellCount, selectionIsBold
   selectedTextColor: string | null;
   selectedBackgroundColor: string | null;
   onApply: (change: Partial<ReportCellFormat>) => void;
-  advanced?:boolean;selectionIsItalic?:boolean;selectionIsUnderlined?:boolean;headerOnly?:boolean;selectedFontSize?:number;
+  advanced?:boolean;selectionIsItalic?:boolean;selectionIsUnderlined?:boolean;headerOnly?:boolean;headerSelection?:boolean;selectedFontSize?:number;
 }) {
   const [fontOpen,setFontOpen]=useState(false);
   const fontControl=useRef<HTMLDivElement|null>(null);
@@ -43,18 +44,19 @@ export function ReportCellFormattingToolbar({ selectedCellCount, selectionIsBold
     </div>
     <div className="relative">
       <button type="button" title="Cell color" aria-label="Cell color" aria-expanded={openColorPicker === "background"} disabled={!selectedCellCount} onMouseDown={(event) => event.preventDefault()} onClick={() => setOpenColorPicker((current) => current === "background" ? null : "background")} className={`${toolbarButtonClass} ${openColorPicker === "background" ? "border-blue-300 bg-blue-100 text-blue-800" : "border-transparent text-slate-600 hover:bg-white hover:text-slate-900"}`}><Paintbrush aria-hidden="true" className="h-4 w-4" /></button>
-      {openColorPicker === "background" && <div className="absolute left-0 top-full z-50 mt-1 flex gap-1 rounded-lg border border-slate-200 bg-white p-2 shadow-lg" aria-label="Cell color palette">{["#ffffff", "#fef3c7", "#dcfce7", "#dbeafe", "#fce7f3", "#e5e7eb"].map((color) => <button key={color} type="button" title={`Cell color ${color}`} aria-label={`Cell color ${color}`} aria-pressed={selectedBackgroundColor === (color === "#ffffff" && !headerOnly ? "" : color)} onMouseDown={(event) => event.preventDefault()} onClick={() => apply({ backgroundColor: color === "#ffffff" && !headerOnly ? "" : color })} className={`h-5 w-5 rounded-full border border-slate-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${selectedBackgroundColor === (color === "#ffffff" && !headerOnly ? "" : color) ? "ring-2 ring-slate-800 ring-offset-1" : ""}`} style={{ backgroundColor: color }} />)}<button type="button" title="Reset cell color" aria-label="Reset cell color" aria-pressed={selectedBackgroundColor === ""} onMouseDown={(event) => event.preventDefault()} onClick={() => apply({ backgroundColor: "" })} className="rounded px-1.5 text-[10px] text-slate-600 hover:bg-slate-100">Reset</button></div>}
+      {openColorPicker === "background" && <div className="absolute left-0 top-full z-50 mt-1 flex gap-1 rounded-lg border border-slate-200 bg-white p-2 shadow-lg" aria-label="Cell color palette">{["#ffffff", "#fef3c7", "#dcfce7", "#dbeafe", "#fce7f3", "#e5e7eb"].map((color) => <button key={color} type="button" title={`Cell color ${color}`} aria-label={`Cell color ${color}`} aria-pressed={selectedBackgroundColor === (color === "#ffffff" && !headerOnly&&!headerSelection ? "" : color)} onMouseDown={(event) => event.preventDefault()} onClick={() => apply({ backgroundColor: color === "#ffffff" && !headerOnly&&!headerSelection ? "" : color })} className={`h-5 w-5 rounded-full border border-slate-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${selectedBackgroundColor === (color === "#ffffff" && !headerOnly&&!headerSelection ? "" : color) ? "ring-2 ring-slate-800 ring-offset-1" : ""}`} style={{ backgroundColor: color }} />)}<button type="button" title="Reset cell color" aria-label="Reset cell color" aria-pressed={selectedBackgroundColor === ""} onMouseDown={(event) => event.preventDefault()} onClick={() => apply({ backgroundColor: "" })} className="rounded px-1.5 text-[10px] text-slate-600 hover:bg-slate-100">Reset</button></div>}
     </div>
-    {!compact&&selectedCellCount > 0 && <span className="ml-2 text-[10px] text-slate-500">{headerOnly ? "Header selected" : `${selectedCellCount} cell${selectedCellCount === 1 ? "" : "s"} selected`}</span>}
+    {!compact&&selectedCellCount > 0 && <span className="ml-2 text-[10px] text-slate-500">{headerOnly||headerSelection ? "Header selected" : `${selectedCellCount} cell${selectedCellCount === 1 ? "" : "s"} selected`}</span>}
     </div>
+    {actions}
     {formulaBar && <div className="min-w-0 flex-[1_1_14rem]">{formulaBar}</div>}
   </div>;
 }
 
-type SortAction = { label: "Sort ascending" | "Sort descending"; active: boolean; onClick: () => void };
+export type SortAction = { label: "Sort ascending" | "Sort descending"; active: boolean; onClick: () => void };
 export function ReportColumnActionsMenu({
   title, position, onClose, sortActions, pinned, onTogglePin, onEditColumn,
-  onFilter, canManageOptions, onManageOptions, onRename, onRestoreTitle, onConfigureInput, onHide, canHide = true,
+  onFilter, canManageOptions, onManageOptions, onRename, onRestoreTitle, onConfigureInput, onHide, canHide = true, extraActions, viewportBounded=false,
 }: {
   title: string;
   position: { left: number; top: number };
@@ -69,7 +71,16 @@ export function ReportColumnActionsMenu({
   onRename?: () => void; onRestoreTitle?: () => void; onConfigureInput?: () => void;
   onHide: () => void;
   canHide?: boolean;
+  extraActions?:Array<{label:string;onClick:()=>void;disabled?:boolean}>;
+  viewportBounded?:boolean;
 }) {
+  const panel=useRef<HTMLDivElement>(null);
+  const [boundedPosition,setBoundedPosition]=useState(position);
+  useLayoutEffect(()=>{
+    if(!viewportBounded)return;const rect=panel.current?.getBoundingClientRect();if(!rect)return;
+    setBoundedPosition({left:Math.max(8,Math.min(position.left,window.innerWidth-rect.width-8)),top:Math.max(8,Math.min(position.top,window.innerHeight-rect.height-8))});
+  },[viewportBounded,position.left,position.top]);
+  useEffect(()=>{if(!viewportBounded)return;const dismiss=(event:Event)=>{if(event.target instanceof Node&&panel.current?.contains(event.target))return;onClose();};window.addEventListener("resize",dismiss);window.addEventListener("scroll",dismiss,true);return()=>{window.removeEventListener("resize",dismiss);window.removeEventListener("scroll",dismiss,true);};},[viewportBounded,onClose]);
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
     window.addEventListener("keydown", onKeyDown);
@@ -79,12 +90,13 @@ export function ReportColumnActionsMenu({
   const itemClass = "flex w-full items-center justify-start gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-slate-700 transition-colors hover:bg-[#0b2341] hover:text-white focus-visible:bg-[#0b2341] focus-visible:text-white focus-visible:outline-none";
   const run = (action: () => void) => { action(); onClose(); };
   return createPortal(<div className="fixed inset-0 z-[100]" onMouseDown={onClose}>
-    <div role="menu" aria-label={`${title} column actions`} onMouseDown={(event) => event.stopPropagation()} style={{ left: position.left, top: position.top }} className="fixed z-[101] max-h-[calc(100vh-16px)] overflow-y-auto w-56 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl">
+    <div ref={panel} role="menu" aria-label={`${title} column actions`} onMouseDown={(event) => event.stopPropagation()} style={viewportBounded?boundedPosition:position} className="fixed z-[101] max-h-[calc(100vh-16px)] overflow-y-auto w-56 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl">
       <div className="truncate px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500">{title}</div>
       {onRename && <button role="menuitem" type="button" onClick={()=>run(onRename)} className={itemClass}>Rename column</button>}
       {onRestoreTitle && <button role="menuitem" type="button" onClick={()=>run(onRestoreTitle)} className={itemClass}>Restore default column title</button>}
       {onConfigureInput && <button role="menuitem" type="button" onClick={()=>run(onConfigureInput)} className={itemClass}>Configure input type / option colors</button>}
       {sortActions?.map((action) => <button key={action.label} role="menuitem" type="button" onClick={() => run(action.onClick)} className={`${itemClass} justify-between`}>{action.label}{action.active ? action.label === "Sort ascending" ? <ArrowUp className="h-3.5 w-3.5" /> : <ArrowDown className="h-3.5 w-3.5" /> : null}</button>)}
+      {extraActions?.map(action=><button key={action.label} role="menuitem" type="button" disabled={action.disabled} onClick={()=>run(action.onClick)} className={`${itemClass} disabled:opacity-40 disabled:cursor-default`}>{action.label}</button>)}
       {onFilter && <button role="menuitem" type="button" onClick={() => run(onFilter)} className={itemClass}><Search className="h-3.5 w-3.5" />Filter this column</button>}
       <button role="menuitem" type="button" onClick={() => run(onTogglePin)} className={itemClass}><Pin className="h-3.5 w-3.5" />{pinned ? "Unpin" : "Pin"}</button>
       <button role="menuitem" type="button" onClick={() => run(onEditColumn)} className={itemClass}><Palette className="h-3.5 w-3.5" />Edit Column</button>

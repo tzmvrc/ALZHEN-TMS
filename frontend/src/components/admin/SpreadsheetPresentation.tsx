@@ -65,7 +65,7 @@ export function useSpreadsheetViewport(ref: RefObject<HTMLDivElement | null>, ro
         bottomPadding += parseFloat(style.paddingBottom || "0") + parseFloat(style.borderBottomWidth || "0");
         if (ancestor.tagName === "MAIN") break;
       }
-      const sheetTabsHeight = viewport.closest("[data-trips-workspace]")?.querySelector("[data-sheet-tabs]")?.getBoundingClientRect().height ?? 0;
+      const sheetTabsHeight = viewport.closest("[data-trips-workspace], [data-database-workspace]")?.querySelector("[data-sheet-tabs]")?.getBoundingClientRect().height ?? 0;
       const available = Math.max(160, (window.visualViewport?.height ?? window.innerHeight) - top - footerHeight - bottomPadding - sheetTabsHeight);
       if(viewport.style.height!==`${available}px`)viewport.style.height = `${available}px`;
       const table = viewport.querySelector("table");

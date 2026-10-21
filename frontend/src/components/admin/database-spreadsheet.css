@@ -1,0 +1,38 @@
+.database-workspace { min-width:0; }
+.database-workspace .database-sheet-panel { min-height:260px; }
+.database-spreadsheet[hidden] { display:none!important; }
+.database-spreadsheet .database-grid { scrollbar-width:thin; scrollbar-color:#94a3b8 #f1f5f9; scrollbar-gutter:stable; }
+.database-spreadsheet .database-grid::-webkit-scrollbar { width:8px; height:0; }
+.database-spreadsheet .database-grid::-webkit-scrollbar-thumb { background:#94a3b8; border:2px solid #f1f5f9; border-radius:5px; }
+.database-spreadsheet .database-grid::-webkit-scrollbar-track { background:#f1f5f9; }
+.database-spreadsheet .database-grid table { table-layout:fixed; }
+.database-spreadsheet .database-grid td.spreadsheet-gutter { padding:0; text-align:center; background:#f8fafc; }
+.database-spreadsheet .database-grid .database-editor { width:100%; min-width:0; min-height:22px; padding:0; margin:0; border:0; border-radius:0; box-shadow:none; outline:none; background:transparent; color:inherit; font:inherit; line-height:inherit; text-align:inherit; }
+.database-spreadsheet .database-grid .database-editor[type=number] { -moz-appearance:textfield; }
+.database-spreadsheet .database-grid .database-editor::-webkit-inner-spin-button,.database-spreadsheet .database-grid .database-editor::-webkit-outer-spin-button { -webkit-appearance:none; margin:0; }
+.database-spreadsheet button,.database-workspace [role=tab] { cursor:pointer; }
+.database-spreadsheet button:disabled { cursor:default;opacity:.45; }
+/* Same measured viewport as Master List. Its explicit height owns the scroll
+   geometry; table content must never supply the flex basis and expand the page. */
+.database-spreadsheet .database-grid { flex:0 0 auto; min-height:0; overflow-x:hidden; overflow-y:scroll; }
+.database-spreadsheet > [aria-label="Cell formatting"] { margin:0; }
+.database-spreadsheet .spreadsheet-grid { height:auto; }
+
+.database-spreadsheet .spreadsheet-grid thead th:not(.spreadsheet-gutter) { padding-top:10px; padding-bottom:10px; padding-left:9px; text-align:left; vertical-align:middle; }
+.database-spreadsheet [data-spreadsheet-header-title] { text-align:left; }
+
+/* Keep resize/menu controls out of normal flow: an empty inline control wrapper
+   previously introduced a second line under every header title. */
+.database-spreadsheet .database-header-content { display:flex; align-items:center; min-height:0; min-width:0; padding-right:5px; }
+.database-spreadsheet .database-header-content [data-spreadsheet-header-title] { white-space:normal; overflow-wrap:anywhere; line-height:16px; }
+.database-spreadsheet .database-header-controls { position:absolute; inset:0; pointer-events:none; }
+.database-spreadsheet .database-header-controls [role=separator],.database-spreadsheet .database-header-controls [role=menu] { pointer-events:auto; }
+.database-spreadsheet .database-grid::-webkit-scrollbar:horizontal { display:none; height:0; }
+.database-spreadsheet .database-cell-feedback { position:absolute; right:3px; top:2px; z-index:31; pointer-events:none; border-radius:3px; padding:1px 4px; background:#ecfdf5; color:#047857; font:10px/14px Arial,sans-serif; animation:database-saved-in .15s ease-out; }
+.database-spreadsheet .database-cell-feedback.is-error { background:#fff1f2; color:#be123c; }
+@keyframes database-saved-in { from {opacity:0;transform:translateY(2px)} to {opacity:1;transform:translateY(0)} }
+@media(prefers-reduced-motion:reduce) {.database-spreadsheet .database-cell-feedback {animation:none;}}
+
+/* Chromium gives the standard scrollbar-width priority over axis-specific
+   WebKit sizing. Use those rules there so only the vertical native bar remains. */
+@supports selector(::-webkit-scrollbar) { .database-spreadsheet .database-grid {scrollbar-width:auto;scrollbar-color:auto;} }

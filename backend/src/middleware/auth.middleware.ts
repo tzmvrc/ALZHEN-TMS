@@ -1,3 +1,4 @@
+import {captureUserActivity} from "../services/user-activity.service.js";
 import { createHash } from "node:crypto";
 import { createConcurrentReadGate } from "../utils/concurrent-read.js";
 const shareRead=createConcurrentReadGate();
@@ -60,6 +61,7 @@ async function authenticate(
       });
     }
 
+    if((profile as any)?.deactivated_at)return res.status(403).json({success:false,message:"Access denied. This account has been deactivated. Contact an administrator."});
     if(profile)req.profile=profile;
     const role = String(profile?.role ?? "UNKNOWN").trim().toUpperCase();
     const sessionId = req.header("x-app-session") ?? null;
@@ -89,6 +91,7 @@ async function authenticate(
       }
     }
 
+    try{await captureUserActivity(req,res);}catch{return res.status(503).json({success:false,message:"Activity recording is temporarily unavailable. No change was started. Please retry."});}
     return next();
   } catch (error) {
     console.error("Auth middleware error:", error);

@@ -1,12 +1,23 @@
+import { ApiError } from "../utils/api-response.js";
 import { locationVerificationAvailable } from "./location-verification.schema.js";
 import { supabaseAdmin } from "../config/supabase.js";
 import { buildIlikeOrFilter } from "../utils/postgrest-search.js";
 
-export type MasterDataResource = "customers" | "warehouses" | "trucks" | "stores" | "store-contacts" | "products";
+export type MasterDataResource = "customers" | "warehouses" | "trucks" | "stores" | "store-contacts" | "products" | "drivers" | "trucking-companies";
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const configs = {
+  drivers: {
+    table:"drivers", select:"id,first_name,last_name,contact_number,license_number,trucking_company_id,assigned_truck_id,status,notes,created_at,updated_at,trucking_companies(id,name),trucks!drivers_assigned_truck_id_fkey(id,plate_number)",
+    orderBy:"last_name", search:["first_name","last_name","license_number","contact_number"],
+    fields:["first_name","last_name","contact_number","license_number","trucking_company_id","assigned_truck_id","status","notes"], required:["first_name","last_name"],
+    types:{first_name:"text",last_name:"text",contact_number:"nullable",license_number:"nullable",trucking_company_id:"uuid",assigned_truck_id:"uuid",status:"text",notes:"nullable"},
+  },
+  "trucking-companies": {
+    table:"trucking_companies", select:"id,code,name,contact_person,contact_number,email,status,notes,created_at,updated_at",orderBy:"name",search:["code","name","contact_person"],
+    fields:["code","name","contact_person","contact_number","email","status","notes"],required:["name"],types:{code:"nullable",name:"text",contact_person:"nullable",contact_number:"nullable",email:"nullable",status:"text",notes:"nullable"},
+  },
   customers: {
     table: "customers", select: "id, code, name, contact_person, contact_number, email, status",
     orderBy: "name", search: ["code", "name", "contact_person"],
@@ -61,7 +72,7 @@ const configs = {
 } as const;
 
 function getConfig(resource: string) {
-  if (!(resource in configs)) throw new Error("Unknown master-data resource.");
+  if (!Object.prototype.hasOwnProperty.call(configs,resource)) throw new Error("Unknown master-data resource.");
   return configs[resource as MasterDataResource];
 }
 
@@ -72,7 +83,7 @@ export async function listMasterData(resource: string, query: Record<string, unk
   const page = Math.max(1, Math.floor(Number(query.page) || 1));
   const limit = Math.min(100, Math.max(1, Math.floor(Number(query.limit) || 50)));
   const from = (page - 1) * limit;
-  let builder = (supabaseAdmin.from(config.table) as any).select(selection, { count: "exact" }).order(config.orderBy, { ascending: true }).range(from, from + limit - 1);
+  let builder = (supabaseAdmin.from(config.table) as any).select(selection, { count: "exact" }).order(typeof query.sort === "string" && (config.fields as readonly string[]).includes(query.sort) ? query.sort : config.orderBy, { ascending: query.direction !== "desc" }).order("id", { ascending: true }).range(from, from + limit - 1);
   const searchFilter = buildIlikeOrFilter(config.search, query.search);
   if (searchFilter) builder = builder.or(searchFilter);
   if (resource === "store-contacts" && typeof query.store_id === "string" && uuidPattern.test(query.store_id)) builder = builder.eq("store_id", query.store_id);
@@ -82,6 +93,13 @@ export async function listMasterData(resource: string, query: Record<string, unk
     throw new Error("Unable to load master data.");
   }
   return { location_verification_supported: verification, rows: data ?? [], pagination: { page, limit, total: count ?? 0, totalPages: Math.max(1, Math.ceil((count ?? 0) / limit)) } };
+}
+
+export async function readMasterDataRecord(resource:string,id:string){
+ if(!uuidPattern.test(id))throw new ApiError("Invalid master-data record id.",400);
+ const config=getConfig(resource);const verification=["warehouses","stores"].includes(resource)&&await locationVerificationAvailable();
+ const {data,error}=await (supabaseAdmin.from(config.table) as any).select(config.select+(verification?",location_verified,location_verified_at":"")).eq("id",id).maybeSingle();
+ if(error)throw new ApiError("Unable to load this record.",502);if(!data)throw new ApiError("Record not found.",404);return data;
 }
 
 async function validateRelationship(table: string, id: unknown, field: string) {
@@ -103,6 +121,7 @@ function buildPayload(resource: string, input: Record<string, unknown>, creating
   const payload: Record<string, unknown> = {};
   for (const [field, raw] of Object.entries(input)) {
     if (raw === undefined) continue;
+    if(creating&&(raw===null||raw==="")&&!(config.required as readonly string[]).includes(field)&&config.types[field as keyof typeof config.types]==="text")continue;
     const type = config.types[field as keyof typeof config.types] as string | undefined;
     if (type === "text" || type === "nullable") {
       if (raw === null && type === "nullable") { payload[field] = null; continue; }
@@ -136,6 +155,7 @@ function buildPayload(resource: string, input: Record<string, unknown>, creating
 }
 
 async function validatePayloadRelationships(resource: string, payload: Record<string, unknown>) {
+  if(resource==="drivers"){if(payload.trucking_company_id!==undefined)payload.trucking_company_id=await validateRelationship("trucking_companies",payload.trucking_company_id,"trucking_company_id");if(payload.assigned_truck_id!==undefined)payload.assigned_truck_id=await validateRelationship("trucks",payload.assigned_truck_id,"assigned_truck_id");}
   if (resource === "stores" && payload.customer_id !== undefined) payload.customer_id = await validateRelationship("customers", payload.customer_id, "customer_id");
   if (resource === "trucks" && payload.trucking_company_id !== undefined) payload.trucking_company_id = await validateRelationship("trucking_companies", payload.trucking_company_id, "trucking_company_id");
   if (resource === "store-contacts" && payload.store_id !== undefined) payload.store_id = await validateRelationship("customer_stores", payload.store_id, "store_id");
@@ -161,10 +181,20 @@ async function saveMasterDataRecord(resource: string, input: Record<string, unkn
     else if(supported&&["address","province","city","latitude","longitude"].some(key=>key in payload&&String(payload[key]??"")!==String(current[key]??"")))payload.location_verified=false;
     if(!supported)delete payload.location_verified;
   }
-  if(creating&&resource!=="store-contacts"){
+  if(creating&&!["store-contacts","drivers","trucking-companies"].includes(resource)){
     const resolved=await supabaseAdmin.rpc("resolve_trip_master_v1",{p_kind:resource,p_values:payload,p_create:true});
-    if(!resolved.error)return resolved.data;
-    if(!["PGRST202","42883"].includes(resolved.error.code))throw new Error(resolved.error.message??"Unable to resolve master identity.");
+    if(!resolved.error){
+      if(resolved.data&&typeof resolved.data.id==="string"){try{return await readMasterDataRecord(resource,resolved.data.id);}catch{/* A confirmed creation remains successful if display enrichment is delayed. */}}
+      return resolved.data;
+    }
+    if(!["PGRST202","42883"].includes(resolved.error.code)){
+      console.error("Master identity resolution failed",{resource,code:resolved.error.code});
+      if(resolved.error.code==="23505")throw new Error("A record with this identifier already exists.");
+      if(resolved.error.code==="23503")throw new Error("A selected related record is no longer available. Select it again.");
+      if(resolved.error.code==="23514")throw new Error("One of the entered values is not allowed.");
+      if(resolved.error.code==="P0001"&&/required|Select|identity|inactive|Multiple|exists with different/i.test(resolved.error.message))throw new Error(resolved.error.message);
+      throw new Error("Unable to create this record. Review the fields and try again.");
+    }
   }
   if(creating){
     // Reuse exact identities across imports and explicit dropdown creation. A store
@@ -190,7 +220,8 @@ async function saveMasterDataRecord(resource: string, input: Record<string, unkn
   const builder = creating
     ? table.insert(payload)
     : table.update({ ...payload, updated_at: new Date().toISOString() }).eq("id", id!);
-  const { data, error } = await builder.select(config.select).single();
+  const verification=["warehouses","stores"].includes(resource)&&await locationVerificationAvailable();
+  const { data, error } = await builder.select(config.select+(verification?",location_verified,location_verified_at":"")).single();
   if (error) {
     console.error("Master-data save failed:", { resource, id, error });
     if (error.code === "23505") throw new Error("A record with this identifier already exists.");
@@ -210,4 +241,21 @@ export async function saveMasterData(resource:string,input:Record<string,unknown
  const next=previous.catch(()=>undefined).then(()=>saveMasterDataRecord(resource,input,undefined,actor));
  creationQueues.set(resource,next);
  try{return await next;}finally{if(creationQueues.get(resource)===next)creationQueues.delete(resource);}
+}
+
+export async function deleteMasterDataRecords(resource:string,ids:unknown,actor:{id:string;role:string}) {
+ getConfig(resource);
+ if(!["ADMIN","STAFF"].includes(actor.role))throw new ApiError("You do not have permission to delete database records.",403);
+ if(!Array.isArray(ids)||!ids.length||ids.length>100||ids.some(id=>typeof id!=="string"||!uuidPattern.test(id)))throw new ApiError("Select between 1 and 100 valid records.",400);
+ const unique=[...new Set(ids as string[])],deleted:string[]=[],failed:Array<{id:string;message:string}>=[];
+ for(const id of unique){
+  const result=await supabaseAdmin.rpc("delete_master_data_record_v1",{p_resource:resource,p_id:id,p_actor:actor.id});
+  if(result.error){
+   console.error("Master record delete rejected",{resource,id,code:result.error.code});
+   const message=result.error.code==="55000"?(/photo/i.test(result.error.message)?"Remove the product photo through Manage photo first.":(resource==="trucks"?"This truck has protected references or attached images. It was not deleted; its history and files are preserved.":"This record is used by other records or attachments. Clear eligible relationships, or mark it inactive to preserve history.")):result.error.code==="23503"?"This record is still referenced and cannot be safely deleted.":result.error.code==="P0002"?"This record no longer exists. Refresh the sheet.":result.error.code==="42501"?"You do not have permission to delete this record.":"Unable to delete this record. Please try again.";
+   failed.push({id,message});continue;
+  }
+  if(result.data?.deleted===true&&result.data?.id===id)deleted.push(id);else failed.push({id,message:"Deletion was not confirmed. Refresh before retrying."});
+ }
+ return {deleted,failed};
 }

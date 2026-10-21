@@ -1,10 +1,11 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { ReportCellFormattingToolbar } from "./ReportSpreadsheetShared";
 import type { ReportCellFormat } from "./ReportSpreadsheetUtils";
 
 /** Uses the same formatting callbacks and persistence as the main spreadsheet toolbar. */
-export function SpreadsheetCellContextMenu({ x, y, count, format, canFormat, onApply, onSelectRow, onSelectColumn, onClose }: {
+export function SpreadsheetCellContextMenu({ x, y, count, format, canFormat, onApply, onSelectRow, onSelectColumn, onClose, actions }: {
+  actions?: ReactNode;
   x: number; y: number; count: number; format: ReportCellFormat; canFormat: boolean;
   onApply: (change: Partial<ReportCellFormat>) => void;
   onSelectRow: () => void; onSelectColumn: () => void; onClose: () => void;
@@ -31,6 +32,7 @@ export function SpreadsheetCellContextMenu({ x, y, count, format, canFormat, onA
       selectedTextColor={format.color??null} selectedBackgroundColor={format.backgroundColor??null}
       onApply={change=>{onApply(change);onClose();}} />
     <div className="my-1 border-t border-slate-100" />
+    {actions}
     <button type="button" role="menuitem" onClick={()=>{onSelectRow();onClose();}} className="block w-full rounded-sm px-3 py-1.5 text-left text-xs text-slate-700 hover:bg-slate-100 focus-visible:bg-blue-50 focus-visible:outline-none">Select Row</button>
     <button type="button" role="menuitem" onClick={()=>{onSelectColumn();onClose();}} className="block w-full rounded-sm px-3 py-1.5 text-left text-xs text-slate-700 hover:bg-slate-100 focus-visible:bg-blue-50 focus-visible:outline-none">Select Column</button>
   </div>,document.body);

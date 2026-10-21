@@ -1,0 +1,44 @@
+[    1198ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=2d73f44f:14335
+[  114425ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5000/api/auth/session/bootstrap:0
+[  114431ms] [ERROR] Failed to refresh auth session: TypeError: Failed to fetch
+    at request (http://localhost:5173/src/services/api.service.ts?t=1792590306908:105:20)
+    at apiPost (http://localhost:5173/src/services/api.service.ts?t=1792590306908:212:9)
+    at run (http://localhost:5173/src/context/AuthContext.tsx?t=1792590306999:142:28)
+    at async Object.current (http://localhost:5173/src/context/AuthContext.tsx?t=1792590306999:195:4) @ http://localhost:5173/src/context/AuthContext.tsx?t=1792590306999:174
+[  115173ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=2d73f44f:14335
+[  115955ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5000/api/auth/session/bootstrap:0
+[  115956ms] [ERROR] Failed to refresh auth session: TypeError: Failed to fetch
+    at request (http://localhost:5173/src/services/api.service.ts?t=1792590306908:105:20)
+    at apiPost (http://localhost:5173/src/services/api.service.ts?t=1792590306908:212:9)
+    at run (http://localhost:5173/src/context/AuthContext.tsx?t=1792601011939:142:28) @ http://localhost:5173/src/context/AuthContext.tsx?t=1792601011939:174
+[  120968ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5000/api/auth/session/bootstrap:0
+[  120968ms] [ERROR] Failed to refresh auth session: TypeError: Failed to fetch
+    at request (http://localhost:5173/src/services/api.service.ts?t=1792590306908:105:20)
+    at apiPost (http://localhost:5173/src/services/api.service.ts?t=1792590306908:212:9)
+    at run (http://localhost:5173/src/context/AuthContext.tsx?t=1792601011939:142:28)
+    at async Object.current (http://localhost:5173/src/context/AuthContext.tsx?t=1792601011939:195:4) @ http://localhost:5173/src/context/AuthContext.tsx?t=1792601011939:174
+[  125984ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5000/api/auth/session/bootstrap:0
+[  125985ms] [ERROR] Failed to refresh auth session: TypeError: Failed to fetch
+    at request (http://localhost:5173/src/services/api.service.ts?t=1792590306908:105:20)
+    at apiPost (http://localhost:5173/src/services/api.service.ts?t=1792590306908:212:9)
+    at run (http://localhost:5173/src/context/AuthContext.tsx?t=1792601011939:142:28)
+    at async Object.current (http://localhost:5173/src/context/AuthContext.tsx?t=1792601011939:195:4) @ http://localhost:5173/src/context/AuthContext.tsx?t=1792601011939:174
+[ 1517648ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://localhost:5000/api/auth/session/bootstrap:0
+[ 5765227ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=2d73f44f:14335
+[ 6863708ms] Error: useAuth must be used within an AuthProvider
+    at useAuth (http://localhost:5173/src/context/AuthContext.tsx?t=1792607763905:433:9)
+    at PublicRoute (http://localhost:5173/src/components/PublicRoute.tsx?t=1792607763905:8:37)
+    at Object.react_stack_bottom_frame (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=2d73f44f:12866:12)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=2d73f44f:4213:19)
+    at updateFunctionComponent (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=2d73f44f:5569:16)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=2d73f44f:6140:20)
+    at runWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=2d73f44f:851:66)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=2d73f44f:8429:92)
+    at workLoopSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=2d73f44f:8325:37)
+    at renderRootSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=2d73f44f:8309:6)
+[ 6863709ms] [WARNING] %s
+
+%s
+ An error occurred in the <PublicRoute> component. Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries. @ http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=2d73f44f:5257
+[ 6864423ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=2d73f44f:14335

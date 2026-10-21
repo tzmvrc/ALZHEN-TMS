@@ -19,14 +19,14 @@ export async function listUsers(_req: Request, res: Response) {
 }
 
 export async function updateUser(req: Request, res: Response) {
-  try { return res.json({ success: true, data: await updateManagedUser(String(req.params.id), req.body ?? {}) }); }
+  try { return res.json({ success: true, data: await updateManagedUser(String(req.params.id), req.body ?? {}, req.user!.id) }); }
   catch (error) { return sendFailure(res, error); }
 }
 
 export async function setProfilePicture(req: Request, res: Response) {
   try {
     if (!Buffer.isBuffer(req.body)) throw new UserServiceError("Choose an image up to 5 MB.", 400);
-    const result = await uploadProfilePicture(String(req.params.id), req.body, String(req.headers["content-type"] ?? ""));
+    const result = await uploadProfilePicture(String(req.params.id), req.body, String(req.headers["content-type"] ?? ""), req.user!.id);
     return res.status(201).json({ success: true, data: result });
   } catch (error) { return sendFailure(res, error); }
 }

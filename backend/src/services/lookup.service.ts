@@ -250,7 +250,9 @@ export async function getStores(
   let queryBuilder = supabaseAdmin
     .from("customer_stores")
     .select(
-      "id, customer_id, code, name, region, province, city, address, status, latitude, longitude" + (await locationVerificationAvailable() ? ", location_verified" : ""),
+      await locationVerificationAvailable()
+        ? "id, customer_id, code, name, region, province, city, address, status, latitude, longitude, location_verified"
+        : "id, customer_id, code, name, region, province, city, address, status, latitude, longitude",
     );
 
   if (query.q) {
@@ -279,9 +281,7 @@ export async function getStores(
   }
 
   queryBuilder = queryBuilder.order(sortBy, { ascending: sortOrder === "asc" });
-  queryBuilder = queryBuilder.limit(LOOKUP_DEFAULT_LIMIT);
-
-  const { data, error } = await queryBuilder;
+  const { data, error } = await queryBuilder.limit(LOOKUP_DEFAULT_LIMIT).overrideTypes<StoreOption[], {merge:false}>();
   if (error) {
     throw new ApiError("Unable to fetch stores", 500, "LOOKUP_QUERY_FAILED");
   }

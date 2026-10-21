@@ -1,6 +1,6 @@
-import { apiGet, apiGetCached, getCachedApiResponse, invalidateApiCache, apiPatch, apiPost, getAppSessionHeaders, handleSessionExpiredResponse, type ApiResponse } from "./api.service";
+import { ApiError, apiGet, apiGetCached, getCachedApiResponse, invalidateApiCache, apiPatch, apiPost, getAppSessionHeaders, handleSessionExpiredResponse, type ApiResponse } from "./api.service";
 
-export type MasterDataKey = "customers" | "warehouses" | "trucks" | "stores" | "store-contacts" | "products";
+export type MasterDataKey = "customers" | "warehouses" | "trucks" | "stores" | "store-contacts" | "products" | "drivers" | "trucking-companies";
 export type MasterDataRow = Record<string, unknown> & { id: string };
 export type MasterDataPage = { location_verification_supported?:boolean; rows: MasterDataRow[]; pagination: { page: number; limit: number; total: number; totalPages: number } };
 export type LocationSearchResult = { display_name: string; latitude: number; longitude: number };
@@ -16,14 +16,15 @@ export type SavedMapLocation = {
   longitude: number;
 };
 
-export const getCachedMasterData=(token:string,resource:MasterDataKey,search="",page=1)=>{
-  const query=new URLSearchParams({page:String(page),limit:"100"});if(search.trim())query.set("search",search.trim());
+export const getCachedMasterData=(token:string,resource:MasterDataKey,search="",page=1,limit=100,sort="",direction="asc")=>{
+  const query=new URLSearchParams({page:String(page),limit:String(limit)});if(search.trim())query.set("search",search.trim());if(sort){query.set("sort",sort);query.set("direction",direction);}
   return getCachedApiResponse<ApiResponse<MasterDataPage>>(`/master-data/${resource}?${query}`,token,5*60_000)?.data??null;
 };
 
-export async function fetchMasterData(token: string, resource: MasterDataKey, search: string, page = 1): Promise<MasterDataPage> {
-  const query = new URLSearchParams({ page: String(page), limit: "100" });
+export async function fetchMasterData(token: string, resource: MasterDataKey, search: string, page = 1, limit=100, sort="", direction="asc"): Promise<MasterDataPage> {
+  const query = new URLSearchParams({ page: String(page), limit: String(limit) });
   if (search.trim()) query.set("search", search.trim());
+  if(sort){query.set("sort",sort);query.set("direction",direction);}
   const response = await apiGetCached<ApiResponse<MasterDataPage>>(`/master-data/${resource}?${query}`, token,30_000);
   if (!response.success || !response.data) throw new Error(response.message ?? "Unable to load master data.");
   return response.data;
@@ -71,7 +72,7 @@ export async function saveMasterData(token: string, resource: MasterDataKey, val
   const response = id
     ? await apiPatch<ApiResponse<MasterDataRow>>(`/master-data/${resource}/${encodeURIComponent(id)}`, values, token)
     : await apiPost<ApiResponse<MasterDataRow>>(`/master-data/${resource}`, values, token);
-  if (!response.success || !response.data) throw new Error(response.message ?? "Unable to save this record.");
+  if (!response.success || !response.data || typeof response.data.id!=="string" || (id&&response.data.id!==id)) throw new Error(response.message ?? "The server did not confirm this record update. Your draft is preserved.");
   invalidateApiCache(`/master-data/${resource}`);
   invalidateApiCache("/lookups/");
   return response.data;
@@ -108,4 +109,15 @@ export async function fetchCalendarEvents(token: string, start: string, end: str
   const response = await apiGet<ApiResponse<Array<{ id: string; date: string; title: string; type: string; detail: string; trip_id?: string | null }>>>(`/calendar/events?${query}`, token);
   if (!response.success || !response.data) throw new Error(response.message ?? "Unable to load calendar events.");
   return response.data;
+}
+
+export async function deleteMasterDataRecords(token:string,resource:MasterDataKey,ids:string[]){
+ const response=await apiPost<ApiResponse<{deleted:string[];failed:Array<{id:string;message:string}>}>>(`/master-data/${resource}/delete-records`,{ids},token);
+ if(!response.success||!response.data)throw Error("Unable to delete the selected records. Please try again.");
+ if(response.data.deleted.length){invalidateApiCache(`/master-data/${resource}`);invalidateApiCache("/lookups/");}
+ return response.data;
+}
+
+export async function readMasterDataRecord(token:string,resource:MasterDataKey,id:string):Promise<MasterDataRow|null>{
+ try{const response=await apiGet<ApiResponse<MasterDataRow>>(`/master-data/${resource}/${encodeURIComponent(id)}`,token);if(!response.success||!response.data)throw Error("Unable to read this record.");return response.data;}catch(error){if(error instanceof ApiError&&error.status===404)return null;throw error;}
 }

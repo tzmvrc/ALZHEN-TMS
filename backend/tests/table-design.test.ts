@@ -33,3 +33,10 @@ test("formula reads without saved overlays do not reread operational reports",as
  (supabaseAdmin as any).from=(table:string)=>{assert.equal(table,"spreadsheet_cell_formulas","no operational source reads are needed for an empty overlay set");const chain:any={select:()=>chain,eq:()=>chain,in:()=>chain,order:()=>chain,range:async()=>({data:[],error:null})};return chain;};
  try{assert.deepEqual(await readSpreadsheetFormulas({profileId:"fixture",role:"ADMIN"},{table_key:"report:dispatch",rows:["trip:223e4567-e89b-42d3-a456-426614174000"]}),{formulas:[],sources:[]});}finally{supabaseAdmin.from=original;}
 });
+
+test("header-only text styling merges independently from body and preserves aliases",()=>{
+ const header={bold:true,italic:true,underline:false,fontSize:16,color:"#123456",backgroundColor:"#fef3c7"};
+ assert.deepEqual(validateDesignPatch({header}),{header});
+ assert.deepEqual(mergeDesign({alias:"Fleet",format:{bold:false},header:{fontSize:12},cells:{row:{color:"#abcdef"}}},{header}),{alias:"Fleet",format:{bold:false},header,cells:{row:{color:"#abcdef"}}});
+ for(const invalid of [{header:{bold:"yes"}},{header:{color:"red"}},{header:{fontSize:60}},{header:{field:"truck_id"}}])assert.throws(()=>validateDesignPatch(invalid));
+});

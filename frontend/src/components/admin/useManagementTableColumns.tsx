@@ -1,10 +1,10 @@
-import { reportColumnAppearance } from "./ReportSpreadsheetUtils";
+import { reportColumnAppearance, chooseAutomaticPinSide } from "./ReportSpreadsheetUtils";
 import { Children, cloneElement, Fragment, isValidElement, type ReactElement, type ReactNode, useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { EyeOff, EllipsisVertical } from "lucide-react";
 import { useSharedTableWidths } from "./useSharedTableWidths";
 import ColumnFinder,{type RowSearch} from "./ColumnFinder";
 import HiddenColumnsControl from "./HiddenColumnsControl";
-import { ReportColumnColorDialog } from "./ReportSpreadsheetShared";
+import { ReportColumnColorDialog, ReportColumnActionsMenu, type SortAction } from "./ReportSpreadsheetShared";
 import {useSharedTableDesign} from "./useSharedTableDesign";
 
 export type ManagementColumn = { key: string; title: string; width?: number };
@@ -18,6 +18,9 @@ function readHidden(key: string) {
  * record IDs, editing and permissions remain owned by each management view. */
 export function useManagementTableColumns(options: {
   table: string; token: string | null; profileId?: string; columns: readonly ManagementColumn[];
+  showFinder?:boolean; reportMenu?:boolean; sortActions?:(key:string)=>SortAction[]; onAutoFit?:()=>void;
+  onRenameColumn?:(key:string)=>void; onRestoreColumnTitle?:(key:string)=>void; onSelectColumn?:(key:string)=>void; onFormatHeader?:(key:string)=>void;
+  contextMenuOnly?: boolean; columnMenuActions?: (column:ManagementColumn)=>ReactNode;
   enabled?: boolean; omitsHiddenCells?: boolean; leadingColumns?: number; leadingWidth?: number; trailingWidth?: number;
   hiddenKeys?: readonly string[]; onReveal?: (key: string) => void; onRestoreAll?: () => void;
   rowSearch?:RowSearch; paused?:boolean; supportsDesign?:boolean; onResizeChange?:(active:boolean)=>void;
@@ -34,6 +37,7 @@ export function useManagementTableColumns(options: {
   const menuPosition=useRef({left:0,top:0});
   const [menu,setMenu]=useState<string|null>(null),[colorColumn,setColorColumn]=useState<string|null>(null);
   useEffect(()=>{if(!menu)return;const close=(event:Event)=>{if(event instanceof KeyboardEvent&&event.key!=="Escape")return;if(event.type==="pointerdown"&&(event.target as HTMLElement).closest('[role="menu"],button[aria-expanded]'))return;setMenu(null);};window.addEventListener("pointerdown",close);window.addEventListener("keydown",close);return()=>{window.removeEventListener("pointerdown",close);window.removeEventListener("keydown",close);};},[menu]);
+  useEffect(()=>{if(options.reportMenu&&options.enabled===false){setMenu(null);setColorColumn(null);}},[options.reportMenu,options.enabled]);
   const widthOwner=`${options.token}:${options.table}`;
   const [appliedWidths,setAppliedWidths]=useState(()=>({owner:widthOwner,widths:shared.widths}));
   useEffect(()=>{let active=true;if(!paused)queueMicrotask(()=>{if(active)setAppliedWidths({owner:widthOwner,widths:shared.widths});});return()=>{active=false;};},[paused,widthOwner,shared.widths]);
@@ -117,15 +121,27 @@ export function useManagementTableColumns(options: {
     });
   };
   return {
-    columnWidth:width,orderedColumns,renderCells,attachViewport, viewportProps: { "data-management-columns": scope },
+    design, saveWidth:shared.save, openColumnMenu:(key:string,x:number,y:number)=>{menuPosition.current={left:Math.max(8,Math.min(x,window.innerWidth-190)),top:Math.max(8,Math.min(y,window.innerHeight-300))};setMenu(key);},
+    columnWidth:width,visibleColumns,orderedColumns,renderCells,attachViewport, viewportProps: { "data-management-columns": scope },
     tableStyle: { tableLayout: "fixed", width: tableWidth, minWidth: "100%" } as CSSProperties,
-    controls: <><style>{css}</style>{colorColumn&&<ReportColumnColorDialog columnName={options.columns.find(c=>c.key===colorColumn)?.title??colorColumn} color={design.columns[colorColumn]?.color??""} onChange={color=>void design.save(colorColumn,{color},width(colorColumn))} onReset={()=>void design.save(colorColumn,{color:null},width(colorColumn))} onClose={()=>setColorColumn(null)} />}<ColumnFinder tableKey={options.enabled===false?undefined:options.table} key={options.table} rowSearch={options.rowSearch} leadingColumns={leading} columns={finderColumns} viewport={viewport} getHeader={(key) => headers.current.get(key)} onReveal={reveal} />{shared.feedback}{design.feedback}</>,
+    controls: <><style>{css}</style>{colorColumn&&<ReportColumnColorDialog columnName={options.columns.find(c=>c.key===colorColumn)?.title??colorColumn} color={design.columns[colorColumn]?.color??""} onChange={color=>void design.save(colorColumn,{color},width(colorColumn))} onReset={()=>void design.save(colorColumn,{color:null},width(colorColumn))} onClose={()=>setColorColumn(null)} />}{options.showFinder!==false&&<ColumnFinder tableKey={options.enabled===false?undefined:options.table} key={options.table} rowSearch={options.rowSearch} leadingColumns={leading} columns={finderColumns} viewport={viewport} getHeader={(key) => headers.current.get(key)} onReveal={reveal} />}{shared.feedback}{design.feedback}</>,
     hiddenControl: <HiddenColumnsControl columns={hiddenColumns} onRestore={reveal} onRestoreAll={restoreAll} />,
     colgroup: <colgroup>{Array.from({ length: leading }, (_, index) => <col key={`leading-${index}`} style={{ width: leadingWidth }} />)}{orderedColumns.filter((column) => !hidden.includes(column.key)).map((column) => <col key={column.key} style={{ width: width(column.key) }} />)}{Boolean(options.trailingWidth) && <col style={{ width: options.trailingWidth }} />}</colgroup>,
+    bodyProps:(key:string)=>({style:cellStyle(key)}),
     headerProps: (key: string) => ({ ref: (element: HTMLTableCellElement | null) => { if (element) headers.current.set(key, element); else headers.current.delete(key); }, style: cellStyle(key,true) }),
     headerControls: (column: ManagementColumn) => <>
-      {canDesign&&<span className="inline-block"><button type="button" aria-label={`${column.title} column options`} aria-expanded={menu===column.key} onClick={event=>{event.stopPropagation();const rect=event.currentTarget.getBoundingClientRect();menuPosition.current={left:Math.min(rect.left,window.innerWidth-180),top:Math.min(rect.bottom,window.innerHeight-260)};setMenu(menu===column.key?null:column.key);}} className="ml-1 rounded p-1 text-slate-500 hover:bg-slate-100"><EllipsisVertical className="h-3 w-3" /></button>{menu===column.key&&<div role="menu" style={{position:"fixed",...menuPosition.current}} aria-label={`${column.title} design`} onKeyDown={event=>{if(event.key==="Escape")setMenu(null);}} className="absolute left-0 top-full z-[90] min-w-40 rounded-lg border border-slate-200 bg-white p-1 text-xs font-normal text-slate-700 shadow-lg">{[["Move left",()=>moveColumn(column.key,-1)],["Move right",()=>moveColumn(column.key,1)],["Pin left",()=>void design.save(column.key,{pin:"left"},width(column.key))],["Pin right",()=>void design.save(column.key,{pin:"right"},width(column.key))],["Unpin",()=>void design.save(column.key,{pin:null},width(column.key))],["Column color",()=>setColorColumn(column.key)]] .map(([label,run])=><button key={String(label)} type="button" role="menuitem" onClick={event=>{event.stopPropagation();(run as ()=>void)();setMenu(null);}} className="block w-full rounded px-3 py-2 text-left hover:bg-slate-100">{String(label)}</button>)}</div>}</span>}
-      {!options.hiddenKeys && <button type="button" aria-label={`Hide ${column.title} column`} title={`Hide ${column.title}`} onClick={(event) => { event.stopPropagation(); hide(column.key); }} className="ml-2 inline-flex rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><EyeOff className="h-3 w-3" /></button>}
+      {canDesign&&<span className="inline-block">{!options.contextMenuOnly&&<button type="button" aria-label={`${column.title} column options`} aria-expanded={menu===column.key} onClick={event=>{event.stopPropagation();const rect=event.currentTarget.getBoundingClientRect();menuPosition.current={left:Math.min(rect.left,window.innerWidth-180),top:Math.min(rect.bottom,window.innerHeight-260)};setMenu(menu===column.key?null:column.key);}} className="ml-1 rounded p-1 text-slate-500 hover:bg-slate-100"><EllipsisVertical className="h-3 w-3" /></button>}{menu===column.key&&(options.reportMenu?<ReportColumnActionsMenu title={design.columns[column.key]?.alias??column.title} position={menuPosition.current} viewportBounded onClose={()=>setMenu(null)} sortActions={options.sortActions?.(column.key)} pinned={!!design.columns[column.key]?.pin} onTogglePin={()=>{
+        const head=headers.current.get(column.key),view=viewport.current;
+        const side=head&&view?chooseAutomaticPinSide(head.getBoundingClientRect(),view.getBoundingClientRect()):"left";
+        void design.save(column.key,{pin:design.columns[column.key]?.pin?null:side},width(column.key));
+      }} onRename={options.onRenameColumn?()=>options.onRenameColumn!(column.key):undefined} onRestoreTitle={options.onRestoreColumnTitle?()=>options.onRestoreColumnTitle!(column.key):undefined} onEditColumn={()=>setColorColumn(column.key)} onHide={()=>hide(column.key)} canHide={visibleColumns.length>1} extraActions={[
+        ...(options.onSelectColumn?[{label:"Select Column",onClick:()=>options.onSelectColumn!(column.key)}]:[]),
+        ...(options.onFormatHeader?[{label:"Format header",onClick:()=>options.onFormatHeader!(column.key)}]:[]),
+        {label:"Move left",onClick:()=>moveColumn(column.key,-1),disabled:orderedColumns[0]?.key===column.key},
+        {label:"Move right",onClick:()=>moveColumn(column.key,1),disabled:orderedColumns.at(-1)?.key===column.key},
+        ...(options.onAutoFit?[{label:"Auto Fit",onClick:options.onAutoFit}]:[])
+      ]}/>:<div role="menu" style={{position:"fixed",...menuPosition.current}} aria-label={`${column.title} design`} onKeyDown={event=>{if(event.key==="Escape")setMenu(null);}} className="absolute left-0 top-full z-[90] min-w-40 rounded-lg border border-slate-200 bg-white p-1 text-xs font-normal text-slate-700 shadow-lg">{options.columnMenuActions?.(column)}{[...(options.contextMenuOnly?[["Hide column",()=>hide(column.key)]]:[]),["Move left",()=>moveColumn(column.key,-1)],["Move right",()=>moveColumn(column.key,1)],["Pin left",()=>void design.save(column.key,{pin:"left"},width(column.key))],["Pin right",()=>void design.save(column.key,{pin:"right"},width(column.key))],["Unpin",()=>void design.save(column.key,{pin:null},width(column.key))],["Column color",()=>setColorColumn(column.key)]] .map(([label,run])=><button key={String(label)} type="button" role="menuitem" onClick={event=>{event.stopPropagation();(run as ()=>void)();setMenu(null);}} className="block w-full rounded px-3 py-2 text-left hover:bg-slate-100">{String(label)}</button>)}</div>)}</span>}
+      {!options.contextMenuOnly && !options.hiddenKeys && <button type="button" aria-label={`Hide ${column.title} column`} title={`Hide ${column.title}`} onClick={(event) => { event.stopPropagation(); hide(column.key); }} className="ml-2 inline-flex rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><EyeOff className="h-3 w-3" /></button>}
       <span role="separator" tabIndex={0} aria-label={`Resize ${column.title}`} aria-orientation="vertical" aria-valuemin={60} aria-valuemax={1600} aria-valuenow={width(column.key)} onPointerDown={(event) => startResize(event, column)} onClick={(event) => { event.preventDefault(); event.stopPropagation(); }} onKeyDown={(event) => { if (["ArrowLeft", "ArrowRight"].includes(event.key)) { event.preventDefault(); event.stopPropagation(); void shared.save(column.key, Math.max(60, Math.min(1600, width(column.key) + (event.key === "ArrowRight" ? 10 : -10)))); } }} className="absolute inset-y-0 right-0 z-20 w-1.5 cursor-col-resize touch-none hover:bg-blue-400/50 focus-visible:bg-blue-400/50 focus-visible:outline-none" />
     </>,
   };

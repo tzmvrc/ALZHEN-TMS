@@ -1,3 +1,4 @@
+import userWorkspaceRoutes from "./user-workspace.routes.js";
 import { Router } from "express";
 import express from "express";
 
@@ -6,6 +7,7 @@ import { authMiddleware } from "../middleware/auth.middleware.js";
 import { requireAdmin } from "../middleware/role.middleware.js";
 
 const router = Router();
+router.use(userWorkspaceRoutes);
 
 router.post("/", authMiddleware, requireAdmin, createUser);
 router.get("/", authMiddleware, requireAdmin, listUsers);

@@ -86,6 +86,7 @@ export async function logoutUser() {
 export async function loginAppUser(email: string, password: string) {
   const result = await loginUser(email, password);
   const profile = await getCurrentUserProfile(result.user.id);
+  if ((profile as any).deactivated_at) throw new Error("This account is not authorized to use the application.");
   const role = String(profile.role).trim().toUpperCase();
   if (role === "TRUCKER") {
     const appSessionId = await createTruckerSession(result.user.id);

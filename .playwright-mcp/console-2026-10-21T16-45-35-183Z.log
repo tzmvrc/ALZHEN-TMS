@@ -1,0 +1,33 @@
+[     490ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=2d73f44f:14335
+[   63337ms] [ERROR] WebSocket connection to 'ws://localhost:5000/socket.io/?EIO=4&transport=websocket' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/node_modules/.vite/deps/socket__io-client.js?v=2d73f44f:980
+[   65668ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5000/api/realtime/changes:0
+[   66140ms] [ERROR] WebSocket connection to 'ws://localhost:5000/socket.io/?EIO=4&transport=websocket' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/node_modules/.vite/deps/socket__io-client.js?v=2d73f44f:980
+[  672888ms] [INFO] [report-edit-diagnostic] ReportDataView mounted {mode: development, development: true} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792601011939:266
+[  672909ms] [INFO] [report-edit-diagnostic] ReportDataView mounted {mode: development, development: true} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792601011939:266
+[  675755ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 200, rowCount: 0} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792601011939:266
+[  675756ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 200, rowCount: 0} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792601011939:266
+[  675756ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 200, rowCount: 0} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792601011939:266
+[ 1124537ms] [ERROR] WebSocket connection to 'ws://localhost:5000/socket.io/?EIO=4&transport=websocket' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/node_modules/.vite/deps/socket__io-client.js?v=2d73f44f:980
+[ 1126050ms] [ERROR] WebSocket connection to 'ws://localhost:5000/socket.io/?EIO=4&transport=websocket' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/node_modules/.vite/deps/socket__io-client.js?v=2d73f44f:980
+[ 1132014ms] [ERROR] WebSocket connection to 'ws://localhost:5000/socket.io/?EIO=4&transport=websocket' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/node_modules/.vite/deps/socket__io-client.js?v=2d73f44f:980
+[ 1285123ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=2d73f44f:14335
+[ 1285510ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://localhost:5000/api/auth/session/bootstrap:0
+[ 1285834ms] [ERROR] Failed to load resource: the server responded with a status of 403 () @ https://hdmknewarynwpbrhfgai.supabase.co/auth/v1/logout?scope=global:0
+[ 5532263ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=2d73f44f:14335
+[ 6630543ms] Error: useAuth must be used within an AuthProvider
+    at useAuth (http://localhost:5173/src/context/AuthContext.tsx?t=1792607763905:433:9)
+    at PublicRoute (http://localhost:5173/src/components/PublicRoute.tsx?t=1792607763905:8:37)
+    at Object.react_stack_bottom_frame (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=2d73f44f:12866:12)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=2d73f44f:4213:19)
+    at updateFunctionComponent (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=2d73f44f:5569:16)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=2d73f44f:6140:20)
+    at runWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=2d73f44f:851:66)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=2d73f44f:8429:92)
+    at workLoopSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=2d73f44f:8325:37)
+    at renderRootSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=2d73f44f:8309:6)
+[ 6630532ms] [WARNING] %s
+
+%s
+ An error occurred in the <PublicRoute> component. Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries. @ http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=2d73f44f:5257
+[ 6630924ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=2d73f44f:14335

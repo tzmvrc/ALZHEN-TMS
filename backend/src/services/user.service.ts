@@ -285,6 +285,7 @@ export type ManagedUser = {
 export async function listManagedUsers(): Promise<ManagedUser[]> {
   const { data: profileRows, error } = await supabaseAdmin.from("profiles")
     .select("id,first_name,last_name,role,is_admin,profile_picture_path")
+    .is("deactivated_at",null)
     .in("role", ["ADMIN", "STAFF", "TRUCKER"]).order("created_at", { ascending: false });
   if (error) throw new UserServiceError("Unable to load user profiles.", 502);
   const profiles = profileRows ?? [];
@@ -317,41 +318,37 @@ export async function listManagedUsers(): Promise<ManagedUser[]> {
   }));
 }
 
-export async function updateManagedUser(id: string, input: Record<string, unknown>) {
+export async function updateManagedUser(id: string, input: Record<string, unknown>, actorId: string) {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) throw new UserServiceError("Invalid user id.", 400);
   const firstName = normalizeRequiredString(input.first_name, "First name");
   const lastName = normalizeRequiredString(input.last_name, "Last name");
   const email = normalizeEmail(normalizeRequiredString(input.email, "Email"));
-  const { data: profile, error: profileReadError } = await supabaseAdmin.from("profiles").select("id,role,is_admin").eq("id", id).maybeSingle();
+  const { data: profile, error: profileReadError } = await supabaseAdmin.from("profiles").select("id,role,is_admin,deactivated_at").eq("id", id).maybeSingle();
   if (profileReadError || !profile || !["ADMIN", "STAFF", "TRUCKER"].includes(String(profile.role))) throw new UserServiceError("User profile not found.", 404);
+  if((profile as any).deactivated_at)throw new UserServiceError("This account has been deactivated and is retained for history.",409);
   const role = profile.role as "ADMIN" | "STAFF" | "TRUCKER";
   let driverFields: Awaited<ReturnType<typeof normalizeDriverFields>> | null = null;
   if (role === "TRUCKER") driverFields = await normalizeDriverFields(input);
   const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(id, { email, email_confirm: true, user_metadata: { first_name: firstName, last_name: lastName } });
   if (authError) throw new UserServiceError(/already|exists|duplicate/i.test(authError.message) ? "A user with this email already exists." : "Unable to update the Auth user.", /already|exists|duplicate/i.test(authError.message) ? 409 : 502);
-  const { error: profileError } = await supabaseAdmin.from("profiles").update({ first_name: firstName, last_name: lastName, updated_at: new Date().toISOString() }).eq("id", id);
-  if (profileError) throw new UserServiceError("Auth email was updated but the profile could not be updated. Refresh and retry.", 502);
-  if (driverFields) {
-    const { data: driver, error: driverError } = await supabaseAdmin.from("drivers").update({ ...driverFields, first_name: firstName, last_name: lastName, updated_at: new Date().toISOString() }).eq("profile_id", id).select("id").maybeSingle();
-    if (driverError || !driver) throw new UserServiceError("Profile was updated but its driver record could not be found or updated.", 502);
-  }
+  const {error:profileError}=await (supabaseAdmin as any).rpc("user_profile_patch_v1",{p_actor:actorId,p_subject:id,p_patch:{first_name:firstName,last_name:lastName,contact_number:optionalText(input.contact_number,"Contact number"),...(driverFields?{license_number:driverFields.license_number,trucking_company_id:driverFields.trucking_company_id,driver_status:driverFields.status,driver_notes:driverFields.notes}:{})}});
+  if(profileError)throw new UserServiceError("The account email was confirmed but profile changes were not saved. Refresh and retry.",502);
   return { id, first_name: firstName, last_name: lastName, email, role };
 }
 
-export async function uploadProfilePicture(id: string, body: Buffer, mime: string) {
+export async function uploadProfilePicture(id: string, body: Buffer, mime: string, actorId: string = id) {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) throw new UserServiceError("Invalid user id.", 400);
   if (!body.length || body.length > 5 * 1024 * 1024) throw new UserServiceError("Choose an image up to 5 MB.", 400);
   if (!new Set(["image/jpeg", "image/png", "image/webp"]).has(mime)) throw new UserServiceError("Use a JPEG, PNG, or WebP image.", 400);
   if (imageMime(body) !== mime) throw new UserServiceError("The selected file does not match its image type.", 400);
   const extension = mime === "image/jpeg" ? "jpg" : mime === "image/png" ? "png" : "webp";
   const path = `${id}/${randomUUID()}.${extension}`;
+  const staged=await (supabaseAdmin as any).from("user_maintenance_jobs").insert({profile_id:id,kind:"CLEANUP_PICTURE",dedupe_key:`picture:${path}`,payload:{path},next_attempt_at:new Date(Date.now()+24*60*60_000).toISOString()});
+  if(staged.error)throw new UserServiceError("Image cleanup could not be prepared. No upload was started.",503);
   const { error: uploadError } = await supabaseAdmin.storage.from("profile-pictures").upload(path, body, { contentType: mime, upsert: false });
   if (uploadError) throw new UserServiceError("Profile picture upload failed. Check the existing private profile-pictures bucket.", 502);
-  const { error: updateError } = await supabaseAdmin.from("profiles").update({ profile_picture_path: path, updated_at: new Date().toISOString() }).eq("id", id);
-  if (updateError) {
-    await supabaseAdmin.storage.from("profile-pictures").remove([path]);
-    throw new UserServiceError("Picture uploaded but could not be attached to the profile.", 502);
-  }
+  const {error:updateError}=await (supabaseAdmin as any).rpc("user_profile_picture_v1",{p_actor:actorId,p_subject:id,p_path:path});
+  if(updateError)throw new UserServiceError("The image could not be attached. Your previous picture is unchanged; uploaded-file cleanup is queued.",502);
   const { data } = await supabaseAdmin.storage.from("profile-pictures").createSignedUrl(path, 60 * 60);
   return { path, signed_url: data?.signedUrl ?? null };
 }

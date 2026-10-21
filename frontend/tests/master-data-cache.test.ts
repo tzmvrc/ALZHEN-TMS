@@ -11,3 +11,8 @@ test("master pages share warmup/navigation cache, isolate users and invalidate a
   await fetchMasterData("owner","trucks","");assert.equal(reads,2);
  }finally{globalThis.fetch=original;clearApiCache();}
 });
+
+test("cell saves reject a canonical response for a different physical record",async()=>{
+ const original=globalThis.fetch;globalThis.fetch=async()=>new Response(JSON.stringify({success:true,data:{id:"different-record",name:"Unexpected"}}));
+ try{await assert.rejects(saveMasterData("owner","warehouses",{name:"Changed"},"selected-record"),/did not confirm/);}finally{globalThis.fetch=original;clearApiCache();}
+});

@@ -11,6 +11,7 @@ import {
 } from "../../services/lookup.service";
 
 type SearchableRelationshipEditorProps = {
+  optionLoader?:(query:string)=>Promise<RelationshipOption[]>;
   token: string;
   kind: RelationshipKind;
   value: string;
@@ -28,6 +29,7 @@ type SearchableRelationshipEditorProps = {
 };
 
 export default function SearchableRelationshipEditor({
+  optionLoader,
   token,
   kind,
   value,
@@ -50,7 +52,7 @@ export default function SearchableRelationshipEditor({
   const inputRef = useRef<HTMLInputElement>(null);
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [options, setOptions] = useState<RelationshipOption[]>(()=>getCachedRelationshipOptions(token,kind,"",{storeId,customerId})??[]);
+  const [options, setOptions] = useState<RelationshipOption[]>(()=>optionLoader?[]:getCachedRelationshipOptions(token,kind,"",{storeId,customerId})??[]);
   const [activeIndex, setActiveIndex] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -59,15 +61,15 @@ export default function SearchableRelationshipEditor({
   useEffect(() => {
     if (!isOpen) return;
     let active = true;
-    const cached=getCachedRelationshipOptions(token,kind,query,{storeId,customerId});
+    const cached=optionLoader?null:getCachedRelationshipOptions(token,kind,query,{storeId,customerId});
     if(cached){setOptions(cached);setLoading(false);}
     const timer = window.setTimeout(() => {
       setLoading(true);
       setError("");
-      void searchRelationshipOptions(token, kind, query, {
+      void (optionLoader?optionLoader(query):searchRelationshipOptions(token, kind, query, {
         storeId,
         customerId,
-      })
+      }))
         .then((result) => {
           if (!active) return;
           setOptions(result);
@@ -92,7 +94,7 @@ export default function SearchableRelationshipEditor({
       active = false;
       window.clearTimeout(timer);
     };
-  }, [customerId, isOpen, kind, query, storeId, token, value]);
+  }, [customerId, isOpen, kind, query, storeId, token, value,optionLoader]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -126,7 +128,7 @@ export default function SearchableRelationshipEditor({
   }
 
   const identityFields=kind==="warehouses"?["warehouse_code","warehouse_name"]:kind==="stores"?["store_code","store_name","ship_to"]:kind==="customers"?["customer_code","customer_name"]:["sku","model_code","product_name"];
-  const canCreate=creatableRelationship(kind)&&["ADMIN","STAFF"].includes(profile?.role??"")&&Boolean(query.trim())&&!loading&&!error&&!options.some(option=>[option.id,option.label,...identityFields.map(field=>option.values?.[field]??"")].some(value=>normalizeRelationship(value)===normalizeRelationship(query)));
+  const canCreate=!optionLoader&&creatableRelationship(kind)&&["ADMIN","STAFF"].includes(profile?.role??"")&&Boolean(query.trim())&&!loading&&!error&&!options.some(option=>[option.id,option.label,...identityFields.map(field=>option.values?.[field]??"")].some(value=>normalizeRelationship(value)===normalizeRelationship(query)));
   const beginCreate=()=>{createRef.current=true;setCreating(true);};
   function handleKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
     if (event.key === "ArrowDown") {

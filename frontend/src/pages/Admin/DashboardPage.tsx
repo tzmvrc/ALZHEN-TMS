@@ -1,5 +1,6 @@
 import {workspaceReportFromLocation} from "../../services/trips-workspace";
-import { apiGet,type ApiResponse } from "../../services/api.service";
+import {fetchUserProfile} from "../../services/user-workspace.service";
+import { apiGet,invalidateApiCache,type ApiResponse } from "../../services/api.service";
 import {useNavigate,useParams,useSearchParams,useLocation} from "react-router-dom";
 // src/pages/Admin/DashboardPage.tsx
 import { lazy, Suspense, useCallback,useEffect, useMemo, useRef, useState } from "react";
@@ -24,6 +25,7 @@ import {
   BriefcaseBusiness,
 } from "lucide-react";
 import type { DashboardData } from "../../types/dashboard";
+const UserProfilePage = lazy(() => import("./views/UserProfilePage"));
 const OverviewView = lazy(() => import("./views/OverviewView"));
 import LiveTripAlerts from "../../components/admin/LiveTripAlerts";
 const ResourceView = lazy(() => import("./views/ResourceView"));
@@ -38,6 +40,7 @@ import {
   type AdminNotificationTarget,
 } from "../../services/notification.service";
 import {
+  subscribeToAdminRealtime,
   subscribeToTable,
   startAdminRealtime,
   type RealtimePayload,
@@ -57,7 +60,7 @@ export interface DashboardPageProps {
 type ClientTab = "website-preview" | "trucks" | "announcements" | "careers";
 
 const normalizeMainSection = (value: string) => {
-  if(value.startsWith("trip-detail:"))return value;
+  if(value.startsWith("trip-detail:")||value==="profile"||value.startsWith("profile:"))return value;
   if(["reports","offloads","offload-reports","operations-reports","backloads"].includes(value))return "trips";
   if (value === "notifications") return "notifications";
   if (["dispatches", "deliveries", "monitoring"].includes(value))
@@ -99,8 +102,16 @@ export default function DashboardPage({
   onLogout,
 }: DashboardPageProps) {
   const { logout, profile, user, accessToken } = useAuth();
+  const [personalProfile,setPersonalProfile]=useState<{id:string;first_name?:string;last_name?:string;profile_picture_url?:string|null}|null>(null);
+  useEffect(()=>{
+    if(!accessToken||!profile?.id)return;let live=true;let timer:ReturnType<typeof setTimeout>|undefined;
+    const refresh=()=>{if(timer)return;timer=setTimeout(()=>{timer=undefined;invalidateApiCache(`/users/${profile.id}/profile`);void fetchUserProfile(accessToken,profile.id).then(value=>{if(live)setPersonalProfile(value);}).catch(()=>{});},200);};
+    const stop=subscribeToAdminRealtime(event=>{if(event.kind==="resume"||event.kind==="batch"&&event.tables.includes("profiles")||event.kind==="change"&&event.payload.table==="profiles"&&(event.payload.new?.id===profile.id||event.payload.old?.id===profile.id))refresh();});
+    const local=(event:Event)=>{const value=(event as CustomEvent).detail;if(value?.id===profile.id)setPersonalProfile(current=>({...current,...value}));};window.addEventListener("alzhen:profile-updated",local);
+    return()=>{live=false;clearTimeout(timer);stop();window.removeEventListener("alzhen:profile-updated",local);};
+  },[accessToken,profile?.id]);
   const displayName =
-    [profile?.first_name, profile?.last_name].filter(Boolean).join(" ") ||
+    [personalProfile?.id===profile?.id?personalProfile?.first_name??profile?.first_name:profile?.first_name, personalProfile?.id===profile?.id?personalProfile?.last_name??profile?.last_name:profile?.last_name].filter(Boolean).join(" ") ||
     user?.email ||
     data.user.name;
   const pendingRequestCount = usePendingRequestCount();
@@ -115,9 +126,10 @@ export default function DashboardPage({
   const [localActiveId, setLocalActiveId] = useState(() =>
     requestedSheet ? "trips" : normalizeMainSection(data.nav.activeId),
   );
-  const route=useParams<{tripId:string}>(),navigate=useNavigate(),[routeQuery]=useSearchParams();
-  const activeId=route.tripId?`trip-detail:${route.tripId}:dispatches${routeQuery.get("stop")?`:stop:${routeQuery.get("stop")}`:""}`:localActiveId;
+  const route=useParams<{tripId:string;userId:string}>(),navigate=useNavigate(),[routeQuery]=useSearchParams();
+  const activeId=location.pathname==="/profile"||route.userId?`profile:${route.userId??profile?.id??""}`:route.tripId?`trip-detail:${route.tripId}:dispatches${routeQuery.get("stop")?`:stop:${routeQuery.get("stop")}`:""}`:localActiveId;
   const setActiveId=useCallback((next:string)=>{
+    if(next==="profile"||next.startsWith("profile:")){navigate(next==="profile"?"/profile":`/users/${encodeURIComponent(next.slice(8))}`);return;}
     if(next.startsWith("trip-detail:")){const [,trip,,scope,stop]=next.split(":");navigate(`/trips/${encodeURIComponent(trip)}${scope==="stop"&&stop?`?stop=${encodeURIComponent(stop)}`:""}`);}
     else {setLocalActiveId(next);if(route.tripId||location.pathname!=="/")navigate("/");}
   },[navigate,route.tripId,location.pathname]);
@@ -622,7 +634,7 @@ export default function DashboardPage({
               : profile?.role
           }
           userInitial={displayName.charAt(0).toUpperCase()}
-          userPictureUrl={profile?.profile_picture_url}
+          userPictureUrl={personalProfile && personalProfile.id===profile?.id?personalProfile.profile_picture_url:profile?.profile_picture_url}
           onCollapseChange={setSidebarCollapsed}
         />
 
@@ -680,7 +692,7 @@ export default function DashboardPage({
                 ) : null
               ) : activeId === "trips" ? (
                 null
-              ) : activeId === "truckers" ? (
+              ) : activeId.startsWith("profile:") ? (<UserProfilePage key={activeId} userId={activeId.slice(8)} />) : activeId === "truckers" ? (
                 <ResourceView
                   id="truckers"
                   data={filteredData}

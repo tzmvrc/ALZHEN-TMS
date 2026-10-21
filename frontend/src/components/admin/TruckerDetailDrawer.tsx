@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { CalendarDays, CarFront, LoaderCircle, Mail, Phone, Route, Truck, UserCircle2, X, Pencil, Plus } from "lucide-react";
 import DriverTruckAssignmentForm from "./DriverTruckAssignmentForm";
 
@@ -46,7 +46,6 @@ export default function TruckerDetailDrawer({
   const [assigning, setAssigning] = useState(false);
   const [savingAssignment, setSavingAssignment] = useState(false);
   const [assignmentNotice, setAssignmentNotice] = useState("");
-  const initialTrip = useMemo(() => trucker?.active_trip?.id ? { ...trucker.active_trip, id: trucker.active_trip.id } : null, [trucker]);
   if (!trucker) return loading ? (
     <div className="fixed inset-0 z-[2000] flex items-end justify-center bg-slate-900/20 p-0 backdrop-blur-[2px] sm:items-center sm:p-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !savingAssignment) onClose(); }}>
       <section role="dialog" aria-modal="true" aria-label="Loading trucker details" className="flex w-full max-w-sm flex-col items-center gap-3 rounded-t-2xl border border-slate-200 bg-white p-8 text-center shadow-[0_24px_60px_rgba(11,35,65,0.28)] sm:rounded-2xl">
@@ -93,7 +92,7 @@ export default function TruckerDetailDrawer({
               {canAssignTruck && <button type="button" onClick={() => { setAssigning(value => !value); setAssignmentNotice(""); }} disabled={savingAssignment} aria-expanded={assigning} className="inline-flex items-center gap-2 rounded-full bg-[#ffd43b] px-3 py-2 text-xs font-semibold text-[#0b2341]"><Plus className="h-3.5 w-3.5" />Assign truck</button>}
             </div></div>
             {assignmentNotice && <p role="status" className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-800">{assignmentNotice}</p>}
-            {assigning && <DriverTruckAssignmentForm driverId={trucker.driver_id ?? trucker.id} initialTrip={initialTrip} onCancel={() => setAssigning(false)} onBusyChange={setSavingAssignment} onSaved={() => { setAssigning(false); setAssignmentNotice("Truck assigned successfully."); onAssigned?.(); }} />}
+            {assigning && <DriverTruckAssignmentForm driverId={trucker.driver_id ?? trucker.id} onCancel={() => setAssigning(false)} onBusyChange={setSavingAssignment} onSaved={() => { setAssigning(false); setAssignmentNotice("Current truck assignment updated."); onAssigned?.(); }} />}
           </section>}
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
             <section className="rounded-2xl border border-slate-200/80 bg-white p-3.5">

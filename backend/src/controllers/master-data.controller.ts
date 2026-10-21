@@ -1,5 +1,6 @@
+import {ApiError} from "../utils/api-response.js";
 import type { Request, Response } from "express";
-import { listMasterData, saveMasterData } from "../services/master-data.service.js";
+import { deleteMasterDataRecords, listMasterData, readMasterDataRecord, saveMasterData } from "../services/master-data.service.js";
 import { LocationSearchError, searchLocations } from "../services/location-search.service.js";
 import { deleteTruckImage, listTruckImages, TruckImageError, uploadTruckImage } from "../services/truck-image.service.js";
 
@@ -17,6 +18,7 @@ export async function searchWarehouseLocations(req: Request, res: Response) {
 }
 
 function failure(res: Response, error: unknown) {
+  if(error instanceof ApiError)return res.status(error.statusCode).json({success:false,message:error.message});
   const message = error instanceof Error ? error.message : "Master data request failed.";
   const duplicate = /already exists/i.test(message);
   const invalidInput = /required|valid|cannot|unsupported|number|true or false|references|at least one|outside|not allowed|must be/i.test(message);
@@ -64,3 +66,10 @@ export async function removeImage(req: Request, res: Response) {
   try { return res.json({ success: true, data: await deleteTruckImage(String(req.params.truckId), String(req.params.imageId)) }); }
   catch (error) { return truckImageFailure(res, error); }
 }
+
+export async function removeRecords(req:Request,res:Response){
+ try{return res.json({success:true,data:await deleteMasterDataRecords(String(req.params.resource),req.body?.ids,{id:req.profile!.id,role:req.profile!.role})});}
+ catch(error){const status=error&&typeof error==="object"&&"statusCode" in error?Number(error.statusCode):400;return res.status(status).json({success:false,message:"Unable to delete the selected records. Check your selection and permissions."});}
+}
+
+export async function read(req:Request,res:Response){try{return res.json({success:true,data:await readMasterDataRecord(String(req.params.resource),String(req.params.id))});}catch(error){return failure(res,error);}}
