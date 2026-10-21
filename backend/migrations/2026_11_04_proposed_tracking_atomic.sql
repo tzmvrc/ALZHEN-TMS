@@ -74,7 +74,7 @@ BEGIN
   PERFORM 1 FROM public.trip_stops WHERE trip_id=(a->>'tripId')::uuid ORDER BY id FOR SHARE;
   PERFORM 1 FROM public.customer_stores WHERE id IN (SELECT store_id FROM public.trip_stops WHERE trip_id=(a->>'tripId')::uuid) ORDER BY id FOR SHARE;
  END IF;
- SELECT coalesce(jsonb_agg(jsonb_build_object('id',s.id,'name',coalesce(st.name,'Destination'),'latitude',st.latitude,'longitude',st.longitude)
+ SELECT coalesce(jsonb_agg(jsonb_build_object('id',s.id,'name',coalesce(st.name,'Destination'),'latitude',CASE WHEN coalesce((to_jsonb(st)->>'location_verified')::boolean,false) THEN st.latitude ELSE NULL END,'longitude',CASE WHEN coalesce((to_jsonb(st)->>'location_verified')::boolean,false) THEN st.longitude ELSE NULL END)
   ORDER BY s.stop_sequence,s.id),'[]'::jsonb) INTO points FROM public.trip_stops s
   LEFT JOIN public.customer_stores st ON st.id=s.store_id
   WHERE s.trip_id=(a->>'tripId')::uuid AND s.archived_at IS NULL AND coalesce(s.delivery_status,'PENDING') NOT IN ('COMPLETED','DELIVERED','CANCELLED');

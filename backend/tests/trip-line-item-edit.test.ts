@@ -11,15 +11,15 @@ const lineId = "523e4567-e89b-42d3-a456-426614174000";
 const otherLineId = "723e4567-e89b-42d3-a456-426614174000";
 const thirdLineId = "923e4567-e89b-42d3-a456-426614174000";
 
-test("line-item editors validate integer quantity and retain decimal CBM precision", async () => {
+test("line-item editors validate numeric quantity and preserve decimal strings for PostgreSQL numeric", async () => {
   process.env.SUPABASE_URL = "http://127.0.0.1:54321";
   process.env.SUPABASE_SERVICE_ROLE_KEY = "isolated-test";
   process.env.SUPABASE_ANON_KEY = "isolated-test";
   const { buildTripLineItemPayload } = await import("../src/services/trip.service.js");
-  assert.deepEqual(buildTripLineItemPayload({ quantity: "4", cbm: "0.123456" }), { quantity: 4, cbm: 0.123456 });
-  assert.throws(() => buildTripLineItemPayload({ quantity: "4.5" }), /whole number/);
+  assert.deepEqual(buildTripLineItemPayload({ quantity: "4", cbm: "0.123456" }), { quantity: "4", cbm: "0.123456" });
+  assert.deepEqual(buildTripLineItemPayload({ quantity: "4.5", unit_cbm: "0.123456789123456789" }), { quantity: "4.5", unit_cbm: "0.123456789123456789" });
   assert.throws(() => buildTripLineItemPayload({ quantity: "-1" }), /non-negative/);
-  assert.throws(() => buildTripLineItemPayload({ cbm: "not a number" }), /valid number/);
+  assert.throws(() => buildTripLineItemPayload({ cbm: "not a number" }), /non-negative decimal/);
 });
 
 test("scoped update rejects another stop, successful saves recalculate totals, and failed saves preserve values", async () => {

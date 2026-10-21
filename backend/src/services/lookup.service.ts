@@ -2,6 +2,7 @@ import { supabaseAdmin } from "../config/supabase.js";
 import { ApiError } from "../utils/api-response.js";
 import { normalizeSortOrder, normalizeText } from "../utils/validation.js";
 import { buildIlikeOrFilter } from "../utils/postgrest-search.js";
+import { locationVerificationAvailable } from "./location-verification.schema.js";
 import type {
   DriverOption,
   IncidentReasonOption,
@@ -249,7 +250,7 @@ export async function getStores(
   let queryBuilder = supabaseAdmin
     .from("customer_stores")
     .select(
-      "id, customer_id, code, name, region, province, city, address, status",
+      "id, customer_id, code, name, region, province, city, address, status, latitude, longitude" + (await locationVerificationAvailable() ? ", location_verified" : ""),
     );
 
   if (query.q) {
@@ -444,6 +445,10 @@ export async function getTrucks(
     ),
   ];
   const companyNameMap = await getCompanyNameMap(companyIds);
+  const defaults = new Map<string,Record<string,unknown>[]>();
+  const truckIds = (data??[]).map(row=>String(row.id));
+  for(let offset=0;offset<truckIds.length;offset+=100){const result=await supabaseAdmin.from("drivers").select("id,first_name,last_name,status,assigned_truck_id").in("assigned_truck_id",truckIds.slice(offset,offset+100));if(result.error){if(["42703","PGRST204"].includes(result.error.code))break;throw new ApiError("Unable to verify default drivers",503,"LOOKUP_QUERY_FAILED");}for(const driver of result.data??[]){if(String(driver.status??"ACTIVE").toUpperCase()!=="ACTIVE")continue;const key=String(driver.assigned_truck_id);defaults.set(key,[...(defaults.get(key)??[]),driver]);}}
+
 
   return ((data ?? []) as Record<string, unknown>[]).map((row) => {
     const companyId =
@@ -452,6 +457,9 @@ export async function getTrucks(
         : null;
     return {
       id: String(row.id),
+      default_driver_id: defaults.get(String(row.id))?.length===1 ? defaults.get(String(row.id))![0].id : null,
+      default_driver_name: defaults.get(String(row.id))?.length===1 ? [defaults.get(String(row.id))![0].first_name,defaults.get(String(row.id))![0].last_name].filter(Boolean).join(" ") : null,
+      default_driver_ambiguous: (defaults.get(String(row.id))?.length??0)>1,
       plate_number:
         typeof row.plate_number === "string" ? row.plate_number : null,
       truck_type: typeof row.truck_type === "string" ? row.truck_type : null,

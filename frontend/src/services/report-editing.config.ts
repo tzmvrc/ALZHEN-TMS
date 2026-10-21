@@ -571,6 +571,15 @@ export function getReportEditDefinition(
   columnKey: string,
   row?: Record<string, unknown>,
 ): ReportEditDefinition | null {
+  if (["combined", "dispatch", "trip-booking", "dispatch-monitoring"].includes(reportKey) && [
+    "sp_reference", "ph_truck_reference", "dn_reference", "order_item_number", "so_number",
+    "stock_quantity", "unit_cbm", "so_approval_date", "item_status", "source_warehouse",
+    "source_product_category", "source_province", "source_city",
+  ].includes(columnKey)) {
+    // Approval timestamps are edited as source-local text to prevent browser timezone conversion.
+    return lineItemField(columnKey, columnKey, ["stock_quantity", "unit_cbm"].includes(columnKey) ? "number" : "text");
+  }
+  if (reportKey === "dispatch-monitoring" && row?.trip_line_item_id && lineItemScalars[columnKey]) return lineItemScalars[columnKey];
   if (columnKey === "trip_number" || columnKey === "trip_reference") return null;
   if (columnKey === "dispatch_number") return tripScalars.dispatch_number;
   if (columnKey === "stop_dispatch_reference") return row?.trip_stop_id || row?._trip_stop_id ? stopScalars.dispatch_number : null;

@@ -2,7 +2,7 @@ import { apiGet, apiGetCached, getCachedApiResponse, invalidateApiCache, apiPatc
 
 export type MasterDataKey = "customers" | "warehouses" | "trucks" | "stores" | "store-contacts" | "products";
 export type MasterDataRow = Record<string, unknown> & { id: string };
-export type MasterDataPage = { rows: MasterDataRow[]; pagination: { page: number; limit: number; total: number; totalPages: number } };
+export type MasterDataPage = { location_verification_supported?:boolean; rows: MasterDataRow[]; pagination: { page: number; limit: number; total: number; totalPages: number } };
 export type LocationSearchResult = { display_name: string; latitude: number; longitude: number };
 export type SavedMapLocation = {
   id: string;
@@ -42,6 +42,7 @@ export async function fetchSavedMapLocations(token: string): Promise<SavedMapLoc
   }));
 
   return pages.flatMap(({ resource, rows }) => rows.flatMap((row): SavedMapLocation[] => {
+    if (row.location_verified !== true) return [];
     const latitude = Number(row.latitude);
     const longitude = Number(row.longitude);
     if (

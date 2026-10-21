@@ -5,7 +5,7 @@ import { invalidateOperationalFormulaReads, readOperationalFormulas,saveOperatio
 import { subscribeToAdminRealtime } from "../../services/realtime.service";
 import { useSpreadsheetFeedback } from "./SpreadsheetPresentation";
 type Row=Record<string,any>;type Column={key:string;title?:string;type?:string};
-export type FormulaSourceEditor={value:string;writable:boolean;reason?:string;save:(value:string)=>Promise<boolean>;cancel?:()=>void};
+export type FormulaSourceEditor={value:string;writable:boolean;allowExpression?:boolean;reason?:string;save:(value:string)=>Promise<boolean>;cancel?:()=>void};
 const cellKey=(row:string,column:string)=>`${row}\0${column}`;
 const EMPTY_FORMULAS:FormulaSnapshot={formulas:[],sources:[]};
 const NO_VIRTUAL_ROWS:Array<{id:string}>=[];
@@ -14,7 +14,7 @@ const text=(value:unknown)=>value===null||value===undefined?"":typeof value==="o
 export function useOperationalFormulas<R extends Row>({token,table,rows,columns,identity,canEdit,paused=false,rowOffset=0,enabled=true,sourceEditor,virtualRows=NO_VIRTUAL_ROWS,onSelect}:{token:string|null;table:string;rows:R[];columns:Column[];identity:(row:R)=>string|null;canEdit:boolean;paused?:boolean;rowOffset?:number;enabled?:boolean;sourceEditor?:(row:R,column:string)=>FormulaSourceEditor|undefined;virtualRows?:Array<{id:string}>;onSelect?:(row:string,column:string,extend:boolean)=>void}) {
  const owner=`${token??""}:${table}:${enabled?"view":"disabled"}`;
  const rowIds=useMemo(()=>rows.flatMap(row=>{const id=identity(row);return id?[id]:[];}),[rows,identity]);
- const signature=useMemo(()=>[...new Set(rowIds)].sort().join("|"),[rowIds]);
+ const signature=useMemo(()=>[...new Set(rows.filter(row=>!row._new_product_draft).flatMap(row=>{const id=identity(row);return id?[id]:[];}))].sort().join("|"),[rows,identity]);
  const allRowIds=useMemo(()=>[...rowIds,...virtualRows.map(row=>row.id)],[rowIds,virtualRows]);
  const rowIndex=useMemo(()=>new Map(allRowIds.map((id,index)=>[id,index])),[allRowIds]);
  const rowById=useMemo(()=>new Map(rows.flatMap(row=>{const id=identity(row);return id?[[id,row] as const]:[];})),[rows,identity]);
@@ -63,6 +63,7 @@ export function useOperationalFormulas<R extends Row>({token,table,rows,columns,
   if(!writable)return;
   const target={...selected},key=selectedKey;let sourceCommitted=false;
   try{
+   if (editor?.allowExpression === false && (remove || value.startsWith("="))) throw new Error("Save the new product row before adding a formula expression. Plain cell values can be edited now.");
    if(!remove&&!value.startsWith("=")){
     const sourceTarget=sourceSession.current?.key===key?sourceSession.current.editor:editor;
     if(!sourceTarget?.writable)throw new Error(sourceTarget?.reason??"This is a calculated-only cell. Enter a formula or remove its overlay; its source value has no authorized editor.");
@@ -169,7 +170,7 @@ export function useOperationalFormulas<R extends Row>({token,table,rows,columns,
 
  useSpreadsheetFeedback(error,"error");
  const bar=<div className="flex w-full min-w-0 flex-wrap items-center gap-1"><div className="min-w-0 flex-[1_1_12rem]"><SpreadsheetFormulaBar address={selected?`${columnAddress(selected.column)}${rowOffset+(rowIndex.get(selected.row)??-1)+1}`:undefined} inputRef={input} value={value} readOnly={!writable} readOnlyReason={selected&&!rowIds.includes(selected.row)?"This is a visual-only blank cell. Select and format it; values require an existing operational record.":!selected?"Select a data cell first. Ordinary values use its source editor; expressions remain calculated overlays.":busy?"Wait for the formula request to finish.":"Select a supported data cell. Editing requires its existing permissions and mapping."} onFocus={()=>{inlineFocus.current=false;activeInput.current=input.current;cancelled.current=false;composing.current=true;if(selectedRow&&selected&&!dirty){const fresh=sourceEditor?.(selectedRow,selected.column);if(fresh){sourceSession.current={key:selectedKey,editor:fresh};if(!active&&fresh.value!==value)setDraft({owner,key:selectedKey,value:fresh.value});}}}} onChange={value=>{if(selected){inlineFocus.current=false;setInlineKey(selectedKey);composing.current=true;setDraft({owner,key:selectedKey,value});}}} onCommit={()=>void commit()} onCancel={cancelEdit} onBlur={event=>{if((event.relatedTarget as Element|null)?.closest("[data-formula-bar],[data-formula-help],[data-formula-inline],[data-spreadsheet-context-menu]"))return;composing.current=false;if(cancelled.current){cancelled.current=false;return;}void commit().then(saved=>{if(saved)setSelection(current=>current?.owner===owner&&cellKey(current.row,current.column)===selectedKey?null:current);});}}/></div>{active&&<details className="relative shrink-0 text-[10px] text-slate-600"><summary className="cursor-pointer list-none px-1" onMouseDown={event=>event.preventDefault()}>Source</summary><div className="absolute right-0 top-full z-[130] mt-1 max-h-40 w-56 overflow-auto whitespace-pre-wrap rounded border border-slate-200 bg-white p-2 shadow-lg">{selected?text(source.get(selected.row)?.[selected.column]):""}</div></details>}{active&&<button type="button" disabled={!writable} onMouseDown={event=>event.preventDefault()} onClick={()=>void commit(true)} className="shrink-0 rounded px-1 text-[10px] text-blue-700 disabled:opacity-40" title={`Original source: ${text(source.get(active.row_identity)?.[active.column_key])}`}>Remove formula</button>}{error&&<button type="button" disabled={busy} onMouseDown={event=>event.preventDefault()} onClick={()=>{void refresh().then(()=>setError("")).catch(()=>setError("Unable to refresh calculated cells."));}} className="shrink-0 px-1 text-[10px] text-blue-700">Refresh formulas</button>}</div>;
- return {bar,cellProps,virtualCellProps,selectedIdentity:selected?.row??null,selectCell:(row:string,column:string)=>{if(!dirty&&!composing.current)chooseCell(row,column);},render,has,busy,draftPending,refresh,notifySourceDraft:()=>{
+ return {commitDraft:commit,cancelDraft:cancelEdit,bar,cellProps,virtualCellProps,selectedIdentity:selected?.row??null,selectCell:(row:string,column:string)=>{if(!dirty&&!composing.current)chooseCell(row,column);},render,has,busy,draftPending,refresh,notifySourceDraft:()=>{
   // Mirror the source editor's existing local buffer without rerendering the whole grid per key.
   if(!dirty&&!active&&selectedRow&&selected&&input.current&&document.activeElement!==input.current)
    input.current.value=sourceEditor?.(selectedRow,selected.column)?.value??value;

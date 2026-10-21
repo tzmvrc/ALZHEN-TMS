@@ -6,6 +6,12 @@ export function invalidateTripListCache() {
   // details, events, images, stops, or line-item responses.
   invalidateApiCache("/trips?");
 }
+export async function createProductRows(token: string, trip: string, stop: string, rows: { id: string; values: Record<string, unknown> }[]) {
+  const response = await apiPost<ApiResponse<Record<string, unknown>[]>>(`/trips/${encodeURIComponent(trip)}/stops/${encodeURIComponent(stop)}/line-items/batch`, { rows }, token);
+  if (!response.success || !response.data || response.data.length !== rows.length) throw new Error(response.message ?? "New row save was not confirmed. Retry the same drafts.");
+  invalidateTripRelatedCache();
+  return response.data;
+}
 
 /* Drops every cached response for one trip (details, stops, line items, events, photos).
    Call it when a realtime update says something changed, so the next read is fresh. */
@@ -405,7 +411,7 @@ export async function createTrip(
 export type LineItemDeletionTarget={tripId:string;stopId:string;id:string};
 /** Exact child record identities only; never falls back to stop or parent deletion. */
 export function lineItemDeletionTargets(rows:Record<string,unknown>[]):LineItemDeletionTarget[]|null {
- if(!rows.length)return null;
+ if(!rows.length || rows.some(row => row._new_product_draft))return null;
  const unique=new Map<string,LineItemDeletionTarget>();
  const uuid=(value:unknown):value is string=>typeof value==="string"&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
  for(const row of rows){const tripId=row.trip_id??row._trip_id,stopId=row.trip_stop_id??row._trip_stop_id,id=row.trip_line_item_id??row._trip_line_item_id;

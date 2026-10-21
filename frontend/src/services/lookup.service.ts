@@ -95,6 +95,9 @@ export function toRelationshipOption(
           customer_id: stringValue(row, "customer_id"),
           store_name: stringValue(row, "name"),
           store_code: stringValue(row, "code"),
+          latitude: row.latitude == null ? "" : String(row.latitude),
+          longitude: row.longitude == null ? "" : String(row.longitude),
+          location_verified: row.location_verified === true ? "true" : "false",
           ship_to: stringValue(row, "name"),
           city: stringValue(row, "city"),
           province: stringValue(row, "province"),
@@ -121,6 +124,9 @@ export function toRelationshipOption(
           .filter(Boolean)
           .join(" · "),
         values: {
+          default_driver_id: stringValue(row,"default_driver_id"),
+          default_driver_name: stringValue(row,"default_driver_name"),
+          default_driver_ambiguous: row.default_driver_ambiguous ? "true" : "false",
           plate_number: stringValue(row, "plate_number"),
           truck_type: stringValue(row, "truck_type"),
           capacity_cbm: row.capacity_cbm == null ? "" : String(row.capacity_cbm),
@@ -242,8 +248,10 @@ export async function searchRelationshipOptions(
     .map((option) => [option.id, option])).values()];
 }
 export type TruckAvailability={id:string;plate_number:string;truck_type:string|null;capacity_cbm:number|null;available_cbm:number|null;availability:"AVAILABLE"|"CONFLICT"|"REVIEW";reason:string};
-export async function fetchTruckAvailability(token:string,start:string,end:string):Promise<TruckAvailability[]>{
- const query=new URLSearchParams();if(start)query.set("start",start);if(end)query.set("end",end);
+export type DriverAvailability={id:string;availability:"AVAILABLE"|"CONFLICT"|"REVIEW";reason:string};
+export async function fetchDriverAvailability(token:string,start:string,end:string,excludeTripId?:string):Promise<DriverAvailability[]>{const query=new URLSearchParams();if(start)query.set("start",start);if(end)query.set("end",end);if(excludeTripId)query.set("exclude_trip_id",excludeTripId);const response=await apiGet<ApiResponse<DriverAvailability[]>>(`/trips/driver-availability?${query}`,token);if(!response.success||!response.data)throw Error(response.message??"Unable to check driver schedules.");return response.data;}
+export async function fetchTruckAvailability(token:string,start:string,end:string,excludeTripId?:string):Promise<TruckAvailability[]>{
+ const query=new URLSearchParams();if(start)query.set("start",start);if(end)query.set("end",end);if(excludeTripId)query.set("exclude_trip_id",excludeTripId);
  const response=await apiGet<ApiResponse<TruckAvailability[]>>(`/trips/truck-availability?${query}`,token);
  if(!response.success||!response.data)throw new Error("Unable to check truck availability.");return response.data;
 }

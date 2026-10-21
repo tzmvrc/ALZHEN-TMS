@@ -1,0 +1,727 @@
+[
+  {
+    "jsonb_build_object": {
+      "indexes": [
+        {
+          "name": "customer_stores_pkey",
+          "table": "customer_stores",
+          "definition": "CREATE UNIQUE INDEX customer_stores_pkey ON public.customer_stores USING btree (id)"
+        },
+        {
+          "name": "idx_customer_stores_customer",
+          "table": "customer_stores",
+          "definition": "CREATE INDEX idx_customer_stores_customer ON public.customer_stores USING btree (customer_id)"
+        },
+        {
+          "name": "idx_customer_stores_name",
+          "table": "customer_stores",
+          "definition": "CREATE INDEX idx_customer_stores_name ON public.customer_stores USING btree (name)"
+        },
+        {
+          "name": "idx_customer_stores_region",
+          "table": "customer_stores",
+          "definition": "CREATE INDEX idx_customer_stores_region ON public.customer_stores USING btree (region)"
+        },
+        {
+          "name": "customers_pkey",
+          "table": "customers",
+          "definition": "CREATE UNIQUE INDEX customers_pkey ON public.customers USING btree (id)"
+        },
+        {
+          "name": "customers_code_key",
+          "table": "customers",
+          "definition": "CREATE UNIQUE INDEX customers_code_key ON public.customers USING btree (code)"
+        },
+        {
+          "name": "products_pkey",
+          "table": "products",
+          "definition": "CREATE UNIQUE INDEX products_pkey ON public.products USING btree (id)"
+        },
+        {
+          "name": "products_sku_key",
+          "table": "products",
+          "definition": "CREATE UNIQUE INDEX products_sku_key ON public.products USING btree (sku)"
+        },
+        {
+          "name": "idx_products_model_code",
+          "table": "products",
+          "definition": "CREATE INDEX idx_products_model_code ON public.products USING btree (model_code)"
+        },
+        {
+          "name": "trip_line_items_pkey",
+          "table": "trip_line_items",
+          "definition": "CREATE UNIQUE INDEX trip_line_items_pkey ON public.trip_line_items USING btree (id)"
+        },
+        {
+          "name": "idx_trip_line_items_trip",
+          "table": "trip_line_items",
+          "definition": "CREATE INDEX idx_trip_line_items_trip ON public.trip_line_items USING btree (trip_id)"
+        },
+        {
+          "name": "idx_trip_line_items_stop",
+          "table": "trip_line_items",
+          "definition": "CREATE INDEX idx_trip_line_items_stop ON public.trip_line_items USING btree (trip_stop_id)"
+        },
+        {
+          "name": "idx_trip_line_items_product",
+          "table": "trip_line_items",
+          "definition": "CREATE INDEX idx_trip_line_items_product ON public.trip_line_items USING btree (product_id)"
+        },
+        {
+          "name": "idx_trip_line_items_dr",
+          "table": "trip_line_items",
+          "definition": "CREATE INDEX idx_trip_line_items_dr ON public.trip_line_items USING btree (dr_number)"
+        },
+        {
+          "name": "convoy_item_trip_key",
+          "table": "trip_line_items",
+          "definition": "CREATE UNIQUE INDEX convoy_item_trip_key ON public.trip_line_items USING btree (id, trip_id)"
+        },
+        {
+          "name": "trip_truck_assignments_pkey",
+          "table": "trip_truck_assignments",
+          "definition": "CREATE UNIQUE INDEX trip_truck_assignments_pkey ON public.trip_truck_assignments USING btree (id)"
+        },
+        {
+          "name": "idx_trip_truck_assignments_trip",
+          "table": "trip_truck_assignments",
+          "definition": "CREATE INDEX idx_trip_truck_assignments_trip ON public.trip_truck_assignments USING btree (trip_id)"
+        },
+        {
+          "name": "idx_trip_truck_assignments_truck",
+          "table": "trip_truck_assignments",
+          "definition": "CREATE INDEX idx_trip_truck_assignments_truck ON public.trip_truck_assignments USING btree (truck_id)"
+        },
+        {
+          "name": "convoy_assignment_trip_key",
+          "table": "trip_truck_assignments",
+          "definition": "CREATE UNIQUE INDEX convoy_assignment_trip_key ON public.trip_truck_assignments USING btree (id, trip_id)"
+        },
+        {
+          "name": "convoy_active_truck_once_idx",
+          "table": "trip_truck_assignments",
+          "definition": "CREATE UNIQUE INDEX convoy_active_truck_once_idx ON public.trip_truck_assignments USING btree (trip_id, truck_id) WHERE (unassigned_at IS NULL)"
+        },
+        {
+          "name": "convoy_active_assignments_idx",
+          "table": "trip_truck_assignments",
+          "definition": "CREATE INDEX convoy_active_assignments_idx ON public.trip_truck_assignments USING btree (trip_id, id) WHERE (unassigned_at IS NULL)"
+        },
+        {
+          "name": "trips_pkey",
+          "table": "trips",
+          "definition": "CREATE UNIQUE INDEX trips_pkey ON public.trips USING btree (id)"
+        },
+        {
+          "name": "idx_trips_dispatch_number",
+          "table": "trips",
+          "definition": "CREATE INDEX idx_trips_dispatch_number ON public.trips USING btree (dispatch_number)"
+        },
+        {
+          "name": "idx_trips_loading_date",
+          "table": "trips",
+          "definition": "CREATE INDEX idx_trips_loading_date ON public.trips USING btree (loading_date)"
+        },
+        {
+          "name": "idx_trips_status",
+          "table": "trips",
+          "definition": "CREATE INDEX idx_trips_status ON public.trips USING btree (status)"
+        },
+        {
+          "name": "idx_trips_warehouse",
+          "table": "trips",
+          "definition": "CREATE INDEX idx_trips_warehouse ON public.trips USING btree (warehouse_id)"
+        },
+        {
+          "name": "idx_trips_request_received_at",
+          "table": "trips",
+          "definition": "CREATE INDEX idx_trips_request_received_at ON public.trips USING btree (request_received_at)"
+        },
+        {
+          "name": "idx_trips_departure_from_warehouse_at",
+          "table": "trips",
+          "definition": "CREATE INDEX idx_trips_departure_from_warehouse_at ON public.trips USING btree (departure_from_warehouse_at)"
+        },
+        {
+          "name": "trips_dispatch_trip_number_key",
+          "table": "trips",
+          "definition": "CREATE UNIQUE INDEX trips_dispatch_trip_number_key ON public.trips USING btree (dispatch_number, trip_number)"
+        },
+        {
+          "name": "trips_trip_reference_unique",
+          "table": "trips",
+          "definition": "CREATE UNIQUE INDEX trips_trip_reference_unique ON public.trips USING btree (trip_reference)"
+        },
+        {
+          "name": "trucks_pkey",
+          "table": "trucks",
+          "definition": "CREATE UNIQUE INDEX trucks_pkey ON public.trucks USING btree (id)"
+        },
+        {
+          "name": "trucks_plate_number_key",
+          "table": "trucks",
+          "definition": "CREATE UNIQUE INDEX trucks_plate_number_key ON public.trucks USING btree (plate_number)"
+        },
+        {
+          "name": "idx_trucks_trucking_company",
+          "table": "trucks",
+          "definition": "CREATE INDEX idx_trucks_trucking_company ON public.trucks USING btree (trucking_company_id)"
+        },
+        {
+          "name": "idx_trucks_plate",
+          "table": "trucks",
+          "definition": "CREATE INDEX idx_trucks_plate ON public.trucks USING btree (plate_number)"
+        },
+        {
+          "name": "warehouses_pkey",
+          "table": "warehouses",
+          "definition": "CREATE UNIQUE INDEX warehouses_pkey ON public.warehouses USING btree (id)"
+        },
+        {
+          "name": "warehouses_code_key",
+          "table": "warehouses",
+          "definition": "CREATE UNIQUE INDEX warehouses_code_key ON public.warehouses USING btree (code)"
+        },
+        {
+          "name": "idx_warehouses_region",
+          "table": "warehouses",
+          "definition": "CREATE INDEX idx_warehouses_region ON public.warehouses USING btree (region)"
+        }
+      ],
+      "policies": [
+        {
+          "cmd": "SELECT",
+          "qual": "true",
+          "roles": [
+            "authenticated"
+          ],
+          "tablename": "customer_stores",
+          "permissive": "PERMISSIVE",
+          "policyname": "authenticated users can read customer stores",
+          "schemaname": "public",
+          "with_check": null
+        },
+        {
+          "cmd": "SELECT",
+          "qual": "true",
+          "roles": [
+            "authenticated"
+          ],
+          "tablename": "drivers",
+          "permissive": "PERMISSIVE",
+          "policyname": "authenticated users can read drivers",
+          "schemaname": "public",
+          "with_check": null
+        },
+        {
+          "cmd": "SELECT",
+          "qual": "((EXISTS ( SELECT 1\n   FROM profiles p\n  WHERE ((p.id = auth.uid()) AND (p.role = ANY (ARRAY['ADMIN'::text, 'STAFF'::text]))))) OR (EXISTS ( SELECT 1\n   FROM (trip_truck_assignments a\n     JOIN drivers d ON ((d.id = a.driver_id)))\n  WHERE ((a.id = trip_assignment_stops.assignment_id) AND (d.profile_id = auth.uid())))))",
+          "roles": [
+            "authenticated"
+          ],
+          "tablename": "trip_assignment_stops",
+          "permissive": "PERMISSIVE",
+          "policyname": "convoy_stops_read",
+          "schemaname": "public",
+          "with_check": null
+        },
+        {
+          "cmd": "SELECT",
+          "qual": "((EXISTS ( SELECT 1\n   FROM profiles p\n  WHERE ((p.id = auth.uid()) AND (p.role = ANY (ARRAY['ADMIN'::text, 'STAFF'::text]))))) OR (EXISTS ( SELECT 1\n   FROM (trip_truck_assignments a\n     JOIN drivers d ON ((d.id = a.driver_id)))\n  WHERE ((a.id = trip_cargo_allocations.assignment_id) AND (d.profile_id = auth.uid())))))",
+          "roles": [
+            "authenticated"
+          ],
+          "tablename": "trip_cargo_allocations",
+          "permissive": "PERMISSIVE",
+          "policyname": "convoy_cargo_read",
+          "schemaname": "public",
+          "with_check": null
+        },
+        {
+          "cmd": "SELECT",
+          "qual": "true",
+          "roles": [
+            "authenticated"
+          ],
+          "tablename": "trip_line_items",
+          "permissive": "PERMISSIVE",
+          "policyname": "authenticated users can read trip line items",
+          "schemaname": "public",
+          "with_check": null
+        },
+        {
+          "cmd": "SELECT",
+          "qual": "true",
+          "roles": [
+            "authenticated"
+          ],
+          "tablename": "trip_truck_assignments",
+          "permissive": "PERMISSIVE",
+          "policyname": "authenticated users can read trip truck assignments",
+          "schemaname": "public",
+          "with_check": null
+        },
+        {
+          "cmd": "SELECT",
+          "qual": "true",
+          "roles": [
+            "authenticated"
+          ],
+          "tablename": "trips",
+          "permissive": "PERMISSIVE",
+          "policyname": "authenticated users can read trips",
+          "schemaname": "public",
+          "with_check": null
+        },
+        {
+          "cmd": "SELECT",
+          "qual": "true",
+          "roles": [
+            "authenticated"
+          ],
+          "tablename": "warehouses",
+          "permissive": "PERMISSIVE",
+          "policyname": "authenticated users can read warehouses",
+          "schemaname": "public",
+          "with_check": null
+        }
+      ],
+      "triggers": [
+        {
+          "name": "admin_change_signal_trg",
+          "table": "customer_stores",
+          "definition": "CREATE TRIGGER admin_change_signal_trg AFTER INSERT OR DELETE OR UPDATE OR TRUNCATE ON public.customer_stores FOR EACH STATEMENT EXECUTE FUNCTION notify_admin_source_change()"
+        },
+        {
+          "name": "trg_customer_stores_updated_at",
+          "table": "customer_stores",
+          "definition": "CREATE TRIGGER trg_customer_stores_updated_at BEFORE UPDATE ON public.customer_stores FOR EACH ROW EXECUTE FUNCTION set_updated_at()"
+        },
+        {
+          "name": "admin_change_signal_trg",
+          "table": "trip_assignment_stops",
+          "definition": "CREATE TRIGGER admin_change_signal_trg AFTER INSERT OR DELETE OR UPDATE ON public.trip_assignment_stops FOR EACH STATEMENT EXECUTE FUNCTION notify_admin_source_change()"
+        },
+        {
+          "name": "admin_change_signal_trg",
+          "table": "trip_cargo_allocations",
+          "definition": "CREATE TRIGGER admin_change_signal_trg AFTER INSERT OR DELETE OR UPDATE ON public.trip_cargo_allocations FOR EACH STATEMENT EXECUTE FUNCTION notify_admin_source_change()"
+        },
+        {
+          "name": "convoy_cargo_validate",
+          "table": "trip_cargo_allocations",
+          "definition": "CREATE TRIGGER convoy_cargo_validate BEFORE INSERT OR UPDATE ON public.trip_cargo_allocations FOR EACH ROW EXECUTE FUNCTION validate_trip_cargo_allocation_v1()"
+        },
+        {
+          "name": "admin_change_signal_trg",
+          "table": "trip_line_items",
+          "definition": "CREATE TRIGGER admin_change_signal_trg AFTER INSERT OR DELETE OR UPDATE OR TRUNCATE ON public.trip_line_items FOR EACH STATEMENT EXECUTE FUNCTION notify_admin_source_change()"
+        },
+        {
+          "name": "collaboration_version_v1",
+          "table": "trip_line_items",
+          "definition": "CREATE TRIGGER collaboration_version_v1 BEFORE UPDATE ON public.trip_line_items FOR EACH ROW EXECUTE FUNCTION bump_collaboration_version_v1()"
+        },
+        {
+          "name": "convoy_cargo_source_guard",
+          "table": "trip_line_items",
+          "definition": "CREATE TRIGGER convoy_cargo_source_guard BEFORE UPDATE ON public.trip_line_items FOR EACH ROW EXECUTE FUNCTION protect_allocated_cargo_source_v1()"
+        },
+        {
+          "name": "narrow_dependency_guard",
+          "table": "trip_line_items",
+          "definition": "CREATE TRIGGER narrow_dependency_guard BEFORE DELETE ON public.trip_line_items FOR EACH ROW EXECUTE FUNCTION guard_narrow_record_dependencies_v1()"
+        },
+        {
+          "name": "trg_trip_line_items_updated_at",
+          "table": "trip_line_items",
+          "definition": "CREATE TRIGGER trg_trip_line_items_updated_at BEFORE UPDATE ON public.trip_line_items FOR EACH ROW EXECUTE FUNCTION set_updated_at()"
+        },
+        {
+          "name": "admin_change_signal_trg",
+          "table": "trip_stops",
+          "definition": "CREATE TRIGGER admin_change_signal_trg AFTER INSERT OR DELETE OR UPDATE OR TRUNCATE ON public.trip_stops FOR EACH STATEMENT EXECUTE FUNCTION notify_admin_source_change()"
+        },
+        {
+          "name": "collaboration_version_v1",
+          "table": "trip_stops",
+          "definition": "CREATE TRIGGER collaboration_version_v1 BEFORE UPDATE ON public.trip_stops FOR EACH ROW EXECUTE FUNCTION bump_collaboration_version_v1()"
+        },
+        {
+          "name": "converted_unloading_stop_immutable_trg",
+          "table": "trip_stops",
+          "definition": "CREATE TRIGGER converted_unloading_stop_immutable_trg BEFORE DELETE OR UPDATE ON public.trip_stops FOR EACH ROW EXECUTE FUNCTION guard_converted_unloading_stop_v1()"
+        },
+        {
+          "name": "narrow_dependency_guard",
+          "table": "trip_stops",
+          "definition": "CREATE TRIGGER narrow_dependency_guard BEFORE DELETE ON public.trip_stops FOR EACH ROW EXECUTE FUNCTION guard_narrow_record_dependencies_v1()"
+        },
+        {
+          "name": "transaction_dr_version_trg",
+          "table": "trip_stops",
+          "definition": "CREATE TRIGGER transaction_dr_version_trg BEFORE UPDATE OF dr_number ON public.trip_stops FOR EACH ROW EXECUTE FUNCTION bump_transaction_dr_version()"
+        },
+        {
+          "name": "trg_trip_stops_updated_at",
+          "table": "trip_stops",
+          "definition": "CREATE TRIGGER trg_trip_stops_updated_at BEFORE UPDATE ON public.trip_stops FOR EACH ROW EXECUTE FUNCTION set_updated_at()"
+        },
+        {
+          "name": "admin_change_signal_trg",
+          "table": "trip_truck_assignments",
+          "definition": "CREATE TRIGGER admin_change_signal_trg AFTER INSERT OR DELETE OR UPDATE OR TRUNCATE ON public.trip_truck_assignments FOR EACH STATEMENT EXECUTE FUNCTION notify_admin_source_change()"
+        },
+        {
+          "name": "collaboration_version_v1",
+          "table": "trip_truck_assignments",
+          "definition": "CREATE TRIGGER collaboration_version_v1 BEFORE UPDATE ON public.trip_truck_assignments FOR EACH ROW EXECUTE FUNCTION bump_collaboration_version_v1()"
+        },
+        {
+          "name": "convoy_assignment_source_guard",
+          "table": "trip_truck_assignments",
+          "definition": "CREATE TRIGGER convoy_assignment_source_guard BEFORE UPDATE ON public.trip_truck_assignments FOR EACH ROW EXECUTE FUNCTION protect_allocated_cargo_source_v1()"
+        },
+        {
+          "name": "convoy_stop_history_guard",
+          "table": "trip_truck_assignments",
+          "definition": "CREATE TRIGGER convoy_stop_history_guard BEFORE DELETE ON public.trip_truck_assignments FOR EACH ROW EXECUTE FUNCTION guard_assignment_stop_history_v1()"
+        },
+        {
+          "name": "narrow_dependency_guard",
+          "table": "trip_truck_assignments",
+          "definition": "CREATE TRIGGER narrow_dependency_guard BEFORE DELETE ON public.trip_truck_assignments FOR EACH ROW EXECUTE FUNCTION guard_narrow_record_dependencies_v1()"
+        },
+        {
+          "name": "trg_trip_truck_assignments_updated_at",
+          "table": "trip_truck_assignments",
+          "definition": "CREATE TRIGGER trg_trip_truck_assignments_updated_at BEFORE UPDATE ON public.trip_truck_assignments FOR EACH ROW EXECUTE FUNCTION set_updated_at()"
+        },
+        {
+          "name": "admin_change_signal_trg",
+          "table": "trips",
+          "definition": "CREATE TRIGGER admin_change_signal_trg AFTER INSERT OR DELETE OR UPDATE OR TRUNCATE ON public.trips FOR EACH STATEMENT EXECUTE FUNCTION notify_admin_source_change()"
+        },
+        {
+          "name": "collaboration_version_v1",
+          "table": "trips",
+          "definition": "CREATE TRIGGER collaboration_version_v1 BEFORE UPDATE ON public.trips FOR EACH ROW EXECUTE FUNCTION bump_collaboration_version_v1()"
+        },
+        {
+          "name": "trg_trips_updated_at",
+          "table": "trips",
+          "definition": "CREATE TRIGGER trg_trips_updated_at BEFORE UPDATE ON public.trips FOR EACH ROW EXECUTE FUNCTION set_updated_at()"
+        },
+        {
+          "name": "trips_generate_trip_reference",
+          "table": "trips",
+          "definition": "CREATE TRIGGER trips_generate_trip_reference BEFORE INSERT ON public.trips FOR EACH ROW EXECUTE FUNCTION generate_trip_reference()"
+        },
+        {
+          "name": "admin_change_signal_trg",
+          "table": "warehouses",
+          "definition": "CREATE TRIGGER admin_change_signal_trg AFTER INSERT OR DELETE OR UPDATE OR TRUNCATE ON public.warehouses FOR EACH STATEMENT EXECUTE FUNCTION notify_admin_source_change()"
+        },
+        {
+          "name": "trg_warehouses_updated_at",
+          "table": "warehouses",
+          "definition": "CREATE TRIGGER trg_warehouses_updated_at BEFORE UPDATE ON public.warehouses FOR EACH ROW EXECUTE FUNCTION set_updated_at()"
+        }
+      ],
+      "functions": [
+        {
+          "acl": "{postgres=X/postgres}",
+          "name": "generate_trip_reference",
+          "definition": "CREATE OR REPLACE FUNCTION public.generate_trip_reference()\n RETURNS trigger\n LANGUAGE plpgsql\n SET search_path TO 'public', 'pg_temp'\nAS $function$\r\nDECLARE\r\n  prefix text;\r\n  next_number bigint;\r\nBEGIN\r\n  -- Assign on insert under a date-specific transaction lock so concurrent\r\n  -- creators receive different references even if their previews matched.\r\n  prefix := 'TRIP' || to_char(coalesce(NEW.loading_date::date, (now() AT TIME ZONE 'Asia/Manila')::date), 'YYMMDD');\r\n  PERFORM pg_advisory_xact_lock(hashtextextended(prefix, 0));\r\n  SELECT coalesce(max(substring(trip_reference FROM '^TRIP[0-9]{6}-([0-9]+)$')::bigint), 0) + 1\r\n    INTO next_number FROM public.trips WHERE trip_reference LIKE prefix || '-%';\r\n  NEW.trip_reference := prefix || '-' || next_number::text;\r\n  RETURN NEW;\r\nEND;\r\n$function$\n"
+        },
+        {
+          "acl": "{postgres=X/postgres}",
+          "name": "protect_convoy_truck_capacity_v1",
+          "definition": "CREATE OR REPLACE FUNCTION public.protect_convoy_truck_capacity_v1()\n RETURNS trigger\n LANGUAGE plpgsql\n SET search_path TO 'pg_catalog', 'public'\nAS $function$\r\nBEGIN\r\n PERFORM 1 FROM public.trips WHERE id IN (SELECT trip_id FROM public.trip_truck_assignments WHERE truck_id=OLD.id AND unassigned_at IS NULL) ORDER BY id FOR UPDATE;\r\n IF EXISTS(SELECT 1 FROM public.trip_truck_assignments a JOIN public.trip_cargo_allocations c ON c.assignment_id=a.id WHERE a.truck_id=OLD.id AND a.unassigned_at IS NULL GROUP BY a.id HAVING sum(c.allocated_cbm)>coalesce(NEW.capacity_cbm,0)) THEN RAISE EXCEPTION 'Truck capacity is below allocated cargo' USING ERRCODE='23514';END IF;RETURN NEW;\r\nEND $function$\n"
+        },
+        {
+          "acl": "{postgres=X/postgres,service_role=X/postgres}",
+          "name": "tracking_route_context_v1",
+          "definition": "CREATE OR REPLACE FUNCTION public.tracking_route_context_v1(p_assignment uuid, p_lock boolean DEFAULT false)\n RETURNS jsonb\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog'\nAS $function$\nDECLARE a jsonb; points jsonb; origin jsonb; plate text; dispatch text;\nBEGIN\n a:=public.tracking_assignment_v1(p_assignment,p_lock); IF a IS NULL THEN RETURN NULL; END IF;\n IF p_lock THEN\n  PERFORM 1 FROM public.trip_stops WHERE trip_id=(a->>'tripId')::uuid ORDER BY id FOR SHARE;\n  PERFORM 1 FROM public.customer_stores WHERE id IN (SELECT store_id FROM public.trip_stops WHERE trip_id=(a->>'tripId')::uuid) ORDER BY id FOR SHARE;\n END IF;\n SELECT coalesce(jsonb_agg(jsonb_build_object('id',s.id,'name',coalesce(st.name,'Destination'),'latitude',st.latitude,'longitude',st.longitude)\n  ORDER BY s.stop_sequence,s.id),'[]'::jsonb) INTO points FROM public.trip_stops s\n  LEFT JOIN public.customer_stores st ON st.id=s.store_id\n  WHERE s.trip_id=(a->>'tripId')::uuid AND s.archived_at IS NULL AND coalesce(s.delivery_status,'PENDING') NOT IN ('COMPLETED','DELIVERED','CANCELLED');\n SELECT jsonb_build_object('id','position','latitude',l.latitude,'longitude',l.longitude,'captured_at',l.captured_at,\n  'accuracy_meters',l.accuracy_meters,'revision',l.revision) INTO origin FROM public.trip_tracking_locations l\n  WHERE l.assignment_id=p_assignment AND l.profile_id=(a->>'profileId')::uuid AND l.enabled AND l.captured_at IS NOT NULL;\n SELECT tr.plate_number,t.dispatch_number INTO plate,dispatch FROM public.trip_truck_assignments ta\n  JOIN public.trucks tr ON tr.id=ta.truck_id JOIN public.trips t ON t.id=ta.trip_id WHERE ta.id=p_assignment;\n RETURN a||jsonb_build_object('destinations',points,'origin',origin,'plate_number',plate,'dispatch_number',dispatch,\n  'context_token',md5(jsonb_build_array(a,points)::text));\nEND $function$\n"
+        },
+        {
+          "acl": "{postgres=X/postgres,service_role=X/postgres}",
+          "name": "planned_route_context_v1",
+          "definition": "CREATE OR REPLACE FUNCTION public.planned_route_context_v1(p_assignment uuid, p_lock boolean DEFAULT false)\n RETURNS jsonb\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog'\nAS $function$\nDECLARE a jsonb; t public.trips%ROWTYPE; w public.warehouses%ROWTYPE; origin jsonb; points jsonb;\nBEGIN\n a:=public.tracking_assignment_v1(p_assignment,p_lock);\n IF a IS NULL THEN RETURN NULL; END IF;\n SELECT * INTO t FROM public.trips WHERE id=(a->>'tripId')::uuid;\n IF p_lock THEN\n  PERFORM 1 FROM public.trip_stops WHERE trip_id=t.id ORDER BY id FOR SHARE;\n  PERFORM 1 FROM public.customer_stores WHERE id IN(SELECT store_id FROM public.trip_stops WHERE trip_id=t.id) ORDER BY id FOR SHARE;\n  SELECT * INTO w FROM public.warehouses WHERE id=t.warehouse_id FOR SHARE;\n ELSE SELECT * INTO w FROM public.warehouses WHERE id=t.warehouse_id; END IF;\n origin:=jsonb_build_object('id',w.id,'latitude',w.latitude,'longitude',w.longitude);\n SELECT coalesce(jsonb_agg(jsonb_build_object('id',s.id,'latitude',st.latitude,'longitude',st.longitude,'stopSequence',s.stop_sequence)\n  ORDER BY s.stop_sequence NULLS LAST,s.id),'[]'::jsonb) INTO points\n FROM public.trip_stops s LEFT JOIN public.customer_stores st ON st.id=s.store_id\n WHERE s.trip_id=t.id AND s.archived_at IS NULL;\n RETURN jsonb_build_object('id',p_assignment,'tripId',t.id,\n  'active',t.archived_at IS NULL AND t.status NOT IN('COMPLETED','CANCELLED') AND EXISTS(SELECT FROM public.trip_truck_assignments WHERE id=p_assignment AND unassigned_at IS NULL),\n  'origin',origin,'destinations',points,\n  'context_token',md5(jsonb_build_array(a,t.warehouse_id,origin,points)::text));\nEND $function$\n"
+        }
+      ],
+      "constraints": [
+        {
+          "name": "drivers_pkey",
+          "table": "drivers",
+          "definition": "PRIMARY KEY (id)"
+        },
+        {
+          "name": "drivers_profile_id_fkey",
+          "table": "drivers",
+          "definition": "FOREIGN KEY (profile_id) REFERENCES profiles(id) ON DELETE SET NULL"
+        },
+        {
+          "name": "drivers_profile_id_key",
+          "table": "drivers",
+          "definition": "UNIQUE (profile_id)"
+        },
+        {
+          "name": "drivers_trucking_company_id_fkey",
+          "table": "drivers",
+          "definition": "FOREIGN KEY (trucking_company_id) REFERENCES trucking_companies(id) ON UPDATE CASCADE ON DELETE SET NULL"
+        },
+        {
+          "name": "trips_archived_by_fkey",
+          "table": "trips",
+          "definition": "FOREIGN KEY (archived_by) REFERENCES profiles(id) ON DELETE SET NULL"
+        },
+        {
+          "name": "trips_collaboration_version_check",
+          "table": "trips",
+          "definition": "CHECK (((collaboration_version >= 0) AND (collaboration_version <= '9007199254740991'::bigint)))"
+        },
+        {
+          "name": "trips_created_by_fkey",
+          "table": "trips",
+          "definition": "FOREIGN KEY (created_by) REFERENCES profiles(id) ON UPDATE CASCADE ON DELETE SET NULL"
+        },
+        {
+          "name": "trips_letter_status_check",
+          "table": "trips",
+          "definition": "CHECK (((letter_status IS NULL) OR (letter_status = ANY (ARRAY['READY'::text, 'SENT'::text, 'CANCELLED'::text]))))"
+        },
+        {
+          "name": "trips_pkey",
+          "table": "trips",
+          "definition": "PRIMARY KEY (id)"
+        },
+        {
+          "name": "trips_spreadsheet_issue_reason_check",
+          "table": "trips",
+          "definition": "CHECK ((length(spreadsheet_issue_reason) <= 2000))"
+        },
+        {
+          "name": "trips_spreadsheet_issue_type_check",
+          "table": "trips",
+          "definition": "CHECK ((length(spreadsheet_issue_type) <= 500))"
+        },
+        {
+          "name": "trips_tms_done_by_fkey",
+          "table": "trips",
+          "definition": "FOREIGN KEY (tms_done_by) REFERENCES profiles(id) ON DELETE SET NULL"
+        },
+        {
+          "name": "trips_trip_type_id_fkey",
+          "table": "trips",
+          "definition": "FOREIGN KEY (trip_type_id) REFERENCES trip_types(id) ON UPDATE CASCADE ON DELETE SET NULL"
+        },
+        {
+          "name": "trips_truck_allocated_by_fkey",
+          "table": "trips",
+          "definition": "FOREIGN KEY (truck_allocated_by) REFERENCES profiles(id) ON DELETE SET NULL"
+        },
+        {
+          "name": "trips_warehouse_id_fkey",
+          "table": "trips",
+          "definition": "FOREIGN KEY (warehouse_id) REFERENCES warehouses(id) ON UPDATE CASCADE ON DELETE SET NULL"
+        },
+        {
+          "name": "convoy_assignment_trip_key",
+          "table": "trip_truck_assignments",
+          "definition": "UNIQUE (id, trip_id)"
+        },
+        {
+          "name": "trip_truck_assignments_collaboration_version_check",
+          "table": "trip_truck_assignments",
+          "definition": "CHECK (((collaboration_version >= 0) AND (collaboration_version <= '9007199254740991'::bigint)))"
+        },
+        {
+          "name": "trip_truck_assignments_driver_id_fkey",
+          "table": "trip_truck_assignments",
+          "definition": "FOREIGN KEY (driver_id) REFERENCES drivers(id) ON UPDATE CASCADE ON DELETE SET NULL"
+        },
+        {
+          "name": "trip_truck_assignments_pkey",
+          "table": "trip_truck_assignments",
+          "definition": "PRIMARY KEY (id)"
+        },
+        {
+          "name": "trip_truck_assignments_stop_scope_check",
+          "table": "trip_truck_assignments",
+          "definition": "CHECK ((stop_scope = ANY (ARRAY['ALL'::text, 'SELECTED'::text])))"
+        },
+        {
+          "name": "trip_truck_assignments_trip_id_fkey",
+          "table": "trip_truck_assignments",
+          "definition": "FOREIGN KEY (trip_id) REFERENCES trips(id) ON UPDATE CASCADE ON DELETE CASCADE"
+        },
+        {
+          "name": "trip_truck_assignments_truck_id_fkey",
+          "table": "trip_truck_assignments",
+          "definition": "FOREIGN KEY (truck_id) REFERENCES trucks(id) ON UPDATE CASCADE ON DELETE RESTRICT"
+        },
+        {
+          "name": "trip_truck_assignments_trucking_company_id_fkey",
+          "table": "trip_truck_assignments",
+          "definition": "FOREIGN KEY (trucking_company_id) REFERENCES trucking_companies(id) ON UPDATE CASCADE ON DELETE SET NULL"
+        },
+        {
+          "name": "trip_stops_archived_by_fkey",
+          "table": "trip_stops",
+          "definition": "FOREIGN KEY (archived_by) REFERENCES profiles(id) ON DELETE SET NULL"
+        },
+        {
+          "name": "trip_stops_collaboration_version_check",
+          "table": "trip_stops",
+          "definition": "CHECK (((collaboration_version >= 0) AND (collaboration_version <= '9007199254740991'::bigint)))"
+        },
+        {
+          "name": "trip_stops_customer_id_fkey",
+          "table": "trip_stops",
+          "definition": "FOREIGN KEY (customer_id) REFERENCES customers(id) ON UPDATE CASCADE ON DELETE RESTRICT"
+        },
+        {
+          "name": "trip_stops_pkey",
+          "table": "trip_stops",
+          "definition": "PRIMARY KEY (id)"
+        },
+        {
+          "name": "trip_stops_spreadsheet_issue_reason_check",
+          "table": "trip_stops",
+          "definition": "CHECK ((length(spreadsheet_issue_reason) <= 2000))"
+        },
+        {
+          "name": "trip_stops_spreadsheet_issue_type_check",
+          "table": "trip_stops",
+          "definition": "CHECK ((length(spreadsheet_issue_type) <= 500))"
+        },
+        {
+          "name": "trip_stops_store_id_fkey",
+          "table": "trip_stops",
+          "definition": "FOREIGN KEY (store_id) REFERENCES customer_stores(id) ON UPDATE CASCADE ON DELETE RESTRICT"
+        },
+        {
+          "name": "trip_stops_transaction_values_check",
+          "table": "trip_stops",
+          "definition": "CHECK ((((dr_number IS NULL) OR (char_length(dr_number) <= 100)) AND ((quantity IS NULL) OR ((quantity >= (0)::numeric) AND (quantity < 'Infinity'::numeric) AND (quantity <> 'NaN'::numeric))) AND ((total_cbm IS NULL) OR ((total_cbm >= (0)::numeric) AND (total_cbm < 'Infinity'::numeric) AND (total_cbm <> 'NaN'::numeric)))))"
+        },
+        {
+          "name": "trip_stops_trip_id_fkey",
+          "table": "trip_stops",
+          "definition": "FOREIGN KEY (trip_id) REFERENCES trips(id) ON UPDATE CASCADE ON DELETE CASCADE"
+        },
+        {
+          "name": "trip_stops_trip_id_stop_sequence_key",
+          "table": "trip_stops",
+          "definition": "UNIQUE (trip_id, stop_sequence)"
+        },
+        {
+          "name": "convoy_item_trip_key",
+          "table": "trip_line_items",
+          "definition": "UNIQUE (id, trip_id)"
+        },
+        {
+          "name": "trip_line_items_collaboration_version_check",
+          "table": "trip_line_items",
+          "definition": "CHECK (((collaboration_version >= 0) AND (collaboration_version <= '9007199254740991'::bigint)))"
+        },
+        {
+          "name": "trip_line_items_pkey",
+          "table": "trip_line_items",
+          "definition": "PRIMARY KEY (id)"
+        },
+        {
+          "name": "trip_line_items_product_id_fkey",
+          "table": "trip_line_items",
+          "definition": "FOREIGN KEY (product_id) REFERENCES products(id) ON UPDATE CASCADE ON DELETE SET NULL"
+        },
+        {
+          "name": "trip_line_items_trip_id_fkey",
+          "table": "trip_line_items",
+          "definition": "FOREIGN KEY (trip_id) REFERENCES trips(id) ON UPDATE CASCADE ON DELETE CASCADE"
+        },
+        {
+          "name": "trip_line_items_trip_stop_id_fkey",
+          "table": "trip_line_items",
+          "definition": "FOREIGN KEY (trip_stop_id) REFERENCES trip_stops(id) ON UPDATE CASCADE ON DELETE CASCADE"
+        },
+        {
+          "name": "trip_assignment_stops_assignment_id_trip_id_fkey",
+          "table": "trip_assignment_stops",
+          "definition": "FOREIGN KEY (assignment_id, trip_id) REFERENCES trip_truck_assignments(id, trip_id) ON DELETE CASCADE"
+        },
+        {
+          "name": "trip_assignment_stops_assignment_id_trip_stop_id_key",
+          "table": "trip_assignment_stops",
+          "definition": "UNIQUE (assignment_id, trip_stop_id)"
+        },
+        {
+          "name": "trip_assignment_stops_collaboration_version_check",
+          "table": "trip_assignment_stops",
+          "definition": "CHECK (((collaboration_version >= 1) AND (collaboration_version <= '9007199254740991'::bigint)))"
+        },
+        {
+          "name": "trip_assignment_stops_pkey",
+          "table": "trip_assignment_stops",
+          "definition": "PRIMARY KEY (id)"
+        },
+        {
+          "name": "trip_assignment_stops_progress_check",
+          "table": "trip_assignment_stops",
+          "definition": "CHECK ((progress = ANY (ARRAY['PENDING'::text, 'IN_PROGRESS'::text, 'COMPLETED'::text])))"
+        },
+        {
+          "name": "trip_assignment_stops_trip_stop_id_trip_id_fkey",
+          "table": "trip_assignment_stops",
+          "definition": "FOREIGN KEY (trip_stop_id, trip_id) REFERENCES trip_stops(id, trip_id) ON DELETE CASCADE"
+        },
+        {
+          "name": "trip_cargo_allocations_allocated_cbm_check",
+          "table": "trip_cargo_allocations",
+          "definition": "CHECK (((allocated_cbm >= (0)::numeric) AND (allocated_cbm < 'Infinity'::numeric) AND (allocated_cbm <> 'NaN'::numeric)))"
+        },
+        {
+          "name": "trip_cargo_allocations_assignment_id_trip_id_fkey",
+          "table": "trip_cargo_allocations",
+          "definition": "FOREIGN KEY (assignment_id, trip_id) REFERENCES trip_truck_assignments(id, trip_id) ON DELETE CASCADE"
+        },
+        {
+          "name": "trip_cargo_allocations_assignment_id_trip_line_item_id_key",
+          "table": "trip_cargo_allocations",
+          "definition": "UNIQUE (assignment_id, trip_line_item_id)"
+        },
+        {
+          "name": "trip_cargo_allocations_collaboration_version_check",
+          "table": "trip_cargo_allocations",
+          "definition": "CHECK (((collaboration_version >= 1) AND (collaboration_version <= '9007199254740991'::bigint)))"
+        },
+        {
+          "name": "trip_cargo_allocations_created_by_fkey",
+          "table": "trip_cargo_allocations",
+          "definition": "FOREIGN KEY (created_by) REFERENCES profiles(id) ON DELETE SET NULL"
+        },
+        {
+          "name": "trip_cargo_allocations_pkey",
+          "table": "trip_cargo_allocations",
+          "definition": "PRIMARY KEY (id)"
+        },
+        {
+          "name": "trip_cargo_allocations_quantity_check",
+          "table": "trip_cargo_allocations",
+          "definition": "CHECK (((quantity >= (0)::numeric) AND (quantity < 'Infinity'::numeric) AND (quantity <> 'NaN'::numeric)))"
+        },
+        {
+          "name": "trip_cargo_allocations_trip_line_item_id_trip_id_fkey",
+          "table": "trip_cargo_allocations",
+          "definition": "FOREIGN KEY (trip_line_item_id, trip_id) REFERENCES trip_line_items(id, trip_id) ON DELETE CASCADE"
+        },
+        {
+          "name": "trip_cargo_allocations_updated_by_fkey",
+          "table": "trip_cargo_allocations",
+          "definition": "FOREIGN KEY (updated_by) REFERENCES profiles(id) ON DELETE SET NULL"
+        }
+      ]
+    }
+  }
+]

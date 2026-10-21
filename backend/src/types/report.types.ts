@@ -11,6 +11,7 @@ export type ReportKey =
 export type ReportColumnType = "text" | "date" | "number" | "boolean";
 
 export interface ReportColumnDefinition {
+  fieldCategory?: "EXCEL" | "ADMIN" | "DRIVER";
   key: string;
   title: string;
   type: ReportColumnType;

@@ -1,6 +1,7 @@
 import {deletePhysicalRecord} from "./record-deletion.service.js";
 import {ApiError} from "../utils/api-response.js";
 import { supabaseAdmin } from "../config/supabase.js";
+import { decimal, sourceTimestamp } from "./trip-import.logic.js";
 import { collaborationSelect } from "./collaboration-events.js";
 import { normalizeTransactionNumber } from "./transaction-values.logic.js";
 import { assertActiveDropdownOption } from "./dropdown-option.service.js";
@@ -730,10 +731,10 @@ export async function resolveProductByCode(codeInput: unknown, categoryInput?: u
         .from("products")
         .select("id, status")
         .ilike(column, escaped)
-        .limit(1)
-        .maybeSingle();
+        .limit(2);
       if (error) throw new Error("Unable to look up product.");
-      if (data) return data;
+      if (data?.length > 1) throw new Error("Product code matches multiple records. Select the intended product.");
+      if (data?.[0]) return data[0];
     }
     return null;
   };
@@ -875,6 +876,8 @@ export async function updateTripRecord(
 
   if (error) {
     console.error("Trip update error:", { id, input, payload, error });
+    if(error.code==="23514")throw new ApiError(error.message??"Review this trip's schedule and active truck assignments.",409,"TRIP_SCHEDULE_CONFLICT");
+    if(["40001","40P01","55P03"].includes(error.code))throw new ApiError("The trip schedule changed while saving. Reload before retrying.",409,"TRIP_SCHEDULE_CONFLICT");
     if (isDuplicateDispatchError(error)) {
       throw new Error("A trip with this dispatch and trip number, or trip reference, already exists. Choose a different trip number/reference.");
     }
@@ -1379,6 +1382,9 @@ export async function deleteTripStopRecord(tripId:string,stopId:string,actor:{id
 }
 
 const TRIP_LINE_ITEM_ALLOWED_FIELDS = [
+  "sp_reference", "ph_truck_reference", "dn_reference", "order_item_number", "so_number",
+  "stock_quantity", "unit_cbm", "so_approval_date", "item_status", "source_warehouse",
+  "source_product_category", "source_province", "source_city",
   "product_id",
   "quantity",
   "cbm",
@@ -1498,13 +1504,18 @@ export function buildTripLineItemPayload(input: Record<string, unknown>) {
       continue;
     }
 
-    if (field === "quantity" || field === "cbm") {
+    if (field === "so_approval_date") {
+      payload[field] = sourceTimestamp(value);
+      continue;
+    }
+    if (["quantity", "cbm", "stock_quantity", "unit_cbm"].includes(field)) {
+      if (typeof value === "string" && value.trim()) {
+        payload[field] = decimal(value, field);
+        continue;
+      }
       const normalized = normalizeNumericField(value, field);
       if (normalized !== undefined) {
         if (normalized < 0) throw new Error(`${field} must be a non-negative number.`);
-        if (field === "quantity" && !Number.isSafeInteger(normalized)) {
-          throw new Error("quantity must be a non-negative whole number.");
-        }
         payload[field] = normalized;
       } else if (value === null) {
         payload[field] = null;

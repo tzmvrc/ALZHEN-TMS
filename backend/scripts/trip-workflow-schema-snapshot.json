@@ -1,0 +1,1357 @@
+{
+  "project": "hdmknewarynwpbrhfgai.supabase.co",
+  "inspected_at": "2026-10-21T12:01:13.317Z",
+  "definitions": {
+    "trips": {
+      "required": [
+        "id",
+        "dispatch_number",
+        "status",
+        "created_at",
+        "updated_at",
+        "collaboration_version"
+      ],
+      "properties": {
+        "id": {
+          "default": "gen_random_uuid()",
+          "description": "Note:\nThis is a Primary Key.<pk/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "dispatch_number": {
+          "format": "text",
+          "type": "string"
+        },
+        "trip_type_id": {
+          "description": "Note:\nThis is a Foreign Key to `trip_types.id`.<fk table='trip_types' column='id'/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "warehouse_id": {
+          "description": "Note:\nThis is a Foreign Key to `warehouses.id`.<fk table='warehouses' column='id'/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "loading_date": {
+          "format": "date",
+          "type": "string"
+        },
+        "estimated_delivery_date": {
+          "format": "date",
+          "type": "string"
+        },
+        "status": {
+          "default": "PLANNED",
+          "format": "text",
+          "type": "string"
+        },
+        "authorization_letter": {
+          "format": "text",
+          "type": "string"
+        },
+        "page_no": {
+          "format": "text",
+          "type": "string"
+        },
+        "remarks": {
+          "format": "text",
+          "type": "string"
+        },
+        "created_by": {
+          "description": "Note:\nThis is a Foreign Key to `profiles.id`.<fk table='profiles' column='id'/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "created_at": {
+          "default": "now()",
+          "format": "timestamp with time zone",
+          "type": "string"
+        },
+        "updated_at": {
+          "default": "now()",
+          "format": "timestamp with time zone",
+          "type": "string"
+        },
+        "transaction_number": {
+          "format": "text",
+          "type": "string"
+        },
+        "trip_number": {
+          "format": "integer",
+          "type": "integer"
+        },
+        "added_to_report": {
+          "format": "boolean",
+          "type": "boolean"
+        },
+        "letter_status": {
+          "format": "text",
+          "type": "string"
+        },
+        "truck_allocated_by": {
+          "description": "Note:\nThis is a Foreign Key to `profiles.id`.<fk table='profiles' column='id'/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "subcon_rate_manual": {
+          "format": "numeric",
+          "type": "number"
+        },
+        "signed_dr_upload_date": {
+          "format": "date",
+          "type": "string"
+        },
+        "transmittal_date": {
+          "format": "date",
+          "type": "string"
+        },
+        "tms_date": {
+          "format": "date",
+          "type": "string"
+        },
+        "tms_done_by": {
+          "description": "Note:\nThis is a Foreign Key to `profiles.id`.<fk table='profiles' column='id'/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "pod_ac_shipping_date": {
+          "format": "date",
+          "type": "string"
+        },
+        "lbc_tracking_number": {
+          "format": "text",
+          "type": "string"
+        },
+        "request_received_at": {
+          "description": "Timestamp when the client trip request/email was received.",
+          "format": "timestamp with time zone",
+          "type": "string"
+        },
+        "departure_from_warehouse_at": {
+          "description": "Timestamp when the assigned trip departed from the origin warehouse.",
+          "format": "timestamp with time zone",
+          "type": "string"
+        },
+        "archived_at": {
+          "format": "timestamp with time zone",
+          "type": "string"
+        },
+        "archived_by": {
+          "description": "Note:\nThis is a Foreign Key to `profiles.id`.<fk table='profiles' column='id'/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "collaboration_version": {
+          "default": 0,
+          "format": "bigint",
+          "type": "integer"
+        },
+        "trip_reference": {
+          "format": "text",
+          "type": "string"
+        },
+        "spreadsheet_issue_type": {
+          "format": "text",
+          "type": "string"
+        },
+        "spreadsheet_issue_reason": {
+          "format": "text",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "trip_stops": {
+      "required": [
+        "id",
+        "trip_id",
+        "stop_sequence",
+        "customer_id",
+        "delivery_status",
+        "created_at",
+        "updated_at",
+        "dr_version",
+        "collaboration_version"
+      ],
+      "properties": {
+        "id": {
+          "default": "gen_random_uuid()",
+          "description": "Note:\nThis is a Primary Key.<pk/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "trip_id": {
+          "description": "Note:\nThis is a Foreign Key to `trips.id`.<fk table='trips' column='id'/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "stop_sequence": {
+          "format": "integer",
+          "type": "integer"
+        },
+        "customer_id": {
+          "description": "Note:\nThis is a Foreign Key to `customers.id`.<fk table='customers' column='id'/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "store_id": {
+          "description": "Note:\nThis is a Foreign Key to `customer_stores.id`.<fk table='customer_stores' column='id'/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "delivery_status": {
+          "default": "PENDING",
+          "format": "text",
+          "type": "string"
+        },
+        "arrival_time": {
+          "format": "timestamp with time zone",
+          "type": "string"
+        },
+        "start_unloading_time": {
+          "format": "timestamp with time zone",
+          "type": "string"
+        },
+        "finish_unloading_time": {
+          "format": "timestamp with time zone",
+          "type": "string"
+        },
+        "departure_time": {
+          "format": "timestamp with time zone",
+          "type": "string"
+        },
+        "remarks": {
+          "format": "text",
+          "type": "string"
+        },
+        "created_at": {
+          "default": "now()",
+          "format": "timestamp with time zone",
+          "type": "string"
+        },
+        "updated_at": {
+          "default": "now()",
+          "format": "timestamp with time zone",
+          "type": "string"
+        },
+        "dispatch_number": {
+          "format": "text",
+          "type": "string"
+        },
+        "transaction_number": {
+          "format": "text",
+          "type": "string"
+        },
+        "dr_number": {
+          "format": "text",
+          "type": "string"
+        },
+        "dr_version": {
+          "default": 0,
+          "format": "bigint",
+          "type": "integer"
+        },
+        "quantity": {
+          "format": "numeric",
+          "type": "number"
+        },
+        "total_cbm": {
+          "format": "numeric",
+          "type": "number"
+        },
+        "archived_at": {
+          "format": "timestamp with time zone",
+          "type": "string"
+        },
+        "archived_by": {
+          "description": "Note:\nThis is a Foreign Key to `profiles.id`.<fk table='profiles' column='id'/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "collaboration_version": {
+          "default": 0,
+          "format": "bigint",
+          "type": "integer"
+        },
+        "spreadsheet_issue_type": {
+          "format": "text",
+          "type": "string"
+        },
+        "spreadsheet_issue_reason": {
+          "format": "text",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "trip_line_items": {
+      "required": [
+        "id",
+        "trip_id",
+        "created_at",
+        "updated_at",
+        "collaboration_version"
+      ],
+      "properties": {
+        "id": {
+          "default": "gen_random_uuid()",
+          "description": "Note:\nThis is a Primary Key.<pk/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "trip_id": {
+          "description": "Note:\nThis is a Foreign Key to `trips.id`.<fk table='trips' column='id'/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "trip_stop_id": {
+          "description": "Note:\nThis is a Foreign Key to `trip_stops.id`.<fk table='trip_stops' column='id'/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "product_id": {
+          "description": "Note:\nThis is a Foreign Key to `products.id`.<fk table='products' column='id'/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "quantity": {
+          "format": "numeric",
+          "type": "number"
+        },
+        "cbm": {
+          "format": "numeric",
+          "type": "number"
+        },
+        "dr_number": {
+          "format": "text",
+          "type": "string"
+        },
+        "sap_so_number": {
+          "format": "text",
+          "type": "string"
+        },
+        "customer_po_number": {
+          "format": "text",
+          "type": "string"
+        },
+        "internal_po_number": {
+          "format": "text",
+          "type": "string"
+        },
+        "customer_model": {
+          "format": "text",
+          "type": "string"
+        },
+        "remarks": {
+          "format": "text",
+          "type": "string"
+        },
+        "created_at": {
+          "default": "now()",
+          "format": "timestamp with time zone",
+          "type": "string"
+        },
+        "updated_at": {
+          "default": "now()",
+          "format": "timestamp with time zone",
+          "type": "string"
+        },
+        "collaboration_version": {
+          "default": 0,
+          "format": "bigint",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "trip_truck_assignments": {
+      "required": [
+        "id",
+        "trip_id",
+        "truck_id",
+        "assignment_type",
+        "created_at",
+        "updated_at",
+        "collaboration_version",
+        "stop_scope"
+      ],
+      "properties": {
+        "id": {
+          "default": "gen_random_uuid()",
+          "description": "Note:\nThis is a Primary Key.<pk/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "trip_id": {
+          "description": "Note:\nThis is a Foreign Key to `trips.id`.<fk table='trips' column='id'/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "truck_id": {
+          "description": "Note:\nThis is a Foreign Key to `trucks.id`.<fk table='trucks' column='id'/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "driver_id": {
+          "description": "Note:\nThis is a Foreign Key to `drivers.id`.<fk table='drivers' column='id'/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "trucking_company_id": {
+          "description": "Note:\nThis is a Foreign Key to `trucking_companies.id`.<fk table='trucking_companies' column='id'/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "assignment_type": {
+          "default": "PRIMARY",
+          "format": "text",
+          "type": "string"
+        },
+        "assigned_at": {
+          "format": "timestamp with time zone",
+          "type": "string"
+        },
+        "unassigned_at": {
+          "format": "timestamp with time zone",
+          "type": "string"
+        },
+        "remarks": {
+          "format": "text",
+          "type": "string"
+        },
+        "created_at": {
+          "default": "now()",
+          "format": "timestamp with time zone",
+          "type": "string"
+        },
+        "updated_at": {
+          "default": "now()",
+          "format": "timestamp with time zone",
+          "type": "string"
+        },
+        "collaboration_version": {
+          "default": 0,
+          "format": "bigint",
+          "type": "integer"
+        },
+        "stop_scope": {
+          "default": "ALL",
+          "format": "text",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "trip_assignment_stops": {
+      "required": [
+        "id",
+        "trip_id",
+        "assignment_id",
+        "trip_stop_id",
+        "progress",
+        "collaboration_version",
+        "created_at",
+        "updated_at"
+      ],
+      "properties": {
+        "id": {
+          "default": "gen_random_uuid()",
+          "description": "Note:\nThis is a Primary Key.<pk/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "trip_id": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "assignment_id": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "trip_stop_id": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "progress": {
+          "default": "PENDING",
+          "format": "text",
+          "type": "string"
+        },
+        "collaboration_version": {
+          "default": 1,
+          "format": "bigint",
+          "type": "integer"
+        },
+        "created_at": {
+          "default": "now()",
+          "format": "timestamp with time zone",
+          "type": "string"
+        },
+        "updated_at": {
+          "default": "now()",
+          "format": "timestamp with time zone",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "trip_cargo_allocations": {
+      "required": [
+        "id",
+        "trip_id",
+        "assignment_id",
+        "trip_line_item_id",
+        "quantity",
+        "allocated_cbm",
+        "collaboration_version",
+        "created_at",
+        "updated_at"
+      ],
+      "properties": {
+        "id": {
+          "default": "gen_random_uuid()",
+          "description": "Note:\nThis is a Primary Key.<pk/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "trip_id": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "assignment_id": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "trip_line_item_id": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "quantity": {
+          "format": "numeric",
+          "type": "number"
+        },
+        "allocated_cbm": {
+          "format": "numeric",
+          "type": "number"
+        },
+        "collaboration_version": {
+          "default": 1,
+          "format": "bigint",
+          "type": "integer"
+        },
+        "created_by": {
+          "description": "Note:\nThis is a Foreign Key to `profiles.id`.<fk table='profiles' column='id'/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "updated_by": {
+          "description": "Note:\nThis is a Foreign Key to `profiles.id`.<fk table='profiles' column='id'/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "created_at": {
+          "default": "now()",
+          "format": "timestamp with time zone",
+          "type": "string"
+        },
+        "updated_at": {
+          "default": "now()",
+          "format": "timestamp with time zone",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "trip_import_batches": null,
+    "trip_import_groups": null,
+    "trip_import_rows": null,
+    "customers": {
+      "required": [
+        "id",
+        "name",
+        "status",
+        "created_at",
+        "updated_at"
+      ],
+      "properties": {
+        "id": {
+          "default": "gen_random_uuid()",
+          "description": "Note:\nThis is a Primary Key.<pk/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "name": {
+          "format": "text",
+          "type": "string"
+        },
+        "code": {
+          "format": "text",
+          "type": "string"
+        },
+        "address": {
+          "format": "text",
+          "type": "string"
+        },
+        "contact_person": {
+          "format": "text",
+          "type": "string"
+        },
+        "contact_number": {
+          "format": "text",
+          "type": "string"
+        },
+        "email": {
+          "format": "text",
+          "type": "string"
+        },
+        "status": {
+          "default": "ACTIVE",
+          "format": "text",
+          "type": "string"
+        },
+        "notes": {
+          "format": "text",
+          "type": "string"
+        },
+        "created_at": {
+          "default": "now()",
+          "format": "timestamp with time zone",
+          "type": "string"
+        },
+        "updated_at": {
+          "default": "now()",
+          "format": "timestamp with time zone",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "customer_stores": {
+      "required": [
+        "id",
+        "customer_id",
+        "name",
+        "status",
+        "created_at",
+        "updated_at"
+      ],
+      "properties": {
+        "id": {
+          "default": "gen_random_uuid()",
+          "description": "Note:\nThis is a Primary Key.<pk/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "customer_id": {
+          "description": "Note:\nThis is a Foreign Key to `customers.id`.<fk table='customers' column='id'/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "name": {
+          "format": "text",
+          "type": "string"
+        },
+        "code": {
+          "format": "text",
+          "type": "string"
+        },
+        "address": {
+          "format": "text",
+          "type": "string"
+        },
+        "province": {
+          "format": "text",
+          "type": "string"
+        },
+        "city": {
+          "format": "text",
+          "type": "string"
+        },
+        "postal_code": {
+          "format": "text",
+          "type": "string"
+        },
+        "latitude": {
+          "format": "numeric",
+          "type": "number"
+        },
+        "longitude": {
+          "format": "numeric",
+          "type": "number"
+        },
+        "status": {
+          "default": "ACTIVE",
+          "format": "text",
+          "type": "string"
+        },
+        "notes": {
+          "format": "text",
+          "type": "string"
+        },
+        "created_at": {
+          "default": "now()",
+          "format": "timestamp with time zone",
+          "type": "string"
+        },
+        "updated_at": {
+          "default": "now()",
+          "format": "timestamp with time zone",
+          "type": "string"
+        },
+        "region": {
+          "description": "Geographic region of the customer store: LUZON, VISAYAS, or MINDANAO.",
+          "format": "text",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "warehouses": {
+      "required": [
+        "id",
+        "code",
+        "name",
+        "status",
+        "created_at",
+        "updated_at"
+      ],
+      "properties": {
+        "id": {
+          "default": "gen_random_uuid()",
+          "description": "Note:\nThis is a Primary Key.<pk/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "code": {
+          "format": "text",
+          "type": "string"
+        },
+        "name": {
+          "format": "text",
+          "type": "string"
+        },
+        "address": {
+          "format": "text",
+          "type": "string"
+        },
+        "province": {
+          "format": "text",
+          "type": "string"
+        },
+        "city": {
+          "format": "text",
+          "type": "string"
+        },
+        "warehouse_type": {
+          "format": "text",
+          "type": "string"
+        },
+        "status": {
+          "default": "ACTIVE",
+          "format": "text",
+          "type": "string"
+        },
+        "notes": {
+          "format": "text",
+          "type": "string"
+        },
+        "created_at": {
+          "default": "now()",
+          "format": "timestamp with time zone",
+          "type": "string"
+        },
+        "updated_at": {
+          "default": "now()",
+          "format": "timestamp with time zone",
+          "type": "string"
+        },
+        "region": {
+          "description": "Geographic region of the warehouse: LUZON, VISAYAS, or MINDANAO.",
+          "format": "text",
+          "type": "string"
+        },
+        "latitude": {
+          "format": "double precision",
+          "type": "number"
+        },
+        "longitude": {
+          "format": "double precision",
+          "type": "number"
+        }
+      },
+      "type": "object"
+    },
+    "drivers": {
+      "required": [
+        "id",
+        "first_name",
+        "last_name",
+        "status",
+        "created_at",
+        "updated_at"
+      ],
+      "properties": {
+        "id": {
+          "default": "gen_random_uuid()",
+          "description": "Note:\nThis is a Primary Key.<pk/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "trucking_company_id": {
+          "description": "Note:\nThis is a Foreign Key to `trucking_companies.id`.<fk table='trucking_companies' column='id'/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "first_name": {
+          "format": "text",
+          "type": "string"
+        },
+        "last_name": {
+          "format": "text",
+          "type": "string"
+        },
+        "contact_number": {
+          "format": "text",
+          "type": "string"
+        },
+        "license_number": {
+          "format": "text",
+          "type": "string"
+        },
+        "status": {
+          "default": "ACTIVE",
+          "format": "text",
+          "type": "string"
+        },
+        "notes": {
+          "format": "text",
+          "type": "string"
+        },
+        "created_at": {
+          "default": "now()",
+          "format": "timestamp with time zone",
+          "type": "string"
+        },
+        "updated_at": {
+          "default": "now()",
+          "format": "timestamp with time zone",
+          "type": "string"
+        },
+        "profile_id": {
+          "description": "Note:\nThis is a Foreign Key to `profiles.id`.<fk table='profiles' column='id'/>",
+          "format": "uuid",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "trucks": {
+      "required": [
+        "id",
+        "plate_number",
+        "status",
+        "created_at",
+        "updated_at"
+      ],
+      "properties": {
+        "id": {
+          "default": "gen_random_uuid()",
+          "description": "Note:\nThis is a Primary Key.<pk/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "plate_number": {
+          "format": "text",
+          "type": "string"
+        },
+        "trucking_company_id": {
+          "description": "Note:\nThis is a Foreign Key to `trucking_companies.id`.<fk table='trucking_companies' column='id'/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "truck_type": {
+          "format": "text",
+          "type": "string"
+        },
+        "capacity_cbm": {
+          "format": "numeric",
+          "type": "number"
+        },
+        "status": {
+          "default": "ACTIVE",
+          "format": "text",
+          "type": "string"
+        },
+        "notes": {
+          "format": "text",
+          "type": "string"
+        },
+        "created_at": {
+          "default": "now()",
+          "format": "timestamp with time zone",
+          "type": "string"
+        },
+        "updated_at": {
+          "default": "now()",
+          "format": "timestamp with time zone",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "products": {
+      "required": [
+        "id",
+        "name",
+        "status",
+        "created_at",
+        "updated_at"
+      ],
+      "properties": {
+        "id": {
+          "default": "gen_random_uuid()",
+          "description": "Note:\nThis is a Primary Key.<pk/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "sku": {
+          "format": "text",
+          "type": "string"
+        },
+        "model_code": {
+          "format": "text",
+          "type": "string"
+        },
+        "name": {
+          "format": "text",
+          "type": "string"
+        },
+        "category": {
+          "format": "text",
+          "type": "string"
+        },
+        "description": {
+          "format": "text",
+          "type": "string"
+        },
+        "unit_cbm": {
+          "format": "numeric",
+          "type": "number"
+        },
+        "status": {
+          "default": "ACTIVE",
+          "format": "text",
+          "type": "string"
+        },
+        "notes": {
+          "format": "text",
+          "type": "string"
+        },
+        "created_at": {
+          "default": "now()",
+          "format": "timestamp with time zone",
+          "type": "string"
+        },
+        "updated_at": {
+          "default": "now()",
+          "format": "timestamp with time zone",
+          "type": "string"
+        },
+        "photo_path": {
+          "format": "text",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "rpc": {
+    "/v_trip_cargo_totals": {
+      "get": {
+        "parameters": [
+          {
+            "$ref": "#/parameters/rowFilter.v_trip_cargo_totals.trip_id"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.v_trip_cargo_totals.total_cbm"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.v_trip_cargo_totals.assigned_cbm"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.v_trip_cargo_totals.remaining_cbm"
+          },
+          {
+            "$ref": "#/parameters/select"
+          },
+          {
+            "$ref": "#/parameters/order"
+          },
+          {
+            "$ref": "#/parameters/range"
+          },
+          {
+            "$ref": "#/parameters/rangeUnit"
+          },
+          {
+            "$ref": "#/parameters/offset"
+          },
+          {
+            "$ref": "#/parameters/limit"
+          },
+          {
+            "$ref": "#/parameters/preferCount"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "schema": {
+              "items": {
+                "$ref": "#/definitions/v_trip_cargo_totals"
+              },
+              "type": "array"
+            }
+          },
+          "206": {
+            "description": "Partial Content"
+          }
+        },
+        "tags": [
+          "v_trip_cargo_totals"
+        ]
+      }
+    },
+    "/trip_cargo_allocations": {
+      "get": {
+        "parameters": [
+          {
+            "$ref": "#/parameters/rowFilter.trip_cargo_allocations.id"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.trip_cargo_allocations.trip_id"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.trip_cargo_allocations.assignment_id"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.trip_cargo_allocations.trip_line_item_id"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.trip_cargo_allocations.quantity"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.trip_cargo_allocations.allocated_cbm"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.trip_cargo_allocations.collaboration_version"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.trip_cargo_allocations.created_by"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.trip_cargo_allocations.updated_by"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.trip_cargo_allocations.created_at"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.trip_cargo_allocations.updated_at"
+          },
+          {
+            "$ref": "#/parameters/select"
+          },
+          {
+            "$ref": "#/parameters/order"
+          },
+          {
+            "$ref": "#/parameters/range"
+          },
+          {
+            "$ref": "#/parameters/rangeUnit"
+          },
+          {
+            "$ref": "#/parameters/offset"
+          },
+          {
+            "$ref": "#/parameters/limit"
+          },
+          {
+            "$ref": "#/parameters/preferCount"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "schema": {
+              "items": {
+                "$ref": "#/definitions/trip_cargo_allocations"
+              },
+              "type": "array"
+            }
+          },
+          "206": {
+            "description": "Partial Content"
+          }
+        },
+        "tags": [
+          "trip_cargo_allocations"
+        ]
+      },
+      "post": {
+        "parameters": [
+          {
+            "$ref": "#/parameters/body.trip_cargo_allocations"
+          },
+          {
+            "$ref": "#/parameters/select"
+          },
+          {
+            "$ref": "#/parameters/preferPost"
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        },
+        "tags": [
+          "trip_cargo_allocations"
+        ]
+      },
+      "delete": {
+        "parameters": [
+          {
+            "$ref": "#/parameters/rowFilter.trip_cargo_allocations.id"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.trip_cargo_allocations.trip_id"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.trip_cargo_allocations.assignment_id"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.trip_cargo_allocations.trip_line_item_id"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.trip_cargo_allocations.quantity"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.trip_cargo_allocations.allocated_cbm"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.trip_cargo_allocations.collaboration_version"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.trip_cargo_allocations.created_by"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.trip_cargo_allocations.updated_by"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.trip_cargo_allocations.created_at"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.trip_cargo_allocations.updated_at"
+          },
+          {
+            "$ref": "#/parameters/preferReturn"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        },
+        "tags": [
+          "trip_cargo_allocations"
+        ]
+      },
+      "patch": {
+        "parameters": [
+          {
+            "$ref": "#/parameters/rowFilter.trip_cargo_allocations.id"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.trip_cargo_allocations.trip_id"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.trip_cargo_allocations.assignment_id"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.trip_cargo_allocations.trip_line_item_id"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.trip_cargo_allocations.quantity"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.trip_cargo_allocations.allocated_cbm"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.trip_cargo_allocations.collaboration_version"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.trip_cargo_allocations.created_by"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.trip_cargo_allocations.updated_by"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.trip_cargo_allocations.created_at"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.trip_cargo_allocations.updated_at"
+          },
+          {
+            "$ref": "#/parameters/body.trip_cargo_allocations"
+          },
+          {
+            "$ref": "#/parameters/preferReturn"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        },
+        "tags": [
+          "trip_cargo_allocations"
+        ]
+      }
+    },
+    "/rpc/planned_route_context_v1": {
+      "post": {
+        "parameters": [
+          {
+            "in": "body",
+            "name": "args",
+            "required": true,
+            "schema": {
+              "properties": {
+                "p_assignment": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "p_lock": {
+                  "format": "boolean",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "p_assignment"
+              ],
+              "type": "object"
+            }
+          },
+          {
+            "$ref": "#/parameters/preferParams"
+          }
+        ],
+        "produces": [
+          "application/json",
+          "application/vnd.pgrst.object+json;nulls=stripped",
+          "application/vnd.pgrst.object+json"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "(rpc) planned_route_context_v1"
+        ]
+      }
+    },
+    "/rpc/save_trip_cargo_allocations_v1": {
+      "post": {
+        "parameters": [
+          {
+            "in": "body",
+            "name": "args",
+            "required": true,
+            "schema": {
+              "properties": {
+                "p_actor": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "p_changes": {
+                  "format": "jsonb"
+                },
+                "p_trip": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "p_actor",
+                "p_trip",
+                "p_changes"
+              ],
+              "type": "object"
+            }
+          },
+          {
+            "$ref": "#/parameters/preferParams"
+          }
+        ],
+        "produces": [
+          "application/json",
+          "application/vnd.pgrst.object+json;nulls=stripped",
+          "application/vnd.pgrst.object+json"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "(rpc) save_trip_cargo_allocations_v1"
+        ]
+      }
+    },
+    "/rpc/tracking_route_context_v1": {
+      "post": {
+        "parameters": [
+          {
+            "in": "body",
+            "name": "args",
+            "required": true,
+            "schema": {
+              "properties": {
+                "p_assignment": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "p_lock": {
+                  "format": "boolean",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "p_assignment"
+              ],
+              "type": "object"
+            }
+          },
+          {
+            "$ref": "#/parameters/preferParams"
+          }
+        ],
+        "produces": [
+          "application/json",
+          "application/vnd.pgrst.object+json;nulls=stripped",
+          "application/vnd.pgrst.object+json"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "(rpc) tracking_route_context_v1"
+        ]
+      }
+    }
+  }
+}

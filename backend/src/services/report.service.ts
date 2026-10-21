@@ -17,6 +17,8 @@ import { getTripRoutes } from "./trip-route.service.js";
 import { getOngoingTripIds } from "./trip-ongoing.service.js";
 import { resolveLegacyPodCellValue } from "./transmittal-tracker.logic.js";
 import { tripReferenceAvailable } from "./trip-reference.schema.js";
+import { tripImportAvailable,tripAllocationReportAvailable } from "./trip-import.schema.js";
+import { TRIP_SOURCE_COLUMNS, TRIP_CARGO_COLUMNS, SOURCE_LINE_COLUMNS, SOURCE_REPORTS, sourceOrderedColumns } from "../config/trip-source-columns.js";
 
 const REPORT_ROUTE_MAP = {
   combined: "v_tms_combined",
@@ -88,7 +90,7 @@ function applySearch(
 ) {
   const searchFilter = buildIlikeOrFilter(
     columns
-      .filter((column) => !column.key.endsWith("_id") && column.type === "text")
+      .filter((column) => !column.key.endsWith("_id") && column.key !== "so_approval_date" && column.type === "text")
       .map((column) => column.key),
     searchValue,
   );
@@ -606,6 +608,44 @@ function getReportDefinition(reportKey: string): ReportDefinition {
   return definition;
 }
 
+async function attachSourceDecimals(rows: Record<string, unknown>[]) {
+  const ids = [...new Set(rows.map(row => row.trip_line_item_id).filter((id): id is string => typeof id === "string" && isValidUuid(id)))];
+  for (let offset = 0; offset < ids.length; offset += 100) {
+    // Cast at the database boundary, before JSON numeric values become JavaScript doubles.
+    const { data, error } = await supabaseAdmin.from("trip_line_items")
+      .select("id, quantity::text, cbm::text, unit_cbm::text, stock_quantity::text")
+      .in("id", ids.slice(offset, offset + 100));
+    if (error) throw new ApiError("Unable to load source decimal precision.", 503, "SOURCE_DECIMAL_QUERY_FAILED");
+    const values = new Map((data ?? []).map(item => [String(item.id), item]));
+    for (const row of rows) {
+      const item = values.get(String(row.trip_line_item_id));
+      if (item) for (const field of ["quantity", "cbm", "unit_cbm", "stock_quantity"] as const) row[field] = item[field];
+    }
+  }
+  const allocationIds=[...new Set(rows.map(row=>row._cargo_allocation_id).filter((id):id is string=>typeof id==="string"&&isValidUuid(id)))];
+  for(let offset=0;offset<allocationIds.length;offset+=100){
+    const result=await supabaseAdmin.from("trip_cargo_allocations").select("id,quantity::text,allocated_cbm::text").in("id",allocationIds.slice(offset,offset+100));
+    if(result.error)throw new ApiError("Unable to load exact truck cargo values.",503,"ALLOCATION_DECIMAL_QUERY_FAILED");
+    const allocations=new Map((result.data??[]).map(row=>[String(row.id),row]));
+    for(const row of rows){const allocation=allocations.get(String(row._cargo_allocation_id));if(allocation){row.line_allocated_quantity=allocation.quantity;row.line_allocated_cbm=allocation.allocated_cbm;}}
+  }
+}
+async function attachLegacyStopData(rows: Record<string, unknown>[], trips?: Record<string, unknown>[]) {
+  const departures = new Map((trips ?? []).map(trip => [String(trip.id), trip.departure_from_warehouse_at]));
+  for (const row of rows) row.warehouse_departure_time = departures.get(String(row.trip_id)) ?? null;
+  const ids = [...new Set(rows.map(row => row.trip_stop_id).filter((id): id is string => typeof id === "string" && isValidUuid(id)))];
+  for (let offset = 0; offset < ids.length; offset += 100) {
+    const result = await supabaseAdmin.from("trip_stops").select("id, arrival_time, start_unloading_time, finish_unloading_time, departure_time, dr_number, quantity, total_cbm").in("id", ids.slice(offset, offset + 100));
+    if (result.error) throw new ApiError("Unable to load delivery execution fields.", 503);
+    const stops = new Map((result.data ?? []).map(stop => [String(stop.id), stop]));
+    for (const row of rows) {
+      const stop = stops.get(String(row.trip_stop_id)); if (!stop) continue;
+      for (const key of ["arrival_time", "start_unloading_time", "finish_unloading_time", "departure_time"] as const) row[key] = stop[key];
+      row.transaction_dr_number = stop.dr_number; row.transaction_quantity = stop.quantity; row.transaction_total_cbm = stop.total_cbm;
+    }
+  }
+}
+
 async function attachGeneratedTripNumbers(rows: Record<string, unknown>[], suppliedTrips?: Record<string,unknown>[]) {
   const ids = [...new Set(rows.map(row => row.trip_id ?? row._trip_id).filter((id): id is string => typeof id === "string" && isValidUuid(id)))];
   if (!ids.length) return;
@@ -631,16 +671,29 @@ export async function getReportData(
   if(scope && Object.values(scope).some(ids=>!ids||!ids.length||ids.length>100||ids.some(id=>!isValidUuid(id))))throw new ApiError("Invalid physical report scope.",400);
   const key = reportKey.trim();
   if (!REPORT_KEYS.includes(key)) throw new ApiError("Report not found", 404, "REPORT_NOT_FOUND");
-  const definition = getReportDefinition(key);
+  const requestedSourceLines = key === "dispatch-monitoring" && getQueryString(query.source_lines) === "true";
+  const sourceLines = requestedSourceLines && await tripImportAvailable();
+  // The existing booking view already exposes physical cargo IDs. Use it before
+  // source-schema activation so manually added products remain visible after refresh.
+  const legacySourceLines = requestedSourceLines && !sourceLines;
+  const baseDefinition = getReportDefinition(legacySourceLines ? "trip-booking" : key);
+  const hasSource = (sourceLines || SOURCE_REPORTS.includes(key)) && await tripImportAvailable();
+  const hasCargoColumns=hasSource&&await tripAllocationReportAvailable();
+  const sourceColumns = [...TRIP_SOURCE_COLUMNS, ...(sourceLines ? SOURCE_LINE_COLUMNS : []),...(hasCargoColumns?TRIP_CARGO_COLUMNS:[])];
+  const definition = hasSource ? {
+    ...baseDefinition, columns: [...baseDefinition.columns, ...sourceColumns],
+    sortableColumns: [...baseDefinition.sortableColumns, ...sourceColumns.map(column => column.key)],
+    filters: [...baseDefinition.filters, ...sourceColumns.map(column => ({ key: column.key, field: column.key, operator: "eq" as const }))],
+  } : baseDefinition;
   // These views expose the physical parent as an internal field; the public
   // trip_id alias is attached only after querying, so it cannot be filtered in SQL.
-  const tripIdField = ["trip-booking", "dispatch"].includes(key) ? "_trip_id" : "trip_id";
+  const tripIdField = legacySourceLines || ["trip-booking", "dispatch"].includes(key) ? "_trip_id" : "trip_id";
   validateArrayQuery(query.trip_id, "trip_id");
   const tripId = normalizeText(getQueryString(query.trip_id));
   if (tripId && !isValidUuid(tripId)) {
     throw new ApiError("Invalid trip id", 400, "INVALID_TRIP_ID");
   }
-  const viewNames = resolveViewNames(definition);
+  const viewNames = sourceLines ? ["v_trip_source_master"] : resolveViewNames(definition);
   if (!viewNames.length) throw new ApiError("Report view configuration is missing", 500, "REPORT_CONFIG_ERROR");
 
   const rawPage = Number(getQueryString(query.page) ?? 1);
@@ -686,12 +739,12 @@ export async function getReportData(
     if(scopedCalls)builder=builder.in("store_call_id",scopedCalls);
     if(scope?.tripIds)builder=builder.in(tripIdField,scope.tripIds);
     if(scope?.storeCallIds)builder=builder.in("store_call_id",scope.storeCallIds);
-    if (key === "dispatch-monitoring" && getQueryString(query.active_transactions) === "true") {
+    if (key === "dispatch-monitoring" && !legacySourceLines && getQueryString(query.active_transactions) === "true") {
       builder = getQueryString(query.archive_scope) === "archived"
         ? builder.not("transaction_archived_at", "is", null)
         : builder.is("transaction_archived_at", null);
     }
-    if (ongoingTripIds) builder = builder.in("trip_id", ongoingTripIds);
+    if (ongoingTripIds) builder = builder.in(tripIdField, ongoingTripIds);
     if(issueTripIds)builder=builder.in(tripIdField,issueTripIds);
     builder = applyFilters(builder, key==="store-calling"?{...definition,filters:definition.filters.map(filter=>({...filter,field:mapField(filter.field)}))}:definition, query);
     const reportTableKeys = [
@@ -724,7 +777,8 @@ export async function getReportData(
       "trip-booking": ["_trip_id","_trip_stop_id","_trip_line_item_id","_assignment_id","_billing_id"],
       "store-calling": ["store_call_id"],
     };
-    for(const column of tieBreakers[key]??[])if(column!==sortBy)builder=builder.order(column,{ascending:true,nullsFirst:false});
+    for(const column of tieBreakers[legacySourceLines ? "trip-booking" : key]??[])if(column!==sortBy)builder=builder.order(column,{ascending:true,nullsFirst:false});
+    if (sourceLines) builder = builder.order("_trip_line_item_id", { ascending: true, nullsFirst: false });
     builder = builder.range(from, from + limit - 1);
     const { data, error, count } = await builder;
     if (!error) {
@@ -740,8 +794,8 @@ export async function getReportData(
       let parentTrips:Record<string,unknown>[]|undefined;
       if(["combined","dispatch","dispatch-monitoring","trip-booking"].includes(key)){
         const ids=[...new Set(rows.map(row=>row.trip_id??row._trip_id).filter((id):id is string=>typeof id==="string"&&isValidUuid(id)))];
-        if(ids.length){let result=await supabaseAdmin.from("trips").select("id,dispatch_number,transaction_number,trip_reference,warehouse_id").in("id",ids);
-          if(result.error&&["42703","PGRST204"].includes(result.error.code)&&/trip_reference/i.test(result.error.message))result=await supabaseAdmin.from("trips").select("id,dispatch_number,transaction_number,warehouse_id").in("id",ids) as typeof result;
+        if(ids.length){let result=await supabaseAdmin.from("trips").select("id,dispatch_number,transaction_number,trip_reference,warehouse_id,departure_from_warehouse_at").in("id",ids);
+          if(result.error&&["42703","PGRST204"].includes(result.error.code)&&/trip_reference/i.test(result.error.message))result=await supabaseAdmin.from("trips").select("id,dispatch_number,transaction_number,warehouse_id,departure_from_warehouse_at").in("id",ids) as typeof result;
           if(result.error)throw new ApiError("Unable to load report trip relationships.",503);parentTrips=result.data??[];
         }else parentTrips=[];
       }
@@ -750,6 +804,8 @@ export async function getReportData(
         : rows;
       const tripIds = [...new Set(enriched.map(row => row.trip_id).filter((id): id is string => typeof id === "string" && id.length > 0))];
       await Promise.all([
+        legacySourceLines ? attachLegacyStopData(enriched,parentTrips) : Promise.resolve(),
+        hasSource ? attachSourceDecimals(enriched) : Promise.resolve(),
         attachGeneratedTripNumbers(enriched,parentTrips),
         ["combined", "dispatch", "dispatch-monitoring"].includes(key) ? attachLoadingMilestones(enriched) : Promise.resolve(),
         ["combined", "dispatch", "dispatch-monitoring", "trip-booking", "store-calling"].includes(key) ? getTripRoutes(tripIds,parentTrips?.map(trip=>({id:String(trip.id),warehouse_id:typeof trip.warehouse_id==="string"?trip.warehouse_id:null}))).then(routes => {
@@ -777,10 +833,14 @@ export const getPodStatusReport = (query: ReportQueryParams = {}) => getReportDa
 export const getPodDriveFilesReport = (query: ReportQueryParams = {}) => getReportData("pod-drive-files", query);
 export const getTripExceptionsReport = (query: ReportQueryParams = {}) => getReportData("trip-exceptions", query);
 
-export async function getReportColumns(reportKey: string) {
+export async function getReportColumns(reportKey: string, sourceLines = false) {
   const key = reportKey.trim();
   if (!REPORT_KEYS.includes(key)) throw new ApiError("Report not found", 404, "REPORT_NOT_FOUND");
-  return { report: key, columns: REPORT_DEFINITIONS[key].columns.map(column => column.key === "trip_number" ? { ...column, type: "text" as const } : column) };
+  const master = sourceLines && key === "dispatch-monitoring";
+  const source = (master || SOURCE_REPORTS.includes(key)) && await tripImportAvailable();
+  const columns = [...REPORT_DEFINITIONS[key].columns, ...(source || master ? [...TRIP_SOURCE_COLUMNS, ...(master ? SOURCE_LINE_COLUMNS : []),...(source&&await tripAllocationReportAvailable()?TRIP_CARGO_COLUMNS:[])] : [])]
+    .map(column => ({ ...column, type: column.key === "trip_number" ? "text" as const : column.type }));
+  return { report: key, columns: source || master ? sourceOrderedColumns(columns, master) : columns };
 }
 
 export async function getAvailableReportKeys() { return REPORT_KEYS; }
@@ -798,7 +858,7 @@ export function validateReportKey(reportKey: string) {
 
 export function validateReportQuery(query: Record<string, unknown>) {
   const definition = REPORT_DEFINITIONS[query.reportKey as string];
-  if (typeof query.sort_by === "string" && query.sort_by && !definition?.sortableColumns.includes(query.sort_by)) throw new Error("Invalid sort_by parameter");
+  if (typeof query.sort_by === "string" && query.sort_by && !definition?.sortableColumns.includes(query.sort_by) && ![...TRIP_SOURCE_COLUMNS, ...SOURCE_LINE_COLUMNS].some(column => column.key === query.sort_by)) throw new Error("Invalid sort_by parameter");
   if (typeof query.sort_order === "string" && query.sort_order && !["asc", "desc"].includes(query.sort_order)) throw new Error("Invalid sort_order parameter");
   if (typeof query.page === "string" && (Number(query.page) <= 0 || !Number.isInteger(Number(query.page)))) throw new Error("page must be a positive integer");
   if (typeof query.limit === "string" && (Number(query.limit) <= 0 || Number(query.limit) > 500 || !Number.isInteger(Number(query.limit)))) throw new Error("limit must be a positive integer up to 500");

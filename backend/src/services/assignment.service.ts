@@ -1,4 +1,5 @@
-import {getTruckAvailability} from "./truck-availability.service.js";
+import {getDriverAvailability,getTruckAvailability} from "./truck-availability.service.js";
+import {ApiError} from "../utils/api-response.js";
 import { supabaseAdmin } from "../config/supabase.js";
 import { collaborationSelect } from "./collaboration-events.js";
 import type {
@@ -19,6 +20,49 @@ const ASSIGNMENT_ALLOWED_FIELDS = [
   "unassigned_at",
   "remarks",
 ] as const;
+
+type AssignmentResources = { truck_id: string; driver_id: string | null; unassigned_at: string | null };
+
+/** Early feedback only. The database guards serialize competing writes. */
+async function assertAssignmentAvailable(tripId: string, resources: AssignmentResources, assignmentId?: string) {
+  if (resources.unassigned_at !== null) return;
+  const schedule = await supabaseAdmin.from("trips")
+    .select("loading_date,estimated_delivery_date,status,archived_at").eq("id", tripId).single();
+  if (schedule.error) throw new ApiError("Unable to verify the trip schedule. Retry before assigning resources.", 503, "TRIP_ASSIGNMENT_AVAILABILITY_UNAVAILABLE");
+
+  let duplicates = supabaseAdmin.from("trip_truck_assignments")
+    .select("truck_id,driver_id").eq("trip_id", tripId).is("unassigned_at", null)
+    .or(resources.driver_id ? `truck_id.eq.${resources.truck_id},driver_id.eq.${resources.driver_id}` : `truck_id.eq.${resources.truck_id}`);
+  if (assignmentId) duplicates = duplicates.neq("id", assignmentId);
+  const existing = await duplicates.limit(1);
+  if (existing.error) throw new ApiError("Unable to verify existing assignments. Retry before saving.", 503, "TRIP_ASSIGNMENT_AVAILABILITY_UNAVAILABLE");
+  if (existing.data?.length) throw new ApiError(
+    existing.data[0].truck_id === resources.truck_id ? "This truck is already assigned to the trip." : "This driver is already assigned to another active truck in this trip.",
+    409, "TRIP_ASSIGNMENT_CONFLICT",
+  );
+
+  if (schedule.data.archived_at || ["CANCELLED", "CANCELED", "COMPLETED", "DELIVERED"].includes(String(schedule.data.status).toUpperCase())) return;
+  const start = schedule.data.loading_date ?? undefined, end = schedule.data.estimated_delivery_date ?? undefined;
+  if ((!start || !end) && String(schedule.data.status).toUpperCase() !== "PLANNED") {
+    throw new ApiError("Complete the loading and delivery dates before activating an assigned trip.", 409, "TRIP_ASSIGNMENT_CONFLICT");
+  }
+  const [trucks, drivers] = await Promise.all([
+    getTruckAvailability(start, end, tripId, [resources.truck_id]),
+    resources.driver_id ? getDriverAvailability(start, end, tripId, [resources.driver_id]) : Promise.resolve([]),
+  ]);
+  if (!trucks.length) throw new ApiError("Choose an active truck.", 400, "TRIP_ASSIGNMENT_INVALID_RESOURCE");
+  if (resources.driver_id && !drivers.length) throw new ApiError("Choose an active driver.", 400, "TRIP_ASSIGNMENT_INVALID_RESOURCE");
+  if (trucks[0].availability === "CONFLICT" || drivers.some(driver => driver.availability === "CONFLICT")) {
+    throw new ApiError("This truck or driver has a conflicting active trip. Choose another resource or change the dates.", 409, "TRIP_ASSIGNMENT_CONFLICT");
+  }
+}
+
+function throwAssignmentConflict(error: { code?: string; message?: string }): void {
+  if (error.code === "23514") throw new ApiError(error.message || "Review the truck, driver, schedule and existing cargo.", 409, "TRIP_ASSIGNMENT_CONFLICT");
+  if (["40001", "40P01", "55P03"].includes(error.code ?? "")) throw new ApiError("This assignment changed while saving. Reload before retrying.", 409, "TRIP_ASSIGNMENT_CONFLICT");
+  if (error.code === "23505") throw new ApiError("This truck or driver is already assigned. Reload the trip before retrying.", 409, "TRIP_ASSIGNMENT_CONFLICT");
+  if (error.code === "23503") throw new ApiError("An assignment resource is no longer available. Reload the truck and driver selections.", 409, "TRIP_ASSIGNMENT_CONFLICT");
+}
 
 function normalizeAssignmentType(value: unknown): string | undefined {
   if (value === undefined || value === null || value === "") {
@@ -394,16 +438,12 @@ export async function createTripAssignment(
     }
   }
 
-  if(payload.truck_id){
-    const schedule=await supabaseAdmin.from("trips").select("loading_date,estimated_delivery_date").eq("id",tripId).single();
-    if(schedule.error)throw new Error("Unable to verify the trip schedule.");
-    const options=await getTruckAvailability(schedule.data.loading_date??undefined,schedule.data.estimated_delivery_date??undefined,tripId,[String(payload.truck_id)]);
-    if(!options.length)throw new Error("Choose an active truck.");
-    if(options[0].availability==="CONFLICT")throw new Error("This truck has a conflicting active assignment. Choose another truck.");
-    const duplicate=await supabaseAdmin.from("trip_truck_assignments").select("id").eq("trip_id",tripId).eq("truck_id",String(payload.truck_id)).is("unassigned_at",null).limit(1);
-    if(duplicate.error)throw new Error("Unable to verify existing truck assignments.");
-    if(duplicate.data?.length)throw new Error("This truck is already assigned to the trip.");
-  }
+  if (typeof payload.truck_id !== "string") throw new ApiError("Choose a truck for this assignment.", 400, "TRIP_ASSIGNMENT_INVALID_RESOURCE");
+  await assertAssignmentAvailable(tripId, {
+    truck_id: payload.truck_id,
+    driver_id: typeof payload.driver_id === "string" ? payload.driver_id : null,
+    unassigned_at: typeof payload.unassigned_at === "string" ? payload.unassigned_at : null,
+  });
   const { data, error } = await supabaseAdmin
     .from("trip_truck_assignments")
     .insert(payload)
@@ -414,6 +454,7 @@ export async function createTripAssignment(
 
   if (error) {
     console.error("Trip assignment creation failed:", error);
+    throwAssignmentConflict(error);
     if (
       error.code === "23505" ||
       /duplicate key|duplicate/.test(String(error.message))
@@ -449,7 +490,7 @@ export async function updateTripAssignment(
 
   const existing = await supabaseAdmin
     .from("trip_truck_assignments")
-    .select("id, trip_id, driver_id")
+    .select("id, trip_id, truck_id, driver_id, unassigned_at")
     .eq("id", assignmentId)
     .maybeSingle();
 
@@ -525,15 +566,9 @@ export async function updateTripAssignment(
     throw new Error("No valid assignment fields were provided for update.");
   }
 
-  // Preserve an explicitly assigned driver. Only fill an absent driver from one
-  // unambiguous active physical assignment for the selected truck, never its plate text.
-  if(payload.truck_id && payload.driver_id===undefined && !existing.data.driver_id){
-    const related=await supabaseAdmin.from("trip_truck_assignments").select("driver_id").eq("truck_id",String(payload.truck_id)).neq("id",assignmentId).is("unassigned_at",null).not("driver_id","is",null).limit(100);
-    if(related.error)throw new Error("Unable to verify the selected truck assignment.");
-    const drivers=[...new Set((related.data??[]).map(item=>item.driver_id).filter(Boolean))];
-    if(drivers.length!==1 || related.data?.length===100)throw new Error("Select a driver explicitly before changing this truck.");
-    payload.driver_id=drivers[0];
-  }
+  // Keep the existing driver unless the caller explicitly changes it. Other
+  // trips' assignments are not a default-driver relationship.
+  if (payload.truck_id === null) throw new ApiError("An assignment requires a truck. End the assignment to release it.", 400, "TRIP_ASSIGNMENT_INVALID_RESOURCE");
 
   if (payload.driver_id !== undefined && payload.driver_id !== null) {
     const { data, error } = await supabaseAdmin
@@ -589,6 +624,15 @@ export async function updateTripAssignment(
     }
   }
 
+  const effective: AssignmentResources = {
+    truck_id: typeof payload.truck_id === "string" ? payload.truck_id : existing.data.truck_id,
+    driver_id: payload.driver_id === undefined ? existing.data.driver_id : typeof payload.driver_id === "string" ? payload.driver_id : null,
+    unassigned_at: payload.unassigned_at === undefined ? existing.data.unassigned_at : typeof payload.unassigned_at === "string" ? payload.unassigned_at : null,
+  };
+  if (effective.truck_id !== existing.data.truck_id || effective.driver_id !== existing.data.driver_id || effective.unassigned_at !== existing.data.unassigned_at) {
+    await assertAssignmentAvailable(tripId, effective, assignmentId);
+  }
+
   const { data, error } = await supabaseAdmin
     .from("trip_truck_assignments")
     .update(payload)
@@ -601,6 +645,7 @@ export async function updateTripAssignment(
 
   if (error) {
     console.error("Trip assignment update failed:", error);
+    throwAssignmentConflict(error);
     if (
       error.code === "23505" ||
       /duplicate key|duplicate/.test(String(error.message))

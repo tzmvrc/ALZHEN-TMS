@@ -1,5 +1,6 @@
 import { useWorkspacePreload } from "./useWorkspacePreload";
-import { memo, useCallback, useState, type ComponentProps } from "react";
+import { memo, useCallback, useRef, useState, type ComponentProps } from "react";
+import SheetHorizontalScrollbar from "./SheetHorizontalScrollbar";
 import ReportDataView from "./ReportDataView";
 import TransmittalTrackerView from "./TransmittalTrackerView";
 import RetainedFeature from "./RetainedFeature";
@@ -15,6 +16,7 @@ const SHEET_TABS = [...WORKSPACE_SHEETS, {key:"transmittal" as const,title:"Tran
 
 /** One retained physical report instance per sheet; no data/model merging. */
 export default function ReportsWorkspace(props: Props) {
+  const workspaceRef = useRef<HTMLElement>(null);
   const { profile, accessToken } = useAuth();
   const preference = `alzhen:trip-sheets:${profile?.id ?? "guest"}:${profile?.role ?? ""}`;
   const [active, setActive] = useState<WorkspaceSheet | "transmittal">(() => {
@@ -40,7 +42,7 @@ export default function ReportsWorkspace(props: Props) {
     }
   };
 
-  return <section data-trips-workspace aria-label="Trips spreadsheet workspace" className="min-w-0">
+  return <section ref={workspaceRef} data-trips-workspace aria-label="Trips spreadsheet workspace" className="min-w-0">
     <h1 className="mb-2 text-xl font-bold leading-tight text-[#0b2341]">Trips</h1>
     {WORKSPACE_SHEETS.map(sheet => <RetainedFeature key={sheet.key} active={active === sheet.key}>
       <div role="tabpanel" id={`trip-sheet-${sheet.key}`} aria-labelledby={`trip-tab-${sheet.key}`}>
@@ -53,7 +55,8 @@ export default function ReportsWorkspace(props: Props) {
       </div>
     </RetainedFeature>)}
     <RetainedFeature active={active === "transmittal"}><div role="tabpanel" id="trip-sheet-transmittal" aria-labelledby="trip-tab-transmittal"><WorkspaceTracker onDataReady={markReady} /></div></RetainedFeature>
-    <nav data-sheet-tabs role="tablist" aria-label="Trip workspace sheets" className="relative z-10 -mt-px flex min-w-0 items-stretch overflow-x-auto border border-t-0 border-slate-200 bg-slate-100">
+    <div className="relative z-10 -mt-px flex min-w-0 border border-t-0 border-slate-200 bg-slate-100">
+    <nav data-sheet-tabs role="tablist" aria-label="Trip workspace sheets" className="flex min-w-0 flex-1 items-stretch overflow-x-auto">
       {SHEET_TABS.map(sheet => <button key={sheet.key} id={`trip-tab-${sheet.key}`} role="tab" aria-selected={active === sheet.key} aria-controls={`trip-sheet-${sheet.key}`} type="button" onClick={() => choose(sheet.key)} onKeyDown={event => {
         if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
         event.preventDefault(); const index = SHEET_TABS.findIndex(item => item.key === sheet.key);
@@ -61,5 +64,8 @@ export default function ReportsWorkspace(props: Props) {
         choose(SHEET_TABS[next].key); document.getElementById(`trip-tab-${SHEET_TABS[next].key}`)?.focus();
       }} className={`relative shrink-0 border-r border-t border-slate-200 px-3 py-1 text-[11px] leading-5 focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-blue-500 ${active === sheet.key ? "border-t-white bg-white font-semibold text-blue-800 before:absolute before:-top-px before:left-0 before:right-0 before:h-px before:bg-white" : "bg-slate-100 text-slate-500 hover:bg-slate-50"}`}>{sheet.title}</button>)}
     </nav>
+    <button type="button" title="Fit column widths to loaded data and headers" onClick={() => workspaceRef.current?.querySelector(`#trip-sheet-${active} .spreadsheet-viewport`)?.dispatchEvent(new Event("sheet:auto-fit"))} className="ml-auto shrink-0 border-l border-slate-200 px-3 text-[11px] text-slate-600 hover:bg-white focus-visible:outline-2 focus-visible:outline-blue-500">Auto fit</button>
+    <SheetHorizontalScrollbar workspace={workspaceRef} sheet={active} />
+    </div>
   </section>;
 }

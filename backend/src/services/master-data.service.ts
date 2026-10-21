@@ -1,3 +1,4 @@
+import { locationVerificationAvailable } from "./location-verification.schema.js";
 import { supabaseAdmin } from "../config/supabase.js";
 import { buildIlikeOrFilter } from "../utils/postgrest-search.js";
 
@@ -17,9 +18,9 @@ const configs = {
     select: "id, code, name, address, province, city, latitude, longitude, warehouse_type, status, notes, region, created_at, updated_at",
     orderBy: "name",
     search: ["code", "name", "city", "province", "region"],
-    fields: ["code", "name", "address", "province", "city", "latitude", "longitude", "warehouse_type", "status", "notes", "region"],
+    fields: ["code", "name", "address", "province", "city", "latitude", "longitude", "warehouse_type", "status", "notes", "region", "location_verified"],
     required: ["code", "name"],
-    types: { code: "text", name: "text", address: "nullable", province: "nullable", city: "nullable", latitude: "coordinate", longitude: "coordinate", warehouse_type: "nullable", status: "nullable", notes: "nullable", region: "region" },
+    types: { code: "text", name: "text", address: "nullable", province: "nullable", city: "nullable", latitude: "coordinate", longitude: "coordinate", location_verified: "boolean", warehouse_type: "nullable", status: "nullable", notes: "nullable", region: "region" },
   },
   trucks: {
     table: "trucks",
@@ -35,9 +36,9 @@ const configs = {
     select: "id, customer_id, name, code, address, province, city, postal_code, latitude, longitude, status, notes, region, created_at, updated_at, customers(id, name, code)",
     orderBy: "name",
     search: ["name", "code", "city", "province", "region"],
-    fields: ["customer_id", "name", "code", "address", "province", "city", "postal_code", "latitude", "longitude", "status", "notes", "region"],
+    fields: ["customer_id", "name", "code", "address", "province", "city", "postal_code", "latitude", "longitude", "status", "notes", "region", "location_verified"],
     required: ["customer_id", "name"],
-    types: { customer_id: "uuid", name: "text", code: "nullable", address: "nullable", province: "nullable", city: "nullable", postal_code: "nullable", latitude: "coordinate", longitude: "coordinate", status: "nullable", notes: "nullable", region: "nullable" },
+    types: { customer_id: "uuid", name: "text", code: "nullable", address: "nullable", province: "nullable", city: "nullable", postal_code: "nullable", latitude: "coordinate", longitude: "coordinate", location_verified: "boolean", status: "nullable", notes: "nullable", region: "nullable" },
   },
   "store-contacts": {
     table: "store_contacts",
@@ -66,10 +67,12 @@ function getConfig(resource: string) {
 
 export async function listMasterData(resource: string, query: Record<string, unknown>) {
   const config = getConfig(resource);
+  const verification = ["warehouses","stores"].includes(resource) && await locationVerificationAvailable();
+  const selection = config.select + (verification ? ", location_verified, location_verified_at" : "");
   const page = Math.max(1, Math.floor(Number(query.page) || 1));
   const limit = Math.min(100, Math.max(1, Math.floor(Number(query.limit) || 50)));
   const from = (page - 1) * limit;
-  let builder = (supabaseAdmin.from(config.table) as any).select(config.select, { count: "exact" }).order(config.orderBy, { ascending: true }).range(from, from + limit - 1);
+  let builder = (supabaseAdmin.from(config.table) as any).select(selection, { count: "exact" }).order(config.orderBy, { ascending: true }).range(from, from + limit - 1);
   const searchFilter = buildIlikeOrFilter(config.search, query.search);
   if (searchFilter) builder = builder.or(searchFilter);
   if (resource === "store-contacts" && typeof query.store_id === "string" && uuidPattern.test(query.store_id)) builder = builder.eq("store_id", query.store_id);
@@ -78,7 +81,7 @@ export async function listMasterData(resource: string, query: Record<string, unk
     console.error("Master-data list query failed:", { resource, error });
     throw new Error("Unable to load master data.");
   }
-  return { rows: data ?? [], pagination: { page, limit, total: count ?? 0, totalPages: Math.max(1, Math.ceil((count ?? 0) / limit)) } };
+  return { location_verification_supported: verification, rows: data ?? [], pagination: { page, limit, total: count ?? 0, totalPages: Math.max(1, Math.ceil((count ?? 0) / limit)) } };
 }
 
 async function validateRelationship(table: string, id: unknown, field: string) {
@@ -138,18 +141,36 @@ async function validatePayloadRelationships(resource: string, payload: Record<st
   if (resource === "store-contacts" && payload.store_id !== undefined) payload.store_id = await validateRelationship("customer_stores", payload.store_id, "store_id");
 }
 
-async function saveMasterDataRecord(resource: string, input: Record<string, unknown>, id?: string) {
+async function saveMasterDataRecord(resource: string, input: Record<string, unknown>, id?: string, actor?: string) {
   const creating = !id;
   if (id && !uuidPattern.test(id)) throw new Error("Invalid master-data record id.");
   const config = getConfig(resource);
   const payload = buildPayload(resource, input, creating);
+  if (creating && resource==="products" && !payload.sku && !payload.model_code) throw new Error("SKU or model code is required to identify the product.");
   if (!Object.keys(payload).length) throw new Error("Enter at least one field to save.");
   await validatePayloadRelationships(resource, payload);
+  if (["warehouses","stores"].includes(resource)) {
+    const supported = await locationVerificationAvailable();
+    if (!supported && payload.location_verified === true) throw new Error("Location verification requires the reviewed trip_workflow_completion migration.");
+    let current:Record<string,unknown>={};
+    if(id){const result=await supabaseAdmin.from(config.table).select("*").eq("id",id).maybeSingle();if(result.error||!result.data)throw new Error("Unable to validate existing location.");current=result.data;}
+    const location={...current,...payload};
+    const hasLatitude=location.latitude!==null&&location.latitude!==undefined&&location.latitude!=="",hasLongitude=location.longitude!==null&&location.longitude!==undefined&&location.longitude!=="";
+    if(hasLatitude!==hasLongitude)throw new Error("Latitude and longitude must be supplied together.");
+    if(payload.location_verified===true){if(!actor||!hasLatitude||!hasLongitude||!location.address||!location.province||!location.city)throw new Error("Review a full address, province, city and coordinate pair before verifying.");payload.location_verified_at=new Date().toISOString();payload.location_verified_by=actor;}
+    else if(supported&&["address","province","city","latitude","longitude"].some(key=>key in payload&&String(payload[key]??"")!==String(current[key]??"")))payload.location_verified=false;
+    if(!supported)delete payload.location_verified;
+  }
+  if(creating&&resource!=="store-contacts"){
+    const resolved=await supabaseAdmin.rpc("resolve_trip_master_v1",{p_kind:resource,p_values:payload,p_create:true});
+    if(!resolved.error)return resolved.data;
+    if(!["PGRST202","42883"].includes(resolved.error.code))throw new Error(resolved.error.message??"Unable to resolve master identity.");
+  }
   if(creating){
     // Reuse exact identities across imports and explicit dropdown creation. A store
     // name is unique only within its customer; identifiers retain DB uniqueness.
     const normalize=(value:unknown)=>String(value??"").normalize("NFKC").trim().replace(/\s+/g," ").toLocaleLowerCase();
-    const keys=resource==="products"?["sku","model_code"]:resource==="warehouses"||resource==="customers"?["code","name"]:resource==="stores"?["code","name"]:[];
+    const keys=resource==="products"?["sku","model_code"]:resource==="warehouses"||resource==="customers"?["code"]:resource==="stores"?["code","name"]:[];
     for(const key of keys){
       if(!payload[key])continue;
       const pattern=String(payload[key]).normalize("NFKC").trim().replace(/[%_*\s]+/g,"%");
@@ -157,7 +178,7 @@ async function saveMasterDataRecord(resource: string, input: Record<string, unkn
       if(resource==="stores")check=check.eq("customer_id",payload.customer_id);
       const {data:candidates,error:lookupError}=await check;
       if(lookupError||candidates?.length>100)throw new Error("Unable to verify duplicate records; refine the identifier and try again.");
-      const exact=(candidates??[]).filter((row:Record<string,unknown>)=>normalize(row[key])===normalize(payload[key]));
+      const exact=(candidates??[]).filter((row:Record<string,unknown>)=>normalize(row[key])===normalize(payload[key])&&(resource!=="stores"||key!=="name"||["province","city"].every(field=>!payload[field]||normalize(row[field])===normalize(payload[field]))));
       if(exact.length>1)throw new Error("Multiple records already exist with this identifier. Select an existing record.");
       if(exact.length===1){
         if(exact[0].status&&exact[0].status!=="ACTIVE")throw new Error("This identifier already exists on an inactive record. Ask an authorized user to review it.");
@@ -183,10 +204,10 @@ async function saveMasterDataRecord(resource: string, input: Record<string, unkn
 // Serialize explicit creation per resource within a worker, including the exact
 // match lookup. Existing database identifier constraints remain authoritative.
 const creationQueues=new Map<string,Promise<unknown>>();
-export async function saveMasterData(resource:string,input:Record<string,unknown>,id?:string){
- if(id)return saveMasterDataRecord(resource,input,id);
+export async function saveMasterData(resource:string,input:Record<string,unknown>,id?:string,actor?:string){
+ if(id)return saveMasterDataRecord(resource,input,id,actor);
  const previous=creationQueues.get(resource)??Promise.resolve();
- const next=previous.catch(()=>undefined).then(()=>saveMasterDataRecord(resource,input));
+ const next=previous.catch(()=>undefined).then(()=>saveMasterDataRecord(resource,input,undefined,actor));
  creationQueues.set(resource,next);
  try{return await next;}finally{if(creationQueues.get(resource)===next)creationQueues.delete(resource);}
 }

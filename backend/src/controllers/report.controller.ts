@@ -176,7 +176,7 @@ export async function getReportColumnsByKey(req: Request, res: Response) {
     const reportKey = Array.isArray(req.params.reportKey)
       ? req.params.reportKey[0]
       : (req.params.reportKey ?? "");
-    const result = await getReportColumns(reportKey);
+    const result = await getReportColumns(reportKey, req.query.source_lines === "true");
     return sendSuccess(
       res,
       200,

@@ -19,6 +19,7 @@ export const REPORTS = {
 
 export type ReportKey = keyof typeof REPORTS;
 export type ReportColumn = {
+  fieldCategory?: "EXCEL" | "ADMIN" | "DRIVER";
   key: string;
   title: string;
   type: string;
@@ -290,6 +291,16 @@ const reportFilters: Record<ReportKey, ReportFilter[]> = {
   ],
 };
 
+for (const report of ["combined", "dispatch", "trip-booking", "dispatch-monitoring"] as const) {
+  reportFilters[report].push(...[
+    ["sp_reference", "SP"], ["ph_truck_reference", "PH TRUCK NAME"], ["dn_reference", "DN"],
+    ["order_item_number", "Order Item No."], ["so_number", "SO NO."], ["stock_quantity", "stocks"],
+    ["unit_cbm", "CBM"], ["so_approval_date", "SO Approval Date"], ["item_status", "Item Status"],
+    ["source_warehouse", "Warehouse"], ["source_product_category", "Product Category"],
+    ["source_province", "Province"], ["source_city", "City"],
+  ].map(([key, label]) => ({ key, label })));
+}
+
 function unwrap<T>(response: ApiResponse<T>, message: string): T {
   if (!response.success || response.data === undefined) {
     throw new Error(response.message ?? message);
@@ -301,8 +312,9 @@ export async function fetchReportColumns(
   reportKey: ReportKey,
   token: string,
   fresh = false,
+  sourceLines = false,
 ): Promise<ReportColumn[]> {
-  const endpoint = `/reports/${reportKey}/columns`;
+  const endpoint = `/reports/${reportKey}/columns${sourceLines ? "?source_lines=true" : ""}`;
   const response = fresh
     ? await apiGet<ApiResponse<{ report: string; columns: ReportColumn[] }>>(endpoint, token)
     : await apiGetCached<ApiResponse<{ report: string; columns: ReportColumn[] }>>(endpoint, token, REPORT_PAGE_CACHE_TTL_MS);
@@ -324,6 +336,10 @@ export async function fetchReportRows(
   if (!params.get("sort_by")) params.delete("sort_by");
   if(options.filters.trip_id) params.set("trip_id",options.filters.trip_id);
   if(options.filters.record_delete_versions==="true")params.set("record_delete_versions","true");
+  if(options.filters.source_lines==="true")params.set("source_lines","true");
+  for (const key of ["sp_reference", "ph_truck_reference", "dn_reference", "order_item_number", "so_number", "stock_quantity", "unit_cbm", "so_approval_date", "item_status", "source_warehouse", "source_product_category", "source_province", "source_city"]) {
+    if (options.filters[key]?.trim()) params.set(key, options.filters[key].trim());
+  }
   if(options.filters.issue_filter && options.filters.issue_filter!=="All") params.set("issue_filter",options.filters.issue_filter);
   for (const filter of reportFilters[reportKey]) {
     const value = options.filters[filter.key]?.trim();
@@ -363,7 +379,7 @@ export async function fetchReportPage(
   const sessionGeneration = reportPageSessionGeneration;
   reportPageErrors.delete(key);
   const request = Promise.all([
-    fetchReportColumns(reportKey, token, refresh),
+    fetchReportColumns(reportKey, token, refresh, options.filters.source_lines === "true"),
     fetchReportRows(reportKey, token, { ...options, fresh: refresh }),
   ]).then(([columns, result]) => {
     if (sessionGeneration !== reportPageSessionGeneration) throw new Error("The session changed while loading reports.");
@@ -432,16 +448,20 @@ export async function fetchReportCollection(report:ReportKey,token:string,option
   // First paint needs one page, not every historical record. On recovery,
   // revalidate only the pages this user has already requested.
   const previous=getReportCollection(report,token,options,true);
-  const loadedPages=refresh?(previous?.collection?.page??1):1;
-  const first=await fetchReportPage(report,token,{...options,page:1,limit:200},refresh);
+  // Master List fields include generated references and values attached after SQL.
+  // Search authorized, enriched pages literally; retain server filters and bounded reads.
+  const literalSearch = options.filters.source_lines === "true" ? options.search.trim().toLocaleLowerCase() : "";
+  const readOptions = literalSearch ? { ...options, search: "" } : options;
+  const loadedPages=literalSearch ? Infinity : refresh?(previous?.collection?.page??1):1;
+  const first=await fetchReportPage(report,token,{...readOptions,page:1,limit:200},refresh);
   const columns=first.columns,physical=new Map<string,ReportRow>();let page=1;let result:ReportPageBundle;
   do{
    if(entry.cancelled)throw new DOMException("Report request cancelled.","AbortError");
    if(session!==reportPageSessionGeneration)throw Error("The session changed while loading reports.");
-   const next=page===1?first:await fetchReportPage(report,token,{...options,page,limit:200},refresh);
+   const next=page===1?first:await fetchReportPage(report,token,{...readOptions,page,limit:200},refresh);
    for(const row of next.rows){const id=getReportRowIdentity(report,row);if(id)physical.set(id,row);else physical.set(`unmapped:${page}:${physical.size}`,row);}
-   const rows=[...physical.values()].filter(row=>!isDeletedReportRecord(row));
-   result={columns,rows,pagination:{...next.pagination,page:1,limit:rows.length,totalPages:1},collection:{page,totalPages:next.pagination.totalPages}};
+   const rows=[...physical.values()].filter(row=>!isDeletedReportRecord(row) && (!literalSearch || columns.some(column=>column.type !== "action" && String(row[column.key] ?? "").toLocaleLowerCase().includes(literalSearch))));
+   result={columns,rows,pagination:{...next.pagination,page:1,limit:rows.length,total:literalSearch ? rows.length : next.pagination.total,totalPages:1},collection:{page,totalPages:next.pagination.totalPages}};
    entry.latest=result;for(const listener of listeners)listener(result);
    if(page>=Math.min(loadedPages,next.pagination.totalPages)||!next.rows.length)break;
    page++;

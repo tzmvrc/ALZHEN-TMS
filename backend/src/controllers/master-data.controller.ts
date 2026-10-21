@@ -30,12 +30,12 @@ export async function list(req: Request, res: Response) {
 }
 
 export async function create(req: Request, res: Response) {
-  try { return res.status(201).json({ success: true, data: await saveMasterData(String(req.params.resource), req.body ?? {}) }); }
+  try { return res.status(201).json({ success: true, data: await saveMasterData(String(req.params.resource), req.body ?? {},undefined,req.profile?.id) }); }
   catch (error) { return failure(res, error); }
 }
 
 export async function update(req: Request, res: Response) {
-  try { return res.json({ success: true, data: await saveMasterData(String(req.params.resource), req.body ?? {}, String(req.params.id)) }); }
+  try { return res.json({ success: true, data: await saveMasterData(String(req.params.resource), req.body ?? {}, String(req.params.id),req.profile?.id) }); }
   catch (error) { return failure(res, error); }
 }
 

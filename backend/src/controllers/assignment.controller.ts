@@ -5,7 +5,7 @@ import {
   getTripAssignments,
   updateTripAssignment,
 } from "../services/assignment.service.js";
-import { sendError, sendSuccess } from "../utils/api-response.js";
+import { ApiError,sendError, sendSuccess } from "../utils/api-response.js";
 
 export async function listTripAssignments(req: Request, res: Response) {
   try {
@@ -46,6 +46,7 @@ export async function createAssignment(req: Request, res: Response) {
     const result = await createTripAssignment(tripId, req.body ?? {});
     return sendSuccess(res, 201, "Assignment created successfully", result);
   } catch (error) {
+    if(error instanceof ApiError)return sendError(res,error.statusCode,error.message,error.code);
     const message =
       error instanceof Error ? error.message : "Unable to create assignment";
     if (message === "Trip not found") {
@@ -97,6 +98,7 @@ export async function updateAssignment(req: Request, res: Response) {
     );
     return sendSuccess(res, 200, "Assignment updated successfully", result);
   } catch (error) {
+    if(error instanceof ApiError)return sendError(res,error.statusCode,error.message,error.code);
     const message =
       error instanceof Error ? error.message : "Unable to update assignment";
     if (message === "Trip not found") {

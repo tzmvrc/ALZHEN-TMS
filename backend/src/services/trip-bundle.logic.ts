@@ -1,3 +1,4 @@
+import { decimal } from "./trip-import.logic.js";
 import type { TripCreateInput } from "../types/trip.types.js";
 
 type Row = Record<string, unknown>;
@@ -65,12 +66,15 @@ export function validateTripBundle(input: unknown): { trip: Row; stops: Stop[]; 
     }
   }
   const assignedTrucks = new Set<string>();
+  const assignedDrivers = new Set<string>();
   let primaryCount = 0;
   for (const assignment of assignments) {
     if (assignedTrucks.has(assignment.truck_id)) {
       throw new Error("A truck cannot be assigned to the same trip more than once.");
     }
     assignedTrucks.add(assignment.truck_id);
+    if (assignment.driver_id && assignedDrivers.has(assignment.driver_id)) throw new Error("A driver cannot be assigned to different trucks in the same trip.");
+    if (assignment.driver_id) assignedDrivers.add(assignment.driver_id);
     if (assignment.assignment_type === "PRIMARY") primaryCount += 1;
   }
   if (primaryCount > 1 || (assignments.length > 0 && primaryCount !== 1)) {
@@ -80,8 +84,7 @@ export function validateTripBundle(input: unknown): { trip: Row; stops: Stop[]; 
     if (!stop || typeof stop !== "object" || Array.isArray(stop) || !Array.isArray(stop.line_items)) throw new Error("Each stop must have a product lines array.");
     for (const item of stop.line_items) {
       if (!item || typeof item !== "object" || Array.isArray(item)) throw new Error("Each product line must be an object.");
-      if (item.quantity != null && (!Number.isSafeInteger(item.quantity) || item.quantity < 0)) throw new Error("Quantity must be a non-negative whole quantity.");
-      if (item.cbm != null && (typeof item.cbm !== "number" || !Number.isFinite(item.cbm) || item.cbm < 0)) throw new Error("Total CBM must be a non-negative number.");
+      for (const key of ["quantity","cbm","unit_cbm","stock_quantity"]) if(item[key]!=null) decimal(item[key],key);
     }
   }
   return { trip: trip as Row, stops: stops as Stop[], assignments };

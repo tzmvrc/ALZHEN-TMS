@@ -31,8 +31,8 @@ BEGIN
   PERFORM 1 FROM public.customer_stores WHERE id IN(SELECT store_id FROM public.trip_stops WHERE trip_id=t.id) ORDER BY id FOR SHARE;
   SELECT * INTO w FROM public.warehouses WHERE id=t.warehouse_id FOR SHARE;
  ELSE SELECT * INTO w FROM public.warehouses WHERE id=t.warehouse_id; END IF;
- origin:=jsonb_build_object('id',w.id,'latitude',w.latitude,'longitude',w.longitude);
- SELECT coalesce(jsonb_agg(jsonb_build_object('id',s.id,'latitude',st.latitude,'longitude',st.longitude,'stopSequence',s.stop_sequence)
+ origin:=jsonb_build_object('id',w.id,'latitude',CASE WHEN coalesce((to_jsonb(w)->>'location_verified')::boolean,false) THEN w.latitude ELSE NULL END,'longitude',CASE WHEN coalesce((to_jsonb(w)->>'location_verified')::boolean,false) THEN w.longitude ELSE NULL END);
+ SELECT coalesce(jsonb_agg(jsonb_build_object('id',s.id,'latitude',CASE WHEN coalesce((to_jsonb(st)->>'location_verified')::boolean,false) THEN st.latitude ELSE NULL END,'longitude',CASE WHEN coalesce((to_jsonb(st)->>'location_verified')::boolean,false) THEN st.longitude ELSE NULL END,'stopSequence',s.stop_sequence)
   ORDER BY s.stop_sequence NULLS LAST,s.id),'[]'::jsonb) INTO points
  FROM public.trip_stops s LEFT JOIN public.customer_stores st ON st.id=s.store_id
  WHERE s.trip_id=t.id AND s.archived_at IS NULL;

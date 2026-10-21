@@ -23,10 +23,12 @@ export function useVirtualSpreadsheetRows(ref:RefObject<HTMLDivElement|null>, ke
    setWindow(previous=>previous.start===start&&previous.end===end&&!changed&&previous.active===active?previous:{start,end,active,revision:previous.revision+(changed?1:0)});
   };
   const schedule=()=>{if(!frame)frame=requestAnimationFrame(()=>{frame=0;measure();});};
+  let previousTop=viewport.scrollTop;
+  const onScroll=()=>{if(viewport.scrollTop!==previousTop){previousTop=viewport.scrollTop;schedule();}};
   const observer=new ResizeObserver(schedule);observer.observe(viewport);
   viewport.querySelectorAll("tr[data-virtual-index]").forEach(row=>observer.observe(row));
-  viewport.addEventListener("scroll",schedule,{passive:true});viewport.addEventListener("focusin",schedule);viewport.addEventListener("focusout",schedule);schedule();
-  return()=>{cancelAnimationFrame(frame);observer.disconnect();viewport.removeEventListener("scroll",schedule);viewport.removeEventListener("focusin",schedule);viewport.removeEventListener("focusout",schedule);};
+  viewport.addEventListener("scroll",onScroll,{passive:true});viewport.addEventListener("focusin",schedule);viewport.addEventListener("focusout",schedule);schedule();
+  return()=>{cancelAnimationFrame(frame);observer.disconnect();viewport.removeEventListener("scroll",onScroll);viewport.removeEventListener("focusin",schedule);viewport.removeEventListener("focusout",schedule);};
  },[ref,enabled,signature,offsets,window.start,window.end]);
  return useMemo<Item[]>(()=>{
   if(!enabled||keys.length<=100)return keys.map((_,index)=>({index}));

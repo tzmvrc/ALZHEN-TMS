@@ -49,6 +49,9 @@ export interface StoreOption {
   province: string | null;
   city: string | null;
   address: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  location_verified?: boolean;
   status: string | null;
 }
 
@@ -75,6 +78,9 @@ export interface DriverOption {
 }
 
 export interface TruckOption {
+  default_driver_id?: string | null;
+  default_driver_name?: string | null;
+  default_driver_ambiguous?: boolean;
   id: string;
   plate_number: string | null;
   truck_type: string | null;

@@ -1,3 +1,5 @@
+import TripCargoPlanner from "./TripCargoPlanner";
+import { cargoSignature, calculatedCbm, emptyCargoPlan, validateCargo, type CargoLine, type CargoTruck } from "../../services/cargo-planning";
 // src/pages/Admin/views/AddTripForm.tsx
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import {
@@ -6,13 +8,17 @@ import {
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import SearchableRelationshipEditor from "./SearchableRelationshipEditor";
-import { fetchTruckAvailability, type TruckAvailability, searchRelationshipOptions, getNextTripReferences, searchDispatches, type DispatchOption, type RelationshipOption } from "../../services/lookup.service";
+import { fetchTruckAvailability, fetchDriverAvailability, type DriverAvailability, type TruckAvailability, searchRelationshipOptions, getNextTripReferences, searchDispatches, type DispatchOption, type RelationshipOption } from "../../services/lookup.service";
 import { readTripCsv, csvNumber, csvDate, tripCapacity, type CsvTripGroup } from "./tripCsv";
 import TripTablePreview, { type TripPreviewRow } from "./TripTablePreview";
 import TripFormNotice from "./TripFormNotice";
+import BulkTripImport from "./BulkTripImport";
 import { resolveTripCsvLookups } from "./tripCsvLookups";
 
 export type NewTripPayload = {
+  request_id: string;
+  dispatch_mode: "new" | "existing";
+  cargo_plan?: ReturnType<typeof emptyCargoPlan>;
   trip: {
     dispatch_number: string | null;
     trip_number: number; // 1 for a new dispatch, next number when added to an existing one
@@ -22,6 +28,7 @@ export type NewTripPayload = {
     trip_type_id: string | null;
     trip_type_name: string | null; // a brand-new trip type typed in; backend finds or creates it
     warehouse_id: string | null;
+    new_warehouse_code?: string | null;
     truck_id: string | null;
     driver_id: string | null;
     remarks: string | null;
@@ -33,6 +40,7 @@ export type NewTripPayload = {
   }>;
   stops: Array<{
     stop_sequence: number;
+    destination?: Record<string,string>;
     store_id: string | null;
     customer_id: string | null;
     remarks: string | null;
@@ -45,8 +53,9 @@ export type NewTripPayload = {
       customer_po_number: string | null;
       internal_po_number: string | null;
       remarks: string | null;
-      quantity: number | null;
-      cbm: number | null;
+      quantity: string | null;
+      [sourceField:string]:unknown;
+      cbm: string | null;
     }>;
   }>;
 };
@@ -56,6 +65,7 @@ type Lookups = Record<"trip-types" | "warehouses" | "trucks" | "drivers" | "stor
 type ItemDraft = {
   key: number; productId: string; newCode: string; addingProduct: boolean; open: boolean;
   dr: string; dn: string; sp: string; so: string; sapSo: string; customerPo: string; po: string;
+  sourceModel:string; phTruck: string; orderItem: string; stocks: string; approvalDate: string;
   category: string; unitCbm: string; itemStatus: string; warehouse: string; qty: string; cbm: string; importNotes: string;
 };
 type StopDraft = {
@@ -77,6 +87,7 @@ let uid = 0;
 const newItem = (): ItemDraft => ({
   key: ++uid, productId: "", newCode: "", addingProduct: false, open: false,
   dr: "", dn: "", sp: "", so: "", sapSo: "", customerPo: "", po: "",
+  sourceModel:"", phTruck: "", orderItem: "", stocks: "", approvalDate: "",
   category: "", unitCbm: "", itemStatus: "", warehouse: "", qty: "", cbm: "", importNotes: "",
 });
 const newStop = (): StopDraft => ({
@@ -102,7 +113,7 @@ function labelOf(options: Option[], id: string): string | null {
 
 function lineQty(i: ItemDraft) { const n = num(i.qty); return Number.isFinite(n) ? n : 0; }
 function lineCbm(i: ItemDraft) { const n = num(i.cbm); return Number.isFinite(n) ? n : 0; }
-const hasItemData = (item: ItemDraft) => [item.productId, item.newCode, item.dr, item.dn, item.sp, item.so, item.sapSo, item.customerPo, item.po, item.category, item.unitCbm, item.itemStatus, item.warehouse, item.qty, item.cbm, item.importNotes].some(value => value.trim());
+const hasItemData = (item: ItemDraft) => [item.sourceModel,item.phTruck,item.orderItem,item.stocks,item.approvalDate,item.productId, item.newCode, item.dr, item.dn, item.sp, item.so, item.sapSo, item.customerPo, item.po, item.category, item.unitCbm, item.itemStatus, item.warehouse, item.qty, item.cbm, item.importNotes].some(value => value.trim());
 const hasStopData = (stop: StopDraft) => [stop.storeId, stop.pendingDestination??"", stop.customer, stop.city, stop.province, stop.address, stop.importNotes].some(value => value.trim()) || stop.items.some(hasItemData);
 function stopTotals(s: StopDraft) {
   return s.items.reduce((t, i) => ({ qty: t.qty + lineQty(i), cbm: t.cbm + lineCbm(i) }), { qty: 0, cbm: 0 });
@@ -130,8 +141,12 @@ function Dropdown({
   value: string; onChange: (v: string) => void; options: Option[]; placeholder: string;
   loading?: boolean; disabled?: boolean; onAddNew?: () => void; addNewLabel?: string; compact?: boolean;openRequested?:boolean;
 }) {
-  const [open, setOpen] = useState(false);
-  useEffect(()=>{if(openRequested)setOpen(true);},[openRequested]);
+  const [open, setOpen] = useState(openRequested);
+  const [previousRequest, setPreviousRequest] = useState(openRequested);
+  if (previousRequest !== openRequested) {
+    setPreviousRequest(openRequested);
+    if (openRequested) setOpen(true);
+  }
   const [query, setQuery] = useState("");
   const selected = options.find((o) => o.id === value);
   const q = query.trim().toLowerCase();
@@ -242,9 +257,10 @@ const LINE_GRID = "sm:grid-cols-[minmax(0,2.6fr)_5.5rem_6.5rem_minmax(0,1.4fr)_4
 /* ───────────────────────────── main component ───────────────────────────── */
 
 export default function AddTripForm({
-  onClose, onSubmit,
-}: { onClose: () => void; onSubmit: (payload: NewTripPayload) => Promise<void> }) {
+  onClose, onSubmit, onImported,
+}: { onClose: () => void; onSubmit: (payload: NewTripPayload) => Promise<void>; onImported?: () => void }) {
   const { accessToken } = useAuth();
+  const [bulkImportOpen, setBulkImportOpen] = useState(false);
   const [lookups, setLookups] = useState<Lookups>(EMPTY_LOOKUPS);
   const [loadingLookups, setLoadingLookups] = useState(true);
   const [lookupError, setLookupError] = useState("");
@@ -267,10 +283,16 @@ export default function AddTripForm({
   const [etaDate, setEtaDate] = useState("");
   const [status, setStatus] = useState("PLANNED");
   const [warehouseId, setWarehouseId] = useState("");
+  const [importedWarehouseCode,setImportedWarehouseCode] = useState("");
+  const [creationRequestId] = useState(() => crypto.randomUUID());
+  const [cargoPlan, setCargoPlan] = useState(emptyCargoPlan);
   const [truckAssignments, setTruckAssignments] = useState<TruckAssignmentDraft[]>(() => [newTruckAssignment()]);
   const [truckPickerKey,setTruckPickerKey]=useState<number|null>(null);
   const availabilitySchedule=useRef({loadingDate,etaDate});
   const [availability,setAvailability]=useState<TruckAvailability[]>([]);
+  const [driverAvailability,setDriverAvailability]=useState<DriverAvailability[]>([]);
+  const [driverScheduleError,setDriverScheduleError]=useState("");
+  const [driverScheduleLoading,setDriverScheduleLoading]=useState(true);
   const [availabilityLoading,setAvailabilityLoading]=useState(true);
   const [availabilityError,setAvailabilityError]=useState("");
   const [availabilityRetry,setAvailabilityRetry]=useState(0);
@@ -298,7 +320,14 @@ export default function AddTripForm({
     let active = true;
     const names = Object.keys(EMPTY_LOOKUPS) as Array<keyof Lookups>;
     void Promise.all(names.map(async (name) => [name, await searchRelationshipOptions(accessToken, name, "")] as const))
-      .then((entries) => {if(active)setLookups(current=>{const loaded=Object.fromEntries(entries) as Lookups;return {...loaded,trucks:[...new Map([...loaded.trucks,...current.trucks].map(truck=>[truck.id,truck])).values()]};});})
+      .then((entries) => {
+        if(active)setLookups(current=>{
+          const loaded=Object.fromEntries(entries) as Lookups;
+          const trucks=new Map(loaded.trucks.map(truck=>[truck.id,truck]));
+          for(const truck of current.trucks){const matched=trucks.get(truck.id);trucks.set(truck.id,{...matched,...truck,values:{...matched?.values,...truck.values}});}
+          return {...loaded,trucks:[...trucks.values()]};
+        });
+      })
       .catch((cause) => active && setLookupError(cause instanceof Error ? cause.message : "Could not load the lists."))
       .finally(() => active && setLoadingLookups(false));
     return () => { active = false; };
@@ -306,10 +335,22 @@ export default function AddTripForm({
 
   useEffect(()=>{
     if(!accessToken)return;let live=true;
-    setAvailabilityLoading(true);setAvailabilityError("");
-    if(availabilitySchedule.current.loadingDate!==loadingDate||availabilitySchedule.current.etaDate!==etaDate){setTruckAssignments(current=>current.map(assignment=>({...assignment,availabilityConfirmed:false})));availabilitySchedule.current={loadingDate,etaDate};}
+    queueMicrotask(() => {
+      if (!live) return;
+      setAvailabilityLoading(true); setAvailabilityError("");
+      if (availabilitySchedule.current.loadingDate !== loadingDate || availabilitySchedule.current.etaDate !== etaDate) {
+        setTruckAssignments(current => current.map(assignment => ({ ...assignment, availabilityConfirmed: false })));
+        availabilitySchedule.current = { loadingDate, etaDate };
+      }
+    });
     const timer=setTimeout(()=>{void fetchTruckAvailability(accessToken,loadingDate,etaDate).then(rows=>{if(live){setAvailability(rows);setLookups(current=>({...current,trucks:rows.map(truck=>{const existing=current.trucks.find(option=>option.id===truck.id);return {...existing,id:truck.id,label:truck.plate_number,secondary:existing?.secondary??truck.truck_type??undefined,values:{...existing?.values,plate_number:truck.plate_number,truck_type:truck.truck_type??"",capacity_cbm:truck.capacity_cbm==null?"":String(truck.capacity_cbm)}};})}));}}).catch(()=>{if(live){setAvailability([]);setAvailabilityError("Unable to check truck schedules. Retry before selecting a truck.");}}).finally(()=>{if(live)setAvailabilityLoading(false);});},200);
     return()=>{live=false;clearTimeout(timer);};
+  },[accessToken,loadingDate,etaDate,availabilityRetry]);
+  useEffect(()=>{
+    if(!accessToken)return;let current=true;
+    queueMicrotask(()=>{if(current){setDriverScheduleLoading(true);setDriverScheduleError("");}});
+    const timer=setTimeout(()=>{void fetchDriverAvailability(accessToken,loadingDate,etaDate).then(rows=>{if(current)setDriverAvailability(rows);}).catch(cause=>{if(current)setDriverScheduleError(cause instanceof Error?cause.message:"Unable to check driver schedules.");}).finally(()=>{if(current)setDriverScheduleLoading(false);});},200);
+    return()=>{current=false;clearTimeout(timer);};
   },[accessToken,loadingDate,etaDate,availabilityRetry]);
   function rememberOption(kind:keyof Lookups,option:Option){setLookups(current=>({...current,[kind]:[option,...current[kind].filter(item=>item.id!==option.id)]}));}
   /* Preview independent DISPATCH and TRIP references for the selected date. */
@@ -389,6 +430,8 @@ export default function AddTripForm({
     const capacity = Number(lookups.trucks.find((truck) => truck.id === assignment.truckId)?.values?.capacity_cbm);
     return Number.isFinite(capacity) && capacity > 0 ? capacity : null;
   }));
+  const cargoLines: CargoLine[] = populatedStops.flatMap(stop => stop.items.filter(hasItemData).map(item => ({key:String(item.key),dr:item.dr,stop:labelOf(lookups.stores,stop.storeId)||stop.pendingDestination||stop.customer,label:item.newCode||labelOf(productOptions,item.productId)||item.dr||'Product',quantity:item.qty,cbm:item.cbm})));
+  const cargoTrucks: CargoTruck[] = selectedTruckAssignments.map(assignment => ({id:assignment.truckId,label:labelOf(lookups.trucks,assignment.truckId)||assignment.truckId,capacity:lookups.trucks.find(truck=>truck.id===assignment.truckId)?.values?.capacity_cbm||'',driverId:assignment.driverId,driverLabel:labelOf(lookups.drivers,assignment.driverId)||''}));
   const assignedCapacity = capacityState.capacity;
   const hasUnknownTruckCapacity = capacityState.unknown;
 
@@ -406,6 +449,9 @@ export default function AddTripForm({
     try {
       if (file.size > 10 * 1024 * 1024) throw new Error("Choose a CSV smaller than 10 MB.");
       const groups = readTripCsv(await file.text());
+      if (groups.some(group => group.rows.some(row => row.values.phTruck || row.values.orderItem || row.values.stocks || row.values.approvalDate))) {
+        throw new Error("Use Import CSV / XLSX for client trip requests. It preserves all source columns and imports every group with duplicate protection.");
+      }
       setCsvGroups(groups); setCsvGroupKey(groups[0].key); setCsvFileName(file.name);
     } catch (cause) { setCsvGroups([]); setImportError(cause instanceof Error ? cause.message : "Unable to read CSV."); }
   }
@@ -443,22 +489,22 @@ export default function AddTripForm({
         const truck = find("trucks", v.plate);
         const qty = csvNumber(v.qty, "Quantity", row.line, true);
         const unitCbm = csvNumber(v.unitCbm, "Unit CBM", row.line);
-        const cbm = v.cbm ? csvNumber(v.cbm, "Total CBM", row.line) : qty && unitCbm ? String(Number((Number(qty) * Number(unitCbm)).toFixed(8))) : "";
+        const cbm = v.cbm ? csvNumber(v.cbm, "Total CBM", row.line) : qty && unitCbm ? calculatedCbm(qty,unitCbm) : "";
         const stopKey = JSON.stringify([v.store, v.customer, v.city, v.province, v.address]);
         const stop = importedStops.get(stopKey) ?? { ...newStop(), storeId: store?.id ?? "", pendingDestination:store?"":v.store, customerId:store?.values?.customer_id??customer?.id, customer: v.customer, city: v.city, province: v.province, address: v.address || store?.values?.address || "", importNotes: !store && v.store ? `Imported ship to: ${v.store}` : "", items: [] };
         if (v.store && !store) warnings.add(`Store “${v.store}” needs a selection; its name is kept in stop notes.`);
         if (v.plate && !truck) warnings.add(`Vehicle “${v.plate}” needs a selection; its plate is kept in line notes.`);
-        if (truck) importedTrucks.set(truck.id, { ...newTruckAssignment(), truckId: truck.id });
-        const lineNotes = [v.notes, row.extra, !truck && v.plate ? `Imported plate: ${v.plate}` : "", v.warehouse !== first.warehouse ? `Source warehouse: ${v.warehouse}` : "", v.loadingDate !== first.loadingDate ? `Source loading date: ${v.loadingDate}` : ""].filter(Boolean).join(" · ");
-        stop.items.push({ ...newItem(), productId: product?.id ?? "", newCode: product ? "" : v.product, addingProduct: !product && Boolean(v.product), dr: v.dr, sapSo: v.sapSo, customerPo: v.customerPo, po: v.po, sp: v.sp, dn: v.dn, so: v.so, category: v.category, qty, cbm, unitCbm, itemStatus: v.itemStatus, warehouse: v.warehouse, importNotes: lineNotes });
+        if (truck) importedTrucks.set(truck.id, { ...newTruckAssignment(), truckId: truck.id, driverId: truck.values?.default_driver_id||"" });
+        const lineNotes = [!v.cbm && qty && unitCbm ? "Total CBM calculated from quantity and CBM; no supplied total was replaced." : "", v.notes, row.extra, !truck && v.plate ? `Imported plate: ${v.plate}` : "", v.warehouse !== first.warehouse ? `Source warehouse: ${v.warehouse}` : "", v.loadingDate !== first.loadingDate ? `Source loading date: ${v.loadingDate}` : ""].filter(Boolean).join(" · ");
+        stop.items.push({ ...newItem(), productId: product?.id ?? "", newCode: product ? "" : v.product, addingProduct: !product && Boolean(v.product), dr: v.dr, sapSo: v.sapSo, customerPo: v.customerPo, po: v.po, sp: v.sp, dn: v.dn, so: v.so, category: v.category, sourceModel:v.product, phTruck: v.phTruck, orderItem: v.orderItem, stocks: v.stocks, approvalDate: v.approvalDate, qty, cbm, unitCbm, itemStatus: v.itemStatus, warehouse: v.warehouse, importNotes: lineNotes });
         importedStops.set(stopKey, stop);
       }
       if (first.warehouse && !warehouse) warnings.add(`Warehouse “${first.warehouse}” needs a selection; its name is kept in trip notes.`);
       setLookups(current => ({ ...current, ...nextLookups })); setStops([...importedStops.values()]);
       setTruckAssignments(importedTrucks.size ? [...importedTrucks.values()] : [newTruckAssignment()]);
-      setLoadingDate(loading); setEtaDate(eta); setWarehouseId(warehouse?.id ?? "");
+      setLoadingDate(loading); setEtaDate(eta); setWarehouseId(warehouse?.id ?? ""); setImportedWarehouseCode(warehouse ? "" : first.warehouse);
       setTripTypeId(tripType?.id ?? ""); setNewTripType(tripType ? "" : first.tripType); setAddingTripType(!tripType && Boolean(first.tripType));
-      setDispatchMode("new"); setImportedDispatch(first.dispatch); setImportedTripNumber(importedNumber);
+      if (dispatchMode !== "existing") { setImportedDispatch(first.dispatch); setImportedTripNumber(importedNumber); }
       setStatus("PLANNED"); setRemarks([!warehouse && first.warehouse ? `Imported warehouse: ${first.warehouse}` : "", sourceTripReference ? `Source trip: ${sourceTripReference}` : ""].filter(Boolean).join(" ? "));
       setStep([...importedStops.values()].some(stop => stop.pendingDestination && !stop.storeId) ? 1 : 2); setError(""); setCsvGroups([]);
       requestAnimationFrame(() => bodyRef.current?.scrollTo({ top: 0 }));
@@ -500,6 +546,10 @@ export default function AddTripForm({
 
   /* validation */
   function validateTrip(): string {
+    if(selectedTruckAssignments.some(assignment=>assignment.driverId)&&(driverScheduleLoading||driverScheduleError))return driverScheduleError||"Wait for the driver schedule check.";
+    if(selectedTruckAssignments.some(assignment=>driverAvailability.some(driver=>driver.id===assignment.driverId&&driver.availability==="CONFLICT")))return "A selected driver has an overlapping active trip. Choose another driver or change the dates.";
+    if (new Set(selectedTruckAssignments.map(a=>a.driverId).filter(Boolean)).size !== selectedTruckAssignments.filter(a=>a.driverId).length) return "A driver cannot drive two active trucks in the same trip.";
+    if (cargoPlan.placements.length) { if (!cargoPlan.confirmed || cargoPlan.signature !== cargoSignature(cargoLines,cargoTrucks)) return "Review and confirm the current cargo distribution."; const problem=validateCargo(cargoLines,cargoTrucks,cargoPlan.placements); if(problem)return problem; }
     if (dispatchMode === "existing" && !existingDispatch) return "Choose the dispatch this trip belongs to.";
     if (etaDate && loadingDate && etaDate < loadingDate) return "Estimated delivery can't be before the loading date.";
     if(selectedTruckAssignments.length&&(availabilityLoading||availabilityError))return "Wait for the truck availability check, or retry it.";
@@ -513,7 +563,7 @@ export default function AddTripForm({
   function validateStops(): string {
     for (const [i, stop] of stops.entries()) {
       const n = i + 1;
-      if(stop.pendingDestination&&!stop.storeId)return `Stop ${n}: select or add destination "${stop.pendingDestination}" before creating the trip.`;
+      if(stop.pendingDestination&&!stop.storeId&&!stop.customerId)return `Stop ${n}: select or add destination "${stop.pendingDestination}" before creating the trip.`;
       for (const item of stop.items) {
         if (item.qty.trim() && (!Number.isSafeInteger(num(item.qty)) || num(item.qty) < 0)) return `Stop ${n}: quantity must be a non-negative whole number.`;
         if (item.unitCbm.trim() && (!Number.isFinite(num(item.unitCbm)) || num(item.unitCbm) < 0)) return `Stop ${n}: unit CBM must be a non-negative number.`;
@@ -542,6 +592,9 @@ export default function AddTripForm({
     try {
       if(accessToken&&selectedTruckAssignments.length){const latest=await fetchTruckAvailability(accessToken,loadingDate,etaDate);for(const assignment of selectedTruckAssignments){const truck=latest.find(row=>row.id===assignment.truckId);const previous=availability.find(row=>row.id===assignment.truckId);if(!truck||truck.availability==="CONFLICT")throw Error("A selected truck now has a schedule conflict. Choose another truck.");if(truck.availability==="REVIEW"&&(!assignment.availabilityConfirmed||previous?.availability!=="REVIEW"))throw Error("A selected truck requires schedule confirmation before creating the trip.");}}
       await onSubmit({
+        request_id: creationRequestId,
+        dispatch_mode: dispatchMode,
+        cargo_plan: cargoPlan.placements.length ? { ...cargoPlan, trucks: cargoTrucks } : undefined,
         trip: {
           dispatch_number: dispatchRef.trim() || null,
           trip_number: tripNumber,
@@ -551,6 +604,7 @@ export default function AddTripForm({
           trip_type_id: newTripType.trim() ? null : tripTypeId || null,
           trip_type_name: newTripType.trim() || null,
           warehouse_id: warehouseId || null,
+          new_warehouse_code: warehouseId ? null : importedWarehouseCode || null,
           truck_id: null,
           driver_id: null,
           remarks: remarks.trim() || null,
@@ -562,6 +616,7 @@ export default function AddTripForm({
         })),
         stops: stops.filter(hasStopData).map((stop, index) => ({
           stop_sequence: index + 1,
+          destination: !stop.storeId && stop.pendingDestination ? {name:stop.pendingDestination,customer_id:stop.customerId||"",customer_name:stop.customer,province:stop.province,city:stop.city,address:stop.address} : undefined,
           store_id: stop.storeId || null,
           customer_id: lookups.stores.find((o) => o.id === stop.storeId)?.values?.customer_id || stop.customerId || null,
           remarks: [stop.customer && `Customer: ${stop.customer}`, stop.province && `Province: ${stop.province}`, stop.city && `City: ${stop.city}`, stop.address && `Ship-to address: ${stop.address}`, stop.importNotes].filter(Boolean).join(" · ") || null,
@@ -569,6 +624,12 @@ export default function AddTripForm({
             const typed = item.newCode.trim();
             const productId = item.productId || matchExisting(typed)?.id || "";
             return {
+              client_key: String(item.key),
+              customer_model: item.sourceModel || typed || productOptions.find(option => option.id === productId)?.values?.model_code || productOptions.find(option => option.id === productId)?.label || null,
+              sp_reference: item.sp.trim() || null, ph_truck_reference: item.phTruck.trim() || null, dn_reference: item.dn.trim() || null,
+              order_item_number: item.orderItem.trim() || null, so_number: item.so.trim() || null, stock_quantity: item.stocks.trim() || null,
+              unit_cbm: item.unitCbm.trim() || null, so_approval_date: item.approvalDate.trim() || null, item_status: item.itemStatus.trim() || null,
+              source_warehouse: item.warehouse.trim() || null, source_product_category: item.category.trim() || null, source_province: stop.province.trim() || null, source_city: stop.city.trim() || null,
               product_id: productId || null,
               new_product_code: productId ? null : typed || null,
               new_product_category: productId ? null : item.category.trim() || null,
@@ -577,8 +638,8 @@ export default function AddTripForm({
               customer_po_number: item.customerPo.trim() || null,
               internal_po_number: item.po.trim() || null,
               remarks: [item.sp && `SP: ${item.sp}`, item.dn && `DN: ${item.dn}`, item.so && `SO: ${item.so}`, item.category && `Category: ${item.category}`, item.unitCbm && `Unit CBM: ${item.unitCbm}`, item.itemStatus && `Item status: ${item.itemStatus}`, item.warehouse && `Source warehouse: ${item.warehouse}`, item.importNotes].filter(Boolean).join(" · ") || null,
-              quantity: item.qty.trim() === "" ? null : num(item.qty),
-              cbm: item.cbm.trim() === "" ? null : num(item.cbm),
+              quantity: item.qty.trim() || null,
+              cbm: item.cbm.trim() || null,
             };
           }),
         })),
@@ -600,7 +661,7 @@ export default function AddTripForm({
   }
 
   const isLast = step === STEPS.length - 1;
-  const productLabel = (i: ItemDraft) => (i.productId ? labelOf(productOptions, i.productId) : i.newCode.trim() || null);
+  const productLabel = (i: ItemDraft) => i.sourceModel || (i.productId ? labelOf(productOptions, i.productId) : i.newCode.trim() || null);
   const selectedCsvGroup = csvGroups.find(group => group.key === csvGroupKey);
   const previewTrip: TripPreviewRow = {
     dispatch: dispatchRef || "Generated on save", trip: tripReference || (tripReferenceStatus === "setup_required" ? "Not yet enabled" : "Generated on save"), tripType: tripTypeLabel || "",
@@ -616,6 +677,7 @@ export default function AddTripForm({
   });
 
   /* ───────────────────────────── render ───────────────────────────── */
+  if (bulkImportOpen) return <BulkTripImport initialTarget={dispatchMode === "existing" && existingDispatch ? {mode:"dispatch",value:existingNo,allow_create:true} : undefined} onClose={() => setBulkImportOpen(false)} onImported={() => onImported?.()} />;
   return (
     <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-slate-900/30 backdrop-blur-sm sm:p-5">
       <form onSubmit={submit} role="dialog" aria-modal="true" aria-labelledby="add-trip-title"
@@ -645,7 +707,12 @@ export default function AddTripForm({
 
         {/* body */}
         <div ref={bodyRef} className="min-h-0 min-w-0 flex-1 space-y-4 overflow-y-auto px-4 py-4 sm:px-6 sm:py-5">
-          <div className="rounded-xl border border-slate-200 bg-white p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-blue-100 bg-blue-50/50 p-4">
+            <div><p className="text-sm font-semibold text-[#0b2341]">Import complete trip requests</p><p className="mt-1 text-xs text-slate-600">Select multiple CSV / XLSX files, map columns and review every product row before saving.</p></div>
+            <button type="button" className="inline-flex items-center gap-2 rounded-full bg-[#ffd43b] px-4 py-2 text-sm font-semibold text-[#0b2341] hover:bg-[#f2c200]" disabled={saving || importing || (dispatchMode === "existing" && !existingDispatch)} onClick={() => setBulkImportOpen(true)}><Upload size={16} />Import CSV / XLSX</button>
+          </div>
+          <details className="rounded-xl border border-slate-200 bg-white p-4">
+            <summary className="mb-3 cursor-pointer text-xs font-medium text-slate-500">Load one CSV group into the manual trip form</summary>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex min-w-0 flex-1 items-start gap-3"><span className="hidden rounded-xl bg-blue-50 p-2.5 text-[#2678b9] sm:block"><FileSpreadsheet className="h-5 w-5" /></span><div className="min-w-0"><p className="text-sm font-semibold text-[#0b2341]">Import from CSV</p><p className="mt-1 text-xs leading-5 text-slate-500">Upload a booking or dispatch sheet exported as CSV UTF-8.</p><p className="text-xs leading-5 text-slate-500">All fields are optional. You can fill in missing details later.</p></div></div>
               <label className={`inline-flex shrink-0 cursor-pointer items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-[#2678b9] focus-within:ring-2 focus-within:ring-blue-400 ${saving || importing ? "pointer-events-none opacity-50" : "hover:bg-slate-50"}`}>
@@ -666,7 +733,8 @@ export default function AddTripForm({
               {importWarnings.length > 0 && <TripFormNotice tone="warning" title="Review import notes" onDismiss={() => setImportWarnings([])}><p>Some source names could not be matched and were kept in notes. Check the selections in the form.</p><details><summary className="cursor-pointer font-medium">View import notes ({importWarnings.length})</summary><ul className="mt-2 max-h-36 space-y-1 overflow-y-auto pl-4 list-disc">{importWarnings.map(warning => <li key={warning}>{warning}</li>)}</ul></details></TripFormNotice>}
             </div>}
             {importedDispatch && dispatchMode === "new" && <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-600"><span>Imported dispatch: {importedDispatch}</span><button type="button" onClick={() => setImportedDispatch("")} className="font-medium text-[#2678b9] underline">Generate a new dispatch instead</button></div>}
-          </div>
+          </details>
+          {accessToken && cargoLines.length > 0 && selectedTruckAssignments.length > 0 && <TripCargoPlanner token={accessToken} lines={cargoLines} plan={cargoPlan} onChange={setCargoPlan} fixedTrucks={cargoTrucks} disabled={saving} />}
           {capacityState.full && <TripFormNotice tone="warning" title={capacityState.exceeded ? "Truck capacity exceeded" : "Truck capacity is full"} action={<button type="button" onClick={addCapacityTruck} className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-white/70 px-3 py-1.5 text-xs font-semibold hover:bg-white"><Plus className="h-3.5 w-3.5" />Add another truck</button>}>
             <p>{fmt(totals.cbm)} CBM of cargo / {fmt(assignedCapacity)} CBM capacity.</p><p>{capacityState.exceeded ? `Add a truck for the remaining ${fmt(capacityState.overflow)} CBM before loading.` : "Add another truck if you need to load more cargo."} You can still save this as a planned trip.</p>
           </TripFormNotice>}
@@ -676,11 +744,11 @@ export default function AddTripForm({
           {/* ── step 1: trip ── */}
           {step === 0 && (
             <>
-              <section className="rounded-xl bg-[#0b2341] p-5 text-white sm:p-6">
-                <div className="inline-flex rounded-full bg-white/10 p-1 text-sm" role="tablist" aria-label="Dispatch">
+              <section className="rounded-xl border border-blue-100 bg-blue-50/60 p-5 text-[#0b2341] sm:p-6">
+                <div className="inline-flex rounded-full bg-slate-200/70 p-1 text-sm" role="tablist" aria-label="Dispatch">
                   {([["new", "New dispatch"], ["existing", "Add to an existing dispatch"]] as const).map(([mode, label]) => (
                     <button key={mode} type="button" role="tab" aria-selected={dispatchMode === mode} onClick={() => switchDispatchMode(mode)}
-                      className={`rounded-full px-4 py-1.5 font-medium transition ${dispatchMode === mode ? "bg-white text-[#0b2341]" : "text-white/70 hover:text-white"}`}>
+                      className={`rounded-full px-4 py-1.5 font-medium transition ${dispatchMode === mode ? "bg-white text-[#0b2341]" : "text-slate-600 hover:text-[#0b2341]"}`}>
                       {label}
                     </button>
                   ))}
@@ -688,11 +756,11 @@ export default function AddTripForm({
 
                 <div className="mt-5 flex flex-wrap items-end justify-between gap-4">
                   <div className="min-w-0">
-                    <p className="text-sm text-white/60">Dispatch reference</p>
+                    <p className="text-sm text-slate-500">Dispatch reference</p>
                     <p className="mt-1 truncate font-mono text-2xl font-semibold tracking-tight sm:text-3xl">
                       {dispatchBusy ? "Loading…" : dispatchRef || "—"}
                     </p>
-                    <p className="mt-1.5 text-xs text-white/60">
+                    <p className="mt-1.5 text-xs text-slate-500">
                       {dispatchMode === "new"
                         ? importedDispatch ? "Dispatch reference from your CSV." : `Reference generated from ${loadingDate ? "the loading date" : "today's date"}.`
                         : existingDispatch
@@ -703,7 +771,7 @@ export default function AddTripForm({
                   </div>
                   {dispatchMode === "new" && (
                     <button type="button" onClick={() => { setImportedDispatch(""); setDispatchRetry((n) => n + 1); }} disabled={dispatchLoading}
-                      className="inline-flex items-center gap-2 rounded-full bg-white/10 px-4 py-2 text-sm font-medium text-white transition hover:bg-white/20 disabled:opacity-50">
+                      className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-white px-4 py-2 text-sm font-medium text-[#0b2341] transition hover:bg-blue-50 disabled:opacity-50">
                       <RefreshCw className={`h-4 w-4 ${dispatchLoading ? "animate-spin" : ""}`} /> Get a new number
                     </button>
                   )}
@@ -719,7 +787,7 @@ export default function AddTripForm({
 
               <Section title="Trip number" description="Generated separately from the dispatch reference.">
                 <Field label="Trip no."><input readOnly aria-label="Generated trip number" value={tripReference} placeholder={dispatchLoading ? "Generating trip number…" : tripReferenceStatus === "setup_required" ? "Trip numbering not yet enabled" : "Generated when you save"} className={`${input} font-mono`} /></Field>
-                {tripReferenceStatus === "ready" ? <p className="mt-2 text-xs text-slate-500">The final number is assigned when the trip is saved.</p> : <div className="mt-3"><TripFormNotice tone="warning" title={tripReferenceStatus === "setup_required" ? "Trip numbering needs an update" : "Trip number preview unavailable"}>{tripReferenceStatus === "setup_required" ? "The database update for generated trip numbers has not been applied. Dispatch references still work, and you can save using the existing trip numbering." : "The dispatch reference is ready. Try generating the trip number again."}</TripFormNotice></div>}
+                {tripReferenceStatus === "ready" ? <p className="mt-2 text-xs text-slate-500">The final number is assigned when the trip is saved.</p> : <div className="mt-3"><TripFormNotice tone="warning" title={tripReferenceStatus === "setup_required" ? "Trip numbering needs an update" : "Trip number preview unavailable"}>{tripReferenceStatus === "setup_required" ? "Generated trip numbers need database setup. Complete the reviewed database updates before saving a new trip." : "The dispatch reference is ready. Try generating the trip number again."}</TripFormNotice></div>}
               </Section>
 
               <Section title="Schedule">
@@ -750,7 +818,7 @@ export default function AddTripForm({
                 </div>
               </Section>
 
-              <Section title="Warehouse and trucks" description="Add more than one truck to this trip. Cargo is not automatically split between trucks.">
+              <Section title="Warehouse and trucks" description="Choose trucks and drivers here, then review a DR-based cargo distribution in its separate panel.">
                 <div className="grid gap-4 sm:grid-cols-3">
                   <Field label="Origin warehouse">
                     {accessToken&&<div className={`${input} flex items-center`}><SearchableRelationshipEditor token={accessToken} kind="warehouses" value={labelOf(lookups.warehouses,warehouseId)??""} autoFocus={false} disabled={saving} onSelect={option=>{rememberOption("warehouses",option);setWarehouseId(option.id);}} onCommitBlur={()=>{}} onCancel={()=>{}}/></div>}
@@ -767,7 +835,7 @@ export default function AddTripForm({
                       </button>
                     </div>
                     {availabilityError&&<p className="mb-2 text-xs text-rose-700">{availabilityError} <button type="button" onClick={()=>setAvailabilityRetry(value=>value+1)} className="underline">Retry schedules</button></p>}
-                    <p className="mb-2 text-xs text-slate-500">Cargo: {fmt(totals.cbm)} CBM · Selected capacity: {fmt(assignedCapacity)} CBM · Additional capacity needed: {fmt(Math.max(0,totals.cbm-assignedCapacity))} CBM. Capacity planning does not allocate cargo.</p>
+                    <p className="mb-2 text-xs text-slate-500">Cargo: {fmt(totals.cbm)} CBM · Selected capacity: {fmt(assignedCapacity)} CBM · Additional capacity needed: {fmt(Math.max(0,totals.cbm-assignedCapacity))} CBM. Confirm a cargo proposal above to allocate products.</p>
                     <div className="space-y-2">
                       {truckAssignments.map((assignment, index) => {
                         const otherCapacity=truckAssignments.filter(other=>other.key!==assignment.key&&other.truckId).reduce((total,other)=>total+Number(lookups.trucks.find(truck=>truck.id===other.truckId)?.values?.capacity_cbm||0),0);
@@ -787,7 +855,7 @@ export default function AddTripForm({
                   <div id="trip-truck-assignments" className="min-w-0">
                               <Dropdown
                                 value={assignment.truckId}
-                                onChange={(truckId) => {setTruckPickerKey(null);setTruckAssignments((current) => current.map((item) => item.key === assignment.key ? { ...item, truckId, availabilityConfirmed:false } : item));}}
+                                onChange={(truckId) => {setTruckPickerKey(null);setTruckAssignments((current) => current.map((item) => item.key === assignment.key ? { ...item, truckId, driverId:(()=>{const defaultId=lookups.trucks.find(truck=>truck.id===truckId)?.values?.default_driver_id||"";return current.some(other=>other.key!==item.key&&other.driverId===defaultId)?"":defaultId;})(), availabilityConfirmed:false } : item));}}
                                 options={availableTrucks}
                                 openRequested={truckPickerKey===assignment.key&&!availabilityLoading&&!availabilityError}
                                 disabled={availabilityLoading||Boolean(availabilityError)}
@@ -807,7 +875,7 @@ export default function AddTripForm({
                             <Dropdown
                               value={assignment.driverId}
                               onChange={(driverId) => setTruckAssignments((current) => current.map((item) => item.key === assignment.key ? { ...item, driverId } : item))}
-                              options={lookups.drivers}
+                              options={lookups.drivers.filter(driver=>!truckAssignments.some(other=>other.key!==assignment.key&&other.driverId===driver.id)).map(driver=>({...driver,disabled:driverAvailability.some(state=>state.id===driver.id&&state.availability==="CONFLICT")}))}
                               placeholder="Assign driver later"
                               loading={loadingLookups}
                               compact
@@ -982,10 +1050,10 @@ export default function AddTripForm({
                                         <div className="flex gap-1.5">
                                           <input type="number" min="0" step="any" value={item.unitCbm} onChange={(e) => updateItem(stop.key, item.key, { unitCbm: e.target.value })} className={inputSm} />
                                           <button type="button" title="Total CBM = qty × unit CBM"
-                                            disabled={!Number.isFinite(num(item.unitCbm)) || num(item.unitCbm) < 0 || !(num(item.qty) > 0)}
-                                            onClick={() => updateItem(stop.key, item.key, { cbm: String(Number((num(item.unitCbm) * num(item.qty)).toFixed(8))) })}
+                                            disabled={Boolean(item.cbm.trim()) || !Number.isFinite(num(item.unitCbm)) || num(item.unitCbm) < 0 || !(num(item.qty) > 0)}
+                                            onClick={() => updateItem(stop.key, item.key, { cbm: calculatedCbm(item.qty,item.unitCbm), importNotes:[item.importNotes,"Total CBM calculated from quantity and unit CBM."].filter(Boolean).join(" / ") })}
                                             className="h-9 shrink-0 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-medium text-[#2678b9] hover:border-[#2678b9]/40 disabled:text-slate-300 disabled:hover:border-slate-200">
-                                            Calc total
+                                            Calculate missing total
                                           </button>
                                         </div>
                                       </Field>

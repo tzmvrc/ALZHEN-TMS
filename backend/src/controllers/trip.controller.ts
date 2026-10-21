@@ -1,3 +1,4 @@
+import { createAtomicTripBundle } from "../services/trip-workflow.service.js";
 import {ApiError} from "../utils/api-response.js";
 import { Request, Response } from "express";
 import {
@@ -115,7 +116,9 @@ export async function listDispatches(req: Request, res: Response) {
 
 export async function createTrip(req: Request, res: Response) {
   try {
-    const result = req.body && "trip" in req.body
+    const result = req.body?.request_id
+      ? await createAtomicTripBundle(req.body, req.profile!.id)
+      : req.body && "trip" in req.body
       ? await saveTripBundle(req.body, {
           createTrip: (input) => createTripRecord(input, req.user, req.profile),
           createStop: createTripStopRecord,
@@ -133,6 +136,7 @@ export async function createTrip(req: Request, res: Response) {
       : await createTripRecord(req.body, req.user, req.profile);
     return sendSuccess(res, 201, "Trip created successfully", result);
   } catch (error) {
+    if(error instanceof ApiError)return sendError(res,error.statusCode,error.message,error.code);
     const message =
       error instanceof Error ? error.message : "Unable to create trip";
     if (message === "Dispatch number already exists.") {
@@ -167,6 +171,7 @@ export async function updateTrip(req: Request, res: Response) {
     const warning = await notifyMentionAfterRemarksSave({ actorId: req.user!.id, referenceType: "trip", referenceId: tripId, remarks: updates.remarks, mention: _mention });
     return sendSuccess(res, 200, "Trip updated successfully", warning ? { ...result, _mention_notification_warning: warning } : result);
   } catch (error) {
+    if(error instanceof ApiError)return sendError(res,error.statusCode,error.message,error.code);
     const message =
       error instanceof Error ? error.message : "Unable to update trip";
     if (message === "Trip not found") {

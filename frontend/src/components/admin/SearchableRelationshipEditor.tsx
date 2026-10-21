@@ -16,6 +16,7 @@ type SearchableRelationshipEditorProps = {
   value: string;
   storeId?: string;
   disabled?: boolean;
+  unavailableIds?: readonly string[];
   autoFocus?: boolean;
   customerId?: string;
   createDefaults?:Record<string,string>;
@@ -31,6 +32,7 @@ export default function SearchableRelationshipEditor({
   value,
   storeId,
   disabled = false,
+  unavailableIds,
   autoFocus = true,
   customerId,
   createDefaults,
@@ -113,6 +115,7 @@ export default function SearchableRelationshipEditor({
   }, [isOpen]);
 
   function selectOption(option: RelationshipOption | undefined, commit = false) {
+    if (option && unavailableIds?.includes(option.id)) return;
     if (!option) return;
     setIsOpen(false);
     setQuery("");
@@ -172,13 +175,15 @@ export default function SearchableRelationshipEditor({
             type="button"
             role="option"
             aria-selected={isCurrent(option)}
+            disabled={unavailableIds?.includes(option.id)}
+            aria-disabled={unavailableIds?.includes(option.id)}
             onMouseDown={(event) => event.preventDefault()}
             onMouseEnter={() => setActiveIndex(index)}
             onClick={() => selectOption(option)}
             className={`flex w-full items-center justify-between gap-2 px-3 py-2 text-left transition-colors ${index === activeIndex ? "bg-amber-50" : "hover:bg-amber-50/60"}`}>
             <span className="min-w-0 flex-1">
             <span className="block truncate text-xs font-medium text-slate-800">
-              {option.label}
+              {option.label}{unavailableIds?.includes(option.id) && " (already selected)"}
             </span>
             {option.secondary && (
               <span className="block truncate text-[10px] text-slate-500">

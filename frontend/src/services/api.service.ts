@@ -203,6 +203,8 @@ async function request<T>(
     }
 
     if (response.status >= 500) {
+      const code=payload?.code??payload?.error?.code;
+      if(endpoint.startsWith("/trips")&&["TRIP_WORKFLOW_SETUP_REQUIRED","TRIP_IMPORT_SETUP_REQUIRED"].includes(code??"")&&payload?.message)throw new ApiError(payload.message,response.status,code);
       if (
         endpoint === "/truckers/me/trips" &&
           (payload?.code === "TRUCKER_ASSIGNED_TRIPS_FAILED" ||

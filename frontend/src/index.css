@@ -623,3 +623,18 @@ input[type="checkbox"] { width: 14px; height: 14px; min-width: 14px; min-height:
 .spreadsheet-grid [data-spreadsheet-header-title] { overflow-wrap:anywhere; word-break:normal; white-space:normal; }
 [data-trips-workspace] { min-height:0; display:flex; flex-direction:column; }
 [data-trips-workspace] > [role=tabpanel], [data-trips-workspace] [role=tabpanel] { min-height:0; }
+
+/* Keep search matches visible through cell editors and custom column colors. */
+.spreadsheet-grid td[data-search-match="true"] {
+  background-color: #fef08a !important;
+  box-shadow: inset 0 0 0 1px #eab308;
+}
+/* Hide the grid's horizontal bar while retaining its native vertical bar. */
+[data-trips-workspace] .spreadsheet-viewport { overflow-x: hidden; overflow-y: scroll; scrollbar-width: auto; }
+[data-trips-workspace] .spreadsheet-viewport::-webkit-scrollbar { width: 12px; height: 0; }
+[data-trips-workspace] .spreadsheet-viewport::-webkit-scrollbar-thumb { background: #a9b6c7; border: 2px solid #f1f5f9; border-radius: 8px; }
+[data-trips-workspace] .spreadsheet-viewport::-webkit-scrollbar-track { background: #f1f5f9; }
+.sheet-horizontal-scrollbar { scrollbar-width: auto; }
+.sheet-horizontal-scrollbar::-webkit-scrollbar { height: 14px; }
+.sheet-horizontal-scrollbar::-webkit-scrollbar-thumb { background: #a9b6c7; border: 3px solid #f1f5f9; border-radius: 8px; }
+.sheet-horizontal-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; }

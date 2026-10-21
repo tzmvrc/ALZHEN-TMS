@@ -552,7 +552,7 @@ function AddTripButton({ onCreated }: { onCreated: (reference: string) => void }
         Add trip
       </button>
 
-      {open && <Suspense fallback={<div role="status" aria-label="Opening trip form" className="fixed inset-0 z-50 bg-slate-900/10"/>}><AddTripForm onClose={() => setOpen(false)} onSubmit={createTripHandler} /></Suspense>}
+      {open && <Suspense fallback={<div role="status" aria-label="Opening trip form" className="fixed inset-0 z-50 bg-slate-900/10"/>}><AddTripForm onClose={() => setOpen(false)} onSubmit={createTripHandler} onImported={() => window.dispatchEvent(new Event("alzhen:trip-imported"))} /></Suspense>}
     </>
   );
 }

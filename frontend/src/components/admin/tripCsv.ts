@@ -1,7 +1,10 @@
 export const csvFields = {
   dispatch: ["dispatch no", "dispatch number"], trip: ["trip no", "trip number"],
   loadingDate: ["loading date", "email date"], eta: ["estimated delivery date", "eta"],
-  tripType: ["trip type"], plate: ["plate no", "plate number", "truck name"],
+  tripType: ["trip type"], plate: ["plate no", "plate number"],
+  phTruck: ["ph truck name", "phtrruck", "phtruck", "truck name"],
+  orderItem: ["order item no", "order item number"], stocks: ["stocks", "stock quantity"],
+  approvalDate: ["so approval date"],
   warehouse: ["wh code", "warehouse", "ship from"], store: ["ship to", "ship-to", "ship_to", "ship to name", "ship to code", "ship to / destination", "store", "store name", "store code", "destination", "destination name", "delivery destination", "delivered to"],
   customer: ["customer name", "customer"], product: ["customer model", "product code", "model code", "sku"],
   category: ["product category", "category"], qty: ["qty", "quantity"],
@@ -17,21 +20,22 @@ export type CsvTripGroup = { key: string; label: string; rows: CsvTripRow[] };
 const normalize = (value: string) => value.trim().toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 
 /** Quoted commas, escaped quotes, embedded newlines, CRLF and Excel's UTF-8 BOM. */
-export function parseCsv(text: string): string[][] {
+export function parseCsv(text: string, onRow?: (line: number) => void): string[][] {
   const source = text.replace(/^\uFEFF/, "");
   const firstLine = source.split(/\r?\n/, 1)[0];
   const separator = firstLine.startsWith("sep=") ? firstLine.slice(4, 5) : ",";
   const input = firstLine.startsWith("sep=") ? source.slice(source.indexOf("\n") + 1) : source;
   const rows: string[][] = []; let row: string[] = [], cell = "", quoted = false, closed = false;
-  const pushRow = () => { row.push(cell); if (row.some(value => value.trim())) rows.push(row); row = []; cell = ""; closed = false; };
+  let line = firstLine.startsWith("sep=") ? 2 : 1, rowLine = line;
+  const pushRow = () => { row.push(cell); if (row.some(value => value.trim())) { rows.push(row); onRow?.(rowLine); } row = []; cell = ""; closed = false; };
   for (let index = 0; index < input.length; index++) {
     const char = input[index];
     if (quoted) {
       if (char === '"' && input[index + 1] === '"') { cell += '"'; index++; }
       else if (char === '"') { quoted = false; closed = true; }
-      else cell += char;
+      else { cell += char; if (char === "\n" || (char === "\r" && input[index + 1] !== "\n")) line++; }
     } else if (char === separator) { row.push(cell); cell = ""; closed = false; }
-    else if (char === "\n" || char === "\r") { if (char === "\r" && input[index + 1] === "\n") index++; pushRow(); }
+    else if (char === "\n" || char === "\r") { if (char === "\r" && input[index + 1] === "\n") index++; pushRow(); line++; rowLine = line; }
     else if (char === '"' && !cell && !closed) quoted = true;
     else if (closed && char.trim()) throw new Error("Invalid CSV: unexpected text after a quoted value.");
     else if (char === '"') throw new Error("Invalid CSV: quotes inside a value must be escaped.");
@@ -67,9 +71,11 @@ export function readTripCsv(text: string): CsvTripGroup[] {
 
 export function csvNumber(value: string, field: string, line: number, whole = false): string {
   if (!value.trim()) return "";
-  const number = Number(value.replaceAll(",", ""));
+  const normalized = value.trim().replaceAll(",", "");
+  const number = Number(normalized);
   if (!Number.isFinite(number) || number < 0 || (whole && !Number.isSafeInteger(number))) throw new Error(`CSV row ${line}: ${field} must be a non-negative ${whole ? "whole " : ""}number.`);
-  return String(number);
+  if (!/^\d+(?:\.\d+)?$/.test(normalized)) throw new Error(`CSV row ${line}: ${field} must be a non-negative decimal.`);
+  return normalized;
 }
 
 export function csvDate(value: string): string {
