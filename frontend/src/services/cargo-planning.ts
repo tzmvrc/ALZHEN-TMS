@@ -1,5 +1,5 @@
 export type CargoLine = { key: string; dr: string; stop: string; label: string; quantity: string; cbm: string };
-export type CargoTruck = { id: string; label: string; capacity: string; driverId: string; driverLabel: string };
+export type CargoTruck = { id: string; label: string; capacity: string; driverId: string; driverLabel: string; companyId?: string; companyLabel?: string };
 export type CargoPlacement = { line_key: string; truck_id: string; quantity: string; allocated_cbm: string };
 export type CargoPlan = { trucks: CargoTruck[]; placements: CargoPlacement[]; signature: string; confirmed: boolean; schedule?: { loading_date: string; estimated_delivery_date: string; unreserved_confirmed: boolean } };
 export const emptyCargoPlan = (): CargoPlan => ({ trucks: [], placements: [], signature: "", confirmed: false });
@@ -14,7 +14,7 @@ const text = (value: bigint, scale: number): string => {
   const digits = value.toString().padStart(scale + 1, "0");
   return scale ? `${digits.slice(0, -scale)}.${digits.slice(-scale)}`.replace(/\.?0+$/, "") || "0" : digits;
 };
-export const cargoSignature = (lines: CargoLine[], trucks: CargoTruck[]) => JSON.stringify([lines.map(line=>[line.key,line.dr,line.stop,line.quantity,line.cbm]),trucks.map(truck=>[truck.id,truck.capacity,truck.driverId])]);
+export const cargoSignature = (lines: CargoLine[], trucks: CargoTruck[]) => JSON.stringify([lines.map(line=>[line.key,line.dr,line.stop,line.quantity,line.cbm]),trucks.map(truck=>truck.companyId ? [truck.id,truck.capacity,truck.driverId,truck.companyId] : [truck.id,truck.capacity,truck.driverId])]);
 export function cargoCapacity(capacity: string, placements: CargoPlacement[]) {
   try {
     const scale = Math.max(0, ...placements.map(p => parts(p.allocated_cbm).scale), ...(capacity ? [parts(capacity).scale] : []));

@@ -1,6 +1,53 @@
 # Add Trip workflow implementation
 
-Current status (October 21, 2026): the authenticated Supabase connection is writable. **All four required database migrations were successfully applied through `apply_migration` and confirmed in the live migration ledger.** Existing generated trip references and convoy integrity objects were inspected and retained. The existing frontend/backend implementation was preserved and reviewed against the installed schema. Tests, builds, application execution, sample imports and deployment remain deferred by explicit user instruction.
+Database integration status (October 21, 2026): **all four required database migrations were successfully applied in the earlier integration phase and confirmed in the live migration ledger.** Existing generated trip references and convoy integrity objects were retained. The later UI follow-up below was verified in Playwright with operational writes intercepted; builds, live persistence tests and deployment remain unexecuted. Earlier testing-status statements describe their respective implementation phases.
+
+## Add Trip UI cleanup and browser verification
+
+October 22 column-mapping follow-up: `CDO trip request 1.csv` has 14 source columns; the eight reported optional fields are actually absent from that file. The mapping card now distinguishes absent optional fields from source columns needing mapping, shows the source mapping count, and offers Complete optional fields to open the mapped editor for that file. Original headers are saved separately, so manually completed fields do not appear as original CSV columns or alter original-value provenance. A browser-side helper check against the actual headers of CDO 1/2, Cebu 1/2 and Davao 1 confirmed that every source column maps. A completion check added unit CBM `0.25` while retaining supplied Total CBM `3.50` and identical original values. No source rows were imported, database changes applied, or builds/type checks run in this follow-up. Existing unrelated edits and their whitespace were retained.
+
+The subsequent UI request authorized Playwright inspection and workflow checks. This pass changed frontend components and services only. No backend files, SQL files, migrations or operational database records were changed.
+
+### Updated workflow
+
+1. **Upload CSV:** select CSV/XLSX files. Selection reads the files and opens the preview; it does not create trips, masters, stops, products or cargo.
+2. **Preview:** the separate CSV preview card shows every original header, including unmapped columns. Rows are paginated in groups of 50; every row remains reachable. Multiple files/worksheets have a file selector. Mapped fields can be edited without losing original cells. Column mapping lives in a separate, collapsed panel.
+3. **Import CSV:** Check CSV runs the existing read-only server preview/duplicate checks. The explicit Import CSV button then loads the checked rows into the trip draft and advances to details. Durable draft saves continue using the existing recovery API; operational import requests wait until Save trip.
+4. **Complete details:** review dispatch/group destinations, warehouses and destination identities/locations in separate panels. Choose trucks, drivers and trucking companies; review and confirm the existing cargo proposal. A CSV's truck name remains source text, not an assumed physical vehicle.
+5. **Review and save:** review assignments and a separate source-table card, acknowledge applicable duplicate/unmapped/CBM warnings, then Save trip. Existing source identities, batch IDs, cargo finalization and retry protection remain in use. Completed saves disable repeat submission; Done closes Add Trip and refreshes the underlying Trips workspace.
+
+The manual form now has four steps: Trip details, Stores & products, Assignments, Review. The competing single-group legacy import path was removed from this dialog. Stores have labeled search fields and grouped location details; product rows keep their main inputs compact and put extra fields behind Details. Store/product editing no longer includes import controls or truck/cargo editors. An expandable table preview is separate from the inputs. Both wizards show a two-by-two step navigation on narrow screens.
+
+Trucking companies default from the selected truck and can be changed in the CSV cargo panel. After cargo finalization, the existing assignment API updates only company fields that differ. The company identity is retained in the saved proposal. A partial company failure leaves trip/products/cargo intact; retry or reopen checks the same assignments without reimporting source rows or reallocating cargo. These company updates are separate API writes, rather than part of the cargo transaction. Their failures are explicitly reported as incomplete details. This avoids changing database functions or schema during a UI-only task.
+
+The Trips workspace refresh is deferred until closing the import dialog, avoiding a background table refresh on each retry. Import errors scroll into view. A saved draft without a checked preview reopens at Preview rather than showing an empty details step.
+
+### Files changed in the UI pass
+
+| File | Change |
+| --- | --- |
+| `frontend/src/components/admin/AddTripForm.tsx` | Four manual steps, one CSV entry point, separate assignments/preview, clearer store/product cards and labels, Save trip/Done behavior, mobile layout. |
+| `frontend/src/components/admin/BulkTripImport.tsx` | Staged upload/preview/import-to-draft/details/review workflow, company save retries, recovery navigation, deferred refresh and completion handling. |
+| `frontend/src/components/admin/TripImportPreview.tsx` | New separate original/mapped table panel, all source columns, file selection, row pagination and mapped edits. |
+| `frontend/src/components/admin/SearchableRelationshipEditor.tsx` | Optional form presentation with contextual placeholders; existing spreadsheet presentation remains the default. |
+| `frontend/src/components/admin/TripCargoPlanner.tsx` | Labeled truck/driver controls, default and selectable trucking company, responsive assignment cards. |
+| `frontend/src/services/cargo-planning.ts` | Optional company identity/label in cargo proposals; signatures include a selected company while retaining compatibility with older proposals without one. |
+| `frontend/src/services/trip-import.service.ts` | Reuse assignment reads/updates to finish company details idempotently and retain clear partial-save messages. |
+| `docs/add-trip-workflow-implementation.md` | Actual UI behavior, browser checks and validation limits. |
+
+### Executed browser checks and limits
+
+Playwright opened the running application at localhost, and the user logged in manually. The existing screens were inspected before editing. Claude was not callable in this environment: neither a Claude tool nor executable was available, so no Claude design review is claimed.
+
+- Inspected the updated manual and CSV dialogs on desktop and at a 390px mobile viewport. Dialog scroll width matched its 390px client width; expanded product details also stayed within the dialog. Original CSV tables scroll horizontally within their own panel.
+- Parsed a 55-row, 23-column CSV through the running app; verified the final page, the extra source column, mapped edits, and all 55 valid rows through the real read-only backend preview. Import CSV advanced to details with zero source-commit requests.
+- Inspected truck/driver/company lookup selection using actual read-only master lookups. Proposed 55 allocations totaling 13.75 CBM against a 30 CBM truck, then confirmed the proposal.
+- Intercepted operational write requests for the save check. Simulated a company-update conflict, retried, and reopened the saved batch. Across these actions there was one 55-row source commit request, one cargo-finalization request, and two company patch attempts (the injected failure and its successful retry). Reopening and saving did not add a source commit, cargo finalization or unnecessary company patch. Final save became disabled, and Done closed the dialog.
+- Inspected the actual outgoing row: edited model `UI-EDITED-MODEL`, original model `UI-MODEL-0`, separate unit/total CBM strings `0.25`, and the extra client note all survived.
+- Checked two CSV files and switched their preview. Both groups inherited the selected existing dispatch `DISPATCH261021-1`; advancing through Import CSV added no operational commit request.
+- Used real store/product lookups in the manual form, entered quantity `2` and Total CBM `0.5`, inspected the separate table preview, advanced through Assignments, and verified the final intercepted creation payload and dialog completion.
+
+Write interception covered draft saves, source commits, cargo finalization, company patches and manual trip creation. Authentication bootstrap and read-only application requests were allowed. An intentionally injected HTTP 409 and temporary interception errors during harness setup are not production application failures; the interception rules were corrected and removed after verification. No synthetic source rows were sent to live persistence endpoints. No test trips/products were created or deleted in Supabase. These checks verify the UI and request/retry behavior, **not actual database persistence**. No build, TypeScript check, unit/integration suite or deployment was executed in this UI pass. Live persistence/concurrency acceptance remains follow-up work requiring authorization.
 
 ## Current integration results
 

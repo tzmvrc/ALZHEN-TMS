@@ -1,4 +1,5 @@
 import type { CargoPlan } from "./cargo-planning";
+import { fetchTripAssignments, updateTripAssignmentRecord } from "./trip.service";
 import type { LocationDecision } from "../components/admin/ImportDestinationReview";
 import { apiGet, apiPost, invalidateApiCache, type ApiResponse } from "./api.service";
 import { invalidateReportPageCache } from "./report.service";
@@ -16,6 +17,21 @@ export type ImportOutcome = { source_identity: string; status: "imported" | "ski
 export type ImportBatchSummary = { id: string; state: "Pending" | "Partially Imported" | "Awaiting Allocation" | "Completed" | "Failed"; revision: number; imported: number; failed: number; awaiting_allocation: number; last_error: string | null; updated_at: string };
 export type ImportRecoveryDraft = { files: import("../components/admin/tripImportFiles").ImportFile[]; preview: ImportPreview | null; targets: Record<string,ImportTarget>; plans: Record<string,CargoPlan>; locations: Record<string,LocationDecision>; initialTarget?: ImportTarget; confirmed: boolean; verified: boolean; verifiedCbm: boolean; verifiedUnmapped: boolean; started: boolean };
 export type ImportBatchRecovery = ImportBatchSummary & { draft: ImportRecoveryDraft; outcomes: ImportOutcome[]; cargo_saved: Record<string,boolean> };
+/** A retry updates only missing company details on the existing assignments. */
+export async function saveImportAssignmentCompanies(token: string, tripId: string, plan: CargoPlan) {
+  const trucks = plan.trucks.filter(truck => truck.companyId);
+  if (!trucks.length) return;
+  invalidateApiCache(`/trips/${encodeURIComponent(tripId)}/assignments`);
+  const assignments = await fetchTripAssignments(token, tripId);
+  for (const truck of trucks) {
+    const assignment = assignments.find(row => row.truck_id === truck.id && !row.unassigned_at);
+    if (!assignment) throw new Error("Cargo was saved, but a truck assignment changed. Review Trip details before retrying company assignment.");
+    if (assignment.trucking_company_id !== truck.companyId) {
+      try { await updateTripAssignmentRecord(token, tripId, String(assignment.id), { trucking_company_id: truck.companyId }); }
+      catch { throw new Error("The trip and cargo are saved. Retry this same batch to finish trucking company details without creating another trip."); }
+    }
+  }
+}
 export async function setDefaultTripDriver(token:string,truck_id:string,driver_id:string|null){const response=await apiPost<ApiResponse<unknown>>("/trips/default-driver",{truck_id,driver_id},token);if(!response.success)throw Error(response.message??"Unable to save default driver.");invalidateApiCache("/lookup");return response.data;}
 export async function fetchImportBatches(token:string){const response=await apiGet<ApiResponse<ImportBatchSummary[]>>("/trips/import/batches",token);if(!response.success||!response.data)throw Error(response.message??"Unable to load saved imports.");return response.data;}
 export async function reopenImportBatch(token:string,id:string){const response=await apiGet<ApiResponse<ImportBatchRecovery>>(`/trips/import/batches/${encodeURIComponent(id)}`,token);if(!response.success||!response.data)throw Error(response.message??"Unable to reopen this import.");return response.data;}

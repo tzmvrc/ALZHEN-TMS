@@ -2,6 +2,7 @@ import { useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { tableUi } from "./dashboardStyles";
 import type { CsvField } from "./tripCsv";
+import { cbmDisplay, isCbmField } from "../../services/cbm-display";
 
 export type TripPreviewRow = Partial<Record<CsvField | "status" | "drivers", string>>;
 const columns: Array<{ key: keyof TripPreviewRow; title: string }> = [
@@ -36,7 +37,7 @@ export default function TripTablePreview({ rows, title, description }: { rows: T
         <table style={{ tableLayout: "fixed", width: 56 + visibleColumns.reduce((sum, column) => sum + width(column.key), 0), minWidth: "100%" }} className="text-left text-xs" aria-label={title}>
           <colgroup><col style={{ width: 56 }} />{visibleColumns.map(column => <col key={column.key} style={{ width: width(column.key) }} />)}</colgroup>
           <thead className={`${tableUi.thead} sticky top-0 z-10`}><tr><th scope="col" className={`${tableUi.th} !bg-slate-50`}>Row</th>{visibleColumns.map(column => <th scope="col" key={column.key} className={`${tableUi.th} whitespace-nowrap !bg-slate-50 ${numeric(column.key) ? "text-right" : ""}`}>{column.title}</th>)}</tr></thead>
-          <tbody>{rows.slice(start, start + 50).map((row, index) => <tr key={start + index} className={tableUi.row}><td className={`${tableUi.td} tabular-nums text-slate-400`}>{start + index + 1}</td>{visibleColumns.map(column => <td key={column.key} className={`${tableUi.td} truncate ${numeric(column.key) ? "text-right tabular-nums" : ""}`} title={row[column.key] || undefined}>{row[column.key] || <span className="text-slate-300">—</span>}</td>)}</tr>)}</tbody>
+          <tbody>{rows.slice(start, start + 50).map((row, index) => <tr key={start + index} className={tableUi.row}><td className={`${tableUi.td} tabular-nums text-slate-400`}>{start + index + 1}</td>{visibleColumns.map(column => { const value = isCbmField(column.key) ? cbmDisplay(row[column.key]) : row[column.key]; return <td key={column.key} className={`${tableUi.td} truncate ${numeric(column.key) ? "text-right tabular-nums" : ""}`} title={value || undefined}>{value || <span className="text-slate-300">—</span>}</td>; })}</tr>)}</tbody>
         </table>
       </div>
       <footer className={`${tableUi.footer} flex-wrap gap-2 !px-3 !py-2 text-slate-500`}><span>{rows.length ? `${start + 1}–${Math.min(start + 50, rows.length)} of ${rows.length} rows` : "No rows"}</span>{pages > 1 && <div className="flex items-center gap-2"><button type="button" aria-label="Previous preview page" disabled={currentPage === 1} onClick={() => setPage(currentPage - 1)} className={tableUi.pageBtn}><ChevronLeft className="h-4 w-4" /></button><span>{currentPage}/{pages}</span><button type="button" aria-label="Next preview page" disabled={currentPage === pages} onClick={() => setPage(currentPage + 1)} className={tableUi.pageBtn}><ChevronRight className="h-4 w-4" /></button></div>}</footer>

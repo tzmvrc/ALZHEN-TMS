@@ -20,6 +20,7 @@ type SearchableRelationshipEditorProps = {
   autoFocus?: boolean;
   customerId?: string;
   createDefaults?:Record<string,string>;
+  presentation?: "table" | "form";
   onSelect: (option: RelationshipOption) => void;
   onCommitSelection?: (option: RelationshipOption) => void;
   onCommitBlur: () => void;
@@ -36,6 +37,7 @@ export default function SearchableRelationshipEditor({
   autoFocus = true,
   customerId,
   createDefaults,
+  presentation = "table",
   onSelect,
   onCommitSelection,
   onCommitBlur,
@@ -213,7 +215,7 @@ export default function SearchableRelationshipEditor({
         aria-controls={listId}
         aria-activedescendant={isOpen && (options.length||canCreate) ? `${listId}-${activeIndex}` : undefined}
         value={isOpen?query:value}
-        placeholder={value||"Search records"}
+        placeholder={value || (presentation === "form" ? `Search ${kind === "stores" ? "store or destination" : kind === "products" ? "product code or model" : kind.replaceAll("-", " ")}` : "Search records")}
         onFocus={() => {
           if (!disabled) {
             // Keep the saved value in the real input value while editing. The
@@ -237,7 +239,7 @@ export default function SearchableRelationshipEditor({
           onCommitBlur();
         }}
         onKeyDown={handleKeyDown}
-        className="spreadsheet-cell-editor w-full min-w-0 max-w-full rounded-none border-0 bg-transparent px-0 py-0 text-sm font-medium text-slate-800 shadow-sm outline-none transition hover:border-amber-400 focus:border-amber-500 focus:ring-2 focus:ring-amber-100 disabled:cursor-wait disabled:opacity-60"
+        className={presentation === "form" ? "w-full min-w-0 max-w-full border-0 bg-transparent text-sm text-slate-800 shadow-none outline-none placeholder:text-slate-400 disabled:opacity-60" : "spreadsheet-cell-editor w-full min-w-0 max-w-full rounded-none border-0 bg-transparent px-0 py-0 text-sm font-medium text-slate-800 shadow-sm outline-none transition hover:border-amber-400 focus:border-amber-500 focus:ring-2 focus:ring-amber-100 disabled:cursor-wait disabled:opacity-60"}
       />
 
       </div>

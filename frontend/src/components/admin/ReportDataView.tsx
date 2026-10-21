@@ -1,4 +1,5 @@
 import { useSheetAutoFit } from "./useSheetAutoFit";
+import { cbmDisplay, isCbmField } from "../../services/cbm-display";
 import { scrollToTableColumn } from "./scrollToTableColumn";
 import { categoryHeaderStyle, FIELD_CATEGORIES } from "../../services/trip-column-categories";
 import { insertProductDrafts, newProductDrafts, productDraftValues, PRODUCT_FIELDS } from "../../services/trip-row-drafts";
@@ -234,6 +235,7 @@ function downloadBlob(blob: Blob, filename: string) {
 }
 
 function displayValue(value: unknown, type: string,field=""): string {
+  if (isCbmField(field)) return cbmDisplay(value);
   if (field === "so_approval_date") return value == null ? "" : String(value).replace("T", " ");
   if(isTripTimeField(field))return tripTimeDisplay(value);
   if (value === null || value === undefined || value === "") return "";
