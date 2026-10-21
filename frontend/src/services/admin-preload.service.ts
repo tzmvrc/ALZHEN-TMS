@@ -1,11 +1,6 @@
-import {fetchDropdownOptions} from "./dropdown-option.service";
-import {searchRelationshipOptions} from "./lookup.service";
-import {REPORTS,fetchReportPage,getInitialReportPageOptions,type ReportKey} from "./report.service";
-import {fetchTrips} from "./trip.service";
-import {runBackgroundPreload} from "./background-preload";
-import {preloadOperationsOverview} from "./operations-report.service";
-import {preloadTransmittalTracker} from "./transmittal-tracker.service";
-import {fetchUsersDirectory} from "./user-management.service";
+import type { ReportKey } from "./report.service";
+import { runBackgroundPreload } from "./background-preload";
+// Resource modules are loaded only after a feature is actually requested.
 export type AdminFeature="home"|"trips"|"reports"|"users";
 let generation=0,session="",activeFeature:AdminFeature|undefined;
 const warmed=new Map<AdminFeature,number>();
@@ -21,11 +16,17 @@ export async function preloadAdminPageData(token:string,role:string,feature?:Adm
  if(running?.feature===feature&&running.generation===generation)return running.promise;
  if(Date.now()-(warmed.get(feature)??0)<30000)return;
  const current=++generation;
- const page=(key:ReportKey)=>fetchReportPage(key,token,getInitialReportPageOptions(key));
+ const page=async(key:ReportKey)=>{const {fetchReportPage,getInitialReportPageOptions}=await import("./report.service");return fetchReportPage(key,token,getInitialReportPageOptions(key));};
+ const fetchDropdownOptions=async(token:string)=>(await import("./dropdown-option.service")).fetchDropdownOptions(token);
+ const searchRelationshipOptions=async(token:string,kind:"trip-types"|"warehouses"|"trucking-companies",query:string)=>(await import("./lookup.service")).searchRelationshipOptions(token,kind,query);
+ const fetchTrips=async(token:string,options:Parameters<typeof import("./trip.service").fetchTrips>[1])=>(await import("./trip.service")).fetchTrips(token,options);
+ const fetchUsersDirectory=async(token:string,role:string)=>(await import("./user-management.service")).fetchUsersDirectory(token,role);
+ const preloadOperationsOverview=async(token:string)=>(await import("./operations-report.service")).preloadOperationsOverview(token);
+ const preloadTransmittalTracker=async(token:string)=>(await import("./transmittal-tracker.service")).preloadTransmittalTracker(token);
  const references=[()=>fetchDropdownOptions(token),...(["trip-types","warehouses","trucking-companies"] as const).map(kind=>()=>searchRelationshipOptions(token,kind,""))];
  const tasks:Array<()=>Promise<unknown>>=feature==="users"?[()=>fetchUsersDirectory(token,role)]:feature==="reports"?[
   ()=>page(initialReport),...references,
-  ...(Object.keys(REPORTS) as ReportKey[]).filter(key=>key!==initialReport).map(key=>()=>page(key)),
+  ...(["combined","dispatch-monitoring","dispatch","trip-booking","store-calling"] as ReportKey[]).filter(key=>key!==initialReport).map(key=>()=>page(key)),
   ()=>preloadOperationsOverview(token),()=>preloadTransmittalTracker(token),
  ]:feature==="trips"?[
   ()=>page("dispatch-monitoring"),...references,

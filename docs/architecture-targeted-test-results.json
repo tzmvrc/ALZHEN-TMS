@@ -1,0 +1,17 @@
+﻿{
+    "backend":  {
+                    "tests":  40,
+                    "failed":  0,
+                    "passed":  40
+                },
+    "frontend":  {
+                     "tests":  50,
+                     "failed":  0,
+                     "passed":  50
+                 },
+    "typescript":  {
+                       "frontend":  "passed",
+                       "backend":  "passed"
+                   },
+    "productionDeletionTests":  0
+}

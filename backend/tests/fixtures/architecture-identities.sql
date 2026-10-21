@@ -1,0 +1,1 @@
+ALTER TABLE public."transaction_deletion_jobs" ALTER COLUMN "revision" ADD GENERATED ALWAYS AS IDENTITY;

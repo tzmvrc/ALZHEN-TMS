@@ -1,0 +1,353 @@
+[
+  {
+    "indexdef": "CREATE INDEX idx_backload_items_parent ON public.backload_items USING btree (backload_id)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_trips_dispatch_number ON public.trips USING btree (dispatch_number)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_trips_loading_date ON public.trips USING btree (loading_date)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_trips_status ON public.trips USING btree (status)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_trips_warehouse ON public.trips USING btree (warehouse_id)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_trips_request_received_at ON public.trips USING btree (request_received_at)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_trips_departure_from_warehouse_at ON public.trips USING btree (departure_from_warehouse_at)"
+  },
+  {
+    "indexdef": "CREATE UNIQUE INDEX trips_dispatch_trip_number_key ON public.trips USING btree (dispatch_number, trip_number)"
+  },
+  {
+    "indexdef": "CREATE UNIQUE INDEX trips_trip_reference_unique ON public.trips USING btree (trip_reference)"
+  },
+  {
+    "indexdef": "CREATE INDEX admin_notifications_recipient_created_idx ON public.admin_notifications USING btree (recipient_profile_id, created_at DESC)"
+  },
+  {
+    "indexdef": "CREATE UNIQUE INDEX admin_notifications_recipient_event_uq ON public.admin_notifications USING btree (recipient_profile_id, event_key)"
+  },
+  {
+    "indexdef": "CREATE INDEX admin_notifications_recipient_unread_idx ON public.admin_notifications USING btree (recipient_profile_id, created_at DESC) WHERE (read_at IS NULL)"
+  },
+  {
+    "indexdef": "CREATE INDEX website_content_collection_idx ON public.website_content USING btree (collection)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_pod_drive_files_pod_record_id ON public.pod_drive_files USING btree (pod_record_id)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_pod_drive_files_trip_id ON public.pod_drive_files USING btree (trip_id)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_pod_drive_files_trip_stop_id ON public.pod_drive_files USING btree (trip_stop_id)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_pod_drive_files_dr_number ON public.pod_drive_files USING btree (dr_number)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_pod_drive_files_dr_number_cleaned ON public.pod_drive_files USING btree (dr_number_cleaned)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_pod_records_trip_id ON public.pod_records USING btree (trip_id)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_pod_records_trip_stop_id ON public.pod_records USING btree (trip_stop_id)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_pod_records_dr_number ON public.pod_records USING btree (dr_number)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_pod_records_status ON public.pod_records USING btree (pod_status)"
+  },
+  {
+    "indexdef": "CREATE UNIQUE INDEX uq_pod_records_stop_dr ON public.pod_records USING btree (trip_stop_id, COALESCE(dr_number, ''::text))"
+  },
+  {
+    "indexdef": "CREATE UNIQUE INDEX flex_tables_custom_name_uq ON public.flex_tables USING btree (lower(name)) WHERE ((table_kind = 'CUSTOM'::text) AND (archived_at IS NULL))"
+  },
+  {
+    "indexdef": "CREATE UNIQUE INDEX flex_tables_report_key_uq ON public.flex_tables USING btree (report_key) WHERE ((table_kind = 'REPORT'::text) AND (archived_at IS NULL))"
+  },
+  {
+    "indexdef": "CREATE UNIQUE INDEX flex_tables_id_table_kind_source_binding_uq ON public.flex_tables USING btree (id, table_kind)"
+  },
+  {
+    "indexdef": "CREATE INDEX truck_images_truck_order_idx ON public.truck_images USING btree (truck_id, display_order)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_drivers_trucking_company ON public.drivers USING btree (trucking_company_id)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_store_contacts_store ON public.store_contacts USING btree (store_id)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_store_exceptions_store ON public.store_exceptions USING btree (store_id)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_trucks_trucking_company ON public.trucks USING btree (trucking_company_id)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_trucks_plate ON public.trucks USING btree (plate_number)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_trip_events_trip ON public.trip_events USING btree (trip_id)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_trip_events_stop ON public.trip_events USING btree (trip_stop_id)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_trip_events_type ON public.trip_events USING btree (event_type)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_trip_events_time ON public.trip_events USING btree (event_time)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_documents_trip ON public.documents USING btree (trip_id)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_documents_stop ON public.documents USING btree (trip_stop_id)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_documents_type ON public.documents USING btree (document_type)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_documents_status ON public.documents USING btree (status)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_incidents_trip ON public.incidents USING btree (trip_id)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_incidents_stop ON public.incidents USING btree (trip_stop_id)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_trip_line_items_trip ON public.trip_line_items USING btree (trip_id)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_trip_line_items_stop ON public.trip_line_items USING btree (trip_stop_id)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_trip_line_items_product ON public.trip_line_items USING btree (product_id)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_trip_line_items_dr ON public.trip_line_items USING btree (dr_number)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_demurrages_trip ON public.demurrages USING btree (trip_id)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_demurrages_stop ON public.demurrages USING btree (trip_stop_id)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_rate_cards_customer ON public.rate_cards USING btree (customer_id)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_rate_cards_trucking_company ON public.rate_cards USING btree (trucking_company_id)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_rate_cards_warehouse ON public.rate_cards USING btree (origin_warehouse_id)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_customer_stores_customer ON public.customer_stores USING btree (customer_id)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_customer_stores_name ON public.customer_stores USING btree (name)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_customer_stores_region ON public.customer_stores USING btree (region)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_products_model_code ON public.products USING btree (model_code)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_trip_truck_assignments_trip ON public.trip_truck_assignments USING btree (trip_id)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_trip_truck_assignments_truck ON public.trip_truck_assignments USING btree (truck_id)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_warehouses_region ON public.warehouses USING btree (region)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_store_calls_trip ON public.store_calls USING btree (trip_id)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_store_calls_stop ON public.store_calls USING btree (trip_stop_id)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_store_calls_assigned_to ON public.store_calls USING btree (assigned_to)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_store_calls_status ON public.store_calls USING btree (status)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_payables_trip ON public.payables USING btree (trip_id)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_payables_trucking_company ON public.payables USING btree (trucking_company_id)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_payables_status ON public.payables USING btree (status)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_receivables_trip ON public.receivables USING btree (trip_id)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_receivables_customer ON public.receivables USING btree (customer_id)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_receivables_status ON public.receivables USING btree (status)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_audit_logs_user ON public.audit_logs USING btree (user_id)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_audit_logs_entity ON public.audit_logs USING btree (entity_type, entity_id)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_audit_logs_created_at ON public.audit_logs USING btree (created_at)"
+  },
+  {
+    "indexdef": "CREATE UNIQUE INDEX tms_dropdown_options_field_value_uq ON public.tms_dropdown_options USING btree (field_key, lower(option_value))"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_billings_trip ON public.billings USING btree (trip_id)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_billings_customer ON public.billings USING btree (customer_id)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_billings_status ON public.billings USING btree (status)"
+  },
+  {
+    "indexdef": "CREATE UNIQUE INDEX flex_columns_active_name_uq ON public.flex_columns USING btree (table_id, lower(name)) WHERE (is_archived = false)"
+  },
+  {
+    "indexdef": "CREATE INDEX flex_columns_table_position_idx ON public.flex_columns USING btree (table_id, \"position\")"
+  },
+  {
+    "indexdef": "CREATE UNIQUE INDEX flex_rows_source_identity_uq ON public.flex_rows USING btree (table_id, source_entity_type, source_entity_id) WHERE ((row_kind = 'SOURCE'::text) AND (archived_at IS NULL))"
+  },
+  {
+    "indexdef": "CREATE INDEX flex_rows_table_position_idx ON public.flex_rows USING btree (table_id, \"position\", id) WHERE (archived_at IS NULL)"
+  },
+  {
+    "indexdef": "CREATE UNIQUE INDEX flex_rows_id_table_id_row_kind_source_binding_uq ON public.flex_rows USING btree (id, table_id, row_kind)"
+  },
+  {
+    "indexdef": "CREATE UNIQUE INDEX flex_dropdown_active_value_uq ON public.flex_dropdown_options USING btree (column_id, stored_value) WHERE (is_active = true)"
+  },
+  {
+    "indexdef": "CREATE INDEX flex_dropdown_column_position_idx ON public.flex_dropdown_options USING btree (column_id, \"position\") WHERE (is_active = true)"
+  },
+  {
+    "indexdef": "CREATE UNIQUE INDEX flex_permissions_role_uq ON public.flex_table_permissions USING btree (table_id, subject_role) WHERE (subject_type = 'ROLE'::text)"
+  },
+  {
+    "indexdef": "CREATE UNIQUE INDEX flex_permissions_profile_uq ON public.flex_table_permissions USING btree (table_id, subject_profile_id) WHERE (subject_type = 'PROFILE'::text)"
+  },
+  {
+    "indexdef": "CREATE INDEX flex_audit_table_time_idx ON public.flex_audit_events USING btree (table_id, created_at DESC)"
+  },
+  {
+    "indexdef": "CREATE INDEX flex_audit_actor_time_idx ON public.flex_audit_events USING btree (actor_profile_id, created_at DESC)"
+  },
+  {
+    "indexdef": "CREATE INDEX flex_cells_column_row_idx ON public.flex_cells USING btree (column_id, row_id)"
+  },
+  {
+    "indexdef": "CREATE INDEX admin_staff_session_days_profile_idx ON public.admin_staff_session_days USING btree (profile_id)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_backloads_trip ON public.backloads USING btree (trip_id)"
+  },
+  {
+    "indexdef": "CREATE UNIQUE INDEX proposed_backloads_id_trip_uq ON public.backloads USING btree (id, trip_id)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_unloading_reports_trip_stop ON public.unloading_reports USING btree (trip_id, trip_stop_id)"
+  },
+  {
+    "indexdef": "CREATE UNIQUE INDEX proposed_unloading_reports_identity_uq ON public.unloading_reports USING btree (id, trip_stop_id, trip_id)"
+  },
+  {
+    "indexdef": "CREATE UNIQUE INDEX proposed_loading_reports_id_trip_uq ON public.loading_reports USING btree (id, trip_id)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_loading_reports_trip ON public.loading_reports USING btree (trip_id)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_offloads_trip ON public.offloads USING btree (trip_id)"
+  },
+  {
+    "indexdef": "CREATE UNIQUE INDEX proposed_offloads_id_trip_uq ON public.offloads USING btree (id, trip_id)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_report_audit_entity ON public.report_audit_logs USING btree (entity_type, entity_id, created_at)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_offload_items_parent ON public.offload_items USING btree (offload_id)"
+  },
+  {
+    "indexdef": "CREATE INDEX operations_report_conversions_target_idx ON public.operations_report_conversions USING btree (target_type, target_id)"
+  },
+  {
+    "indexdef": "CREATE INDEX operations_report_conversions_trip_idx ON public.operations_report_conversions USING btree (trip_id, trip_stop_id)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_report_receipts_trip ON public.report_receipts USING btree (trip_id)"
+  },
+  {
+    "indexdef": "CREATE UNIQUE INDEX report_receipts_upload_request_uidx ON public.report_receipts USING btree (uploaded_by, upload_request_id) WHERE (upload_request_id IS NOT NULL)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_driver_trip_updates_trip ON public.driver_trip_updates USING btree (trip_id)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_driver_trip_updates_driver ON public.driver_trip_updates USING btree (driver_id)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_driver_trip_updates_updated_at ON public.driver_trip_updates USING btree (updated_at DESC)"
+  },
+  {
+    "indexdef": "CREATE INDEX offload_deletion_pending_idx ON public.offload_deletion_jobs USING btree (created_at, id) WHERE (state = 'PENDING_STORAGE'::text)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_trip_stops_trip ON public.trip_stops USING btree (trip_id)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_trip_stops_customer ON public.trip_stops USING btree (customer_id)"
+  },
+  {
+    "indexdef": "CREATE INDEX idx_trip_stops_store ON public.trip_stops USING btree (store_id)"
+  },
+  {
+    "indexdef": "CREATE UNIQUE INDEX proposed_trip_stops_id_trip_uq ON public.trip_stops USING btree (id, trip_id)"
+  },
+  {
+    "indexdef": "CREATE INDEX trip_stops_dispatch_number_idx ON public.trip_stops USING btree (dispatch_number) WHERE (dispatch_number IS NOT NULL)"
+  },
+  {
+    "indexdef": "CREATE INDEX transaction_deletion_pending_idx ON public.transaction_deletion_jobs USING btree (created_at, id) WHERE (state = 'PENDING_STORAGE'::text)"
+  },
+  {
+    "indexdef": "CREATE INDEX trip_images_trip_order_idx ON public.trip_images USING btree (trip_id, display_order, created_at)"
+  },
+  {
+    "indexdef": "CREATE INDEX trip_images_receipts_idx ON public.trip_images USING btree (trip_id, trip_stop_id, created_at DESC) WHERE (kind = 'receipt'::text)"
+  },
+  {
+    "indexdef": "CREATE UNIQUE INDEX trip_receipt_content_once_idx ON public.trip_images USING btree (trip_id, trip_stop_id, file_sha256) WHERE ((kind = 'receipt'::text) AND (file_sha256 IS NOT NULL))"
+  },
+  {
+    "indexdef": "CREATE INDEX pod_review_events_receipt_idx ON public.pod_review_events USING btree (receipt_id, created_at DESC, id)"
+  },
+  {
+    "indexdef": "CREATE INDEX backload_deletion_pending_idx ON public.backload_deletion_jobs USING btree (created_at, id) WHERE (state = 'PENDING_STORAGE'::text)"
+  }
+]

@@ -2,12 +2,12 @@ import {workspaceReportFromLocation} from "../../services/trips-workspace";
 import { apiGet,type ApiResponse } from "../../services/api.service";
 import {useNavigate,useParams,useSearchParams,useLocation} from "react-router-dom";
 // src/pages/Admin/DashboardPage.tsx
-import { useCallback,useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback,useEffect, useMemo, useRef, useState } from "react";
 import SidebarNav, {
   type NavEntry,
   type WorkspaceName,
 } from "../../components/admin/SidebarNav";
-import { PageSkeleton } from "../../components/admin/DashboardPrimitives";
+import RouteLoading from "../../components/RouteLoading";
 import ConfirmDialog from "../../components/ui/ConfirmDialog";
 import { useAuth } from "../../context/AuthContext";
 import {
@@ -24,10 +24,10 @@ import {
   BriefcaseBusiness,
 } from "lucide-react";
 import type { DashboardData } from "../../types/dashboard";
-import OverviewView from "./views/OverviewView";
+const OverviewView = lazy(() => import("./views/OverviewView"));
 import LiveTripAlerts from "../../components/admin/LiveTripAlerts";
-import ResourceView from "./views/ResourceView";
-import ClientWebsiteWorkspace from "./clientwebsite";
+const ResourceView = lazy(() => import("./views/ResourceView"));
+const ClientWebsiteWorkspace = lazy(() => import("./clientwebsite"));
 import { defaultDashboardData } from "./data/defaultDashboardData";
 import NotificationsView from "./views/NotificationsView";
 import {
@@ -132,8 +132,8 @@ export default function DashboardPage({
   if(seenRequestedSheet!==requestedSheet){setSeenRequestedSheet(requestedSheet);if(requestedSheet){setReportView(requestedSheet);setLocalActiveId("trips");}}
   useEffect(()=>{
     if(!accessToken||!profile)return;
-    const feature=activeId==="overview"?"home":activeId==="trips"||activeId.startsWith("trip-detail:")?"trips":activeId==="reports"?"reports":activeId==="truckers"?"users":undefined;
-    void preloadAdminPageData(accessToken,profile.role,feature,reportView);
+    // Trips owns one paced sheet queue; do not start a second report queue here.
+    if(activeId==="truckers")void preloadAdminPageData(accessToken,profile.role,"users");
   },[accessToken,profile,activeId,reportView]);
   const [billingView, setBillingView] = useState<
     "rates-fuel" | "invoices" | "payables" | "cash-tracker"
@@ -540,7 +540,7 @@ export default function DashboardPage({
   };
 
   if (loading) {
-    return <PageSkeleton />;
+    return <RouteLoading />;
   }
 
   const isClientWebsite = workspace === "Client Website";
@@ -626,8 +626,8 @@ export default function DashboardPage({
           onCollapseChange={setSidebarCollapsed}
         />
 
-        <main className="min-h-[calc(100vh-5.5rem)] w-full px-2 pb-4 pt-2 sm:px-4 lg:px-6">
-          <div className="mx-auto min-h-[calc(100vh-7rem)] w-full max-w-[1680px] rounded-[1.75rem] px-0 py-1 sm:px-1 lg:px-2">
+        <main className="min-h-[calc(100vh-5.5rem)] w-full px-2 pb-0 pt-2 sm:px-4 lg:px-6">
+          <Suspense fallback={<div role="status" aria-label="Opening page" className="min-h-40 animate-pulse bg-slate-50" />}><div className="mx-auto min-h-[calc(100vh-7rem)] w-full max-w-[1680px] rounded-[1.75rem] px-0 py-1 sm:px-1 lg:px-2">
             <RetainedFeature key={`home:${profile?.id}:${profile?.role}`} active={showOverview}><div
               className={showOverview ? "page-enter" : "hidden"}
             >
@@ -720,6 +720,7 @@ export default function DashboardPage({
               )}
             </div>
           </div>
+          </Suspense>
         </main>
 
         <ConfirmDialog

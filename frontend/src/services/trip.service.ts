@@ -40,10 +40,9 @@ export async function archiveTransaction(token: string, tripId: string, stopId: 
 
 export type TransactionDeletion = { operation_id: string; transaction_id: string; trip_id: string; trip_stop_id: string | null; cleanup_pending: boolean };
 export type TransactionCleanup = { id: string; transaction_id: string; trip_id: string; trip_stop_id: string | null };
-export async function deleteTransaction(token: string, tripId: string, stopId: string | null, currentPassword: string) {
-  if(!currentPassword)throw new Error("Enter your current account password.");
+export async function deleteTransaction(token: string, tripId: string, stopId: string | null, _currentPassword?: string) {
   const path = `/trips/${encodeURIComponent(tripId)}${stopId ? `/stops/${encodeURIComponent(stopId)}` : ""}`;
-  const response = await apiDelete<ApiResponse<TransactionDeletion>>(path, token, {current_password:currentPassword});
+  const response = await apiDelete<ApiResponse<TransactionDeletion>>(path, token, {});
   if (!response.success || !response.data) throw new Error(response.message ?? "Deletion could not be confirmed. Retry the same transaction.");
   invalidateTripRelatedCache();
   return response.data;
@@ -401,4 +400,30 @@ export async function createTrip(
   invalidateTripRelatedCache();
   invalidateTripListCache();
   return response.data;
+}
+
+export type LineItemDeletionTarget={tripId:string;stopId:string;id:string};
+/** Exact child record identities only; never falls back to stop or parent deletion. */
+export function lineItemDeletionTargets(rows:Record<string,unknown>[]):LineItemDeletionTarget[]|null {
+ if(!rows.length)return null;
+ const unique=new Map<string,LineItemDeletionTarget>();
+ const uuid=(value:unknown):value is string=>typeof value==="string"&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+ for(const row of rows){const tripId=row.trip_id??row._trip_id,stopId=row.trip_stop_id??row._trip_stop_id,id=row.trip_line_item_id??row._trip_line_item_id;
+  if(!uuid(tripId)||!uuid(stopId)||!uuid(id))return null;
+  const previous=unique.get(id);if(previous&&(previous.tripId!==tripId||previous.stopId!==stopId))return null;
+  unique.set(id,{tripId,stopId,id});
+ }
+ return [...unique.values()];
+}
+export async function deleteSelectedLineItems(token:string,targets:LineItemDeletionTarget[]){
+ const bounded=lineItemDeletionTargets(targets.map(target=>({trip_id:target.tripId,trip_stop_id:target.stopId,trip_line_item_id:target.id})));
+ if(!bounded||bounded.length>20)throw Error("Select at most 20 verified line items.");
+ const deleted:LineItemDeletionTarget[]=[],failed:LineItemDeletionTarget[]=[];
+ for(const target of bounded){try{
+  const response=await apiDelete<ApiResponse<{id:string}>>(`/trips/${encodeURIComponent(target.tripId)}/stops/${encodeURIComponent(target.stopId)}/line-items/${encodeURIComponent(target.id)}`,token);
+  if(!response.success||response.data?.id!==target.id)throw Error("Deletion was not confirmed.");
+  deleted.push(target);invalidateTripCache(target.tripId);
+ }catch{failed.push(target);}}
+ if(deleted.length){invalidateApiCache("/reports");invalidateReportPageCache();}
+ return {deleted,failed};
 }

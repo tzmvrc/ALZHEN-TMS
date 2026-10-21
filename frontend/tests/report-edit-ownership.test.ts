@@ -7,11 +7,12 @@ test("report identifiers target each physical stop after sorting and filtering; 
   const rows = [1, 2, 3].map((stop) => ({ trip_id: "trip-a", trip_stop_id: `stop-${stop}`, trip_line_item_id: `item-${stop}`, assignment_id: "assignment-a", transaction_number: `TX-${stop}`, dispatch_number: `DSP-${stop}` }));
   for (const report of ["combined", "dispatch-monitoring", "dispatch", "trip-booking"] as const) {
     for (const row of [...rows].reverse().filter((row) => row.trip_stop_id !== "stop-1")) {
-      for (const field of ["transaction_number", "dispatch_number"]) {
+      for (const field of ["transaction_number", "stop_dispatch_reference"]) {
         const target = getReportEditDefinition(report, field, row)!;
         assert.equal(target.sourceEntity, "stop");
         assert.equal(row[target.recordIdField], row.trip_stop_id);
       }
+      assert.equal(getReportEditDefinition(report,"dispatch_number",row)?.sourceEntity,"trip");
       if (report === "combined" || report === "dispatch-monitoring") {
         for (const field of ["transaction_dr_number", "transaction_quantity", "transaction_total_cbm", "transmittal_ref"]) {
           const target = getReportEditDefinition(report, field, row)!;

@@ -72,6 +72,7 @@ export async function editDropdownOption(
     sort_order?: number;
     active?: boolean;
     confirm_in_use?: boolean;
+    remove_if_unused?: boolean;
   },
 ): Promise<DropdownOption> {
   const response = await apiPatch<ApiResponse<DropdownOption>>(
@@ -83,3 +84,6 @@ export async function editDropdownOption(
   invalidateApiCache("/dropdown-options");
   return option;
 }
+
+/** Internal key generation; display labels remain the only user input. */
+export function dropdownStoredValue(label:string){const normalized=label.normalize("NFKD").replace(/[\u0300-\u036f]/g,"").toUpperCase().replace(/[^A-Z0-9 _-]+/g,"_").replace(/^[^A-Z0-9]+/,"").trim().slice(0,60);let hash=2166136261;for(const character of label.normalize("NFKC").trim().toLocaleLowerCase()){hash=Math.imul(hash^character.charCodeAt(0),16777619);}return normalized||`OPTION_${(hash>>>0).toString(16).toUpperCase()}`;}

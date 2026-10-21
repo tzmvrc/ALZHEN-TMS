@@ -8,7 +8,7 @@ export function getReportRowIdentity(
 ): string | null {
   if (reportKey === "store-calling") {
     return typeof row.store_call_id === "string" && row.store_call_id
-      ? `${reportKey}:store-call:${row.store_call_id}`
+      ? `${reportKey}:store-call:${row.store_call_id}${row.assignment_id ? `:assignment:${row.assignment_id}` : ""}`
       : null;
   }
 

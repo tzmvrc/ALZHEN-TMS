@@ -1,3 +1,6 @@
+import {readTripConvoy,saveTripAllocations,saveAssignmentStops,saveAssignmentStopProgress} from "../services/trip-convoy.service.js";
+import {deletePhysicalRecord} from "../services/record-deletion.service.js";
+import {sendSuccess as sendRecordSuccess} from "../utils/api-response.js";
 import {getTruckAvailability} from "../services/truck-availability.service.js";
 import { Router } from "express";
 import {wholeTripImpact,deleteWholeTrips} from "../services/whole-trip-deletion.service.js";
@@ -7,7 +10,7 @@ import { interpretReceipt, listReceipts, saveReceiptOcr, reviewCapabilities, rev
 import express from "express";
 import { authMiddleware } from "../middleware/auth.middleware.js";
 import { requireRole } from "../middleware/role.middleware.js";
-import { removeTransaction, pendingTransactionCleanup, retryTransactionImages, saveTransactionReference, transactionChanges } from "../controllers/transaction.controller.js";
+import { pendingTransactionCleanup, retryTransactionImages, saveTransactionReference, transactionChanges } from "../controllers/transaction.controller.js";
 import {
   listImages,
   removeImage,
@@ -26,6 +29,7 @@ import {
   createTripLineItem,
   createTripStop,
   deleteTripLineItem,
+  deleteTripStop,
   getTrip,
   getTripByDispatch,
   getTripHistory,
@@ -40,7 +44,7 @@ import {
 } from "../controllers/trip.controller.js";
 
 const router = Router();
-router.get("/whole-delete/capabilities",authMiddleware,requireRole("ADMIN"),(_req,res)=>sendSuccess(res,200,"Whole-trip deletion capabilities",{enabled:process.env.WHOLE_TRIP_DELETE_ENABLED==="true",max_unique_trips:20,password_required:true}));
+router.get("/whole-delete/capabilities",authMiddleware,requireRole("ADMIN"),(_req,res)=>sendSuccess(res,200,"Whole-trip deletion capabilities",{enabled:process.env.WHOLE_TRIP_DELETE_ENABLED==="true",max_unique_trips:20,password_required:false}));
 router.post("/whole-delete/impact",authMiddleware,requireRole("ADMIN"),async(req,res)=>{try{return sendSuccess(res,200,"Whole-trip deletion impact",await wholeTripImpact({id:req.user!.id,role:req.user!.role!},req.body?.trip_ids));}catch(e){return sendError(res,e instanceof ApiError?e.statusCode:503,e instanceof Error?e.message:"Impact unavailable");}});
 router.post("/whole-delete",authMiddleware,requireRole("ADMIN"),async(req,res)=>{try{const password=req.body?.current_password;if(req.body)delete req.body.current_password;return sendSuccess(res,200,"Whole-trip deletion committed",await deleteWholeTrips({id:req.user!.id,role:req.user!.role!},req.body?.trip_ids,{password,accessToken:req.headers.authorization?.replace(/^Bearer\s+/i,"").trim()??"",appSessionId:req.appSession?.sessionId??null}));}catch(e){return sendError(res,e instanceof ApiError?e.statusCode:503,e instanceof Error?e.message:"Deletion unavailable",e instanceof ApiError?e.code:undefined);}});
 router.get("/pod-intake-capabilities",authMiddleware,requireRole("ADMIN","STAFF"),intakeCapabilities);
@@ -122,8 +126,8 @@ router.patch(
 router.delete(
   "/:id",
   authMiddleware,
-  requireRole("ADMIN", "STAFF"),
-  removeTransaction,
+  requireRole("ADMIN"),
+  (_req,res)=>sendError(res,410,"Use Delete Entire Trip with explicit confirmation.","EXPLICIT_WHOLE_TRIP_DELETE_REQUIRED"),
 );
 router.get("/:id", authMiddleware, requireRole("ADMIN", "STAFF"), getTrip);
 router.get(
@@ -148,7 +152,7 @@ router.delete(
   "/:id/stops/:stopId",
   authMiddleware,
   requireRole("ADMIN", "STAFF"),
-  removeTransaction,
+  deleteTripStop,
 );
 router.get(
   "/:id/line-items",
@@ -187,4 +191,9 @@ router.get(
   getTripHistory,
 );
 
+router.delete("/:id/stops/:stopId/record-only",authMiddleware,requireRole("ADMIN","STAFF"),async(req,res,next)=>{try{return sendRecordSuccess(res,200,"Empty delivery stop deleted",await deletePhysicalRecord({id:req.user!.id,role:req.profile!.role},"trip_stops",String(req.params.stopId),req.body?.expected_version,String(req.params.id)));}catch(error){next(error);}});
+router.get("/:id/convoy",authMiddleware,requireRole("ADMIN","STAFF"),async(req,res,next)=>{try{return sendRecordSuccess(res,200,"Trip convoy",await readTripConvoy({id:req.user!.id,role:req.profile!.role},String(req.params.id)));}catch(error){next(error);}});
+router.post("/:id/convoy/allocations",authMiddleware,requireRole("ADMIN","STAFF"),async(req,res,next)=>{try{return sendRecordSuccess(res,200,"Cargo allocations saved",await saveTripAllocations({id:req.user!.id,role:req.profile!.role},String(req.params.id),req.body?.changes));}catch(error){next(error);}});
+router.put("/:id/convoy/assignments/:assignmentId/stops",authMiddleware,requireRole("ADMIN","STAFF"),async(req,res,next)=>{try{return sendRecordSuccess(res,200,"Truck stops saved",await saveAssignmentStops({id:req.user!.id,role:req.profile!.role},String(req.params.id),String(req.params.assignmentId),req.body??{}));}catch(error){next(error);}});
+router.patch("/:id/convoy/stops/:responsibilityId",authMiddleware,requireRole("ADMIN","STAFF"),async(req,res,next)=>{try{return sendRecordSuccess(res,200,"Truck stop progress saved",await saveAssignmentStopProgress({id:req.user!.id,role:req.profile!.role},String(req.params.id),String(req.params.responsibilityId),req.body??{}));}catch(error){next(error);}});
 export default router;

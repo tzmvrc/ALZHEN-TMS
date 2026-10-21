@@ -1,4 +1,4 @@
-import { apiGet, apiGetCached, type ApiResponse } from "./api.service";
+import { apiGet, apiGetCached, getCachedApiResponse, type ApiResponse } from "./api.service";
 
 export type RelationshipKind =
   | "trip-types"
@@ -192,12 +192,7 @@ export async function searchDispatches(token: string, query = ""): Promise<Dispa
   return response.data;
 }
 
-export async function searchRelationshipOptions(
-  token: string,
-  kind: RelationshipKind,
-  query: string,
-  filters: { storeId?: string; customerId?: string } = {},
-): Promise<RelationshipOption[]> {
+function relationshipEndpoint(kind:RelationshipKind,query:string,filters:{storeId?:string;customerId?:string}={}){
   const params = new URLSearchParams();
   if (query.trim()) params.set("q", query.trim());
   if (
@@ -220,8 +215,21 @@ export async function searchRelationshipOptions(
   }
   const suffix = params.size ? `?${params.toString()}` : "";
   const endpoint = kind === "assignees" ? "/lookups/assignees" : `/lookups/${kind}`;
+  return `${endpoint}${suffix}`;
+}
+export function getCachedRelationshipOptions(token:string,kind:RelationshipKind,query="",filters:{storeId?:string;customerId?:string}={}){
+ const cached=getCachedApiResponse<ApiResponse<LookupRow[]>>(relationshipEndpoint(kind,query,filters),token,30000);
+ return cached?.success&&cached.data?cached.data.map(row=>toRelationshipOption(kind,row)).filter((option):option is RelationshipOption=>Boolean(option?.label)):null;
+}
+export async function searchRelationshipOptions(
+  token: string,
+  kind: RelationshipKind,
+  query: string,
+  filters: { storeId?: string; customerId?: string } = {},
+): Promise<RelationshipOption[]> {
+  const endpoint=relationshipEndpoint(kind,query,filters);
   const response = await apiGetCached<ApiResponse<LookupRow[]>>(
-    `${endpoint}${suffix}`,
+    endpoint,
     token,
     30_000,
   );

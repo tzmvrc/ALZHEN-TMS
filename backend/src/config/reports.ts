@@ -7,6 +7,12 @@ export const REPORT_DEFINITIONS: Record<string, ReportDefinition> = {
     title: "Combined report",
     columns: [
       { key: "dispatch_number", title: "Dispatch No.", type: "text" },
+      { key: "stop_dispatch_reference", title: "Stop Dispatch Reference", type: "text" },
+      { key:"issue_report_type",title:"Issue / Report Type",type:"text" },
+      { key:"issue_reason",title:"Reason",type:"text" },
+      { key:"trip_total_cbm",title:"Trip CBM",type:"number" },
+      { key:"assigned_cbm",title:"Truck Assigned CBM",type:"number" },
+      { key:"remaining_unassigned_cbm",title:"Unassigned CBM",type:"number" },
       { key: "transaction_number", title: "Transaction No.", type: "text" },
       { key: "trip_number", title: "Trip No.", type: "number" },
       { key: "loading_date", title: "Loading Date", type: "date" },
@@ -134,6 +140,12 @@ export const REPORT_DEFINITIONS: Record<string, ReportDefinition> = {
     title: "Dispatch report",
     columns: [
       { key: "dispatch_number", title: "Dispatch No.", type: "text" },
+      { key: "stop_dispatch_reference", title: "Stop Dispatch Reference", type: "text" },
+      { key:"issue_report_type",title:"Issue / Report Type",type:"text" },
+      { key:"issue_reason",title:"Reason",type:"text" },
+      { key:"trip_total_cbm",title:"Trip CBM",type:"number" },
+      { key:"assigned_cbm",title:"Truck Assigned CBM",type:"number" },
+      { key:"remaining_unassigned_cbm",title:"Unassigned CBM",type:"number" },
       { key: "loading_date", title: "Loading Date", type: "date" },
       { key: "warehouse_arrival_at", title: "Warehouse Arrival", type: "date" },
       { key: "loading_start_at", title: "Loading Start", type: "date" },
@@ -240,6 +252,12 @@ export const REPORT_DEFINITIONS: Record<string, ReportDefinition> = {
     title: "Dispatch monitoring report",
     columns: [
       { key: "dispatch_number", title: "Dispatch No.", type: "text" },
+      { key: "stop_dispatch_reference", title: "Stop Dispatch Reference", type: "text" },
+      { key:"issue_report_type",title:"Issue / Report Type",type:"text" },
+      { key:"issue_reason",title:"Reason",type:"text" },
+      { key:"trip_total_cbm",title:"Trip CBM",type:"number" },
+      { key:"assigned_cbm",title:"Truck Assigned CBM",type:"number" },
+      { key:"remaining_unassigned_cbm",title:"Unassigned CBM",type:"number" },
       { key: "transaction_number", title: "Transaction No.", type: "text" },
       { key: "loading_date", title: "Loading Date", type: "date" },
       { key: "warehouse_arrival_at", title: "Warehouse Arrival", type: "date" },
@@ -324,6 +342,12 @@ export const REPORT_DEFINITIONS: Record<string, ReportDefinition> = {
     title: "Trip booking report",
     columns: [
       { key: "dispatch_number", title: "Dispatch No.", type: "text" },
+      { key: "stop_dispatch_reference", title: "Stop Dispatch Reference", type: "text" },
+      { key:"issue_report_type",title:"Issue / Report Type",type:"text" },
+      { key:"issue_reason",title:"Reason",type:"text" },
+      { key:"trip_total_cbm",title:"Trip CBM",type:"number" },
+      { key:"assigned_cbm",title:"Truck Assigned CBM",type:"number" },
+      { key:"remaining_unassigned_cbm",title:"Unassigned CBM",type:"number" },
       { key: "trip_number", title: "Trip No.", type: "number" },
       { key: "loading_date", title: "Loading Date", type: "date" },
       { key: "warehouse_name", title: "Ship From", type: "text" },
@@ -414,6 +438,7 @@ export const REPORT_DEFINITIONS: Record<string, ReportDefinition> = {
     title: "Store calling report",
     columns: [
       { key: "dispatch_number", title: "Dispatch No.", type: "text" },
+      { key: "stop_dispatch_reference", title: "Stop Dispatch Reference", type: "text" },
       { key: "route", title: "Route", type: "text" },
       { key: "ship_to", title: "Ship To", type: "text" },
       { key: "customer_name", title: "Customer", type: "text" },
@@ -481,6 +506,7 @@ export const REPORT_DEFINITIONS: Record<string, ReportDefinition> = {
     title: "POD status report",
     columns: [
       { key: "dispatch_number", title: "Dispatch No.", type: "text" },
+      { key: "stop_dispatch_reference", title: "Stop Dispatch Reference", type: "text" },
       { key: "ship_from", title: "Ship From", type: "text" },
       { key: "ship_to", title: "Ship To", type: "text" },
       { key: "dr_number", title: "DR No.", type: "text" },
@@ -519,6 +545,7 @@ export const REPORT_DEFINITIONS: Record<string, ReportDefinition> = {
     title: "POD drive files report",
     columns: [
       { key: "dispatch_number", title: "Dispatch No.", type: "text" },
+      { key: "stop_dispatch_reference", title: "Stop Dispatch Reference", type: "text" },
       { key: "folder_name", title: "Folder Name", type: "text" },
       { key: "file_name", title: "File Name", type: "text" },
       { key: "dr_number", title: "DR No.", type: "text" },
@@ -551,6 +578,7 @@ export const REPORT_DEFINITIONS: Record<string, ReportDefinition> = {
     title: "Trip exception report",
     columns: [
       { key: "dispatch_number", title: "Dispatch No.", type: "text" },
+      { key: "stop_dispatch_reference", title: "Stop Dispatch Reference", type: "text" },
       { key: "ship_from", title: "Ship From", type: "text" },
       { key: "ship_to", title: "Ship To", type: "text" },
       { key: "customer_name", title: "Customer", type: "text" },

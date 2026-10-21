@@ -1,0 +1,169 @@
+[      84ms] [ERROR] WebSocket connection to 'ws://localhost:5173/?token=fX-5wBT7xAcZ' failed: Error during WebSocket handshake: Unexpected response code: 400 @ http://localhost:5173/@vite/client:871
+[      99ms] [ERROR] WebSocket connection to 'ws://localhost:5173/?token=fX-5wBT7xAcZ' failed: Error during WebSocket handshake: Unexpected response code: 400 @ http://localhost:5173/@vite/client:881
+[     104ms] [ERROR] [vite] failed to connect to websocket.
+your current setup:
+  (browser) localhost:5173/ <--[HTTP]--> localhost:5173/ (server)
+  (browser) localhost:5173/ <--[WebSocket (failing)]--> localhost:5173/ (server)
+Check out your Vite / network configuration and https://vite.dev/config/server-options.html#server-hmr . @ http://localhost:5173/@vite/client:532
+[     108ms] [ERROR] Failed to send error to Vite server: TypeError: Cannot read properties of undefined (reading 'send')
+    at Object.send (http://localhost:5173/@vite/client:452:7)
+    at Object.send (http://localhost:5173/@vite/client:907:16)
+    at Object.send (http://localhost:5173/@vite/client:311:21)
+    at Object.send (http://localhost:5173/@vite/client:391:30)
+    at sendError (http://localhost:5173/@vite/client:494:19)
+    at sendLog (http://localhost:5173/@vite/client:522:11) @ http://localhost:5173/@vite/client:523
+[     630ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:14335
+[ 2889619ms] [ERROR] Invalid hook call. Hooks can only be called inside of the body of a function component. This could happen for one of the following reasons:
+1. You might have mismatching versions of React and the renderer (such as React DOM)
+2. You might be breaking the Rules of Hooks
+3. You might have more than one copy of React in the same app
+See https://react.dev/link/invalid-hook-call for tips about how to debug and fix this problem. @ http://localhost:5173/@vite/client:532
+[ 2889627ms] [ERROR] Failed to send error to Vite server: TypeError: Cannot read properties of undefined (reading 'send')
+    at Object.send (http://localhost:5173/@vite/client:452:7)
+    at Object.send (http://localhost:5173/@vite/client:907:16)
+    at Object.send (http://localhost:5173/@vite/client:311:21)
+    at Object.send (http://localhost:5173/@vite/client:391:30)
+    at sendError (http://localhost:5173/@vite/client:494:19)
+    at sendLog (http://localhost:5173/@vite/client:522:11) @ http://localhost:5173/@vite/client:523
+[ 2889632ms] [ERROR] Invalid hook call. Hooks can only be called inside of the body of a function component. This could happen for one of the following reasons:
+1. You might have mismatching versions of React and the renderer (such as React DOM)
+2. You might be breaking the Rules of Hooks
+3. You might have more than one copy of React in the same app
+See https://react.dev/link/invalid-hook-call for tips about how to debug and fix this problem. @ http://localhost:5173/@vite/client:532
+[ 2889635ms] TypeError: Cannot read properties of null (reading 'useSyncExternalStore')
+    at exports.useSyncExternalStore (http://localhost:5173/node_modules/.vite/deps/react.js?v=c8fd76d6:751:30)
+    at useRequests (http://localhost:5173/src/components/admin/requestsStore.ts:58:19)
+    at usePendingRequestCount (http://localhost:5173/src/components/admin/requestsStore.ts:69:9)
+    at DashboardPage (http://localhost:5173/src/pages/Admin/DashboardPage.tsx?t=1792313080770:62:30)
+    at Object.react_stack_bottom_frame (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:12866:12)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:4213:19)
+    at updateFunctionComponent (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:5569:16)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:6140:20)
+    at runWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:851:66)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:8429:92)
+[ 2889634ms] [WARNING] %s
+
+%s
+ An error occurred in the <DashboardPage> component. Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries. @ http://localhost:5173/@vite/client:532
+[ 2889634ms] [ERROR] Failed to send error to Vite server: TypeError: Cannot read properties of undefined (reading 'send')
+    at Object.send (http://localhost:5173/@vite/client:452:7)
+    at Object.send (http://localhost:5173/@vite/client:907:16)
+    at Object.send (http://localhost:5173/@vite/client:311:21)
+    at Object.send (http://localhost:5173/@vite/client:391:30)
+    at sendError (http://localhost:5173/@vite/client:494:19)
+    at http://localhost:5173/@vite/client:541:11
+    at defaultOnUncaughtError (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:5257:4)
+    at logUncaughtError (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:5287:6)
+    at runWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:851:66)
+    at lane.callback (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=87e7e505:5315:5) @ http://localhost:5173/@vite/client:542
+[ 2889635ms] [ERROR] Failed to send error to Vite server: TypeError: Cannot read properties of undefined (reading 'send')
+    at Object.send (http://localhost:5173/@vite/client:452:7)
+    at Object.send (http://localhost:5173/@vite/client:907:16)
+    at Object.send (http://localhost:5173/@vite/client:311:21)
+    at Object.send (http://localhost:5173/@vite/client:391:30)
+    at sendError (http://localhost:5173/@vite/client:494:19)
+    at sendLog (http://localhost:5173/@vite/client:522:11) @ http://localhost:5173/@vite/client:523
+[ 2889635ms] [ERROR] Failed to send error to Vite server: TypeError: Cannot read properties of undefined (reading 'send')
+    at Object.send (http://localhost:5173/@vite/client:452:7)
+    at Object.send (http://localhost:5173/@vite/client:907:16)
+    at Object.send (http://localhost:5173/@vite/client:311:21)
+    at Object.send (http://localhost:5173/@vite/client:391:30)
+    at sendError (http://localhost:5173/@vite/client:494:19)
+    at sendLog (http://localhost:5173/@vite/client:522:11) @ http://localhost:5173/@vite/client:523
+[ 3764390ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=2d73f44f:14335
+[ 3787858ms] [INFO] [report-edit-diagnostic] ReportDataView mounted {mode: development, development: true} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792524194277:255
+[ 3787875ms] [INFO] [report-edit-diagnostic] ReportDataView mounted {mode: development, development: true} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792524194277:255
+[ 3789360ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 200, rowCount: 1} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792524194277:255
+[ 3789360ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 200, rowCount: 1} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792524194277:255
+[ 3789361ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 200, rowCount: 1} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792524194277:255
+[ 3790961ms] [INFO] [report-edit-diagnostic] ReportDataView mounted {mode: development, development: true} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792524194277:255
+[ 3790968ms] [INFO] [report-edit-diagnostic] ReportDataView mounted {mode: development, development: true} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792524194277:255
+[ 3792009ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 1} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792524194277:255
+[ 3792010ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 1} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792524194277:255
+[ 3792010ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 1} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792524194277:255
+[ 3792883ms] [INFO] [report-edit-diagnostic] ReportDataView mounted {mode: development, development: true} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792524194277:255
+[ 3792889ms] [INFO] [report-edit-diagnostic] ReportDataView mounted {mode: development, development: true} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792524194277:255
+[ 3793674ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch, reportKey: dispatch, page: 1, limit: 50, rowCount: 1} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792524194277:255
+[ 3793674ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch, reportKey: dispatch, page: 1, limit: 50, rowCount: 1} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792524194277:255
+[ 3793674ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch, reportKey: dispatch, page: 1, limit: 50, rowCount: 1} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792524194277:255
+[ 3794775ms] [INFO] [report-edit-diagnostic] ReportDataView mounted {mode: development, development: true} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792524194277:255
+[ 3794780ms] [INFO] [report-edit-diagnostic] ReportDataView mounted {mode: development, development: true} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792524194277:255
+[ 3795695ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/trip-booking, reportKey: trip-booking, page: 1, limit: 50, rowCount: 1} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792524194277:255
+[ 3795695ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/trip-booking, reportKey: trip-booking, page: 1, limit: 50, rowCount: 1} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792524194277:255
+[ 3795695ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/trip-booking, reportKey: trip-booking, page: 1, limit: 50, rowCount: 1} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792524194277:255
+[ 3797121ms] [INFO] [report-edit-diagnostic] ReportDataView mounted {mode: development, development: true} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792524194277:255
+[ 3797127ms] [INFO] [report-edit-diagnostic] ReportDataView mounted {mode: development, development: true} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792524194277:255
+[ 3797594ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/store-calling, reportKey: store-calling, page: 1, limit: 50, rowCount: 0} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792524194277:255
+[ 3797594ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/store-calling, reportKey: store-calling, page: 1, limit: 50, rowCount: 0} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792524194277:255
+[ 3797594ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/store-calling, reportKey: store-calling, page: 1, limit: 50, rowCount: 0} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792524194277:255
+[ 3799456ms] [INFO] [report-edit-diagnostic] ReportDataView mounted {mode: development, development: true} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792524194277:255
+[ 3799701ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 200, rowCount: 1} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792524194277:255
+[ 3800241ms] [INFO] [report-edit-diagnostic] ReportDataView mounted {mode: development, development: true} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792524194277:255
+[ 3800376ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 50, rowCount: 1} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792524194277:255
+[ 3801195ms] [INFO] [report-edit-diagnostic] ReportDataView mounted {mode: development, development: true} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792524194277:255
+[ 3801243ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch, reportKey: dispatch, page: 1, limit: 50, rowCount: 1} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792524194277:255
+[ 3802083ms] [INFO] [report-edit-diagnostic] ReportDataView mounted {mode: development, development: true} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792524194277:255
+[ 3802119ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/trip-booking, reportKey: trip-booking, page: 1, limit: 50, rowCount: 1} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792524194277:255
+[ 3802437ms] [INFO] [report-edit-diagnostic] ReportDataView mounted {mode: development, development: true} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792524194277:255
+[ 3802491ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/store-calling, reportKey: store-calling, page: 1, limit: 50, rowCount: 0} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792524194277:255
+[ 3803045ms] [INFO] [report-edit-diagnostic] ReportDataView mounted {mode: development, development: true} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792524194277:255
+[ 3803075ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 200, rowCount: 1} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792524194277:255
+[ 3870528ms] [ERROR] WebSocket connection to 'ws://localhost:5000/socket.io/?EIO=4&transport=websocket' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/node_modules/.vite/deps/socket__io-client.js?v=2d73f44f:980
+[ 3872306ms] [ERROR] WebSocket connection to 'ws://localhost:5000/socket.io/?EIO=4&transport=websocket' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/node_modules/.vite/deps/socket__io-client.js?v=2d73f44f:980
+[ 3914992ms] [INFO] [report-edit-diagnostic] report fetch completed {reportEndpoint: /reports/dispatch-monitoring, reportKey: dispatch-monitoring, page: 1, limit: 200, rowCount: 1} @ http://localhost:5173/src/components/admin/ReportDataView.tsx?t=1792524194277:255
+[ 4007748ms] Error: useAuth must be used within an AuthProvider
+    at useAuth (http://localhost:5173/src/context/AuthContext.tsx?t=1792523679888:433:9)
+    at AdminRoute (http://localhost:5173/src/components/AdminRoute.tsx?t=1792523679888:8:37)
+    at Object.react_stack_bottom_frame (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=2d73f44f:12866:12)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=2d73f44f:4213:19)
+    at updateFunctionComponent (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=2d73f44f:5569:16)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=2d73f44f:6140:20)
+    at runWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=2d73f44f:851:66)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=2d73f44f:8429:92)
+    at workLoopSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=2d73f44f:8325:37)
+    at renderRootSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=2d73f44f:8309:6)
+[ 4007748ms] [WARNING] %s
+
+%s
+ An error occurred in the <AdminRoute> component. Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries. @ http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=2d73f44f:5257
+[ 4007867ms] Error: useAuth must be used within an AuthProvider
+    at useAuth (http://localhost:5173/src/context/AuthContext.tsx?t=1792523679888:433:9)
+    at AdminRoute (http://localhost:5173/src/components/AdminRoute.tsx?t=1792523679888:8:37)
+    at Object.react_stack_bottom_frame (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=2d73f44f:12866:12)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=2d73f44f:4213:19)
+    at updateFunctionComponent (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=2d73f44f:5569:16)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=2d73f44f:6140:20)
+    at runWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=2d73f44f:851:66)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=2d73f44f:8429:92)
+    at workLoopSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=2d73f44f:8325:37)
+    at renderRootSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=2d73f44f:8309:6)
+[ 4007865ms] [WARNING] %s
+
+%s
+ An error occurred in the <AdminRoute> component. Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries. @ http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=2d73f44f:5257
+[ 4008099ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=2d73f44f:14335
+[ 4008261ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5000/api/auth/session/bootstrap:0
+[ 4008261ms] [ERROR] Failed to refresh auth session: TypeError: Failed to fetch
+    at request (http://localhost:5173/src/services/api.service.ts?t=1792520918640:105:20)
+    at apiPost (http://localhost:5173/src/services/api.service.ts?t=1792520918640:210:9)
+    at run (http://localhost:5173/src/context/AuthContext.tsx?t=1792524500243:142:28) @ http://localhost:5173/src/context/AuthContext.tsx?t=1792524500243:174
+[ 4095561ms] [ERROR] WebSocket connection to 'ws://localhost:5000/socket.io/?EIO=4&transport=websocket' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/node_modules/.vite/deps/socket__io-client.js?v=2d73f44f:980
+[ 4096931ms] [ERROR] WebSocket connection to 'ws://localhost:5000/socket.io/?EIO=4&transport=websocket' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/node_modules/.vite/deps/socket__io-client.js?v=2d73f44f:980
+[ 4678168ms] [WARNING] Realtime unavailable for public.admin_notifications; periodic report refresh remains active. Error: socket closed: 1006
+    at normalizeChannelError (http://localhost:5173/node_modules/.vite/deps/@supabase_supabase-js.js?v=2d73f44f:6664:11)
+    at http://localhost:5173/node_modules/.vite/deps/@supabase_supabase-js.js?v=2d73f44f:7064:99
+    at Object.callback (http://localhost:5173/node_modules/.vite/deps/@supabase_supabase-js.js?v=2d73f44f:5122:52)
+    at Channel.trigger (http://localhost:5173/node_modules/.vite/deps/@supabase_supabase-js.js?v=2d73f44f:5294:67)
+    at http://localhost:5173/node_modules/.vite/deps/@supabase_supabase-js.js?v=2d73f44f:6364:85
+    at Array.forEach (<anonymous>)
+    at Socket.triggerChanError (http://localhost:5173/node_modules/.vite/deps/@supabase_supabase-js.js?v=2d73f44f:6363:17)
+    at Socket.onConnClose (http://localhost:5173/node_modules/.vite/deps/@supabase_supabase-js.js?v=2d73f44f:6342:8)
+    at conn.onclose (http://localhost:5173/node_modules/.vite/deps/@supabase_supabase-js.js?v=2d73f44f:6214:39) @ http://localhost:5173/src/services/realtime.service.ts?t=1792524500243:511
+[ 4678199ms] [LOG] [vite] server connection lost. Polling for restart... @ http://localhost:5173/@vite/client:1002
+[21457910ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=2d73f44f:14335
+[21460163ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://localhost:5000/api/auth/session/bootstrap:0
+[21460297ms] [ERROR] Failed to load resource: the server responded with a status of 403 () @ https://hdmknewarynwpbrhfgai.supabase.co/auth/v1/logout?scope=global:0
+[21769918ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=2d73f44f:14335

@@ -17,7 +17,8 @@ export function requireRole(...allowedRoles: string[]) {
         });
       }
 
-      const profile = await getProfileByUserId(req.user.id);
+      // authMiddleware already read this identity from the live database for this request.
+      const profile = req.profile?.id===req.user.id ? req.profile : await getProfileByUserId(req.user.id);
 
       if (!profile) {
         return res.status(404).json({

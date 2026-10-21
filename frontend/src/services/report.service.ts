@@ -1,3 +1,5 @@
+import { invalidateOperationalFormulaReads } from "./operational-formula.service";
+import { getReportRowIdentity } from "./report-row-identity";
 import { apiGet, apiGetCached, invalidateApiCache, type ApiResponse } from "./api.service";
 import type { DropdownField } from "./dropdown-option.service";
 
@@ -50,6 +52,8 @@ export type ReportPageOptions = {
 };
 
 export type ReportPageBundle = {
+  /** Loaded network window; operational pagination totals remain authoritative. */
+  collection?: { page:number; totalPages:number };
   columns: ReportColumn[];
   rows: ReportRow[];
   pagination: Pagination;
@@ -120,8 +124,13 @@ export function getStaleReportPage(
 }
 
 export function clearReportPageCache() {
+  deletedReportRecords.clear();
+  invalidateOperationalFormulaReads();
   reportPageSessionGeneration += 1;
   reportPageCacheGeneration += 1;
+  reportCollections.clear();
+  reportCollectionRequests.clear();
+  tripReportRequests.clear();
   reportPageCache.clear();
   reportPageRequests.clear();
   reportPageErrors.clear();
@@ -131,6 +140,9 @@ export function clearReportPageCache() {
 export function invalidateReportPageCache(reportKey?: ReportKey) {
   if (reportKey) reportPageVersions.set(reportKey, (reportPageVersions.get(reportKey) ?? 0) + 1);
   else reportPageCacheGeneration += 1;
+  for (const [key, entry] of reportCollections) {
+    if (!reportKey || entry.reportKey === reportKey) reportCollections.set(key,{...entry,expiresAt:0});
+  }
   for (const [key, entry] of reportPageCache) {
     if (!reportKey || entry.reportKey === reportKey) reportPageCache.delete(key);
   }
@@ -162,6 +174,9 @@ export function updateCachedReportPages(
   token: string,
   update: (bundle: ReportPageBundle) => ReportPageBundle,
 ) {
+  for (const [key, entry] of reportCollections) {
+    if (entry.reportKey === reportKey && entry.token === token) reportCollections.set(key, {...entry,value:update(entry.value)});
+  }
   for (const [key, entry] of reportPageCache) {
     if (entry.reportKey === reportKey && entry.token === token) {
       reportPageCache.set(key, { ...entry, value: update(entry.value) });
@@ -307,6 +322,8 @@ export async function fetchReportRows(
   });
   if (options.search.trim()) params.set("search", options.search.trim());
   if (!params.get("sort_by")) params.delete("sort_by");
+  if(options.filters.trip_id) params.set("trip_id",options.filters.trip_id);
+  if(options.filters.record_delete_versions==="true")params.set("record_delete_versions","true");
   if(options.filters.issue_filter && options.filters.issue_filter!=="All") params.set("issue_filter",options.filters.issue_filter);
   for (const filter of reportFilters[reportKey]) {
     const value = options.filters[filter.key]?.trim();
@@ -333,6 +350,7 @@ export async function fetchReportPage(
   token: string,
   options: ReportPageOptions,
   refresh = false,
+  rebaseAttempt = 0,
 ): Promise<ReportPageBundle> {
   const key = reportPageCacheKey(reportKey, token, options);
   const cached = getCachedReportPage(reportKey, token, options);
@@ -350,7 +368,9 @@ export async function fetchReportPage(
   ]).then(([columns, result]) => {
     if (sessionGeneration !== reportPageSessionGeneration) throw new Error("The session changed while loading reports.");
     if (requestGeneration !== reportPageCacheGeneration || reportVersion !== (reportPageVersions.get(reportKey) ?? 0)) {
-      return getCachedReportPage(reportKey, token, options) ?? fetchReportPage(reportKey, token, options, true);
+      const newer=getCachedReportPage(reportKey,token,options);if(newer)return newer;
+      if(rebaseAttempt>=1)throw new Error("Report data changed while loading. Your current rows are preserved; retry loading.");
+      return fetchReportPage(reportKey,token,options,true,rebaseAttempt+1);
     }
     const bundle = { columns, rows: result.rows, pagination: result.pagination };
     if (requestGeneration === reportPageCacheGeneration) {
@@ -382,4 +402,115 @@ export function getSortableFields(reportKey: ReportKey): string[] {
 
 export function getReportFilters(reportKey: ReportKey): ReportFilter[] {
   return reportFilters[reportKey];
+}
+
+// A collection uses the same authorized endpoint, with bounded network pages and no total cap.
+type CollectionEntry={reportKey:ReportKey;token:string;expiresAt:number;value:ReportPageBundle};
+const reportCollections=new Map<string,CollectionEntry>();
+type CollectionRequest={latest?:ReportPageBundle;promise:Promise<ReportPageBundle>;listeners:Set<(value:ReportPageBundle)=>void>;consumers:Set<symbol>;cancelled:boolean};
+const reportCollectionRequests=new Map<string,CollectionRequest>();
+async function consumeCollection(key:string,entry:CollectionRequest,onProgress?: (value:ReportPageBundle)=>void,signal?:AbortSignal){
+ const consumer=Symbol();entry.consumers.add(consumer);if(onProgress){entry.listeners.add(onProgress);if(entry.latest)onProgress(entry.latest);}
+ const leave=()=>{entry.consumers.delete(consumer);if(onProgress)entry.listeners.delete(onProgress);queueMicrotask(()=>{if(!entry.consumers.size){entry.cancelled=true;if(reportCollectionRequests.get(key)===entry)reportCollectionRequests.delete(key);}});};
+ if(signal?.aborted){leave();throw new DOMException("Report request cancelled.","AbortError");}
+ signal?.addEventListener("abort",leave,{once:true});
+ try{return await entry.promise;}finally{signal?.removeEventListener("abort",leave);leave();}
+}
+const collectionKey=(report:ReportKey,token:string,options:ReportPageOptions)=>reportPageCacheKey(report,token,{...options,page:1,limit:200});
+export function getReportCollection(report:ReportKey,token:string,options:ReportPageOptions,stale=false){
+ const entry=reportCollections.get(collectionKey(report,token,options));return entry&&(stale||entry.expiresAt>Date.now())?entry.value:null;
+}
+export async function fetchReportCollection(report:ReportKey,token:string,options:ReportPageOptions,onProgress?:(value:ReportPageBundle)=>void,refresh=false,signal?:AbortSignal):Promise<ReportPageBundle>{
+ const key=collectionKey(report,token,options),cached=getReportCollection(report,token,options);
+ if(cached&&!refresh)return cached;
+ const existing=reportCollectionRequests.get(key);
+ if(existing&&!existing.cancelled)return consumeCollection(key,existing,onProgress,signal);
+ const listeners=new Set<(value:ReportPageBundle)=>void>();
+ const entry:CollectionRequest={promise:null as unknown as Promise<ReportPageBundle>,listeners,consumers:new Set(),cancelled:false};
+ const session=reportPageSessionGeneration,generation=reportPageCacheGeneration,version=reportPageVersions.get(report)??0;
+ const promise=(async()=>{
+  // First paint needs one page, not every historical record. On recovery,
+  // revalidate only the pages this user has already requested.
+  const previous=getReportCollection(report,token,options,true);
+  const loadedPages=refresh?(previous?.collection?.page??1):1;
+  const first=await fetchReportPage(report,token,{...options,page:1,limit:200},refresh);
+  const columns=first.columns,physical=new Map<string,ReportRow>();let page=1;let result:ReportPageBundle;
+  do{
+   if(entry.cancelled)throw new DOMException("Report request cancelled.","AbortError");
+   if(session!==reportPageSessionGeneration)throw Error("The session changed while loading reports.");
+   const next=page===1?first:await fetchReportPage(report,token,{...options,page,limit:200},refresh);
+   for(const row of next.rows){const id=getReportRowIdentity(report,row);if(id)physical.set(id,row);else physical.set(`unmapped:${page}:${physical.size}`,row);}
+   const rows=[...physical.values()].filter(row=>!isDeletedReportRecord(row));
+   result={columns,rows,pagination:{...next.pagination,page:1,limit:rows.length,totalPages:1},collection:{page,totalPages:next.pagination.totalPages}};
+   entry.latest=result;for(const listener of listeners)listener(result);
+   if(page>=Math.min(loadedPages,next.pagination.totalPages)||!next.rows.length)break;
+   page++;
+  }while(true);
+  if(entry.cancelled)throw new DOMException("Report request cancelled.","AbortError");
+  if(session!==reportPageSessionGeneration)throw Error("The session changed while loading reports.");
+  // Complete a sweep even under continuous writes; never recursively restart all pages.
+  // The view coalesces dirty signals and applies confirmed row reconciliations.
+  const current=generation===reportPageCacheGeneration&&version===(reportPageVersions.get(report)??0);
+  reportCollections.set(key,{reportKey:report,token,expiresAt:current?Date.now()+REPORT_PAGE_CACHE_TTL_MS:0,value:result!});return result!;
+ })();
+ entry.promise=promise;reportCollectionRequests.set(key,entry);
+ try{return await consumeCollection(key,entry,onProgress,signal);}finally{if(reportCollectionRequests.get(key)===entry)reportCollectionRequests.delete(key);listeners.clear();}
+}
+
+/** Append one network page on scroll/explicit request. Shared callers dedupe
+ * through the existing collection request registry; there is no history sweep. */
+export async function fetchNextReportCollection(report:ReportKey,token:string,options:ReportPageOptions,signal?:AbortSignal):Promise<ReportPageBundle>{
+ const key=collectionKey(report,token,options),pending=reportCollectionRequests.get(key);
+ if(pending&&!pending.cancelled)return consumeCollection(key,pending,undefined,signal);
+ const base=getReportCollection(report,token,options,true);
+ if(!base?.collection)return fetchReportCollection(report,token,options,undefined,false,signal);
+ if(base.collection.page>=base.collection.totalPages)return base;
+ const session=reportPageSessionGeneration,version=reportPageVersions.get(report)??0;
+ const entry:CollectionRequest={promise:null as unknown as Promise<ReportPageBundle>,listeners:new Set(),consumers:new Set(),cancelled:false};
+ entry.promise=(async()=>{
+  const nextPage=base.collection!.page+1;
+  const next=await fetchReportPage(report,token,{...options,page:nextPage,limit:200});
+  if(entry.cancelled||session!==reportPageSessionGeneration)throw new DOMException("Report request cancelled.","AbortError");
+  if(version!==(reportPageVersions.get(report)??0))throw Error("Report data changed while loading more rows. Retry after reconciliation.");
+  const latest=getReportCollection(report,token,options,true)??base;
+  const physical=new Map(latest.rows.map((row,index)=>[getReportRowIdentity(report,row)??`unmapped:existing:${index}`,row]));
+  for(const [index,row] of next.rows.entries()){
+   const id=getReportRowIdentity(report,row)??`unmapped:${nextPage}:${index}`;
+   // Overlapping pages must not replace a newer confirmed edit in an existing row.
+   if(!physical.has(id))physical.set(id,row);
+  }
+  const rows=[...physical.values()].filter(row=>!isDeletedReportRecord(row));
+  const result:ReportPageBundle={...latest,rows,pagination:{...next.pagination,page:1,limit:rows.length,totalPages:1},collection:{page:next.rows.length?nextPage:next.pagination.totalPages,totalPages:next.pagination.totalPages}};
+  reportCollections.set(key,{reportKey:report,token,expiresAt:Date.now()+REPORT_PAGE_CACHE_TTL_MS,value:result});return result;
+ })();reportCollectionRequests.set(key,entry);
+ try{return await consumeCollection(key,entry,undefined,signal);}finally{if(reportCollectionRequests.get(key)===entry)reportCollectionRequests.delete(key);}
+}
+
+const tripReportRequests=new Map<string,Promise<ReportRow[]>>();
+/** Refresh just one parent and all its physical stop/line/assignment rows. */
+export async function fetchReportTripRows(report:ReportKey,token:string,options:ReportPageOptions,tripId:string){
+ const key=JSON.stringify([token,report,options,tripId]);const pending=tripReportRequests.get(key);if(pending)return pending;
+ const session=reportPageSessionGeneration;
+ const promise=(async()=>{let page=1;const rows:ReportRow[]=[];
+  do{const result=await fetchReportRows(report,token,{...options,page,limit:200,filters:{...options.filters,trip_id:tripId},fresh:true});
+   if(session!==reportPageSessionGeneration)throw Error("The session changed.");rows.push(...result.rows);
+   if(page>=result.pagination.totalPages||!result.rows.length)return rows.filter(row=>!isDeletedReportRecord(row));page++;
+  }while(true);
+ })();tripReportRequests.set(key,promise);
+ try{return await promise;}finally{if(tripReportRequests.get(key)===promise)tripReportRequests.delete(key);}
+}
+export function updateReportCollection(report:ReportKey,token:string,options:ReportPageOptions,update:(rows:ReportRow[])=>ReportRow[]){
+ const key=collectionKey(report,token,options),entry=reportCollections.get(key);if(!entry)return;
+ const rows=update(entry.value.rows);reportCollections.set(key,{...entry,expiresAt:Date.now()+REPORT_PAGE_CACHE_TTL_MS,value:{...entry.value,rows,pagination:{...entry.value.pagination,limit:rows.length}}});
+}
+
+// Session-scoped tombstones prevent stale retained sheets/in-flight reads reviving deleted rows.
+const deletedReportRecords=new Set<string>();
+const reportEntityFields:Record<string,string>={trips:"trip_id",trip_stops:"trip_stop_id",trip_line_items:"trip_line_item_id",trip_truck_assignments:"assignment_id",store_calls:"store_call_id"};
+export function isDeletedReportRecord(row:ReportRow){return Object.entries(reportEntityFields).some(([source,field])=>{const id=row[field]??row[`_${field}`];return typeof id==="string"&&deletedReportRecords.has(`${source}:${id}`);});}
+export function removeCachedReportRecord(source:string,id:string){
+ if(!reportEntityFields[source])return;deletedReportRecords.add(`${source}:${id}`);
+ const remove=(value:ReportPageBundle)=>{const rows=value.rows.filter(row=>!isDeletedReportRecord(row));return {...value,rows,pagination:{...value.pagination,total:Math.max(0,value.pagination.total-(value.rows.length-rows.length))}};};
+ for(const [key,entry] of reportPageCache)reportPageCache.set(key,{...entry,value:remove(entry.value)});
+ for(const [key,entry] of reportCollections)reportCollections.set(key,{...entry,value:remove(entry.value)});
 }

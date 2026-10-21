@@ -1,0 +1,60 @@
+[
+  {
+    "verification": {
+      "item_count": 1,
+      "migrations": [
+        {
+          "name": "trip_convoy_integrity",
+          "version": "20261021031732"
+        },
+        {
+          "name": "convoy_report_projections",
+          "version": "20261021031738"
+        },
+        {
+          "name": "trip_presentation_ownership",
+          "version": "20261021031744"
+        },
+        {
+          "name": "complete_trip_presentation_cleanup",
+          "version": "20261021031751"
+        },
+        {
+          "name": "narrow_record_deletion",
+          "version": "20261021031758"
+        },
+        {
+          "name": "convoy_projection_completion",
+          "version": "20261021033433"
+        },
+        {
+          "name": "convoy_stop_history",
+          "version": "20261021054650"
+        }
+      ],
+      "stop_count": 1,
+      "trip_count": 1,
+      "assignment_count": 0,
+      "broad_rpc_grants": 0,
+      "allocation_tables": [
+        {
+          "rls": true,
+          "table": "trip_assignment_stops",
+          "replica_identity": "f"
+        },
+        {
+          "rls": true,
+          "table": "trip_cargo_allocations",
+          "replica_identity": "f"
+        }
+      ],
+      "publication_tables": [
+        "trip_cargo_allocations",
+        "trip_assignment_stops"
+      ],
+      "storage_object_count": 37,
+      "unresolved_formulas_retained": 1,
+      "unresolved_source_bindings_retained": 8
+    }
+  }
+]

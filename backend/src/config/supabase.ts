@@ -1,3 +1,4 @@
+import {timedSupabaseFetch} from "../utils/report-read-timing.js";
 import { createClient } from "@supabase/supabase-js";
 import dotenv from "dotenv";
 
@@ -28,6 +29,7 @@ if (!supabaseAnonKey) {
  * NEVER expose this client/key to the frontend.
  */
 export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey, {
+  global: {fetch: timedSupabaseFetch},
   auth: {
     autoRefreshToken: false,
     persistSession: false,
@@ -42,6 +44,7 @@ export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey, {
  * It must remain separate from supabaseAdmin.
  */
 export const supabaseAuth = createClient(supabaseUrl, supabaseAnonKey, {
+  global: {fetch: timedSupabaseFetch},
   auth: {
     autoRefreshToken: false,
     persistSession: false,

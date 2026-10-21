@@ -1,0 +1,87 @@
+[
+  {
+    "kind": "function",
+    "name": "delete_empty_trip_stop_v1",
+    "hash": "1808aaa33438a4d4e464a362f6412900"
+  },
+  {
+    "kind": "function",
+    "name": "delete_store_call_record_v1",
+    "hash": "63b709e83edd577375ec04c2cc0f87b9"
+  },
+  {
+    "kind": "function",
+    "name": "delete_whole_trips_v1",
+    "hash": "9ab076e0059fd8f65bc8fbc04611b5d5"
+  },
+  {
+    "kind": "function",
+    "name": "guard_assignment_stop_history_v1",
+    "hash": "8cc21694ef5347517e38457e4f060f62"
+  },
+  {
+    "kind": "function",
+    "name": "guard_trip_presentation_source_v1",
+    "hash": "f4d499f51cb5db27adf22c811c2a282e"
+  },
+  {
+    "kind": "function",
+    "name": "preview_whole_trip_deletion_v1",
+    "hash": "bc4f44d422356394e8899ad483adc143"
+  },
+  {
+    "kind": "function",
+    "name": "save_trip_cargo_allocations_v1",
+    "hash": "fef6f3df8eb9e12397141bae5caecd2e"
+  },
+  {
+    "kind": "function",
+    "name": "set_trip_assignment_stops_v1",
+    "hash": "e3510228ee67dc194c4be8586fcba57b"
+  },
+  {
+    "kind": "function",
+    "name": "trip_for_formula_target_v1",
+    "hash": "460033dbf64e45b2910b607ca479c071"
+  },
+  {
+    "kind": "function",
+    "name": "trip_for_source_binding_v1",
+    "hash": "4294b3bc16fbb0613813d825f045687c"
+  },
+  {
+    "kind": "function",
+    "name": "update_assignment_stop_progress_v1",
+    "hash": "f3d6eec5e66840906f9e99def20eaa33"
+  },
+  {
+    "kind": "view",
+    "name": "v_dispatch_monitoring",
+    "hash": "5e938560d268845ddaf141a9bece20dd"
+  },
+  {
+    "kind": "view",
+    "name": "v_dispatch_report",
+    "hash": "378beb9a28a2b54cddba26df290a6c65"
+  },
+  {
+    "kind": "view",
+    "name": "v_tms_combined",
+    "hash": "5a5fba60abfa70171b19818d7623e54f"
+  },
+  {
+    "kind": "view",
+    "name": "v_transmittal_tracker_page",
+    "hash": "9283805b2c64f153ac7c2042786c81d0"
+  },
+  {
+    "kind": "view",
+    "name": "v_trip_booking",
+    "hash": "e2847017ffc96f596e5342f50f90bde3"
+  },
+  {
+    "kind": "view",
+    "name": "vw_store_calling_tracker",
+    "hash": "bd2be7b6555a1b83617e1d9ec6b31d78"
+  }
+]

@@ -1,0 +1,7 @@
+[
+  {
+    "table_name": "transaction_deletion_jobs",
+    "column_name": "revision",
+    "identity_kind": "a"
+  }
+]

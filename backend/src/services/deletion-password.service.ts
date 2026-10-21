@@ -61,3 +61,26 @@ export function createCurrentUserPasswordGuard(deps=dependencies, readRole=async
 }
 export const withDeletionPassword=createDeletionPasswordGuard();
 export const withCurrentUserPassword=createCurrentUserPasswordGuard();
+
+/** Session-authorized deletion. No secondary sign-in or password/session switching. */
+export function createDeletionSessionGuard(deps=dependencies, roles:readonly string[]=["ADMIN"], readRole=async(id:string)=>{
+ const result=await supabaseAdmin.from("profiles").select("role").eq("id",id).maybeSingle();
+ if(result.error)throw new ApiError("Account authorization could not be confirmed.",503,"DELETE_AUTH_UNAVAILABLE");
+ return result.data?.role??null;
+}){
+ return async<T>(actor:Actor,credentials:DeletionCredentials,commit:()=>Promise<T>):Promise<T>=>{
+  credentials.password=undefined;
+  if(!roles.includes(actor.role))throw new ApiError("Your account cannot delete these records.",403,"DELETE_FORBIDDEN");
+  if(!credentials.accessToken)throw new ApiError("Please sign in again.",401,"DELETE_SESSION_EXPIRED");
+  const leave=await deps.enter(actor.id);
+  try{
+   const user=await deps.user(credentials.accessToken);
+   if(!user||user.id!==actor.id)throw new ApiError("Please sign in again.",401,"DELETE_SESSION_EXPIRED");
+   try{await deps.session(actor.id,actor.role as "ADMIN"|"STAFF",credentials.appSessionId);}catch(error){if(error instanceof AppSessionError)throw new ApiError(error.message,error.status,error.code);throw error;}
+   if(await readRole(actor.id)!==actor.role)throw new ApiError("Your permissions changed. Nothing was deleted.",403,"DELETE_FORBIDDEN");
+   return await commit();
+  }finally{await leave();}
+ };
+}
+export const withDeletionSession=createDeletionSessionGuard();
+export const withCurrentUserSession=createDeletionSessionGuard(dependencies,["ADMIN","STAFF"]);

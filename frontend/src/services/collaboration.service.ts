@@ -12,6 +12,8 @@ let socket:Socket|null=null,owner="",snapshot:Snapshot={connected:false,bridgeHe
 let stopCurrent:((preserveDrafts?:boolean)=>void)|null=null;
 const watchers=new Set<()=>void>(),events=new Set<(event:Event)=>void>(),rooms=new Map<string,number>(),cells=new Map<string,CellTarget>(),versions=new Map<string,number>(),seen=new Set<string>();
 const recordRequests=new Map<string,Promise<Record<string,unknown>>>();
+const confirmedRecords=new Map<string,Record<string,unknown>>();
+export function rememberConfirmedRecord(source:string,id:string,record:Record<string,unknown>){if(record.id!==id||typeof record.collaboration_version!=="number")return;const key=`${source}:${id}`,before=confirmedRecords.get(key);if(typeof before?.collaboration_version==="number"&&before.collaboration_version>record.collaboration_version)return;confirmedRecords.set(key,record);if(confirmedRecords.size>1000)confirmedRecords.delete(confirmedRecords.keys().next().value!);}
 const received=new Map<string,number>();let presenceTimer:ReturnType<typeof setTimeout>|null=null;
 const notify=()=>watchers.forEach(fn=>fn());
 const emit=(event:Event)=>events.forEach(fn=>fn(event));
@@ -35,7 +37,7 @@ export function startCollaboration(token:string|null,profileId:string|undefined,
  const next=token&&profileId&&["ADMIN","STAFF","TRUCKER"].includes(role??"")?`${profileId}:${role}:${token}`:"";
  if(next===owner)return()=>{};
  const samePrincipal=Boolean(next&&owner.startsWith(`${profileId}:${role}:`));
- stopCurrent?.(samePrincipal);stopCurrent=null;socket?.disconnect();socket=null;owner=next;versions.clear();seen.clear();recordRequests.clear();received.clear();if(samePrincipal)draftConnection(false);else clearCellDrafts();
+ stopCurrent?.(samePrincipal);stopCurrent=null;socket?.disconnect();socket=null;owner=next;versions.clear();seen.clear();recordRequests.clear();confirmedRecords.clear();received.clear();if(samePrincipal)draftConnection(false);else clearCellDrafts();
  snapshot={connected:false,bridgeHealthy:false,presences:[]};notify();
  if(!next)return()=>{};
  const endpoint=import.meta.env?.VITE_SOCKET_URL??new URL(import.meta.env?.VITE_API_URL??"http://localhost:5000/api").origin;
@@ -62,7 +64,7 @@ export function startCollaboration(token:string|null,profileId:string|undefined,
  client.on("cell:presence-leave",value=>{if(!active())return;received.delete(`${value?.table}:${value?.socketId}`);snapshot={...snapshot,presences:snapshot.presences.filter(p=>p.socketId!==value?.socketId||p.table!==value?.table)};notify();});
  const committed=(commit:Commit)=>{
   if(!active()||!commit||typeof commit.eventId!=="string"||!Array.isArray(commit.fields))return;
-  const key=commit.eventId+":"+commit.fields.join(",");if(seen.has(key))return;seen.add(key);if(seen.size>5000)seen.delete(seen.values().next().value!);
+  const key=(commit.operation==="DELETE"?`${commit.source}:${commit.recordId}:deleted`:commit.eventId)+":"+commit.fields.join(",");if(seen.has(key))return;seen.add(key);if(seen.size>5000)seen.delete(seen.values().next().value!);
   if(!rememberConfirmedVersion(commit.source,commit.recordId,commit.version))return;
   noteDraftCommit(commit,profileId!);
   emit({kind:"commit",commit});
@@ -85,7 +87,7 @@ export function startCollaboration(token:string|null,profileId:string|undefined,
  const wakeDrafts=()=>{if(active()&&client.connected&&document.visibilityState==="visible")heartbeatCellDrafts();};
  document.addEventListener("visibilitychange",wakeDrafts);
  client.connect();
- const stop=(preserveDrafts=false)=>{clearInterval(heartbeat);clearTimeout(retryTimer);document.removeEventListener("visibilitychange",wakeDrafts);if(!active())return;if(preserveDrafts)draftConnection(false);else clearCellDrafts();configureDraftTransport(null);client.disconnect();socket=null;owner="";versions.clear();seen.clear();recordRequests.clear();if(!preserveDrafts)cells.clear();snapshot={connected:false,bridgeHealthy:false,presences:[]};notify();};stopCurrent=stop;return stop;
+ const stop=(preserveDrafts=false)=>{clearInterval(heartbeat);clearTimeout(retryTimer);document.removeEventListener("visibilitychange",wakeDrafts);if(!active())return;if(preserveDrafts)draftConnection(false);else clearCellDrafts();configureDraftTransport(null);client.disconnect();socket=null;owner="";versions.clear();seen.clear();recordRequests.clear();confirmedRecords.clear();if(!preserveDrafts)cells.clear();snapshot={connected:false,bridgeHealthy:false,presences:[]};notify();};stopCurrent=stop;return stop;
 }
 export function joinCollaborationRoom(kind:"table"|"trip",key:string){const room=`${kind}:${key}`,before=rooms.get(room)??0;rooms.set(room,before+1);if(!before&&socket?.connected)socket.emit("room:join",{kind,key});return()=>{const remaining=(rooms.get(room)??1)-1;if(remaining>0)rooms.set(room,remaining);else{rooms.delete(room);if(kind==="table"){forgetTableDrafts(key);const viewers={...snapshot.viewers};delete viewers[key];snapshot={...snapshot,viewers};notify();}socket?.emit("room:leave",{kind,key});if(kind==="table")cells.delete(key);}};}
 export function focusCollaborationCell(table:string,target:CellTarget|null){
@@ -94,7 +96,9 @@ export function focusCollaborationCell(table:string,target:CellTarget|null){
  presenceTimer=setTimeout(()=>{presenceTimer=null;if(socket?.connected&&document.visibilityState==="visible")for(const cell of cells.values())socket.emit("cell:presence",cell);},120);
 }
 export function readCommittedRecord(token:string,commit:Commit){
+ const cached=confirmedRecords.get(`${commit.source}:${commit.recordId}`);if(typeof cached?.collaboration_version==="number"&&commit.version!==null&&cached.collaboration_version>=commit.version)return Promise.resolve(cached);
+ const requestOwner=owner;
  const key=`${token}:${commit.source}:${commit.recordId}:${commit.version??commit.eventId}`;const pending=recordRequests.get(key);if(pending)return pending;
- const request=apiGet<ApiResponse<Record<string,unknown>>>(`/realtime/records/${encodeURIComponent(commit.source)}/${encodeURIComponent(commit.recordId)}`,token).then(result=>{if(!result.success||!result.data)throw Error("Unable to confirm the latest record.");return result.data;}).finally(()=>{if(recordRequests.get(key)===request)recordRequests.delete(key);});
+ const request=apiGet<ApiResponse<Record<string,unknown>>>(`/realtime/records/${encodeURIComponent(commit.source)}/${encodeURIComponent(commit.recordId)}`,token).then(result=>{if(!result.success||!result.data)throw Error("Unable to confirm the latest record.");if(owner!==requestOwner)throw new DOMException("Session changed","AbortError");rememberConfirmedRecord(commit.source,commit.recordId,result.data);return result.data;}).finally(()=>{if(recordRequests.get(key)===request)recordRequests.delete(key);});
  recordRequests.set(key,request);return request;
 }

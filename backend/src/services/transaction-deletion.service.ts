@@ -1,4 +1,4 @@
-import {withCurrentUserPassword,type DeletionCredentials} from "./deletion-password.service.js";
+import {withCurrentUserSession,type DeletionCredentials} from "./deletion-password.service.js";
 import { supabaseAdmin } from "../config/supabase.js";
 import { ApiError } from "../utils/api-response.js";
 import { requireUuid } from "./flexible-table.validation.js";
@@ -92,7 +92,7 @@ export async function retryTransactionCleanup(actor: Actor, input: unknown) {
 }
 
 /** Last-stop/empty-parent deletion is never reachable without fresh current-user authentication. */
-export function createTransactionDeleter(verify=withCurrentUserPassword){
+export function createTransactionDeleter(verify=withCurrentUserSession){
  return async(actor:Actor,tripInput:unknown,stopInput:unknown,credentials:DeletionCredentials={password:undefined,accessToken:"",appSessionId:null})=>{
   authorize(actor);
   const owner=Object.freeze({...actor}),trip=requireUuid(tripInput,"trip_id"),stop=stopInput==null?null:requireUuid(stopInput,"trip_stop_id");

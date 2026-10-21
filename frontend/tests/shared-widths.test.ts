@@ -67,7 +67,7 @@ test("a late layout poll cannot replace a newer acknowledged width", async () =>
     await refreshSharedWidths("stale-width-session", "trips");
     const write = saveSharedWidth("stale-width-session", "trips", "route", 450);
     await patchStarted;
-    const staleRead = refreshSharedWidths("stale-width-session", "trips");
+    const staleRead = refreshSharedWidths("stale-width-session", "trips", true);
     releaseWrite(response(450, 2, false));
     await write;
     releaseOldRead(response(180, 1, true));

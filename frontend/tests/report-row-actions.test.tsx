@@ -9,6 +9,8 @@ test("row actions are accessible icon-only buttons and preserve the caller's dis
   for (const action of ["edit", "delete"] as const) {
     const html = renderToStaticMarkup(createElement(ReportRowActionButton, { action, disabled: true, onClick: () => { throw new Error("render must never invoke an action"); } }));
     assert.match(html, /type="button"/);
+    assert.match(html, /h-8 w-8/);
+    assert.match(html, /rounded-full/);
     assert.match(html, /aria-label="(?:Edit selected row|Delete selected reports)"/);
     assert.match(html, /title="(?:Edit selected row|Delete selected reports)"/);
     assert.match(html, /disabled=""/);

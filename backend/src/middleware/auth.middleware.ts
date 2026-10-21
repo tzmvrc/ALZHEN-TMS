@@ -1,3 +1,7 @@
+import { createHash } from "node:crypto";
+import { createConcurrentReadGate } from "../utils/concurrent-read.js";
+const shareRead=createConcurrentReadGate();
+const fingerprint=(value:string)=>createHash("sha256").update(value).digest("hex");
 import { Request, Response, NextFunction } from "express";
 import { supabaseAdmin, supabaseAuth } from "../config/supabase.js";
 import {
@@ -26,7 +30,7 @@ async function authenticate(
     const {
       data: { user },
       error,
-    } = await supabaseAuth.auth.getUser(token);
+    } = await shareRead(`user:${fingerprint(token)}`,()=>supabaseAuth.auth.getUser(token));
     if (error || !user) {
       console.error("Supabase getUser error:", {
         code: error?.code,
@@ -39,11 +43,11 @@ async function authenticate(
       });
     }
 
-    const { data: profile, error: profileError } = await supabaseAdmin
+    const { data: profile, error: profileError } = await shareRead(`profile:${user.id}`,()=>supabaseAdmin
       .from("profiles")
-      .select("id, role, is_admin, first_name, last_name")
+      .select("*")
       .eq("id", user.id)
-      .maybeSingle();
+      .maybeSingle());
     if (profileError) {
       console.error("Profile lookup error:", {
         userId: user.id,
@@ -56,6 +60,7 @@ async function authenticate(
       });
     }
 
+    if(profile)req.profile=profile;
     const role = String(profile?.role ?? "UNKNOWN").trim().toUpperCase();
     const sessionId = req.header("x-app-session") ?? null;
     req.user = { ...user, role };
@@ -64,9 +69,12 @@ async function authenticate(
     if (!skipSessionValidation) {
       try {
         if (role === "TRUCKER") {
-          await assertActiveTruckerSession(user.id, sessionId);
+          await shareRead(`session:${role}:${user.id}:${fingerprint(sessionId??"")}`,()=>assertActiveTruckerSession(user.id, sessionId));
         } else if (role === "ADMIN" || role === "STAFF") {
-          const active = await assertAdminStaffSession(user.id, role, sessionId);
+          const active = await shareRead(`session:${role}:${user.id}:${fingerprint(sessionId??"")}`,()=>assertAdminStaffSession(user.id, role, sessionId));
+          // Each request still checks its own clock, even when a concurrent read
+          // completed across the Manila-midnight expiration boundary.
+          if(Date.parse(active.expiresAt)<=Date.now())throw new AppSessionError("Your session ended at midnight Manila time. Please sign in again.","ADMIN_SESSION_EXPIRED",401);
           req.appSession.expiresAt = active.expiresAt;
         }
       } catch (sessionError) {

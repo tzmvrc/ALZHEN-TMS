@@ -1,0 +1,171 @@
+{
+  "project": "hdmknewarynwpbrhfgai",
+  "measuredAt": "2026-10-21T05:31:20.656Z",
+  "results": [
+    {
+      "report": "dispatch-monitoring",
+      "ms": 1336,
+      "rows": 1,
+      "total": 1,
+      "calls": [
+        {
+          "table": "v_dispatch_monitoring",
+          "ms": 714,
+          "status": 200
+        },
+        {
+          "table": "trips",
+          "ms": 144,
+          "status": 200
+        },
+        {
+          "table": "loading_reports",
+          "ms": 116,
+          "status": 200
+        },
+        {
+          "table": "trip_stops",
+          "ms": 211,
+          "status": 200
+        },
+        {
+          "table": "customer_stores",
+          "ms": 108,
+          "status": 200
+        },
+        {
+          "table": "warehouses",
+          "ms": 159,
+          "status": 200
+        },
+        {
+          "table": "customers",
+          "ms": 213,
+          "status": 200
+        }
+      ]
+    },
+    {
+      "report": "dispatch",
+      "ms": 791,
+      "rows": 2,
+      "total": 2,
+      "calls": [
+        {
+          "table": "v_dispatch_report",
+          "ms": 331,
+          "status": 200
+        },
+        {
+          "table": "trips",
+          "ms": 117,
+          "status": 200
+        },
+        {
+          "table": "trip_stops",
+          "ms": 101,
+          "status": 200
+        },
+        {
+          "table": "loading_reports",
+          "ms": 116,
+          "status": 200
+        },
+        {
+          "table": "warehouses",
+          "ms": 106,
+          "status": 200
+        },
+        {
+          "table": "customer_stores",
+          "ms": 159,
+          "status": 200
+        },
+        {
+          "table": "customers",
+          "ms": 220,
+          "status": 200
+        }
+      ]
+    },
+    {
+      "report": "trip-booking",
+      "ms": 780,
+      "rows": 1,
+      "total": 1,
+      "calls": [
+        {
+          "table": "v_trip_booking",
+          "ms": 216,
+          "status": 200
+        },
+        {
+          "table": "trips",
+          "ms": 212,
+          "status": 200
+        },
+        {
+          "table": "trip_stops",
+          "ms": 95,
+          "status": 200
+        },
+        {
+          "table": "customers",
+          "ms": 106,
+          "status": 200
+        },
+        {
+          "table": "customer_stores",
+          "ms": 133,
+          "status": 200
+        },
+        {
+          "table": "warehouses",
+          "ms": 247,
+          "status": 200
+        }
+      ]
+    },
+    {
+      "report": "store-calling",
+      "ms": 119,
+      "rows": 0,
+      "total": 0,
+      "calls": [
+        {
+          "table": "vw_store_calling_tracker",
+          "ms": 117,
+          "status": 200
+        }
+      ]
+    },
+    {
+      "report": "transmittal",
+      "ms": 473,
+      "rows": 0,
+      "total": 0,
+      "calls": [
+        {
+          "table": "profiles",
+          "ms": 101,
+          "status": 200
+        },
+        {
+          "table": "flex_tables",
+          "ms": 106,
+          "status": 200
+        },
+        {
+          "table": "v_transmittal_tracker_page",
+          "ms": 153,
+          "status": 200
+        },
+        {
+          "table": "flex_columns",
+          "ms": 104,
+          "status": 200
+        }
+      ]
+    }
+  ]
+}

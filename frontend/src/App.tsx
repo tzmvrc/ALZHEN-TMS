@@ -1,12 +1,12 @@
-import { useEffect } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { Route, Routes } from "react-router-dom";
 import ProtectedRoute from "./components/ProtectedRoute";
 import AdminRoute from "./components/AdminRoute";
 import PublicRoute from "./components/PublicRoute";
 import LoginPage from "./pages/Admin/LoginPage";
 import DriverLoginPage from "./pages/Driver/LoginPage";
-import DashboardPage from "./pages/Admin/DashboardPage";
-import DriverPortal from "./pages/Driver/DriverPortal";
+const DashboardPage = lazy(() => import("./pages/Admin/DashboardPage"));
+const DriverPortal = lazy(() => import("./pages/Driver/DriverPortal"));
 import NotFoundPage from "./pages/NotFoundPage";
 
 function App() {
@@ -55,7 +55,7 @@ function App() {
   }, []);
 
   return (
-    <Routes>
+    <Suspense fallback={<div className="min-h-screen bg-slate-50" role="status" aria-label="Opening workspace" />}><Routes>
       <Route
         path="/"
         element={
@@ -116,7 +116,7 @@ function App() {
       />
 
       <Route path="*" element={<NotFoundPage />} />
-    </Routes>
+    </Routes></Suspense>
   );
 }
 

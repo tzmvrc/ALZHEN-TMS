@@ -4,6 +4,7 @@ import { supabase } from "../lib/supabase";
 import { apiGet, invalidateApiCache, type ApiResponse } from "./api.service";
 import {
   invalidateReportPageCache,
+  removeCachedReportRecord,
   REPORTS,
   type ReportKey,
 } from "./report.service";
@@ -25,6 +26,7 @@ export const REPORT_REALTIME_TABLES: Record<ReportKey, readonly string[]> = {
     "flex_cells", "flex_rows", "flex_columns", "flex_tables",
     "trips",
     "trip_truck_assignments",
+    "trip_cargo_allocations", "trip_assignment_stops",
     "trucks",
     "drivers",
     "trucking_companies",
@@ -43,6 +45,7 @@ export const REPORT_REALTIME_TABLES: Record<ReportKey, readonly string[]> = {
     "flex_cells", "flex_rows", "flex_columns", "flex_tables",
     "trips",
     "trip_truck_assignments",
+    "trip_cargo_allocations", "trip_assignment_stops",
     "trucks",
     "drivers",
     "trucking_companies",
@@ -63,6 +66,7 @@ export const REPORT_REALTIME_TABLES: Record<ReportKey, readonly string[]> = {
     "customer_stores",
     "customers",
     "trip_truck_assignments",
+    "trip_cargo_allocations", "trip_assignment_stops",
     "trucks",
     "drivers",
     "trucking_companies",
@@ -78,6 +82,7 @@ export const REPORT_REALTIME_TABLES: Record<ReportKey, readonly string[]> = {
     "trip_line_items",
     "products",
     "trip_truck_assignments",
+    "trip_cargo_allocations", "trip_assignment_stops",
     "trucks",
     "drivers",
     "trucking_companies",
@@ -92,6 +97,7 @@ export const REPORT_REALTIME_TABLES: Record<ReportKey, readonly string[]> = {
     "store_calls",
     "trip_stops",
     "trip_truck_assignments",
+    "trip_cargo_allocations", "trip_assignment_stops",
     "trips",
     "profiles",
     "customers",
@@ -149,6 +155,7 @@ function emitAdminRealtime(event: AdminRealtimeEvent) {
 }
 
 function invalidateForTable(table: string, payload?: RealtimePayload) {
+  if(payload?.eventType==="DELETE"&&typeof payload.old?.id==="string")removeCachedReportRecord(table,payload.old.id);
   if(["profiles","drivers"].includes(table))invalidateApiCache("/users");
   if (["trips", "trip_stops", "trip_line_items", "trip_truck_assignments", "drivers", "trucks", "customers", "customer_stores", "warehouses", "products", "trucking_companies", "trip_types", "profiles", "tms_route_options"].includes(table)) invalidateApiCache("/lookups/");
   if (["tms_dropdown_options", "flex_dropdown_options"].includes(table)) invalidateApiCache("/dropdown-options");
@@ -175,6 +182,7 @@ function invalidateForTable(table: string, payload?: RealtimePayload) {
     invalidateReportPageCache(key);
   }
 
+  if(["trip_cargo_allocations","trip_assignment_stops"].includes(table))invalidateApiCache("/trips/");
   if (table === "trips") invalidateApiCache("/trips");
   // Loading reports also project milestones onto the cached trip detail.
   if (["loading_reports", "unloading_reports", "driver_trip_updates"].includes(table)) {
@@ -252,13 +260,14 @@ export function startAdminRealtime(
   });
   const stopSocketSignals=subscribeCollaborationEvents(event=>{
     if(!active)return;
+    if(event.kind==="commit"&&event.commit.operation==="DELETE")removeCachedReportRecord(event.commit.source,event.commit.recordId);
     if(event.kind==="signal")feed.push({topic:event.topic,revision:event.revision});
     if(event.kind==="commit"&&event.commit.operation==="DELETE"&&event.commit.source==="trips"){
       invalidateForTable("trips");invalidateForTable("transaction_deletion_jobs");
       emitAdminRealtime({kind:"batch",tables:["trips","transaction_deletion_jobs"]});
     }
-      if(event.kind==="commit"&&["offloads","backloads","demurrages","incidents","loading_reports","unloading_reports"].includes(event.commit.source)) {
-        const tables = [event.commit.source, "report_receipts", ...(event.commit.source === "offloads" ? ["offload_items", "offload_deletion_jobs"] : event.commit.source === "backloads" ? ["backload_items", "backload_deletion_jobs"] : [])];
+      if(event.kind==="commit"&&["trip_cargo_allocations","trip_assignment_stops","offloads","backloads","demurrages","incidents","loading_reports","unloading_reports"].includes(event.commit.source)) {
+        const tables = [event.commit.source, ...(["trip_cargo_allocations","trip_assignment_stops"].includes(event.commit.source)?[]:["report_receipts"]), ...(event.commit.source === "offloads" ? ["offload_items", "offload_deletion_jobs"] : event.commit.source === "backloads" ? ["backload_items", "backload_deletion_jobs"] : [])];
         tables.forEach(table=>invalidateForTable(table));
         emitAdminRealtime({kind:"batch",tables});
       }
@@ -284,8 +293,9 @@ export function startAdminRealtime(
         }
       });
   };
-  void connect().catch(() => { healthy = false; });
-  void feed.reconcile();
+  // StrictMode's mount/cleanup probe must not open a discarded connection or
+  // launch a duplicate recovery read before the real mounted session starts.
+  const initialTimer=window.setTimeout(()=>{if(active){void connect().catch(() => { healthy = false; });void feed.reconcile();}},0);
   const signalRecoveryTimer = window.setInterval(() => {
     if (document.visibilityState !== "visible") return;
     void feed.reconcile();
@@ -308,6 +318,7 @@ export function startAdminRealtime(
   document.addEventListener("visibilitychange", onVisible);
   const cleanup = () => {
     active = false; healthy = false; connectionVersion++;
+    window.clearTimeout(initialTimer);
     feed.stop();stopSocketSignals(); window.clearInterval(signalRecoveryTimer); window.clearTimeout(reconnectTimer);
     if (signalChannel) void supabase.removeChannel(signalChannel);
     transactionChanges.stop();

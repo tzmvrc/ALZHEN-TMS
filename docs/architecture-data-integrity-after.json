@@ -1,0 +1,39 @@
+[
+  {
+    "snapshot": {
+      "items": {
+        "hash": "f196d7e6e04b68ec2db02ad896b1c5e5",
+        "count": 1
+      },
+      "stops": {
+        "hash": "3ee1df8f42b30907e8bf7d7bf572788a",
+        "count": 1
+      },
+      "trips": {
+        "hash": "b58e8d0509e5f914238b789d1b8136f9",
+        "count": 1
+      },
+      "storage": {
+        "hash": "26eab8e671b1715ed189cfaece39510f",
+        "count": 37
+      },
+      "formulas": {
+        "hash": "0fc67374d64e43acfbdfe1d38df8c5a9",
+        "count": 1
+      },
+      "flex_rows": {
+        "hash": "49fd51932f62efbbf1c07adb493882e9",
+        "count": 9
+      },
+      "assignments": {
+        "hash": "d41d8cd98f00b204e9800998ecf8427e",
+        "count": 0
+      },
+      "notifications": {
+        "hash": "fe47dcb5e654ccf8bc50d2cca0516b1c",
+        "count": 2
+      },
+      "project_sample": true
+    }
+  }
+]

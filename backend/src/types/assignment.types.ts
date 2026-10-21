@@ -1,6 +1,8 @@
 export type AssignmentTypeValue = string | null;
 
 export interface TripAssignmentRecord {
+  stop_scope?:"ALL"|"SELECTED";
+  collaboration_version?:number;
   id: string;
   trip_id: string;
   truck_id: string | null;

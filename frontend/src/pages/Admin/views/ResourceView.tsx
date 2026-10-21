@@ -1,28 +1,27 @@
 // src/pages/Admin/views/ResourceView.tsx
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { useAuth } from "../../../context/AuthContext";
 import type { DashboardData } from "../../../types/dashboard";
-import {
-  IncidentPanel,
-  SectionHeader,
-  PageIntro,
-  ChecklistPanel,
-  SettingsPanel,
-  PodWorkflowPanel,
-} from "../../../components/admin/DashboardPrimitives";
+const IncidentPanel=lazy(()=>import("../../../components/admin/DashboardPrimitives").then(module=>({default:module.IncidentPanel})));
+const SectionHeader=lazy(()=>import("../../../components/admin/DashboardPrimitives").then(module=>({default:module.SectionHeader})));
+const PageIntro=lazy(()=>import("../../../components/admin/DashboardPrimitives").then(module=>({default:module.PageIntro})));
+const ChecklistPanel=lazy(()=>import("../../../components/admin/DashboardPrimitives").then(module=>({default:module.ChecklistPanel})));
+const SettingsPanel=lazy(()=>import("../../../components/admin/DashboardPrimitives").then(module=>({default:module.SettingsPanel})));
+const PodWorkflowPanel=lazy(()=>import("../../../components/admin/DashboardPrimitives").then(module=>({default:module.PodWorkflowPanel})));
 import { tableUi } from "../../../components/admin/dashboardStyles";
 import ReportDataView from "../../../components/admin/ReportDataView";
 import ReportsWorkspace from "../../../components/admin/ReportsWorkspace";
 import FlexibleTableSectionTabs from "../../../components/admin/FlexibleTableSectionTabs";
-import TruckCardGrid from "../../../components/admin/TruckCardGrid";
-import RequestsView from "./RequestsView";
-import MasterDataView from "./MasterDataView";
-import CalendarView from "./CalendarView";
-import TripDetailView from "./TripDetailView";
-import TruckersView from "./TruckersView";
+const TruckCardGrid=lazy(()=>import("../../../components/admin/TruckCardGrid"));
+const RequestsView=lazy(()=>import("./RequestsView"));
+const MasterDataView=lazy(()=>import("./MasterDataView"));
+const CalendarView=lazy(()=>import("./CalendarView"));
+const TripDetailView=lazy(()=>import("./TripDetailView"));
+const TruckersView=lazy(()=>import("./TruckersView"));
 import { createTrip } from "../../../services/trip.service";
 import { useToast } from "../../../components/ui/Toast";
-import AddTripForm, { type NewTripPayload } from "../../../components/admin/AddTripForm";
+import type {NewTripPayload} from "../../../components/admin/AddTripForm";
+const AddTripForm=lazy(()=>import("../../../components/admin/AddTripForm"));
 import type { AdminNotificationTarget } from "../../../services/notification.service";
 
 const titleMap: Record<string, [string, string]> = {
@@ -553,7 +552,7 @@ function AddTripButton({ onCreated }: { onCreated: (reference: string) => void }
         Add trip
       </button>
 
-      {open && <AddTripForm onClose={() => setOpen(false)} onSubmit={createTripHandler} />}
+      {open && <Suspense fallback={<div role="status" aria-label="Opening trip form" className="fixed inset-0 z-50 bg-slate-900/10"/>}><AddTripForm onClose={() => setOpen(false)} onSubmit={createTripHandler} /></Suspense>}
     </>
   );
 }

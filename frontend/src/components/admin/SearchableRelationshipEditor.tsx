@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { Check, Plus } from "lucide-react";
 import {
   searchRelationshipOptions,
+  getCachedRelationshipOptions,
   type RelationshipKind,
   type RelationshipOption,
 } from "../../services/lookup.service";
@@ -45,7 +46,7 @@ export default function SearchableRelationshipEditor({
   const inputRef = useRef<HTMLInputElement>(null);
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [options, setOptions] = useState<RelationshipOption[]>([]);
+  const [options, setOptions] = useState<RelationshipOption[]>(()=>getCachedRelationshipOptions(token,kind,"",{storeId,customerId})??[]);
   const [activeIndex, setActiveIndex] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -54,6 +55,8 @@ export default function SearchableRelationshipEditor({
   useEffect(() => {
     if (!isOpen) return;
     let active = true;
+    const cached=getCachedRelationshipOptions(token,kind,query,{storeId,customerId});
+    if(cached){setOptions(cached);setLoading(false);}
     const timer = window.setTimeout(() => {
       setLoading(true);
       setError("");
@@ -79,7 +82,7 @@ export default function SearchableRelationshipEditor({
         .finally(() => {
           if (active) setLoading(false);
         });
-    }, 180);
+    }, cached?0:query.trim()?100:0);
 
     return () => {
       active = false;
@@ -144,6 +147,7 @@ export default function SearchableRelationshipEditor({
     }
   }
 
+  const isCurrent=(option:RelationshipOption)=>Boolean(value)&&(option.label===value||option.secondary===value||Object.values(option.values??{}).includes(value));
   const popover = isOpen ? (
     <div
       id={listId}
@@ -152,7 +156,7 @@ export default function SearchableRelationshipEditor({
       className="fixed z-[100] max-h-56 overflow-y-auto rounded-xl border border-amber-200 bg-white py-1 shadow-xl"
       style={position}>
       {value && <p className="border-b border-slate-100 px-3 py-2 text-[11px] text-slate-500">Current: <span className="font-semibold text-slate-700">{value}</span></p>}
-      {loading ? (
+      {loading && !options.length ? (
         <p className="px-3 py-2 text-xs text-slate-500">Searching...</p>
       ) : error ? (
         <p role="alert" className="px-3 py-2 text-xs text-rose-700">
@@ -167,13 +171,13 @@ export default function SearchableRelationshipEditor({
             id={`${listId}-${index}`}
             type="button"
             role="option"
-            aria-selected={index === activeIndex}
+            aria-selected={isCurrent(option)}
             onMouseDown={(event) => event.preventDefault()}
             onMouseEnter={() => setActiveIndex(index)}
             onClick={() => selectOption(option)}
             className={`flex w-full items-center justify-between gap-2 px-3 py-2 text-left transition-colors ${index === activeIndex ? "bg-amber-50" : "hover:bg-amber-50/60"}`}>
             <span className="min-w-0 flex-1">
-            <span className="block truncate text-sm font-medium text-slate-800">
+            <span className="block truncate text-xs font-medium text-slate-800">
               {option.label}
             </span>
             {option.secondary && (
@@ -182,7 +186,7 @@ export default function SearchableRelationshipEditor({
               </span>
             )}
             </span>
-            {option.label === value && <Check aria-hidden="true" className="h-4 w-4 shrink-0 text-emerald-700" />}
+            {isCurrent(option) && <Check aria-hidden="true" className="h-4 w-4 shrink-0 text-emerald-700" />}
           </button>
         ))
       )}
@@ -204,18 +208,20 @@ export default function SearchableRelationshipEditor({
         aria-controls={listId}
         aria-activedescendant={isOpen && (options.length||canCreate) ? `${listId}-${activeIndex}` : undefined}
         value={isOpen?query:value}
-        placeholder="Search records"
+        placeholder={value||"Search records"}
         onFocus={() => {
           if (!disabled) {
             // Keep the saved value in the real input value while editing. The
             // previous placeholder-only treatment looked like existing data
             // but left the editor empty, so typing replaced an invisible value.
-            setQuery(value);
+            setQuery("");
+            const cached=getCachedRelationshipOptions(token,kind,"",{storeId,customerId});if(cached)setOptions(cached);
             setIsOpen(true);
           }
         }}
         onChange={(event) => {
-          setQuery(event.target.value);
+          const next=event.target.value;setQuery(next);setActiveIndex(0);
+          const cached=getCachedRelationshipOptions(token,kind,next,{storeId,customerId});const base=cached??getCachedRelationshipOptions(token,kind,"",{storeId,customerId});if(base)setOptions(cached??base.filter(option=>`${option.label} ${option.secondary??""}`.toLocaleLowerCase().includes(next.trim().toLocaleLowerCase())));
           setIsOpen(true);
         }}
         onBlur={(event) => {

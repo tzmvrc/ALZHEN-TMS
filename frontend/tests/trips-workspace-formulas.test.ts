@@ -5,7 +5,7 @@ import { bindFormula, createFormulaEvaluator, formulaCellValue, shiftBoundFormul
 const rows=[{id:"physical-stop-a",cells:[{column_id:"a",value:100},{column_id:"b",value:250},{column_id:"c",value:null}]},{id:"physical-stop-b",cells:[{column_id:"a",value:2},{column_id:"b",value:3},{column_id:"c",value:null}]}];
 const columns=[{id:"a"},{id:"b"},{id:"c"}];
 test("workspace has five unique sheets and retains existing backend projections",()=>{
- assert.deepEqual(WORKSPACE_SHEETS.map(sheet=>sheet.title),["Trips","Dispatch Monitoring","Dispatch Report","Trip Booking","Store Calling"]);
+ assert.deepEqual(WORKSPACE_SHEETS.map(sheet=>sheet.title),["Master List","Dispatch Monitoring","Dispatch Report","Trip Booking","Store Calling"]);
  assert.equal(new Set(WORKSPACE_SHEETS.map(sheet=>sheet.key)).size,5);
  assert.equal(WORKSPACE_SHEETS[0].report,"dispatch-monitoring");assert.equal(workspaceSheet("combined"),"trips");assert.equal(workspaceSheet("unknown"),"trips");
 });

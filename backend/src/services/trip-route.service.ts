@@ -28,12 +28,12 @@ async function readByIds<T>(table: string, select: string, column: string, ids: 
 }
 
 /** Fetch one bounded, batched enrichment set for the distinct report trip IDs. */
-export async function getTripRoutes(tripIds: string[]): Promise<Map<string, string>> {
+export async function getTripRoutes(tripIds: string[], suppliedTrips?: RouteTrip[]): Promise<Map<string, string>> {
   const ids = [...new Set(tripIds.filter((id) => typeof id === "string" && id.trim()).map((id) => id.trim()))];
   if (!ids.length) return new Map();
 
   const [trips, stops] = await Promise.all([
-    readByIds<RouteTrip>("trips", "id, warehouse_id", "id", ids),
+    suppliedTrips ? Promise.resolve(suppliedTrips.filter(trip=>ids.includes(trip.id))) : readByIds<RouteTrip>("trips", "id, warehouse_id", "id", ids),
     readByIds<RouteStop>("trip_stops", "id, trip_id, stop_sequence, store_id, customer_id", "trip_id", ids),
   ]);
   const warehouseIds = [...new Set(trips.map((trip) => trip.warehouse_id).filter((id): id is string => Boolean(id)))];

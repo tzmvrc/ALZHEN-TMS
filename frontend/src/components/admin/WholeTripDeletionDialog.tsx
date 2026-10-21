@@ -11,19 +11,19 @@ export default function WholeTripDeletionDialog(props:Props){
 }
 function Confirmation({token,tripIds,onClose,onDeleted}:Props){
  const toast=useOptionalToast(),inFlight=useRef(false),active=useRef(true),cancelButton=useRef<HTMLButtonElement>(null),dialog=useRef<HTMLElement>(null);
- const [impact,setImpact]=useState<WholeTripImpact|null>(null),[error,setError]=useState(""),[busy,setBusy]=useState(false),[password,setPassword]=useState("");
+ const [impact,setImpact]=useState<WholeTripImpact|null>(null),[error,setError]=useState(""),[busy,setBusy]=useState(false);
  const identity=tripIds.join(",");
  const notificationKey=useId();
  const actionLabel=tripIds.length===1?"Delete Entire Trip":"Delete Selected Trips";
  useEffect(()=>{active.current=true;const previous=document.activeElement as HTMLElement|null;cancelButton.current?.focus();return()=>{active.current=false;previous?.focus();};},[]);
  useEffect(()=>{let current=true;void fetchWholeTripImpact(token,identity.split(",")).then(data=>{if(current)setImpact(data);}).catch(()=>{if(current)setError("Unable to check the selected trips. Please close and try again.");});return()=>{current=false;};},[token,identity]);
- const close=()=>{if(inFlight.current)return;setPassword("");onClose();};
+ const close=()=>{if(inFlight.current)return;onClose();};
  const remove=async()=>{
-  if(inFlight.current||busy||!password||!impact?.can_delete)return;
-  inFlight.current=true;setBusy(true);dialog.current?.focus();setError("");const enteredPassword={value:password};setPassword("");
+  if(inFlight.current||busy||!impact?.can_delete)return;
+  inFlight.current=true;setBusy(true);dialog.current?.focus();setError("");
   let committed=false;
   try{
-   const result=await deleteWholeTrips(token,identity.split(","),enteredPassword.value);
+   const result=await deleteWholeTrips(token,identity.split(","));
    committed=true;
    if(!active.current)return;
    const count=result.deleted_trips??tripIds.length;
@@ -32,7 +32,7 @@ function Confirmation({token,tripIds,onClose,onDeleted}:Props){
    // failed database deletion. Always close the confirmed operation's dialog.
    try{onDeleted(tripIds);}finally{onClose();}
   }catch(e){if(!committed&&active.current){const message=wholeTripDeletionErrorMessage(e);setError(message);toast?.addToast({notificationKey,title:"Unable to delete trip",description:message,variant:"error",duration:4500});}}
-  finally{enteredPassword.value="";inFlight.current=false;if(active.current){setPassword("");setBusy(false);}}
+  finally{inFlight.current=false;if(active.current){setBusy(false);}}
  };
  return <div className="fixed inset-0 z-[2200] flex items-center justify-center bg-slate-900/30 p-4"><section
   ref={dialog} tabIndex={-1} role="alertdialog" aria-modal="true" aria-busy={busy} aria-labelledby="whole-trip-delete-title" aria-describedby="whole-trip-delete-warning"
@@ -44,8 +44,7 @@ function Confirmation({token,tripIds,onClose,onDeleted}:Props){
   <p id="whole-trip-delete-warning" className="mt-3 text-sm text-slate-600">Are you sure you want to delete the selected trip(s)? This will permanently delete the trips and all their related data, including transmittals, reports, PODs, receipts, and attachments.</p>
   <p className="mt-2 text-sm font-medium text-rose-800">This action cannot be undone.</p>
   {busy&&<p role="status" className="mt-3 text-sm text-slate-600">Please wait while the trip and its related records are being deleted.</p>}
-  <label className="mt-4 block text-sm font-medium">Current account password<input type="password" autoComplete="current-password" maxLength={1024} value={password} disabled={busy} onChange={event=>setPassword(event.target.value)} onKeyDown={event=>{if(event.key==="Enter"){event.preventDefault();void remove();}}} className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-rose-600"/></label>
   {(error || (impact && !impact.can_delete)) && <p role="alert" className="mt-3 text-sm text-rose-800">{error || wholeTripBlockerMessage(impact?.blockers ?? [])}</p>}
-  <footer className="mt-5 flex justify-end gap-2"><button ref={cancelButton} type="button" disabled={busy} onClick={close} className="rounded-lg border px-3 py-2">Cancel</button><button type="button" disabled={busy||!password||!impact?.can_delete} onClick={()=>void remove()} className="inline-flex items-center gap-2 rounded-lg bg-rose-700 px-3 py-2 text-white disabled:opacity-60">{busy&&<LoaderCircle aria-hidden="true" className="h-4 w-4 animate-spin motion-reduce:animate-none"/>}{busy?(tripIds.length===1?"Deleting...":"Deleting selected trips..."):actionLabel}</button></footer>
+  <footer className="mt-5 flex justify-end gap-2"><button ref={cancelButton} type="button" disabled={busy} onClick={close} className="rounded-lg border px-3 py-2">Cancel</button><button type="button" disabled={busy||!impact?.can_delete} onClick={()=>void remove()} className="inline-flex items-center gap-2 rounded-lg bg-rose-700 px-3 py-2 text-white disabled:opacity-60">{busy&&<LoaderCircle aria-hidden="true" className="h-4 w-4 animate-spin motion-reduce:animate-none"/>}{busy?(tripIds.length===1?"Deleting...":"Deleting selected trips..."):actionLabel}</button></footer>
  </section></div>;
 }

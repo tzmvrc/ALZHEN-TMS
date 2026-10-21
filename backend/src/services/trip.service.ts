@@ -1,3 +1,5 @@
+import {deletePhysicalRecord} from "./record-deletion.service.js";
+import {ApiError} from "../utils/api-response.js";
 import { supabaseAdmin } from "../config/supabase.js";
 import { collaborationSelect } from "./collaboration-events.js";
 import { normalizeTransactionNumber } from "./transaction-values.logic.js";
@@ -58,6 +60,8 @@ const TRIP_CREATE_FIELDS = [
   "lbc_tracking_number",
   "request_received_at",
   "departure_from_warehouse_at",
+  "spreadsheet_issue_type",
+  "spreadsheet_issue_reason",
 ] as const;
 
 const TRIP_UPDATE_FIELDS = [
@@ -84,6 +88,8 @@ const TRIP_UPDATE_FIELDS = [
   "lbc_tracking_number",
   "request_received_at",
   "departure_from_warehouse_at",
+  "spreadsheet_issue_type",
+  "spreadsheet_issue_reason",
 ] as const;
 
 function parseDateString(
@@ -232,7 +238,9 @@ function buildTripPayload(
       continue;
     }
 
-    if (field === "dispatch_number") {
+    if(field==="spreadsheet_issue_type"||field==="spreadsheet_issue_reason"){
+      payload[field]=sanitizeString(value,field,field==="spreadsheet_issue_type"?500:2000);
+    } else if (field === "dispatch_number") {
       payload[field] = sanitizeString(value, "dispatch_number", 100);
     } else if (
       field === "trip_type_id" ||
@@ -585,15 +593,15 @@ export async function getTripByDispatchNumber(dispatchNumberInput: string) {
     .select("id, dispatch_number")
     .eq("dispatch_number", dispatchNumber)
     .order("trip_number", { ascending: true, nullsFirst: false })
-    .limit(1)
-    .maybeSingle();
+    .limit(2);
 
   if (error) {
     console.error("Trip dispatch lookup error:", { dispatchNumber, error });
     throw new Error("Unable to resolve dispatch number");
   }
-  if (!data) throw new Error("Trip not found");
-  return data;
+  if (!data?.length) throw new Error("Trip not found");
+  if(data.length>1)throw new ApiError("This dispatch contains multiple trips. Select the physical trip from Master List.",409,"AMBIGUOUS_DISPATCH");
+  return data[0];
 }
 
 
@@ -789,7 +797,7 @@ export async function createTripRecord(
   if (error) {
     console.error("Trip create error:", { input, payload, error });
     if (isDuplicateDispatchError(error)) {
-      throw new Error("Dispatch number already exists.");
+      throw new Error("A trip with this dispatch and trip number, or trip reference, already exists. Choose a different trip number/reference.");
     }
     throw new Error("Unable to create trip");
   }
@@ -868,7 +876,7 @@ export async function updateTripRecord(
   if (error) {
     console.error("Trip update error:", { id, input, payload, error });
     if (isDuplicateDispatchError(error)) {
-      throw new Error("Dispatch number already exists.");
+      throw new Error("A trip with this dispatch and trip number, or trip reference, already exists. Choose a different trip number/reference.");
     }
     throw new Error("Unable to update trip");
   }
@@ -964,18 +972,11 @@ const TRIP_STOP_ALLOWED_FIELDS = [
   "finish_unloading_time",
   "departure_time",
   "remarks",
+  "spreadsheet_issue_type",
+  "spreadsheet_issue_reason",
 ] as const;
 
-const TRIP_STOP_DELETE_DEPENDENCIES = [
-  "trip_line_items",
-  "store_calls",
-  "documents",
-  "backloads",
-  "offloads",
-  "incidents",
-  "demurrages",
-  "trip_events",
-] as const;
+
 
 function normalizeStopSequence(value: unknown) {
   if (value === undefined || value === null || value === "") {
@@ -1144,6 +1145,7 @@ function buildTripStopPayload(input: Record<string, unknown>) {
       continue;
     }
 
+    if(field==="spreadsheet_issue_type"||field==="spreadsheet_issue_reason"){payload[field]=value===null||value===""?null:sanitizeString(value,field,field==="spreadsheet_issue_type"?500:2000);continue;}
     if (field === "remarks") {
       const normalized = normalizeTextField(value, field);
       if (normalized !== undefined) {
@@ -1371,84 +1373,9 @@ export async function updateTripStopRecord(
   return data;
 }
 
-export async function deleteTripStopRecord(tripId: string, stopId: string) {
-  if (!isValidUuid(tripId)) {
-    throw new Error("Invalid trip id");
-  }
-
-  if (!isValidUuid(stopId)) {
-    throw new Error("Invalid stop id");
-  }
-
-  await assertTripExists(tripId);
-
-  const { data: stop, error: stopError } = await supabaseAdmin
-    .from("trip_stops")
-    .select("id, trip_id")
-    .eq("id", stopId)
-    .eq("trip_id", tripId)
-    .maybeSingle();
-
-  if (stopError) {
-    console.error("Trip stop ownership check failed:", stopError);
-    throw new Error("Unable to delete trip stop");
-  }
-
-  if (!stop) {
-    throw new Error("Stop not found for this trip");
-  }
-
-  for (const tableName of TRIP_STOP_DELETE_DEPENDENCIES) {
-    const { data, error } = await supabaseAdmin
-      .from(tableName)
-      .select("id")
-      .eq("trip_stop_id", stopId)
-      .limit(1);
-
-    if (error) {
-      const message = String(error.message ?? "");
-      if (
-        /permission denied/i.test(message) ||
-        /does not exist/i.test(message) ||
-        /column.*trip_stop_id/i.test(message)
-      ) {
-        continue;
-      }
-      console.error("Trip stop dependency check failed:", { tableName, error });
-      throw new Error("Unable to check trip stop dependencies");
-    }
-
-    if ((data ?? []).length > 0) {
-      throw new Error(
-        "Trip stop deletion is blocked by existing operational records attached to this stop.",
-      );
-    }
-  }
-
-  const { error: deleteError } = await supabaseAdmin
-    .from("trip_stops")
-    .delete()
-    .eq("id", stopId)
-    .eq("trip_id", tripId);
-
-  if (deleteError) {
-    console.error("Trip stop deletion failed:", {
-      tripId,
-      stopId,
-      error: deleteError,
-    });
-    if (
-      deleteError.code === "23503" ||
-      /foreign key|violates/.test(String(deleteError.message))
-    ) {
-      throw new Error(
-        "Trip stop deletion is blocked by existing dependent records.",
-      );
-    }
-    throw new Error("Unable to delete trip stop");
-  }
-
-  return { id: stopId };
+/** Child deletion never delegates to the legacy final-stop/parent cleanup RPC. */
+export async function deleteTripStopRecord(tripId:string,stopId:string,actor:{id:string;role:string},expectedVersion:unknown){
+  return deletePhysicalRecord(actor,"trip_stops",stopId,expectedVersion,tripId);
 }
 
 const TRIP_LINE_ITEM_ALLOWED_FIELDS = [
@@ -1904,12 +1831,12 @@ export async function deleteTripLineItemRecord(
     }
   }
 
-  const { error: deleteError } = await supabaseAdmin
+  const { data: deleted, error: deleteError } = await supabaseAdmin
     .from("trip_line_items")
     .delete()
     .eq("id", lineItemId)
     .eq("trip_id", tripId)
-    .eq("trip_stop_id", stopId);
+    .eq("trip_stop_id", stopId).select("id").maybeSingle();
 
   if (deleteError) {
     console.error("Trip line item deletion failed:", {
@@ -1929,7 +1856,8 @@ export async function deleteTripLineItemRecord(
     throw new Error("Unable to delete trip line item");
   }
 
-  return { id: lineItemId };
+  if(!deleted) throw new Error("Line item not found");
+  return { id: deleted.id };
 }
 
 export async function getTripEvents(id: string) {

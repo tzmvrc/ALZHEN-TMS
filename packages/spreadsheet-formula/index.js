@@ -62,7 +62,7 @@ export function createFormulaEvaluator(rows,columns) {
 /** Same physical composite identity on both sides of the API. Never a visible index. */
 export function physicalRowIdentity(row) {
  if(row.source_type&&row.source_record_id)return `event:${row.source_type}:${row.source_record_id}`;
- if(row.store_call_id)return `store-call:${row.store_call_id}`;
+ if(row.store_call_id)return `store-call:${row.store_call_id}${row.assignment_id?`:assignment:${row.assignment_id}`:""}`;
  if(row.pod_record_id)return `pod:${row.pod_record_id}`;
  const fields=[["trip",row.trip_id??row._trip_id],["stop",row.trip_stop_id??row._trip_stop_id],["line",row.trip_line_item_id??row._trip_line_item_id],["assignment",row.assignment_id??row._assignment_id],["billing",row.billing_id??row._billing_id],["incident",row.incident_id??row._incident_id],["backload",row.backload_id??row._backload_id],["offload",row.offload_id??row._offload_id]];
  return fields.filter(([,id])=>typeof id==="string"&&id).map(([key,id])=>`${key}:${id}`).join(":")||null;

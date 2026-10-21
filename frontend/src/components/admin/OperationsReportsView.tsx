@@ -11,7 +11,7 @@ import { SPREADSHEET_GUTTER_WIDTH, SPREADSHEET_PANEL_CLASS, SPREADSHEET_ATTACHED
 import { CollaborativeCell } from "./CollaborativeCell";
 import EditStepNavigation from "./EditStepNavigation";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
-import { LoaderCircle, MoreVertical } from "lucide-react";
+import { LoaderCircle } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import {
   deleteOperationsReports,
@@ -567,9 +567,8 @@ export function OperationsEventsTable({ rows, loading, hasLoaded, loadError, tok
   const rowEditSaving = useRef(false);
   const [rowEditError, setRowEditError] = useState<string | null>(null);
   const [deleteConfirmation, setDeleteConfirmation] = useState(false);
-  const [deletePassword, setDeletePassword] = useState("");
   const deletionOwner=useRef({token,profileId});
-  useEffect(()=>{if(deletionOwner.current.token!==token||deletionOwner.current.profileId!==profileId){deletionOwner.current={token,profileId};setDeletePassword("");setDeleteConfirmation(false);setSelectedRowState({datasetKey:"",source:[],ids:new Set()});}},[token,profileId]);
+  useEffect(()=>{if(deletionOwner.current.token!==token||deletionOwner.current.profileId!==profileId){deletionOwner.current={token,profileId};setDeleteConfirmation(false);setSelectedRowState({datasetKey:"",source:[],ids:new Set()});}},[token,profileId]);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const interaction = useRef<() => boolean>(() => false);
   useEffect(() => {
@@ -686,7 +685,7 @@ export function OperationsEventsTable({ rows, loading, hasLoaded, loadError, tok
     setRowEditError(null);
   };
   const deleteSelectedRows = async () => {
-    if (!token || deleteSaving.current || !selectedRows.size || !deletePassword || !selectedTargets?.length || selectedTargets.length > 20) return;
+    if (!token || deleteSaving.current || !selectedRows.size || !selectedTargets?.length || selectedTargets.length > 20) return;
     const selected = [...selectedRows].map((id) => visibleRows.find((row) => row.id === id)).filter((row): row is OperationsEventRow => Boolean(row));
     const targets = operationsDeleteTargets(visibleRows, selectedRows);
     if (targets?.some(target => !["OFFLOAD", "BACKLOAD"].includes(target.source_type))) { setDeleteFeedbackKind("error"); setDeleteMessage("Select only Offload or Backload reports."); return; }
@@ -701,7 +700,7 @@ export function OperationsEventsTable({ rows, loading, hasLoaded, loadError, tok
     setDeleteFeedbackKind("error");
     setDeleteMessage(null);
     try {
-      const response = await deleteOperationsReports(token, targets.map(target=>({source_type:target.source_type,record_id:target.record_id})),deletePassword);
+      const response = await deleteOperationsReports(token, targets.map(target=>({source_type:target.source_type,record_id:target.record_id})));
       const outcome = await deleteConfirmedOperationsReports(true, targets, async(sourceType,recordId)=>{
         const entry=response.outcomes.find(item=>item.source_type===sourceType&&item.record_id===recordId);
         if(!entry?.success)throw new Error(entry?.message??"The deletion outcome could not be confirmed. Refresh before retrying.");
@@ -729,7 +728,7 @@ export function OperationsEventsTable({ rows, loading, hasLoaded, loadError, tok
       setDeleteFeedbackKind("error");
       setDeleteMessage(spreadsheetFeedbackMessage(cause instanceof Error ? cause.message : "Delete failed.", "error"));
     } finally {
-      setDeletePassword("");
+      
       setDeleteConfirmation(false);
       deleteSaving.current = false;
       setDeleteBusy(false);
@@ -838,11 +837,6 @@ export function OperationsEventsTable({ rows, loading, hasLoaded, loadError, tok
       setFeedback({ rowId: record.id, field: "reason", kind: "error", message: cause instanceof Error ? cause.message : "Unable to save this report." });
     }
   };
-  const openMenu = (event: React.MouseEvent<HTMLButtonElement>, key: EventColumnKey) => {
-    event.stopPropagation();
-    const rect = event.currentTarget.getBoundingClientRect();
-    setOpenColumnMenu({ key, left: Math.max(8, Math.min(rect.right - 220, window.innerWidth - 228)), top: Math.min(rect.bottom + 4, window.innerHeight - 330) });
-  };
   const togglePin = (key: EventColumnKey) => {
     if (layout.pins[key]) {
       setLayout((current) => { const pins = { ...current.pins }; delete pins[key]; return { ...current, pins }; });
@@ -864,7 +858,7 @@ export function OperationsEventsTable({ rows, loading, hasLoaded, loadError, tok
     document.body.style.userSelect = "none";
     const startX = event.clientX;
     let latestWidth = initialWidth;
-    const move = (pointer: PointerEvent) => { latestWidth = Math.max(100, Math.min(1200, initialWidth + pointer.clientX - startX)); setLayout((current) => ({ ...current, widths: { ...current.widths, [key]: latestWidth } })); };
+    const move = (pointer: PointerEvent) => { latestWidth = Math.max(60, Math.min(1200, initialWidth + pointer.clientX - startX)); setLayout((current) => ({ ...current, widths: { ...current.widths, [key]: latestWidth } })); };
     const cleanup = () => {
       document.body.style.userSelect = previousUserSelect;
       resizing.current = false;
@@ -1040,7 +1034,7 @@ export function OperationsEventsTable({ rows, loading, hasLoaded, loadError, tok
   return <section aria-label="Unified operations reports" className="min-h-0 space-y-2">
     <div className={REPORT_TOOLBAR_ROW_CLASS}>
       {toolbarLeading && <div className="shrink-0" data-report-toolbar-leading>{toolbarLeading}</div>}
-      <div data-report-toolbar-actions className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2">{sharedWidths.feedback}{sharedDesign.feedback}<ColumnFinder tableKey="operations" rowSearch={{value:search,onSearch:value=>{setSelectedRows(new Set());setSearch(value);},placeholder:"Search rows or columns…"}} columns={OPERATIONS_COLUMNS.map(column=>({key:column.key,title:column.label,hidden:layout.hidden.includes(column.key),index:columns.findIndex(item=>item.key===column.key)}))} viewport={viewportRef} getHeader={key=>viewportRef.current?.querySelector<HTMLElement>(`[data-ops-column="${key}"]`)} onReveal={key=>setLayout(current=>({...current,hidden:current.hidden.filter(item=>item!==key)}))} />{canManageReports && visibleRows.some(row => selectedRows.has(row.id)) && Boolean(selectedTargets?.length) && <><ReportRowActionButton action="edit" disabled={selectedRows.size !== 1 || selectedTargets?.length !== 1 || rowEditBusy || deleteBusy || Boolean(editing)} onClick={editSelectedRow} />{canDeleteSelectedReports && <ReportRowActionButton action="delete" disabled={!selectedTargets?.length || rowEditBusy || deleteBusy || Boolean(editing)} onClick={() => { setDeletePassword(""); setDeleteMessage(null); setDeleteConfirmation(true); }} />}</>}{toolbarActions}<OffloadCleanupNotice key={token} token={token} enabled={canManageReports} version={cleanupVersion} /></div>
+      <div data-report-toolbar-actions className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2">{sharedWidths.feedback}{sharedDesign.feedback}<ColumnFinder tableKey="operations" rowSearch={{value:search,onSearch:value=>{setSelectedRows(new Set());setSearch(value);},placeholder:"Search rows or columns…"}} columns={OPERATIONS_COLUMNS.map(column=>({key:column.key,title:column.label,hidden:layout.hidden.includes(column.key),index:columns.findIndex(item=>item.key===column.key)}))} viewport={viewportRef} getHeader={key=>viewportRef.current?.querySelector<HTMLElement>(`[data-ops-column="${key}"]`)} onReveal={key=>setLayout(current=>({...current,hidden:current.hidden.filter(item=>item!==key)}))} />{canManageReports && visibleRows.some(row => selectedRows.has(row.id)) && Boolean(selectedTargets?.length) && <><ReportRowActionButton action="edit" disabled={selectedRows.size !== 1 || selectedTargets?.length !== 1 || rowEditBusy || deleteBusy || Boolean(editing)} onClick={editSelectedRow} />{canDeleteSelectedReports && <ReportRowActionButton action="delete" disabled={!selectedTargets?.length || rowEditBusy || deleteBusy || Boolean(editing)} onClick={() => {  setDeleteMessage(null); setDeleteConfirmation(true); }} />}</>}{toolbarActions}<OffloadCleanupNotice key={token} token={token} enabled={canManageReports} version={cleanupVersion} /></div>
     </div>
     <div className={SPREADSHEET_PANEL_CLASS}>
     {headerFormatting.configuration}<ReportCellFormattingToolbar selectedFontSize={selectedFormat.fontSize ?? 12} formulaBar={formulas.bar} selectedCellCount={canManageReports && selectedCell ? 1 : 0} selectionIsBold={Boolean(selectedFormat.bold)} selectionIsItalic={Boolean(selectedFormat.italic)} selectionIsUnderlined={Boolean(selectedFormat.underline)} selectedTextColor={selectedFormat.color ?? null} selectedBackgroundColor={selectedFormat.backgroundColor ?? null} onApply={applyCellFormat} {...headerFormatting.toolbarProps} />
@@ -1049,11 +1043,11 @@ export function OperationsEventsTable({ rows, loading, hasLoaded, loadError, tok
         <colgroup><col style={{ width: SPREADSHEET_GUTTER_WIDTH }} />{columns.map((column) => <col key={column.key} style={{ width: column.width }} />)}</colgroup>
         <thead><tr><th scope="col" className={`${REPORT_GRID_HEADER_CELL_CLASS} sticky left-0 z-[70] spreadsheet-gutter whitespace-nowrap text-center !px-1`}><SpreadsheetRowNumber value="#" /><input type="checkbox" disabled={serverPage?.pending} aria-label="Select all visible Offload and Backload reports" checked={selectableReportRows.length > 0 && selectableReportRows.every((row) => selectedRows.has(row.id))} onChange={(event) => setSelectedRows((current) => { const next = new Set(current); selectableReportRows.forEach((row) => event.target.checked ? next.add(row.id) : next.delete(row.id)); return next; })} className="h-4 w-4 rounded border-slate-300 accent-[#2678b9]" /></th>{columns.map((column) => {
           const pinned = layout.pins[column.key];
-          return <th key={column.key} {...headerFormatting.props(column.key)} data-ops-column={column.key} scope="col" draggable={sharedDesign.canEdit && sharedDesign.loaded} onDragStart={(event) => { setDraggedColumn(column.key); event.dataTransfer.effectAllowed = "move"; }} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); reorderByDrop(column.key); }}
+          return <th key={column.key} {...headerFormatting.props(column.key)} onContextMenu={event=>setOpenColumnMenu({key:column.key,...headerFormatting.menuPosition(event)})} data-ops-column={column.key} scope="col" draggable={sharedDesign.canEdit && sharedDesign.loaded} onDragStart={(event) => { setDraggedColumn(column.key); event.dataTransfer.effectAllowed = "move"; }} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); reorderByDrop(column.key); }}
             className={`${REPORT_GRID_HEADER_CELL_CLASS} relative ${pinned ? "z-50" : "z-30"}`} style={cellStyle(column, true)}>
             {headerFormatting.editor(column.key)}<div className="spreadsheet-header-content flex min-w-0 items-center justify-between gap-2">
               {column.sortable && filter !== "Backload" ? <button type="button" className="min-w-0 whitespace-normal break-words text-inherit" data-spreadsheet-header-title title={column.label} onClick={() => sortBy(column.key as EventSortKey)}>{headerFormatting.title(column.key, column.label)}{sort.key === column.key && column.key !== "date" ? (sort.direction === "asc" ? " ↑" : " ↓") : ""}</button> : <span data-spreadsheet-header-title className="min-w-0 whitespace-normal break-words text-inherit" title={column.label}>{headerFormatting.title(column.key, column.label)}</span>}
-              <button type="button" title={`${column.label} options`} aria-label={`${column.label} column options`} aria-haspopup="menu" aria-expanded={openColumnMenu?.key === column.key} onMouseDown={(event) => event.stopPropagation()} onClick={(event) => openMenu(event, column.key)} className="shrink-0 rounded p-1 text-slate-500 hover:bg-slate-100 hover:text-[#0b2341] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9]"><MoreVertical aria-hidden="true" className="h-4 w-4" /></button>
+              
             </div>
             <span role="separator" aria-orientation="vertical" aria-label={`Resize ${column.label}`} onPointerDown={(event) => resizeColumn(event, column.key, column.width)} className="absolute inset-y-0 right-0 z-[70] w-1.5 cursor-col-resize touch-none hover:bg-[#2678b9]/40" />
           </th>;
@@ -1172,8 +1166,8 @@ export function OperationsEventsTable({ rows, loading, hasLoaded, loadError, tok
         <header className="border-b border-slate-100 px-5 py-4"><h2 id="operations-delete-title" className="text-lg font-semibold text-[#0b2341]">Delete selected reports?</h2></header>
         <div className="space-y-3 px-5 py-4 text-sm text-slate-700"><p id="operations-delete-description">Permanently delete {selectedTargets?.length ?? 0} selected report record{selectedTargets?.length === 1 ? "" : "s"}? This cannot be undone. Eligible Offloads include their owned items and receipt images. Protected historical records will be retained, and failures will be reported individually. Other report types retain their existing receipt protections.</p><p>Trips, sibling stops, other reports, POD and Transmittal records will not be deleted. Image cleanup may require a separate retry after database deletion.</p>{deleteMessage && <p role="alert" className="rounded bg-rose-50 p-2 text-rose-800">{deleteMessage}</p>}</div>
         <div className="max-h-40 overflow-y-auto px-5 text-xs text-slate-600">{selectedRows.size ? <ul className="space-y-1">{visibleRows.filter((row) => selectedRows.has(row.id)).map((row) => <li key={row.id}>{row.source_type} · {row.dispatch_number || row.trip_number || "Dispatch unavailable"} · {row.source_record_id}</li>)}</ul> : <p role="alert">The dataset or filter changed. Cancel and select the reports again.</p>}</div>
-        <label className="block px-5 pb-4 text-sm font-medium">Current account password<input autoFocus type="password" autoComplete="current-password" value={deletePassword} disabled={deleteBusy} onChange={event=>setDeletePassword(event.target.value)} className="mt-1 w-full rounded border border-slate-300 p-2" /></label>{(selectedTargets?.length ?? 0)>20&&<p role="alert" className="px-5 text-sm text-rose-700">Select at most 20 reports per confirmation.</p>}
-        <footer className="flex justify-end gap-2 border-t border-slate-100 px-5 py-4"><button type="button" disabled={deleteBusy} onClick={() => { setDeletePassword(""); setDeleteConfirmation(false); }} className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 disabled:opacity-50">Cancel</button><button type="button" disabled={deleteBusy || !deletePassword || !selectedTargets?.length || selectedTargets.length > 20} onClick={() => void deleteSelectedRows()} className="inline-flex items-center gap-2 rounded-md bg-rose-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">{deleteBusy && <LoaderCircle aria-hidden="true" className="h-4 w-4 animate-spin" />}{deleteBusy ? "Deleting…" : `Delete ${selectedTargets?.length ?? 0} report${selectedTargets?.length === 1 ? "" : "s"}`}</button></footer>
+        {(selectedTargets?.length ?? 0)>20&&<p role="alert" className="px-5 text-sm text-rose-700">Select at most 20 reports per confirmation.</p>}
+        <footer className="flex justify-end gap-2 border-t border-slate-100 px-5 py-4"><button type="button" disabled={deleteBusy} onClick={() => {  setDeleteConfirmation(false); }} className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 disabled:opacity-50">Cancel</button><button type="button" disabled={deleteBusy || !selectedTargets?.length || selectedTargets.length > 20} onClick={() => void deleteSelectedRows()} className="inline-flex items-center gap-2 rounded-md bg-rose-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">{deleteBusy && <LoaderCircle aria-hidden="true" className="h-4 w-4 animate-spin" />}{deleteBusy ? "Deleting…" : `Delete ${selectedTargets?.length ?? 0} report${selectedTargets?.length === 1 ? "" : "s"}`}</button></footer>
       </section>
     </div>}
     {openColumnMenu && (() => { const column = OPERATIONS_COLUMNS.find((item) => item.key === openColumnMenu.key); if (!column) return null; return <ReportColumnActionsMenu title={column.label} position={openColumnMenu} onClose={() => setOpenColumnMenu(null)} onRename={() => headerFormatting.startRename(openColumnMenu.key, column.label)} onRestoreTitle={() => headerFormatting.restoreTitle(openColumnMenu.key)} onConfigureInput={() => headerFormatting.configure(openColumnMenu.key, column.label)} sortActions={column.sortable ? (["asc", "desc"] as const).map((direction) => ({ label: direction === "asc" ? "Sort ascending" as const : "Sort descending" as const, active: sort.key === column.key && sort.direction === direction, onClick: () => setSort({ key: column.key as EventSortKey, direction }) })) : undefined} pinned={Boolean(layout.pins[column.key])} onTogglePin={() => togglePin(column.key)} onEditColumn={() => setEditingColumnColor(column.key)} canHide={column.key !== "details" && columns.length > 1} onHide={() => setLayout((current) => ({ ...current, hidden: [...current.hidden, column.key], pins: Object.fromEntries(Object.entries(current.pins).filter(([key]) => key !== column.key)) }))} />; })()}

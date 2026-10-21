@@ -20,14 +20,15 @@ export function SpreadsheetFooter({ total, page = 1, totalPages = 1, children, l
 export type SpreadsheetColumn = { key: string; width: number; style?: CSSProperties };
 
 /** Presentation only: never adds entries to a dataset, selection, or export. */
-export function SpreadsheetBlankRows({ count, columns, start, height, loading = false, gutterWidth = SPREADSHEET_GUTTER_WIDTH, cellProps, onRowSelect }: {
+export function SpreadsheetBlankRows({ count, columns, start, height, loading = false, gutterWidth = SPREADSHEET_GUTTER_WIDTH, cellProps, onRowSelect, rowSelection }: {
   count: number; columns: SpreadsheetColumn[]; start: number; height: number; loading?: boolean; gutterWidth?: number;
   cellProps?: (rowNumber:number,column:string)=>TdHTMLAttributes<HTMLTableCellElement>;
+  rowSelection?: ReadonlySet<number>;
   onRowSelect?: (rowNumber:number,event:MouseEvent<HTMLButtonElement>)=>void;
 }) {
-  return <>{Array.from({ length: count }, (_, index) => <tr key={`blank-${index}`} data-spreadsheet-blank="true" aria-hidden={cellProps?undefined:true} style={{ height }}>
+  return <>{Array.from({ length: count }, (_, index) => <tr key={`blank-${index}`} data-spreadsheet-blank="true" className="report-data-row" aria-hidden={cellProps?undefined:true} style={{ height }}>
     <td className="spreadsheet-gutter sticky left-0 z-30 border-b border-r border-slate-200 bg-slate-50 px-1 text-center align-middle text-xs tabular-nums text-slate-400" style={{ width: gutterWidth, minWidth: gutterWidth }}>
-      {onRowSelect?<button type="button" aria-label={`Select spreadsheet row ${start+index}`} title="Select row; Ctrl/Cmd-click toggles, Shift-click extends" onClick={event=>onRowSelect(start+index,event)} className="w-full text-center focus-visible:outline-2 focus-visible:outline-blue-500"><SpreadsheetRowNumber value={start+index}/></button>:<SpreadsheetRowNumber value={start + index}/>}
+      {onRowSelect&&rowSelection?<input type="checkbox" className="spreadsheet-row-checkbox" aria-label={`Select spreadsheet row ${start+index}`} checked={rowSelection.has(start+index)} onChange={event=>onRowSelect(start+index,event as unknown as MouseEvent<HTMLButtonElement>)}/>:onRowSelect?<button type="button" aria-label={`Select spreadsheet row ${start+index}`} title="Select row; Ctrl/Cmd-click toggles, Shift-click extends" onClick={event=>onRowSelect(start+index,event)} className="w-full text-center focus-visible:outline-2 focus-visible:outline-blue-500"><SpreadsheetRowNumber value={start+index}/></button>:<SpreadsheetRowNumber value={start + index}/>}
       {gutterWidth === SPREADSHEET_GUTTER_WIDTH && <span aria-hidden="true" className="inline-block w-[18px]" />}
     </td>
     {columns.map(column => {const props=cellProps?.(start+index,column.key);return <td key={column.key} {...props} className={`border-b border-r border-slate-100 px-4 ${props?.className??""}`} style={{ width: column.width, minWidth: column.width, maxWidth: column.width, ...column.style,...props?.style }}>{loading && <div className="h-3 w-2/3 animate-pulse rounded-sm bg-slate-100 motion-reduce:animate-none" />}</td>;})}
@@ -66,7 +67,7 @@ export function useSpreadsheetViewport(ref: RefObject<HTMLDivElement | null>, ro
       }
       const sheetTabsHeight = viewport.closest("[data-trips-workspace]")?.querySelector("[data-sheet-tabs]")?.getBoundingClientRect().height ?? 0;
       const available = Math.max(160, (window.visualViewport?.height ?? window.innerHeight) - top - footerHeight - bottomPadding - sheetTabsHeight);
-      viewport.style.height = `${available}px`;
+      if(viewport.style.height!==`${available}px`)viewport.style.height = `${available}px`;
       const table = viewport.querySelector("table");
       const body = table?.tBodies[0];
       const realRows = body ? Array.from(body.rows).filter(row => !row.hasAttribute("data-spreadsheet-blank")) : [];
@@ -74,6 +75,8 @@ export function useSpreadsheetViewport(ref: RefObject<HTMLDivElement | null>, ro
       const used = realRows.reduce((sum, row) => sum + row.getBoundingClientRect().height, 0);
       const header = table?.tHead?.getBoundingClientRect().height ?? 30;
       const toolbar = viewport.querySelector('[aria-label="Cell formatting"]')?.getBoundingClientRect().height ?? 0;
+      const toolbarSize = `${toolbar}px`;
+      if(viewport.style.getPropertyValue("--spreadsheet-toolbar-height")!==toolbarSize)viewport.style.setProperty("--spreadsheet-toolbar-height",toolbarSize);
       // Scroll-container height, not a forced table/body height, determines padding.
       const visibleHeight = viewport.clientHeight;
       const remaining = Math.max(0, visibleHeight - header - toolbar - used);
@@ -92,7 +95,12 @@ export function useSpreadsheetViewport(ref: RefObject<HTMLDivElement | null>, ro
     window.addEventListener("resize", schedule);
     window.visualViewport?.addEventListener("resize", schedule);
     measure();
-    return () => { cancelAnimationFrame(frame); observer.disconnect(); window.removeEventListener("resize", schedule); window.visualViewport?.removeEventListener("resize", schedule); viewport.style.removeProperty("height"); };
+    return () => {
+      cancelAnimationFrame(frame); observer.disconnect();
+      window.removeEventListener("resize", schedule); window.visualViewport?.removeEventListener("resize", schedule);
+      // Activity retains this DOM. Removing its height clamps scrollTop to zero.
+      // A new measurement replaces the height; unmount discards the node.
+    };
   }, [ref, rowCount, enabled]);
   return padding;
 }
@@ -101,6 +109,7 @@ export function spreadsheetFeedbackMessage(message: string, variant: "success" |
   // Only locally composed, bounded outcome summaries may retain their counts.
   if (/^(?:[0-9]+ reports? deleted\.|No reports were deleted\.)(?: [0-9]+ reports? could not be deleted\. Review the selection before retrying\.)?(?: Image cleanup is pending\. Use the image cleanup action to review it\.)?(?: The table could not be refreshed\. Retry loading it\.)?$/.test(message)) return message;
   if (variant === "error") {
+    if(["This option is used by existing records and cannot be removed.","This option is used by saved cells. Rename its label instead of removing or changing its stored value.","This is a protected system option."].includes(message))return message;
     if (/^Invalid formula: #(REF!|DIV\/0!|VALUE!|CYCLE!|ERROR!)$/.test(message)) return message;
     if (/^Choose an active (configured dropdown|status|dropdown) value\.$/.test(message)) return message;
     if (message === "Table design could not be saved or refreshed. Unsaved changes can be retried with Retry table design.") return message;

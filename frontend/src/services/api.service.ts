@@ -159,7 +159,7 @@ async function request<T>(
     response = await fetch(`${API_BASE_URL}${endpoint}`, {
       ...options,
       headers,
-      signal: timeoutSignal ?? options.signal,
+      signal: timeoutSignal&&options.signal ? AbortSignal.any([timeoutSignal,options.signal]) : timeoutSignal ?? options.signal,
     });
   } catch (error) {
     if (timeoutSignal?.aborted) {

@@ -24,7 +24,7 @@ export function useSharedTableDesign(table: string, token: string | null, enable
     let live = true;
     if (!paused) queueMicrotask(() => {
       if (!live) return;
-      setApplied({ owner, snapshot });
+      setApplied(current=>current.owner===owner&&current.snapshot===snapshot?current:{ owner, snapshot });
       if (!snapshot.saving) setPreview(current => current.owner === owner && !Object.keys(current.columns).length ? current : { owner, columns: {} });
     });
     return () => { live = false; };
@@ -33,8 +33,8 @@ export function useSharedTableDesign(table: string, token: string | null, enable
   useEffect(() => {
     if (!active) return;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const refresh = () => { if (timer) return; timer = setTimeout(() => { timer = undefined; void refreshSharedDesign(token!, table); }, 150); };
-    refresh();
+    const refresh = () => { if (timer) return; timer = setTimeout(() => { timer = undefined; void refreshSharedDesign(token!, table, true); }, 150); };
+    void refreshSharedDesign(token!, table);
     const socket = subscribeCollaborationEvents(event => { if (event.kind === "connected" || event.kind === "layout" && event.table === table) refresh(); });
     const signals = subscribeToAdminRealtime(event => { if (event.kind === "resume" || event.kind === "batch" && event.tables.includes("shared_table_column_widths") || event.kind === "change" && event.payload.table === "shared_table_column_widths" || event.kind === "recovered" && event.table === "shared_table_column_widths") refresh(); });
     window.addEventListener("focus", refresh);

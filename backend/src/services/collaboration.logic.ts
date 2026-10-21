@@ -6,10 +6,12 @@ export function canViewTable(role:string,key:string){
  return (COLLAB_TABLES as readonly string[]).includes(key)||["operations","transmittal-tracker","users:truckers"].includes(key)||/^master:(warehouses|customers|customer-stores|stores|store-contacts|pictures|drivers|trucks|trucking-companies|products|trip-types)$/.test(key)||key.startsWith("flex:")&&isValidUuid(key.slice(5));
 }
 export const SOURCE_FIELDS: Record<string,readonly string[]> = {
- trips:["dispatch_number","transaction_number","trip_number","loading_date","estimated_delivery_date","status","remarks","trip_type_id","warehouse_id","added_to_report","letter_status","truck_allocated_by","subcon_rate_manual","signed_dr_upload_date","transmittal_date","tms_date","tms_done_by","pod_ac_shipping_date","lbc_tracking_number"],
- trip_stops:["dispatch_number","transaction_number","dr_number","quantity","total_cbm","stop_sequence","customer_id","store_id","delivery_status","arrival_time","start_unloading_time","finish_unloading_time","departure_time","remarks"],
+ trip_cargo_allocations:["assignment_id","trip_line_item_id","quantity","allocated_cbm"],
+ trip_assignment_stops:["assignment_id","trip_stop_id","progress"],
+ trips:["spreadsheet_issue_type","spreadsheet_issue_reason","dispatch_number","transaction_number","trip_number","loading_date","estimated_delivery_date","status","remarks","trip_type_id","warehouse_id","added_to_report","letter_status","truck_allocated_by","subcon_rate_manual","signed_dr_upload_date","transmittal_date","tms_date","tms_done_by","pod_ac_shipping_date","lbc_tracking_number"],
+ trip_stops:["spreadsheet_issue_type","spreadsheet_issue_reason","dispatch_number","transaction_number","dr_number","quantity","total_cbm","stop_sequence","customer_id","store_id","delivery_status","arrival_time","start_unloading_time","finish_unloading_time","departure_time","remarks"],
  trip_line_items:["product_id","dr_number","quantity","cbm","sap_so_number","customer_po_number","internal_po_number","customer_model","remarks"],
- trip_truck_assignments:["truck_id","driver_id","trucking_company_id","assignment_type","assigned_at","unassigned_at","remarks"],
+ trip_truck_assignments:["stop_scope","truck_id","driver_id","trucking_company_id","assignment_type","assigned_at","unassigned_at","remarks"],
  store_calls:["assigned_to","contact_id","contact_name","contact_number","status","confirmation_status","date_assigned","date_of_contact","time_texted","time_called","remarks"],
  billings:["invoice_number"],
 };

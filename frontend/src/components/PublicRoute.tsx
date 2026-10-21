@@ -13,15 +13,9 @@ export default function PublicRoute({
 }: PublicRouteProps) {
   const { user, profile, loading } = useAuth();
 
-  if (loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-200 border-t-blue-600" />
-      </div>
-    );
-  }
-
-  if (user) {
+  // Restoration must not conceal the login form behind a network-dependent spinner.
+  // Protected routes still wait for the verified profile; redirect only when ready.
+  if (user && !loading && profile) {
     const destination =
       redirectTo && profile?.role !== "TRUCKER"
         ? redirectTo

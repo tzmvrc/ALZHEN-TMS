@@ -27,6 +27,13 @@ export const collaborationResponseMiddleware:RequestHandler=(req,res,next)=>{
    const event={table:row.table_key,column:row.column_key,revision:row.revision,eventId:`layout:${row.table_key}:${row.column_key}:${row.revision}`};
    res.once("finish",()=>{if(res.statusCode>=200&&res.statusCode<300)collaborationEvents.emit("layout",event);});
   }
+  if(req.method==="DELETE"&&body?.success&&body.data?.id&&req.user){
+   const match=requestPath.match(/^\/api\/trips\/([0-9a-f-]+)\/stops\/([0-9a-f-]+)\/line-items\/([0-9a-f-]+)$/i);
+   if(match&&body.data.id===match[3]){
+    const event:Commit={source:"trip_line_items",recordId:body.data.id,operation:"DELETE",version:null,actorId:req.user.id,eventId:`trip_line_items:${body.data.id}:deleted`,fields:[],tripId:match[1],stopId:match[2]};
+    res.once("finish",()=>{if(res.statusCode>=200&&res.statusCode<300){console.info("Operational line item deletion",{actorId:event.actorId,tripId:event.tripId,stopId:event.stopId,lineItemId:event.recordId,eventId:event.eventId});collaborationEvents.emit("commit",event);}});
+   }
+  }
   if(req.method==="PATCH"&&body?.success&&body.data?.id&&req.user){
    for(const [pattern,source] of paths){const match=requestPath.match(pattern);if(!match||body.data.id!==match[1])continue;
     const record=body.data,version=validVersion(record.collaboration_version);

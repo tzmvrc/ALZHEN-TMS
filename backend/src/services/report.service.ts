@@ -84,6 +84,7 @@ function applySearch(
   columns: ReportDefinition["columns"],
   matchingTripIds: string[] = [],
   tripIdField = "trip_id",
+  extraClauses: string[] = [],
 ) {
   const searchFilter = buildIlikeOrFilter(
     columns
@@ -94,7 +95,7 @@ function applySearch(
   if (!searchValue) return queryBuilder;
 
   const safeColumns = columns.filter((column) => !column.key.endsWith("_id"));
-  const clauses = searchFilter ? [searchFilter] : [];
+  const clauses = [...(searchFilter ? [searchFilter] : []),...extraClauses];
   // Some deployed report views project blank references. An exact saved dispatch
   // can still be found through its authoritative trip record before pagination.
   const safeTripIds = matchingTripIds.filter(isValidUuid);
@@ -205,6 +206,8 @@ function resolveViewNames(definition: ReportDefinition) {
 async function attachOperationalRecordIds(
   rows: Record<string, unknown>[],
   fallbackMissingDispatchNumber = false,
+  suppliedTrips?: Record<string,unknown>[],
+  includeDeleteVersions=false,
 ) {
   // Copy internal IDs with underscore prefix to standard field names for frontend compatibility
   for (const row of rows) {
@@ -246,7 +249,7 @@ async function attachOperationalRecordIds(
     })
     .map((row) => row.trip_id).filter((id): id is string => typeof id === "string"))];
   if (tripIds.length) {
-    const { data: trips, error } = await supabaseAdmin.from("trips")
+    const { data: trips, error } = suppliedTrips ? {data:suppliedTrips,error:null} : await supabaseAdmin.from("trips")
       .select("id, dispatch_number, transaction_number").in("id", tripIds);
     if (error) throw new ApiError("Unable to load saved trip references", 500, "TRIP_REFERENCE_QUERY_FAILED");
     const tripById = new Map((trips ?? []).map((trip) => [String(trip.id), trip]));
@@ -272,9 +275,11 @@ async function attachOperationalRecordIds(
   }
 
   // Enrich product_id for rows that have trip_line_item_id but not product_id
+  const enrichCargo = async () => {
   const lineItemIds = [
     ...new Set(
       rows
+        .filter(row=>!Object.hasOwn(row,"product_id")&&!Object.hasOwn(row,"_product_id"))
         .map((row) => row.trip_line_item_id)
         .filter((id): id is string => typeof id === "string"),
     ),
@@ -339,6 +344,8 @@ async function attachOperationalRecordIds(
     }
   }
 
+  };
+  const enrichCalls = async () => {
   // Enrich assigned_to_name for Store Calling
   const storeCallIds = [
     ...new Set(
@@ -350,7 +357,7 @@ async function attachOperationalRecordIds(
   if (storeCallIds.length > 0) {
     const { data: storeCalls, error } = await supabaseAdmin
       .from("store_calls")
-      .select("id, assigned_to, contact_id, trip_id, trip_stop_id")
+      .select("id, assigned_to, contact_id, trip_id, trip_stop_id, collaboration_version")
       .in("id", storeCallIds);
     if (error) {
       console.error("Store-call relationship enrichment failed:", error);
@@ -434,6 +441,7 @@ async function attachOperationalRecordIds(
         if (typeof row.store_call_id !== "string") continue;
         const call = callById.get(row.store_call_id);
         if (!call) continue;
+        row._store_call_version = call.collaboration_version;
         const callTripId =
           typeof call.trip_id === "string" ? call.trip_id : undefined;
         const callStopId =
@@ -541,6 +549,11 @@ async function attachOperationalRecordIds(
       }
     }
   }
+  };
+  await Promise.all([enrichCargo(), enrichCalls()]);
+  const stopIds=[...new Set(rows.filter(row=>!row.trip_line_item_id).map(row=>row.trip_stop_id).filter((id):id is string=>typeof id==="string"))];
+  if(includeDeleteVersions&&stopIds.length){const result=await supabaseAdmin.from("trip_stops").select("id,collaboration_version").in("id",stopIds);if(!result.error){const versions=new Map((result.data??[]).map(row=>[row.id,row.collaboration_version]));for(const row of rows)if(typeof row.trip_stop_id==="string")row._stop_version=versions.get(row.trip_stop_id);}}
+
 
   return rows;
 }
@@ -593,10 +606,11 @@ function getReportDefinition(reportKey: string): ReportDefinition {
   return definition;
 }
 
-async function attachGeneratedTripNumbers(rows: Record<string, unknown>[]) {
+async function attachGeneratedTripNumbers(rows: Record<string, unknown>[], suppliedTrips?: Record<string,unknown>[]) {
   const ids = [...new Set(rows.map(row => row.trip_id ?? row._trip_id).filter((id): id is string => typeof id === "string" && isValidUuid(id)))];
-  if (!ids.length || !await tripReferenceAvailable()) return;
-  const { data, error } = await supabaseAdmin.from("trips").select("id, trip_reference").in("id", ids);
+  if (!ids.length) return;
+  const { data, error } = suppliedTrips ? {data:suppliedTrips,error:null} : await supabaseAdmin.from("trips").select("id, trip_reference").in("id", ids);
+  if(error&&["42703","PGRST204"].includes(error.code)&&/trip_reference/i.test(error.message))return;
   if (error) throw new ApiError("Unable to load generated trip numbers", 500, "TRIP_REFERENCE_QUERY_FAILED");
   const references = new Map((data ?? []).map(trip => [String(trip.id), trip.trip_reference]));
   for (const row of rows) {
@@ -612,7 +626,9 @@ async function attachGeneratedTripNumbers(rows: Record<string, unknown>[]) {
 export async function getReportData(
   reportKey: string,
   query: ReportQueryParams = {},
+  scope?: {tripIds?: string[];storeCallIds?:string[]},
 ): Promise<ReportResponse> {
+  if(scope && Object.values(scope).some(ids=>!ids||!ids.length||ids.length>100||ids.some(id=>!isValidUuid(id))))throw new ApiError("Invalid physical report scope.",400);
   const key = reportKey.trim();
   if (!REPORT_KEYS.includes(key)) throw new ApiError("Report not found", 404, "REPORT_NOT_FOUND");
   const definition = getReportDefinition(key);
@@ -648,15 +664,28 @@ export async function getReportData(
   if (search && ["combined", "dispatch-monitoring", "dispatch", "trip-booking"].includes(key)) {
     const fields = ["dispatch_number", ...(await tripReferenceAvailable() ? ["trip_reference"] : [])];
     const filter = buildIlikeOrFilter(fields, search);
-    const { data, error } = await supabaseAdmin.from("trips").select("id").or(filter!);
-    if (error) throw new ApiError("Unable to search saved trip references", 500, "TRIP_REFERENCE_QUERY_FAILED");
-    matchingTripIds = (data ?? []).map((trip) => String(trip.id));
+    for(let offset=0;;offset+=1000){const {data,error}=await supabaseAdmin.from("trips").select("id").or(filter!).order("id").range(offset,offset+999);
+      if(error)throw new ApiError("Unable to search saved trip references",500,"TRIP_REFERENCE_QUERY_FAILED");
+      matchingTripIds.push(...(data??[]).map(trip=>String(trip.id)));if((data?.length??0)<1000)break;
+    }
   }
 
+  const matchingAssignees:string[]=[];
+  if(key==="store-calling"&&search){
+    const tokens=search.split(/\s+/).filter(Boolean),predicates=tokens.map(token=>buildIlikeOrFilter(["first_name","last_name"],token)!);
+    const predicate=predicates.length===1?predicates[0]:`and(${predicates.map(value=>`or(${value})`).join(",")})`;
+    for(let offset=0;;offset+=1000){const result=await supabaseAdmin.from("profiles").select("id").or(predicate).order("id").range(offset,offset+999);if(result.error)throw new ApiError("Unable to search assigned users.",503);matchingAssignees.push(...(result.data??[]).map(row=>String(row.id)).filter(isValidUuid));if((result.data?.length??0)<1000)break;}
+  }
+  let scopedCalls:string[]|undefined;
+  if(key==="store-calling"&&tripId){scopedCalls=[];for(let offset=0;;offset+=1000){const result=await supabaseAdmin.from("store_calls").select("id").eq("trip_id",tripId).order("id").range(offset,offset+999);if(result.error)throw new ApiError("Unable to read trip store calls.",503);scopedCalls.push(...(result.data??[]).map(row=>row.id));if((result.data?.length??0)<1000)break;}if(!scopedCalls.length)return {rows:[],pagination:buildPaginationMeta(page,limit,0)};}
   let lastError: Error | null = null;
   for (const viewName of viewNames) {
     let builder = supabaseAdmin.from(viewName).select("*", { count: "exact" });
-    if (tripId) builder = builder.eq(tripIdField, tripId);
+    const mapField=(field:string)=>key!=="store-calling"?field:viewName==="vw_store_calling_tracker"?({status:"contact_status",assigned_to:"assigned_to_id"} as Record<string,string>)[field]??field:field==="ship_to"?"store_name":field;
+    if (tripId && key!=="store-calling") builder = builder.eq(tripIdField, tripId);
+    if(scopedCalls)builder=builder.in("store_call_id",scopedCalls);
+    if(scope?.tripIds)builder=builder.in(tripIdField,scope.tripIds);
+    if(scope?.storeCallIds)builder=builder.in("store_call_id",scope.storeCallIds);
     if (key === "dispatch-monitoring" && getQueryString(query.active_transactions) === "true") {
       builder = getQueryString(query.archive_scope) === "archived"
         ? builder.not("transaction_archived_at", "is", null)
@@ -664,7 +693,7 @@ export async function getReportData(
     }
     if (ongoingTripIds) builder = builder.in("trip_id", ongoingTripIds);
     if(issueTripIds)builder=builder.in(tripIdField,issueTripIds);
-    builder = applyFilters(builder, definition, query);
+    builder = applyFilters(builder, key==="store-calling"?{...definition,filters:definition.filters.map(filter=>({...filter,field:mapField(filter.field)}))}:definition, query);
     const reportTableKeys = [
       "combined",
       "dispatch-monitoring",
@@ -674,9 +703,7 @@ export async function getReportData(
     ];
     const searchColumns = reportTableKeys.includes(key)
       ? definition.columns.filter(
-          // Store Calling's assigned_to projection is a profile UUID; its
-          // display name is enriched after the query and is searched client-side.
-          // Route is also derived after fetching the report page, not a view column.
+          // Relationship UUIDs and derived Route values are not text-search columns.
           (column) =>
             column.key !== "route" &&
             !(key === "store-calling" && column.key === "assigned_to"),
@@ -686,44 +713,49 @@ export async function getReportData(
           title: column,
           type: "text" as const,
         }));
-    builder = applySearch(builder, search, searchColumns, matchingTripIds, tripIdField);
-    builder = builder.order(sortBy, { ascending: sortOrder === "asc" });
+    builder = applySearch(builder, search, searchColumns.map(column=>({...column,key:mapField(column.key)})), matchingTripIds, tripIdField,
+      matchingAssignees.length?[`${mapField("assigned_to")}.in.(${matchingAssignees.join(",")})`]:[]);
+    builder = builder.order(mapField(sortBy), { ascending: sortOrder === "asc" });
+    // Stable boundaries when many Master List rows share the selected sort value.
+    // These physical columns are part of the existing dispatch-monitoring view.
+    const tieBreakers: Record<string,string[]> = {
+      "dispatch-monitoring": ["trip_id","_trip_stop_id","_assignment_id"],
+      dispatch: ["_trip_id","_trip_stop_id","_trip_line_item_id","_assignment_id","_incident_id","_backload_id","_offload_id"],
+      "trip-booking": ["_trip_id","_trip_stop_id","_trip_line_item_id","_assignment_id","_billing_id"],
+      "store-calling": ["store_call_id"],
+    };
+    for(const column of tieBreakers[key]??[])if(column!==sortBy)builder=builder.order(column,{ascending:true,nullsFirst:false});
     builder = builder.range(from, from + limit - 1);
     const { data, error, count } = await builder;
     if (!error) {
       const rows = (data ?? []) as Record<string, unknown>[];
       for (const row of rows) {
+        if(key==="store-calling"){row.ship_to??=row.store_name;row.status??=row.contact_status;row.assigned_to??=row.assigned_to_id;}
         if (Object.hasOwn(row, "transmittal_ref")) {
           const reference = resolveLegacyPodCellValue(row.transmittal_ref);
           row.transmittal_ref = reference.value;
           row.transmittal_ref_conflict = reference.conflict;
         }
       }
+      let parentTrips:Record<string,unknown>[]|undefined;
+      if(["combined","dispatch","dispatch-monitoring","trip-booking"].includes(key)){
+        const ids=[...new Set(rows.map(row=>row.trip_id??row._trip_id).filter((id):id is string=>typeof id==="string"&&isValidUuid(id)))];
+        if(ids.length){let result=await supabaseAdmin.from("trips").select("id,dispatch_number,transaction_number,trip_reference,warehouse_id").in("id",ids);
+          if(result.error&&["42703","PGRST204"].includes(result.error.code)&&/trip_reference/i.test(result.error.message))result=await supabaseAdmin.from("trips").select("id,dispatch_number,transaction_number,warehouse_id").in("id",ids) as typeof result;
+          if(result.error)throw new ApiError("Unable to load report trip relationships.",503);parentTrips=result.data??[];
+        }else parentTrips=[];
+      }
       const enriched = ["combined", "dispatch", "dispatch-monitoring", "trip-booking", "store-calling"].includes(key)
-        ? await attachOperationalRecordIds(rows, key === "dispatch-monitoring")
+        ? await attachOperationalRecordIds(rows, key === "dispatch-monitoring", parentTrips, getQueryString(query.record_delete_versions)==="true")
         : rows;
-      await attachGeneratedTripNumbers(enriched);
-      if (["combined", "dispatch", "dispatch-monitoring"].includes(key)) {
-        await attachLoadingMilestones(enriched);
-      }
-      if (["combined", "dispatch", "dispatch-monitoring", "trip-booking", "store-calling"].includes(key)) {
-        const tripIds = [...new Set(enriched
-          .map((row) => row.trip_id)
-          .filter((id): id is string => typeof id === "string" && id.length > 0))];
-        try {
-          const routes = await getTripRoutes(tripIds);
-          for (const row of enriched) {
-            const tripId = typeof row.trip_id === "string" ? row.trip_id : null;
-            row.route = tripId ? routes.get(tripId) ?? null : null;
-          }
-        } catch (error) {
-          console.error("Report route enrichment failed:", {
-            reportKey: key,
-            error: error instanceof Error ? error.message : "Unknown error",
-          });
-          for (const row of enriched) row.route = null;
-        }
-      }
+      const tripIds = [...new Set(enriched.map(row => row.trip_id).filter((id): id is string => typeof id === "string" && id.length > 0))];
+      await Promise.all([
+        attachGeneratedTripNumbers(enriched,parentTrips),
+        ["combined", "dispatch", "dispatch-monitoring"].includes(key) ? attachLoadingMilestones(enriched) : Promise.resolve(),
+        ["combined", "dispatch", "dispatch-monitoring", "trip-booking", "store-calling"].includes(key) ? getTripRoutes(tripIds,parentTrips?.map(trip=>({id:String(trip.id),warehouse_id:typeof trip.warehouse_id==="string"?trip.warehouse_id:null}))).then(routes => {
+          for (const row of enriched) row.route = typeof row.trip_id === "string" ? routes.get(row.trip_id) ?? null : null;
+        }).catch(() => { for (const row of enriched) row.route = null; console.warn("Report route enrichment unavailable", {reportKey:key}); }) : Promise.resolve(),
+      ]);
       return {
         rows: enriched,
         pagination: buildPaginationMeta(page, limit, count ?? rows.length),

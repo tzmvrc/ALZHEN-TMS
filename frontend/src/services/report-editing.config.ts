@@ -572,6 +572,9 @@ export function getReportEditDefinition(
   row?: Record<string, unknown>,
 ): ReportEditDefinition | null {
   if (columnKey === "trip_number" || columnKey === "trip_reference") return null;
+  if (columnKey === "dispatch_number") return tripScalars.dispatch_number;
+  if (columnKey === "stop_dispatch_reference") return row?.trip_stop_id || row?._trip_stop_id ? stopScalars.dispatch_number : null;
+  if(["issue_report_type","issue_reason"].includes(columnKey)&&["combined","dispatch-monitoring","dispatch","trip-booking"].includes(reportKey)){const field=columnKey==="issue_report_type"?"spreadsheet_issue_type":"spreadsheet_issue_reason";return row?.trip_stop_id||row?._trip_stop_id?stopField(columnKey==="issue_report_type"?"Issue / Report Type":"Reason",field):tripField(columnKey==="issue_report_type"?"Issue / Report Type":"Reason",field); }
   if (["combined", "dispatch", "dispatch-monitoring"].includes(reportKey) && ["loading_start_at", "loading_finished_at"].includes(columnKey)) {
     return {label: columnKey === "loading_start_at" ? "Loading Start" : "Loading Finish", sourceEntity: "loadingReport", sourceField: columnKey, editor: "datetime", recordIdField: "loading_report_id"};
   }
@@ -584,7 +587,7 @@ export function getReportEditDefinition(
     };
     if (fields[columnKey]) return columnKey === "transmittal_ref" && row?.transmittal_ref_conflict ? null : fields[columnKey];
   }
-  if (row && ["dispatch_number", "transaction_number"].includes(columnKey)) {
+  if (row && columnKey === "transaction_number") {
     // Stop rows display their own saved identifiers in the live report views.
     if (row.trip_stop_id || row._trip_stop_id) {
       return stopScalars[columnKey];

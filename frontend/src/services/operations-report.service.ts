@@ -116,13 +116,13 @@ export async function updateOperationsEventType(token: string, sourceType: Opera
   return response;
 }
 
-export async function deleteOperationsReport(token: string, sourceType: OperationsSourceType, recordId: string, password: string) {
-  const response = await unwrap(apiDelete<ApiResponse<{ source_type: OperationsSourceType; record_id: string; cleanup_pending?: boolean; operation_id?: string }>>(`/reports/operations/reports/${sourceType.toLowerCase()}/${encodeURIComponent(recordId)}`, token, {current_password:password}));
+export async function deleteOperationsReport(token: string, sourceType: OperationsSourceType, recordId: string, _password?: string) {
+  const response = await unwrap(apiDelete<ApiResponse<{ source_type: OperationsSourceType; record_id: string; cleanup_pending?: boolean; operation_id?: string }>>(`/reports/operations/reports/${sourceType.toLowerCase()}/${encodeURIComponent(recordId)}`, token, {}));
   invalidateOperations();
   return response;
 }
-export async function deleteOperationsReports(token:string,targets:Array<{source_type:OperationsSourceType;record_id:string}>,password:string){
- const result=await unwrap(apiPost<ApiResponse<{outcomes:Array<{source_type:OperationsSourceType;record_id:string;success:boolean;message?:string;result?:{cleanup_pending?:boolean;operation_id?:string}}> }>>(`${ROOT}/reports/delete`,{targets,current_password:password},token));
+export async function deleteOperationsReports(token:string,targets:Array<{source_type:OperationsSourceType;record_id:string}>,_password?:string){
+ const result=await unwrap(apiPost<ApiResponse<{outcomes:Array<{source_type:OperationsSourceType;record_id:string;success:boolean;message?:string;result?:{cleanup_pending?:boolean;operation_id?:string}}> }>>(`${ROOT}/reports/delete`,{targets},token));
  invalidateOperations();return result;
 }
 export type OffloadCleanupJob = { id: string; offload_id?: string; backload_id?: string; source_type?: "OFFLOAD"|"BACKLOAD"; state: "PENDING_STORAGE"; attempts: number };

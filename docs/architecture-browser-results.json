@@ -1,0 +1,73 @@
+{
+  "architecture-pagination-browser": {
+    "isolated": true,
+    "results": [
+      "Master: all 423 physical rows available incrementally",
+      "Dispatch Monitoring: next, last and previous pages",
+      "Dispatch Report: next, last and previous pages",
+      "Trip Booking: next, last and previous pages",
+      "Store Calling: next, last and previous pages",
+      "Store Calling: global server search reaches a row beyond the first page",
+      "Store-call confirmation is exact-child scoped and has no password",
+      "Failed API read shows an error and Retry recovers to a genuine empty state",
+      "Tracker: next page and explicitly labelled Reset Overrides"
+    ],
+    "masterRows": 423,
+    "productionWrites": 0,
+    "errors": []
+  },
+  "architecture-convoy-browser": {
+    "isolated": true,
+    "productionWrites": 0,
+    "explicitCargoConfirmation": true,
+    "oneAllocationRequest": true,
+    "physicalTarget": "00000000-0000-4000-8000-000000000040",
+    "trackerRows": 4,
+    "separateAssignedAndReportedPlate": true,
+    "driverReadOnlyInStopProjection": true,
+    "emptyFooterRemoved": true,
+    "fixedHeaderFont": true,
+    "narrowHeader": {
+      "width": 60,
+      "height": 56.76250076293945,
+      "font": "12px",
+      "whiteSpace": "normal"
+    },
+    "widthWrites": 1,
+    "customInputConfiguration": true,
+    "relationshipTypeProtected": true,
+    "errors": []
+  },
+  "architecture-delete-browser": {
+    "isolated": true,
+    "impactPreview": true,
+    "unapprovedDeletionDisabled": true,
+    "cancelWrites": 0,
+    "duplicateClickRequests": 1,
+    "confirmedSuccess": true,
+    "productionWrites": 0
+  },
+  "architecture-deletion-feedback-browser": {
+    "isolated": true,
+    "productionWrites": 0,
+    "noPasswordReentry": true,
+    "protectedFailureRetainsDialog": true,
+    "networkFailureRetainsDialog": true,
+    "duplicateClickPrevented": true,
+    "busyFocusPreserved": true,
+    "cleanupPendingWarningAccurate": true,
+    "confirmedRequests": 1,
+    "errors": []
+  },
+  "architecture-editor-performance-browser": {
+    "mountedCells": 5000,
+    "ownerRenders": 1,
+    "unrelatedRenders": 4999,
+    "hundredDraftsToPaintMs": 81.19999992847443,
+    "committed": null,
+    "fullOwnerRerendersDuringTyping": 0,
+    "unrelatedCellRendersDuringTyping": 0,
+    "apiRequests": 0,
+    "productionWrites": 0
+  }
+}

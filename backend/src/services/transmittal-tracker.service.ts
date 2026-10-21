@@ -210,7 +210,7 @@ async function readByIds<T>(tableName: string, select: string, column: string, i
   const rows: T[] = [];
   for (let index = 0; index < ids.length; index += 100) {
     const batchIds = ids.slice(index, index + 100);
-    rows.push(...await readPaged<T>(tableName, select, (query) => query.in(column, batchIds)));
+    rows.push(...await readPaged<T>(tableName, select, (query) => query.in(column, batchIds).order("id",{ascending:true})));
   }
   return rows;
 }
@@ -218,7 +218,9 @@ async function readByIds<T>(tableName: string, select: string, column: string, i
 async function readSourceData(stopIdsInput?: string[]) {
   // Stops define tracker cardinality. Every enrichment collection is fetched
   // separately and grouped in logic, avoiding line-item/assignment cross joins.
-  const stops = stopIdsInput?.length === 0 ? [] : await readPaged<TransmittalStopRecord>("trip_stops", "id, trip_id, stop_sequence, customer_id, store_id, delivery_status, finish_unloading_time, dr_number, dr_version, quantity, total_cbm, updated_at", (query) => (stopIdsInput ? query.in("id",stopIdsInput) : query).order("trip_id", { ascending: true }).order("stop_sequence", { ascending: true }).order("id", { ascending: true }));
+  const stopFields="id, trip_id, stop_sequence, customer_id, store_id, delivery_status, finish_unloading_time, dr_number, dr_version, quantity, total_cbm, updated_at";
+  const stops=stopIdsInput ? await readByIds<TransmittalStopRecord>("trip_stops",stopFields,"id",stopIdsInput)
+    : await readPaged<TransmittalStopRecord>("trip_stops",stopFields,query=>query.order("trip_id",{ascending:true}).order("stop_sequence",{ascending:true}).order("id",{ascending:true}));
   const tripIds = [...new Set(stops.map((stop) => stop.trip_id).filter(Boolean))];
   const storeIds = [...new Set(stops.map((stop) => stop.store_id).filter((id): id is string => Boolean(id)))];
   const customerIds = [...new Set(stops.map((stop) => stop.customer_id).filter((id): id is string => Boolean(id)))];
@@ -259,10 +261,13 @@ async function readSourceRowsAndCells(tableId: string, stopIds: string[]) {
   return { rows, cells };
 }
 
-export async function getTracker(actor: FlexActor, searchInput: unknown, requestId?: string, pageInput?: Record<string,unknown>) {
+const isValidPhysicalStop=(id:string)=>/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+export async function getTracker(actor: FlexActor, searchInput: unknown, requestId?: string, pageInput?: Record<string,unknown>, physicalStopIds?: string[]) {
   const { table, access } = await getTrackerAccess(actor, "view");
   const pageOptions = pageInput ? parseTrackerPageQuery(pageInput) : undefined;
-  let pageIds: string[] | undefined, total = 0;
+  if(physicalStopIds && (physicalStopIds.length>500 || physicalStopIds.some(id=>!isValidPhysicalStop(id))))throw new ApiError("Invalid Tracker reference scope.",400);
+  let pageIds: string[] | undefined = physicalStopIds, total = 0;
+  let projections: Record<string, any>[] | undefined;
   if (pageOptions) {
     const result = await trackerPageRequest(supabaseAdmin,pageOptions);
     if (result.error) {
@@ -270,9 +275,18 @@ export async function getTracker(actor: FlexActor, searchInput: unknown, request
       if (["42P01","PGRST205"].includes(result.error.code)) throw new ApiError("Tracker pagination migration is pending approval/application.",503,"TRACKER_PAGINATION_NOT_READY");
       failDb("page query",result.error);
     }
-    const selectedIds: string[]=(result.data ?? []).map((row: {trip_stop_id:string})=>row.trip_stop_id); pageIds=selectedIds; total=result.count ?? 0;
-    if(new Set(selectedIds).size!==selectedIds.length) throw new ApiError("Tracker page returned duplicate transaction identities.",409,"TRACKER_PAGE_IDENTITY_CONFLICT");
+    projections=result.data ?? [];
+    const identities=projections!.map(row=>`${row.trip_stop_id}:${row.assignment_id??""}`);
+    if(new Set(identities).size!==identities.length) throw new ApiError("Tracker page returned duplicate assignment/stop identities.",409,"TRACKER_PAGE_IDENTITY_CONFLICT");
+    pageIds=[...new Set(projections!.map(row=>String(row.trip_stop_id)))]; total=result.count ?? 0;
   }
+  // Formula references and non-paged exports resolve the same physical projection
+  // as the paged grid. Only the requested stops are enriched when a scope exists.
+  if (!pageOptions) projections=await readPaged<Record<string,any>>("v_transmittal_tracker_page","*",query=>{
+    if(physicalStopIds)query=query.in("trip_stop_id",[...new Set(physicalStopIds)]);
+    return query.order("trip_stop_id",{ascending:true}).order("assignment_id",{ascending:true,nullsFirst:false});
+  });
+  if(!pageIds)pageIds=[...new Set(projections!.map(row=>String(row.trip_stop_id)))];
   const [source, columnResult] = await Promise.all([
     readSourceData(pageIds),
     supabaseAdmin.from("flex_columns").select(COLUMN_FIELDS).eq("table_id", table.id).eq("is_archived", false),
@@ -308,7 +322,11 @@ export async function getTracker(actor: FlexActor, searchInput: unknown, request
   const eligible = { ...source, stops: source.stops.filter((stop) => isTransmittalEligible(stop, rowByStop.has(stop.id))) };
   const built = buildTransmittalTrackerRows(eligible, cellsByStop);
   const byId = new Map(built.map(row=>[row.trip_stop_id,row]));
-  const rows = pageIds ? pageIds.flatMap(id=>byId.has(id)?[byId.get(id)!]:[]) : filterTransmittalTrackerRows(built,searchInput === undefined ? "" : String(searchInput));
+  const projected=projections!.flatMap(projection=>{
+    const base=byId.get(String(projection.trip_stop_id));
+    return base?[{...base,...projection,assignment_id:projection.assignment_id as string|null,assigned_plate_number:projection.assigned_plate_number as string|null,cells:base.cells,legacy_conflicts:base.legacy_conflicts}]:[];
+  });
+  const rows = pageOptions ? projected : filterTransmittalTrackerRows(projected,searchInput === undefined ? "" : String(searchInput));
   const requestIdValue = requestId && requestId.length <= 100 ? requestId : undefined;
   return { table_id: table.id, access, columns, rows, request_id: requestIdValue, ...(pageOptions ? {pagination:{page:pageOptions.page,limit:pageOptions.limit,total,totalPages:Math.max(1,Math.ceil(total/pageOptions.limit))}} : {}) };
 }

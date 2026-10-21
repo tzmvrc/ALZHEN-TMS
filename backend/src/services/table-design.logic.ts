@@ -19,7 +19,7 @@ export function validateDesignPatch(value:unknown){
   if(key==="alias"){if(item!==null&&(typeof item!=="string"||!item.trim()||item.length>100||/[\x00-\x1f]/.test(item)))fail();}
   else if(key==="combined"){if(typeof item!=="boolean")fail();}
   else if(key==="input"){
-   const config=object(item);if(Object.keys(config).some(key=>!["type","options"].includes(key))||!["TEXT","DROPDOWN"].includes(String(config.type)))fail();
+   const config=object(item);if(Object.keys(config).some(key=>!["type","options"].includes(key))||!["TEXT","NUMBER","DATE","DROPDOWN"].includes(String(config.type)))fail();
    if(config.options!==undefined){if(!Array.isArray(config.options)||config.options.length>100)fail();const seen=new Set<string>();for(const raw of config.options as unknown[]){const option=object(raw);if(Object.keys(option).some(key=>!["value","label","color","active"].includes(key))||typeof option.value!=="string"||!option.value.trim()||option.value.length>500||typeof option.label!=="string"||!option.label.trim()||option.label.length>100||!color(option.color)||typeof option.active!=="boolean"||seen.has(option.value))fail();seen.add(option.value as string);}}
   }
   else if(key==="hidden"){if(typeof item!=="boolean")fail();}

@@ -4,7 +4,7 @@ async(page)=>{
  p.on('pageerror',error=>errors.push(error.message));
  try{
   await p.route('**/api/**',route=>{requests++;return route.fulfill({contentType:'application/json',body:'{"success":true,"data":[]}'});});
-  await p.goto('http://localhost:5173/login');
+  await p.goto('http://localhost:5173/tests/table-fixture.html');
   const result=await p.evaluate(async()=>{
    const code=await(await fetch('/src/components/admin/ReportSpreadsheetShared.tsx')).text(),main=await(await fetch('/src/main.tsx')).text();
    const React=(await import(code.match(/from ["']([^"']*\/react\.js[^"']*)["']/)[1])).default;

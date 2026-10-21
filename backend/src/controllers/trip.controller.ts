@@ -1,3 +1,4 @@
+import {ApiError} from "../utils/api-response.js";
 import { Request, Response } from "express";
 import {
   createTripLineItemRecord,
@@ -70,6 +71,7 @@ export async function getTripByDispatch(req: Request, res: Response) {
     const result = await getTripByDispatchNumber(dispatchNumber);
     return sendSuccess(res, 200, "Trip resolved successfully", result);
   } catch (error) {
+    if(error instanceof ApiError)return sendError(res,error.statusCode,error.message,error.code);
     const message =
       error instanceof Error ? error.message : "Unable to resolve trip";
     if (message === "Trip not found") {
@@ -312,9 +314,10 @@ export async function deleteTripStop(req: Request, res: Response) {
       ? req.params.stopId[0]
       : (req.params.stopId ?? "");
 
-    const result = await deleteTripStopRecord(tripId, stopId);
+    const result = await deleteTripStopRecord(tripId, stopId,{id:req.user!.id,role:req.profile!.role},req.body?.expected_version);
     return sendSuccess(res, 200, "Trip stop deleted successfully", result);
   } catch (error) {
+    if(error instanceof ApiError)return sendError(res,error.statusCode,error.message,error.code);
     const message =
       error instanceof Error ? error.message : "Unable to delete trip stop";
     if (message === "Trip not found") {

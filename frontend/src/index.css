@@ -108,7 +108,7 @@ select {
 
 .report-data-row:has([data-report-row-select]:checked) { background-color: #eaf4ff; }
 .report-data-row:has([data-report-row-select]:checked) > td { background-color: #eaf4ff; }
-.report-data-row:not(:has([data-report-row-select]:checked)) > td:not([data-cell-hover-disabled="true"]):hover {
+.report-data-row:not(:has([data-report-row-select]:checked)) > td:not([data-cell-hover-disabled="true"]):not([data-spreadsheet-selected="true"]):not([data-formula-selected="true"]):hover {
   outline: 1px solid rgba(38, 120, 185, 0.2);
   outline-offset: -1px;
 }
@@ -557,10 +557,10 @@ input[type="checkbox"] { width: 14px; height: 14px; min-width: 14px; min-height:
 .spreadsheet-grid td[data-formula-selected="true"] { outline:2px solid #2678b9; outline-offset:-2px; }
 .spreadsheet-grid td[data-formula-fill="true"] { box-shadow:inset 0 0 0 2px #60a5fa; }
 
-/* Trips alone: one-line report-sized headings; data rows and other report headers are untouched. */
+/* Trips keeps compact padding while headings wrap naturally at narrower widths. */
 .spreadsheet-grid[data-compact-headers="true"] > thead > tr > th { padding-block:4px; line-height:1.333333; vertical-align:middle; }
 .spreadsheet-grid[data-compact-headers="true"] > thead > tr > th > .spreadsheet-header-content { min-height:0; }
-.spreadsheet-grid[data-compact-headers="true"] [data-spreadsheet-header-title] { flex:1 1 auto; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; padding-block:0; }
+.spreadsheet-grid[data-compact-headers="true"] [data-spreadsheet-header-title] { flex:1 1 auto; min-width:0; white-space:normal; overflow-wrap:anywhere; padding-block:0; }
 
 /* Formula references are ephemeral and never replace selection outlines. */
 .spreadsheet-grid td[data-formula-reference="true"] { box-shadow: inset 0 0 0 2px #10b981; }
@@ -569,3 +569,57 @@ input[type="checkbox"] { width: 14px; height: 14px; min-width: 14px; min-height:
 .spreadsheet-grid input[type="number"] { appearance: textfield; -moz-appearance: textfield; }
 .spreadsheet-grid input[type="number"]::-webkit-inner-spin-button,
 .spreadsheet-grid input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+
+/* Shared spreadsheet selections must remain visible through every editor type. */
+.spreadsheet-grid td[data-spreadsheet-selected="true"] {
+  outline: 2px solid #3b82f6 !important;
+  outline-offset: -2px !important;
+  box-shadow: inset 0 0 0 1px #3b82f6;
+}
+.spreadsheet-grid [data-spreadsheet-header-title],
+.spreadsheet-grid[data-compact-headers="true"] [data-spreadsheet-header-title] {
+  white-space: normal !important; overflow-wrap: anywhere; text-overflow: clip;
+  overflow: visible; line-height: 1.2; min-height: 0; max-width: 100%;
+}
+
+.spreadsheet-grid input[type="number"] { appearance: textfield; -moz-appearance: textfield; }
+.spreadsheet-grid input[type="number"]::-webkit-inner-spin-button,
+.spreadsheet-grid input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.spreadsheet-grid .spreadsheet-row-checkbox { width: 12px; height: 12px; margin: 0; vertical-align: middle; }
+
+/* Local pointer selection paints before any editor or presence reconciliation. */
+.spreadsheet-grid[data-fast-selection] td[data-fast-selected] { outline:2px solid #3b82f6!important; outline-offset:-2px!important; }
+.spreadsheet-grid[data-fast-selection] td:not([data-fast-selected])[data-spreadsheet-selected="true"] { outline:none!important; }
+[data-trips-workspace] :is(button,[role="menuitem"],[role="option"],input[type="checkbox"],select),
+[data-spreadsheet-formatting] button,[data-spreadsheet-context-menu] button,
+.spreadsheet-grid thead th[data-spreadsheet-column] { cursor:pointer; }
+[data-trips-workspace] :is(button:disabled,input:disabled,select:disabled) { cursor:not-allowed; }
+.spreadsheet-grid :is(input:not([type="checkbox"]),textarea),.spreadsheet-header-editor { cursor:text; }
+.spreadsheet-grid [role="separator"][aria-orientation="vertical"] { cursor:col-resize; }
+.spreadsheet-grid [role="separator"][aria-orientation="horizontal"] { cursor:row-resize; }
+.spreadsheet-header-editor ~ .spreadsheet-header-content { visibility:hidden; }
+
+[role="menu"] button,[role="listbox"] [role="option"],[aria-label="Configure column"] button { cursor:pointer; }
+.spreadsheet-grid thead [data-spreadsheet-header-title] { text-align:left; cursor:pointer; }
+
+.spreadsheet-header-editor { text-align:left; }
+
+/* Identical physical gutter geometry in headers, data rows and blank rows.
+   Center the content without changing table-cell display or variable row sizing. */
+.spreadsheet-grid .spreadsheet-gutter { text-align: center !important; vertical-align: middle; }
+.spreadsheet-grid .spreadsheet-gutter .spreadsheet-row-checkbox { display: block; margin: auto; }
+.spreadsheet-grid [data-spreadsheet-header-title] { text-align: left; white-space: normal; overflow-wrap: anywhere; }
+
+/* Real and presentation-only cells share a CSS-only hover. Selection/editor
+   outlines remain authoritative, including user-colored backgrounds. */
+.spreadsheet-grid tbody td:not(.spreadsheet-gutter):not([data-cell-hover-disabled="true"]):not([data-spreadsheet-selected="true"]):not([data-formula-selected="true"]):hover {
+  outline: 1px solid rgba(38,120,185,.35);
+  outline-offset: -1px;
+  box-shadow: inset 0 0 0 9999px rgba(38,120,185,.045);
+}
+
+/* Wrap narrow titles without changing configured header typography. */
+.spreadsheet-grid thead th:not(.spreadsheet-gutter) { padding-inline: 3px; }
+.spreadsheet-grid [data-spreadsheet-header-title] { overflow-wrap:anywhere; word-break:normal; white-space:normal; }
+[data-trips-workspace] { min-height:0; display:flex; flex-direction:column; }
+[data-trips-workspace] > [role=tabpanel], [data-trips-workspace] [role=tabpanel] { min-height:0; }

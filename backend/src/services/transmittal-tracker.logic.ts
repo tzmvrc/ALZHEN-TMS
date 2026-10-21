@@ -42,6 +42,8 @@ export type TransmittalSourceValues = {
 
 export type TransmittalCell = { value: unknown; version: number; row_id: string };
 export type TransmittalTrackerRow = {
+  assignment_id?: string | null;
+  assigned_plate_number?: string | null;
   trip_stop_id: string;
   trip_id: string;
   transmittal_ref: string;

@@ -73,14 +73,23 @@ export function projectTrackerExportRows<T extends object>(
 }
 
 /** Keep the client sheet scoped to one exact reference and use reconciled date overrides. */
-export function projectTransmittalSheetRows<T extends object>(rows: T[], reference: string) {
-  return rows.flatMap((row) => {
+export function projectTransmittalSheetRows<T extends object>(rows: T[], reference: string):T[] {
+  const groups=new Map<string,Array<T & Record<string,unknown> & ReconciledTrackerRow>>();
+  rows.forEach((row,index)=>{
     const values = row as T & Record<string, unknown> & ReconciledTrackerRow;
-    if (values.transmittal_ref !== reference) return [];
-    return [{
+    if(values.transmittal_ref!==reference)return;
+    const key=typeof values.trip_stop_id==="string"?`${values.trip_id??""}:${values.trip_stop_id}`:`unbound:${index}`;
+    const group=groups.get(key)??[];group.push(values);groups.set(key,group);
+  });
+  // Prepared documents represent physical stops, not the assignment-expanded
+  // spreadsheet grain. List the convoy plates without duplicating the delivery.
+  return [...groups.values()].map(group=>{
+    const values=group[0],joined=(field:string)=>[...new Set(group.map(row=>row[field]).filter((value):value is string=>typeof value==="string"&&Boolean(value)))].join(", ");
+    return {
       ...values,
+      ...(group.length>1?{assignment_id:null,plate_number:joined("plate_number"),assigned_plate_number:joined("assigned_plate_number"),driver_name:joined("driver_name")}:{}),
       loading_date: effectiveTrackerExportValue(values, values.loading_date, "loading_date"),
       date_delivered: effectiveTrackerExportValue(values, values.date_delivered, "date_delivered"),
-    }];
+    } as T;
   });
 }

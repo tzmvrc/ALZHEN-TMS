@@ -1,0 +1,2917 @@
+{
+  "locks": 0,
+  "views": [
+    {
+      "viewname": "v_dispatch_monitoring",
+      "definition": " WITH unique_active_primary_assignments AS (\n         SELECT assignment.id,\n            assignment.trip_id,\n            assignment.truck_id,\n            assignment.driver_id,\n            assignment.trucking_company_id,\n            assignment.assignment_type,\n            assignment.assigned_at,\n            assignment.unassigned_at,\n            assignment.remarks,\n            assignment.created_at,\n            assignment.updated_at\n           FROM trip_truck_assignments assignment\n          WHERE ((assignment.assignment_type = 'PRIMARY'::text) AND (assignment.unassigned_at IS NULL) AND (NOT (EXISTS ( SELECT 1\n                   FROM trip_truck_assignments other\n                  WHERE ((other.trip_id = assignment.trip_id) AND (other.assignment_type = 'PRIMARY'::text) AND (other.unassigned_at IS NULL) AND (other.id <> assignment.id))))))\n        )\n SELECT t.id AS trip_id,\n        CASE\n            WHEN (trip_stops.id IS NULL) THEN t.dispatch_number\n            ELSE trip_stops.dispatch_number\n        END AS dispatch_number,\n    t.loading_date,\n    warehouses.code AS warehouse_code,\n    warehouses.name AS warehouse_name,\n    trucks.plate_number,\n    concat_ws(' '::text, drivers.first_name, drivers.last_name) AS driver_name,\n    trucking_companies.name AS trucking_company,\n    t.status AS trip_status,\n    trip_stops.stop_sequence,\n    customers.name AS customer_name,\n    customer_stores.name AS store_name,\n    trip_stops.delivery_status,\n    trip_stops.arrival_time,\n    trip_stops.start_unloading_time,\n    trip_stops.finish_unloading_time,\n    trip_stops.departure_time,\n    t.remarks,\n        CASE\n            WHEN (trip_stops.id IS NULL) THEN t.transaction_number\n            ELSE trip_stops.transaction_number\n        END AS transaction_number,\n    t.trip_number,\n    t.added_to_report,\n    t.letter_status,\n    t.truck_allocated_by,\n    concat_ws(' '::text, allocated_by.first_name, allocated_by.last_name) AS truck_allocated_by_name,\n    t.subcon_rate_manual,\n    warehouse_departure.warehouse_departure_time,\n    t.signed_dr_upload_date,\n    t.transmittal_date,\n    t.tms_date,\n    t.pod_ac_shipping_date,\n    t.lbc_tracking_number,\n    t.tms_done_by,\n    concat_ws(' '::text, tms_done.first_name, tms_done.last_name) AS tms_done_by_name,\n    t.id AS _trip_id,\n    trip_stops.id AS _trip_stop_id,\n    trip_types.id AS _trip_type_id,\n    t.warehouse_id AS _warehouse_id,\n    trip_stops.customer_id AS _customer_id,\n    trip_stops.store_id AS _store_id,\n    tta.truck_id AS _truck_id,\n    tta.driver_id AS _driver_id,\n    tta.trucking_company_id AS _trucking_company_id,\n    tta.id AS _assignment_id,\n    trip_stops.dr_number AS transaction_dr_number,\n    trip_stops.quantity AS transaction_quantity,\n    trip_stops.total_cbm AS transaction_total_cbm,\n    COALESCE(t.archived_at, trip_stops.archived_at) AS transaction_archived_at,\n    ( SELECT\n                CASE\n                    WHEN (jsonb_typeof(ce.value) = 'string'::text) THEN (ce.value #>> '{}'::text[])\n                    ELSE NULL::text\n                END AS \"case\"\n           FROM (((flex_tables ft\n             JOIN flex_columns co ON ((co.table_id = ft.id)))\n             JOIN flex_rows fr ON ((fr.table_id = ft.id)))\n             JOIN flex_cells ce ON (((ce.row_id = fr.id) AND (ce.column_id = co.id))))\n          WHERE (((ft.settings ->> 'system_key'::text) = 'alzhen_transmittal_tracker_v1'::text) AND (ft.archived_at IS NULL) AND ((co.settings ->> 'system_key'::text) = 'transmittal_ref'::text) AND (NOT co.is_archived) AND (co.binding_scope = 'STOP'::text) AND (fr.row_kind = 'SOURCE'::text) AND (fr.source_entity_type = 'STOP'::text) AND (fr.archived_at IS NULL) AND (fr.source_entity_id = trip_stops.id))) AS transmittal_ref,\n    COALESCE(( SELECT ce.version\n           FROM (((flex_tables ft\n             JOIN flex_columns co ON ((co.table_id = ft.id)))\n             JOIN flex_rows fr ON ((fr.table_id = ft.id)))\n             JOIN flex_cells ce ON (((ce.row_id = fr.id) AND (ce.column_id = co.id))))\n          WHERE (((ft.settings ->> 'system_key'::text) = 'alzhen_transmittal_tracker_v1'::text) AND (ft.archived_at IS NULL) AND ((co.settings ->> 'system_key'::text) = 'transmittal_ref'::text) AND (NOT co.is_archived) AND (co.binding_scope = 'STOP'::text) AND (fr.row_kind = 'SOURCE'::text) AND (fr.source_entity_type = 'STOP'::text) AND (fr.archived_at IS NULL) AND (fr.source_entity_id = trip_stops.id))), 0) AS transmittal_ref_version\n   FROM ((((((((((((trips t\n     LEFT JOIN warehouses ON ((warehouses.id = t.warehouse_id)))\n     LEFT JOIN unique_active_primary_assignments tta ON ((tta.trip_id = t.id)))\n     LEFT JOIN trucks ON ((trucks.id = tta.truck_id)))\n     LEFT JOIN drivers ON ((drivers.id = tta.driver_id)))\n     LEFT JOIN trucking_companies ON ((trucking_companies.id = tta.trucking_company_id)))\n     LEFT JOIN trip_stops ON ((trip_stops.trip_id = t.id)))\n     LEFT JOIN customers ON ((customers.id = trip_stops.customer_id)))\n     LEFT JOIN customer_stores ON ((customer_stores.id = trip_stops.store_id)))\n     LEFT JOIN profiles allocated_by ON ((allocated_by.id = t.truck_allocated_by)))\n     LEFT JOIN profiles tms_done ON ((tms_done.id = t.tms_done_by)))\n     LEFT JOIN LATERAL ( SELECT min(trip_events.event_time) AS warehouse_departure_time\n           FROM trip_events\n          WHERE ((trip_events.trip_id = t.id) AND (trip_events.event_type = 'WAREHOUSE_DEPARTURE'::text))) warehouse_departure ON (true))\n     LEFT JOIN trip_types ON ((trip_types.id = t.trip_type_id)));"
+    },
+    {
+      "viewname": "v_dispatch_report",
+      "definition": " WITH dispatch_scopes AS (\n         SELECT trips_1.id AS trip_id,\n            trip_stops_1.id AS trip_stop_id,\n            trip_line_items_1.id AS trip_line_item_id,\n            NULL::date AS incident_date,\n            NULL::text AS ir_status,\n            NULL::date AS ir_submitted_date,\n            NULL::text AS backload_reason,\n            NULL::numeric AS backload_number_of_boxes,\n            NULL::text AS backload_comments,\n            NULL::numeric AS offload_number_of_boxes,\n            NULL::text AS offload_reason,\n            NULL::text AS offload_comments,\n            NULL::uuid AS incident_id,\n            NULL::uuid AS backload_id,\n            NULL::uuid AS offload_id\n           FROM ((trips trips_1\n             LEFT JOIN trip_stops trip_stops_1 ON ((trip_stops_1.trip_id = trips_1.id)))\n             LEFT JOIN trip_line_items trip_line_items_1 ON (((trip_line_items_1.trip_stop_id = trip_stops_1.id) AND (trip_line_items_1.trip_id = trips_1.id))))\n        UNION ALL\n         SELECT inc.trip_id,\n            inc.trip_stop_id,\n            NULL::uuid AS uuid,\n            inc.incident_date,\n            inc.status,\n            inc.submitted_date,\n            NULL::text AS text,\n            NULL::numeric AS \"numeric\",\n            NULL::text AS text,\n            NULL::numeric AS \"numeric\",\n            NULL::text AS text,\n            NULL::text AS text,\n            inc.id,\n            NULL::uuid AS uuid,\n            NULL::uuid AS uuid\n           FROM incidents inc\n        UNION ALL\n         SELECT bl.trip_id,\n            bl.trip_stop_id,\n            NULL::uuid AS uuid,\n            NULL::date AS date,\n            NULL::text AS text,\n            NULL::date AS date,\n            bl.reason,\n            bl.number_of_boxes,\n            bl.comments,\n            NULL::numeric AS \"numeric\",\n            NULL::text AS text,\n            NULL::text AS text,\n            NULL::uuid AS uuid,\n            bl.id,\n            NULL::uuid AS uuid\n           FROM backloads bl\n        UNION ALL\n         SELECT off.trip_id,\n            off.trip_stop_id,\n            NULL::uuid AS uuid,\n            NULL::date AS date,\n            NULL::text AS text,\n            NULL::date AS date,\n            NULL::text AS text,\n            NULL::numeric AS \"numeric\",\n            NULL::text AS text,\n            off.number_of_boxes,\n            off.reason,\n            off.comments,\n            NULL::uuid AS uuid,\n            NULL::uuid AS uuid,\n            off.id\n           FROM offloads off\n        ), unique_active_primary_assignments AS (\n         SELECT assignment.id,\n            assignment.trip_id,\n            assignment.truck_id,\n            assignment.driver_id,\n            assignment.trucking_company_id,\n            assignment.assignment_type,\n            assignment.assigned_at,\n            assignment.unassigned_at,\n            assignment.remarks,\n            assignment.created_at,\n            assignment.updated_at\n           FROM trip_truck_assignments assignment\n          WHERE ((assignment.assignment_type = 'PRIMARY'::text) AND (assignment.unassigned_at IS NULL) AND (NOT (EXISTS ( SELECT 1\n                   FROM trip_truck_assignments other\n                  WHERE ((other.trip_id = assignment.trip_id) AND (other.assignment_type = 'PRIMARY'::text) AND (other.unassigned_at IS NULL) AND (other.id <> assignment.id))))))\n        )\n SELECT\n        CASE\n            WHEN (dispatch_scopes.trip_stop_id IS NULL) THEN trips.dispatch_number\n            ELSE trip_stops.dispatch_number\n        END AS dispatch_number,\n    trips.loading_date,\n    trips.estimated_delivery_date,\n    trip_stops.delivery_status,\n    warehouses.code AS wh_code,\n    warehouses.name AS ship_from,\n    customer_stores.name AS ship_to,\n    customers.name AS customer_name,\n    trucks.plate_number,\n    trip_line_items.dr_number,\n    trip_line_items.sap_so_number,\n    trip_line_items.customer_po_number,\n    trip_line_items.internal_po_number,\n    products.model_code AS product_model,\n    products.category,\n    trip_line_items.quantity,\n    trip_line_items.cbm,\n    customer_stores.province,\n    customer_stores.city,\n    trips.remarks,\n        CASE\n            WHEN (dispatch_scopes.trip_stop_id IS NULL) THEN trips.transaction_number\n            ELSE trip_stops.transaction_number\n        END AS transaction_number,\n    trips.trip_number,\n    trips.added_to_report,\n    trips.letter_status,\n    ((profiles.first_name || ' '::text) || profiles.last_name) AS driver_name,\n    trucking_companies.name AS trucking_company,\n    trips.subcon_rate_manual,\n    trip_stops.arrival_time,\n    trip_stops.start_unloading_time,\n    trip_stops.finish_unloading_time,\n    trip_stops.departure_time,\n    trip_line_items.customer_model,\n    dispatch_scopes.incident_date,\n    dispatch_scopes.ir_status,\n    dispatch_scopes.ir_submitted_date,\n    dispatch_scopes.backload_reason,\n    (dispatch_scopes.backload_number_of_boxes)::numeric(14,3) AS backload_number_of_boxes,\n    dispatch_scopes.backload_comments,\n    (dispatch_scopes.offload_number_of_boxes)::numeric(14,3) AS offload_number_of_boxes,\n    dispatch_scopes.offload_reason,\n    dispatch_scopes.offload_comments,\n    trips.signed_dr_upload_date,\n    trips.transmittal_date,\n    trips.tms_date,\n    trips.pod_ac_shipping_date,\n    trips.lbc_tracking_number,\n    ((profiles_tms.first_name || ' '::text) || profiles_tms.last_name) AS tms_done_by_name,\n    trips.id AS _trip_id,\n    dispatch_scopes.trip_stop_id AS _trip_stop_id,\n    dispatch_scopes.trip_line_item_id AS _trip_line_item_id,\n    trip_line_items.product_id AS _product_id,\n    trips.warehouse_id AS _warehouse_id,\n    trip_stops.customer_id AS _customer_id,\n    trip_stops.store_id AS _store_id,\n    tta.truck_id AS _truck_id,\n    tta.driver_id AS _driver_id,\n    tta.trucking_company_id AS _trucking_company_id,\n    tta.id AS _assignment_id,\n    trips.tms_done_by AS _tms_done_by,\n    dispatch_scopes.incident_id AS _incident_id,\n    dispatch_scopes.backload_id AS _backload_id,\n    dispatch_scopes.offload_id AS _offload_id\n   FROM (((((((((((((dispatch_scopes\n     JOIN trips ON ((trips.id = dispatch_scopes.trip_id)))\n     LEFT JOIN warehouses ON ((warehouses.id = trips.warehouse_id)))\n     LEFT JOIN trip_stops ON (((trip_stops.id = dispatch_scopes.trip_stop_id) AND (trip_stops.trip_id = trips.id))))\n     LEFT JOIN trip_line_items ON (((trip_line_items.id = dispatch_scopes.trip_line_item_id) AND (trip_line_items.trip_id = trips.id) AND (NOT (trip_line_items.trip_stop_id IS DISTINCT FROM dispatch_scopes.trip_stop_id)))))\n     LEFT JOIN products ON ((products.id = trip_line_items.product_id)))\n     LEFT JOIN customer_stores ON ((customer_stores.id = trip_stops.store_id)))\n     LEFT JOIN customers ON ((customers.id = trip_stops.customer_id)))\n     LEFT JOIN unique_active_primary_assignments tta ON ((tta.trip_id = trips.id)))\n     LEFT JOIN trucks ON ((trucks.id = tta.truck_id)))\n     LEFT JOIN drivers ON ((drivers.id = tta.driver_id)))\n     LEFT JOIN trucking_companies ON ((trucking_companies.id = tta.trucking_company_id)))\n     LEFT JOIN profiles ON ((profiles.id = drivers.profile_id)))\n     LEFT JOIN profiles profiles_tms ON ((profiles_tms.id = trips.tms_done_by)));"
+    },
+    {
+      "viewname": "v_store_calling",
+      "definition": " SELECT sc.id AS store_call_id,\n        CASE\n            WHEN (sc.trip_stop_id IS NULL) THEN t.dispatch_number\n            ELSE ts.dispatch_number\n        END AS dispatch_number,\n    t.loading_date,\n    ts.stop_sequence,\n    c.name AS customer_name,\n    cs.name AS store_name,\n    tr.plate_number,\n    concat_ws(' '::text, d.first_name, d.last_name) AS driver_name,\n    tc.name AS trucking_company,\n    concat_ws(' '::text, assigned.first_name, assigned.last_name) AS assigned_to,\n    sc.date_assigned,\n    sc.date_of_contact,\n    sc.time_texted,\n    sc.time_called,\n    sc.contact_number,\n    sc.contact_name,\n    sc.status,\n    sc.confirmation_status,\n    sc.remarks,\n    w.code AS warehouse_code,\n    w.name AS ship_from\n   FROM ((((((((((store_calls sc\n     LEFT JOIN trips t ON ((t.id = sc.trip_id)))\n     LEFT JOIN warehouses w ON ((w.id = t.warehouse_id)))\n     LEFT JOIN trip_stops ts ON (((ts.id = sc.trip_stop_id) AND (ts.trip_id = sc.trip_id))))\n     LEFT JOIN customers c ON ((c.id = ts.customer_id)))\n     LEFT JOIN customer_stores cs ON ((cs.id = ts.store_id)))\n     LEFT JOIN trip_truck_assignments tta ON (((tta.trip_id = t.id) AND (tta.assignment_type = 'PRIMARY'::text) AND (tta.unassigned_at IS NULL) AND (NOT (EXISTS ( SELECT 1\n           FROM trip_truck_assignments other\n          WHERE ((other.trip_id = tta.trip_id) AND (other.assignment_type = 'PRIMARY'::text) AND (other.unassigned_at IS NULL) AND (other.id <> tta.id))))))))\n     LEFT JOIN trucks tr ON ((tr.id = tta.truck_id)))\n     LEFT JOIN drivers d ON ((d.id = tta.driver_id)))\n     LEFT JOIN trucking_companies tc ON ((tc.id = tta.trucking_company_id)))\n     LEFT JOIN profiles assigned ON ((assigned.id = sc.assigned_to)));"
+    },
+    {
+      "viewname": "v_tms_combined",
+      "definition": " WITH unique_active_primary_assignments AS (\n         SELECT assignment.id,\n            assignment.trip_id,\n            assignment.truck_id,\n            assignment.driver_id,\n            assignment.trucking_company_id,\n            assignment.assignment_type,\n            assignment.assigned_at,\n            assignment.unassigned_at,\n            assignment.remarks,\n            assignment.created_at,\n            assignment.updated_at\n           FROM trip_truck_assignments assignment\n          WHERE ((assignment.assignment_type = 'PRIMARY'::text) AND (assignment.unassigned_at IS NULL) AND (NOT (EXISTS ( SELECT 1\n                   FROM trip_truck_assignments other\n                  WHERE ((other.trip_id = assignment.trip_id) AND (other.assignment_type = 'PRIMARY'::text) AND (other.unassigned_at IS NULL) AND (other.id <> assignment.id))))))\n        )\n SELECT t.id AS trip_id,\n        CASE\n            WHEN (ts.id IS NULL) THEN t.dispatch_number\n            ELSE ts.dispatch_number\n        END AS dispatch_number,\n    t.loading_date,\n    t.estimated_delivery_date,\n    t.status AS trip_status,\n    tt.name AS trip_type,\n    w.code AS warehouse_code,\n    w.name AS warehouse_name,\n    tc.name AS trucking_company,\n    tr.plate_number,\n    concat_ws(' '::text, d.first_name, d.last_name) AS driver_name,\n    ts.id AS trip_stop_id,\n    ts.stop_sequence,\n    c.id AS customer_id,\n    c.name AS customer_name,\n    cs.id AS store_id,\n    cs.name AS store_name,\n    cs.province,\n    cs.city,\n    ts.delivery_status,\n    ts.arrival_time,\n    ts.start_unloading_time,\n    ts.finish_unloading_time,\n    ts.departure_time,\n    p.sku,\n    p.model_code,\n    p.name AS product_name,\n    p.category,\n    li.quantity,\n    li.cbm,\n    li.dr_number,\n    li.sap_so_number,\n    li.customer_po_number,\n    li.internal_po_number,\n    li.customer_model,\n    t.remarks AS trip_remarks,\n    ts.remarks AS stop_remarks,\n    li.remarks AS item_remarks,\n        CASE\n            WHEN (ts.id IS NULL) THEN t.transaction_number\n            ELSE ts.transaction_number\n        END AS transaction_number,\n    t.trip_number,\n    t.added_to_report,\n    t.letter_status,\n    t.truck_allocated_by,\n    concat_ws(' '::text, allocated_by.first_name, allocated_by.last_name) AS truck_allocated_by_name,\n    t.subcon_rate_manual,\n    wh_departure.warehouse_departure_time,\n    t.signed_dr_upload_date,\n    t.transmittal_date,\n    t.tms_date,\n    t.tms_done_by,\n    concat_ws(' '::text, tms_done.first_name, tms_done.last_name) AS tms_done_by_name,\n    t.pod_ac_shipping_date,\n    t.lbc_tracking_number,\n    li.id AS trip_line_item_id,\n    t.id AS _trip_id,\n    ts.id AS _trip_stop_id,\n    li.id AS _trip_line_item_id,\n    tt.id AS _trip_type_id,\n    t.warehouse_id AS _warehouse_id,\n    ts.customer_id AS _customer_id,\n    ts.store_id AS _store_id,\n    tta.truck_id AS _truck_id,\n    tta.driver_id AS _driver_id,\n    tta.trucking_company_id AS _trucking_company_id,\n    li.product_id AS _product_id,\n    tta.id AS _assignment_id,\n    t.truck_allocated_by AS _truck_allocated_by,\n    t.tms_done_by AS _tms_done_by,\n    ts.dr_number AS transaction_dr_number,\n    ts.quantity AS transaction_quantity,\n    ts.total_cbm AS transaction_total_cbm,\n    COALESCE(t.archived_at, ts.archived_at) AS transaction_archived_at,\n    ( SELECT\n                CASE\n                    WHEN (jsonb_typeof(ce.value) = 'string'::text) THEN (ce.value #>> '{}'::text[])\n                    ELSE NULL::text\n                END AS \"case\"\n           FROM (((flex_tables ft\n             JOIN flex_columns co ON ((co.table_id = ft.id)))\n             JOIN flex_rows fr ON ((fr.table_id = ft.id)))\n             JOIN flex_cells ce ON (((ce.row_id = fr.id) AND (ce.column_id = co.id))))\n          WHERE (((ft.settings ->> 'system_key'::text) = 'alzhen_transmittal_tracker_v1'::text) AND (ft.archived_at IS NULL) AND ((co.settings ->> 'system_key'::text) = 'transmittal_ref'::text) AND (NOT co.is_archived) AND (co.binding_scope = 'STOP'::text) AND (fr.row_kind = 'SOURCE'::text) AND (fr.source_entity_type = 'STOP'::text) AND (fr.archived_at IS NULL) AND (fr.source_entity_id = ts.id))) AS transmittal_ref,\n    COALESCE(( SELECT ce.version\n           FROM (((flex_tables ft\n             JOIN flex_columns co ON ((co.table_id = ft.id)))\n             JOIN flex_rows fr ON ((fr.table_id = ft.id)))\n             JOIN flex_cells ce ON (((ce.row_id = fr.id) AND (ce.column_id = co.id))))\n          WHERE (((ft.settings ->> 'system_key'::text) = 'alzhen_transmittal_tracker_v1'::text) AND (ft.archived_at IS NULL) AND ((co.settings ->> 'system_key'::text) = 'transmittal_ref'::text) AND (NOT co.is_archived) AND (co.binding_scope = 'STOP'::text) AND (fr.row_kind = 'SOURCE'::text) AND (fr.source_entity_type = 'STOP'::text) AND (fr.archived_at IS NULL) AND (fr.source_entity_id = ts.id))), 0) AS transmittal_ref_version\n   FROM ((((((((((((((trips t\n     LEFT JOIN trip_types tt ON ((tt.id = t.trip_type_id)))\n     LEFT JOIN warehouses w ON ((w.id = t.warehouse_id)))\n     LEFT JOIN unique_active_primary_assignments tta ON ((tta.trip_id = t.id)))\n     LEFT JOIN trucks tr ON ((tr.id = tta.truck_id)))\n     LEFT JOIN trucking_companies tc ON ((tc.id = tta.trucking_company_id)))\n     LEFT JOIN drivers d ON ((d.id = tta.driver_id)))\n     LEFT JOIN trip_stops ts ON ((ts.trip_id = t.id)))\n     LEFT JOIN customers c ON ((c.id = ts.customer_id)))\n     LEFT JOIN customer_stores cs ON ((cs.id = ts.store_id)))\n     LEFT JOIN trip_line_items li ON (((li.trip_stop_id = ts.id) AND (li.trip_id = t.id))))\n     LEFT JOIN products p ON ((p.id = li.product_id)))\n     LEFT JOIN profiles allocated_by ON ((allocated_by.id = t.truck_allocated_by)))\n     LEFT JOIN profiles tms_done ON ((tms_done.id = t.tms_done_by)))\n     LEFT JOIN ( SELECT trip_events.trip_id,\n            min(trip_events.event_time) AS warehouse_departure_time\n           FROM trip_events\n          WHERE (trip_events.event_type = 'WAREHOUSE_DEPARTURE'::text)\n          GROUP BY trip_events.trip_id) wh_departure ON ((wh_departure.trip_id = t.id)));"
+    },
+    {
+      "viewname": "v_transmittal_tracker_page",
+      "definition": " WITH unique_primary AS (\n         SELECT a_1.id,\n            a_1.trip_id,\n            a_1.truck_id,\n            a_1.driver_id,\n            a_1.trucking_company_id,\n            a_1.assignment_type,\n            a_1.assigned_at,\n            a_1.unassigned_at,\n            a_1.remarks,\n            a_1.created_at,\n            a_1.updated_at\n           FROM trip_truck_assignments a_1\n          WHERE ((a_1.assignment_type = 'PRIMARY'::text) AND (a_1.unassigned_at IS NULL) AND (NOT (EXISTS ( SELECT 1\n                   FROM trip_truck_assignments b\n                  WHERE ((b.trip_id = a_1.trip_id) AND (b.assignment_type = 'PRIMARY'::text) AND (b.unassigned_at IS NULL) AND (b.id <> a_1.id))))))\n        ), tracker_rows AS (\n         SELECT s_1.id AS stop_id,\n            ( SELECT fr.id\n                   FROM (flex_rows fr\n                     JOIN flex_tables ft ON ((ft.id = fr.table_id)))\n                  WHERE (((ft.settings ->> 'system_key'::text) = 'alzhen_transmittal_tracker_v1'::text) AND (ft.archived_at IS NULL) AND (fr.row_kind = 'SOURCE'::text) AND (fr.source_entity_type = 'STOP'::text) AND (fr.archived_at IS NULL) AND (fr.source_entity_id = s_1.id))) AS source_row_id\n           FROM trip_stops s_1\n        )\n SELECT s.id AS trip_stop_id,\n    s.trip_id,\n    s.stop_sequence,\n    COALESCE(s.dr_number, tracker_page_text_v1((c.value -> 'delivery_receipt_no_override'::text), COALESCE(li.single_dr, ''::text))) AS delivery_receipt_no,\n    TRIM(BOTH FROM concat_ws(' '::text, NULLIF(d.first_name, ''::text), NULLIF(d.last_name, ''::text))) AS driver_name,\n    tracker_page_text_v1((c.value -> 'transmittal_ref'::text), ''::text) AS transmittal_ref,\n    tracker_page_text_v1((c.value -> 'warehouse_code_override'::text), COALESCE(TRIM(BOTH FROM w.code), ''::text)) AS warehouse_code,\n    tracker_page_text_v1((c.value -> 'delivered_to_override'::text), COALESCE(NULLIF(st.name, ''::text), cu.name, ''::text)) AS delivered_to,\n    tracker_page_text_v1((c.value -> 'plate_number_override'::text), COALESCE(TRIM(BOTH FROM tr.plate_number), ''::text)) AS plate_number,\n    tracker_page_text_v1((c.value -> 'sales_order_no_override'::text), COALESCE(li.sales_orders, ''::text)) AS sales_order_no,\n    tracker_page_text_v1((c.value -> 'date_created_override'::text), ''::text) AS date_created,\n    tracker_page_text_v1((c.value -> 'tracker_status'::text), COALESCE(TRIM(BOTH FROM s.delivery_status), ''::text)) AS status,\n    tracker_page_text_v1((c.value -> 'lbc_waybill_no'::text), COALESCE(TRIM(BOTH FROM t.lbc_tracking_number), ''::text)) AS lbc_waybill_no,\n    tracker_page_text_v1((c.value -> 'lbc_shipping_date'::text), COALESCE(\"left\"((t.pod_ac_shipping_date)::text, 10), ''::text)) AS shipping_date_via_lbc,\n    tracker_page_text_v1((c.value -> 'tracker_remarks'::text), ''::text) AS remarks,\n    tracker_page_text_v1((c.value -> 'loading_date_override'::text), COALESCE(\"left\"((t.loading_date)::text, 10), ''::text)) AS loading_date,\n    tracker_page_text_v1((c.value -> 'delivery_date_override'::text), COALESCE(\"left\"((s.finish_unloading_time)::text, 10), ''::text)) AS date_delivered\n   FROM ((((((((((trip_stops s\n     JOIN trips t ON ((t.id = s.trip_id)))\n     JOIN tracker_rows r ON ((r.stop_id = s.id)))\n     LEFT JOIN warehouses w ON ((w.id = t.warehouse_id)))\n     LEFT JOIN customer_stores st ON ((st.id = s.store_id)))\n     LEFT JOIN customers cu ON ((cu.id = s.customer_id)))\n     LEFT JOIN unique_primary a ON ((a.trip_id = s.trip_id)))\n     LEFT JOIN trucks tr ON ((tr.id = a.truck_id)))\n     LEFT JOIN drivers d ON ((d.id = a.driver_id)))\n     LEFT JOIN LATERAL ( SELECT string_agg(DISTINCT NULLIF(TRIM(BOTH FROM i.sap_so_number), ''::text), ', '::text ORDER BY NULLIF(TRIM(BOTH FROM i.sap_so_number), ''::text)) AS sales_orders,\n                CASE\n                    WHEN (count(DISTINCT NULLIF(TRIM(BOTH FROM i.dr_number), ''::text)) = 1) THEN min(NULLIF(TRIM(BOTH FROM i.dr_number), ''::text))\n                    ELSE NULL::text\n                END AS single_dr\n           FROM trip_line_items i\n          WHERE ((i.trip_stop_id = s.id) AND (i.trip_id = s.trip_id))) li ON (true))\n     LEFT JOIN LATERAL ( SELECT tracker_page_cells_v1(jsonb_object_agg((co.settings ->> 'system_key'::text), ce.value) FILTER (WHERE ((co.settings ->> 'system_key'::text) IS NOT NULL)), count(*) FILTER (WHERE ((co.settings ->> 'system_key'::text) IS NOT NULL)), count(DISTINCT (co.settings ->> 'system_key'::text))) AS value\n           FROM (flex_cells ce\n             JOIN flex_columns co ON ((co.id = ce.column_id)))\n          WHERE ((ce.row_id = r.source_row_id) AND (co.table_id = ( SELECT flex_rows.table_id\n                   FROM flex_rows\n                  WHERE (flex_rows.id = r.source_row_id))) AND (co.binding_scope = 'STOP'::text) AND (NOT co.is_archived))) c ON (true))\n  WHERE ((r.source_row_id IS NOT NULL) OR (upper(TRIM(BOTH FROM s.delivery_status)) = ANY (ARRAY['COMPLETED'::text, 'COMPLETE'::text, 'DELIVERED'::text])));"
+    },
+    {
+      "viewname": "v_trip_booking",
+      "definition": " WITH trip_booking_scopes AS (\n         SELECT trips_1.id AS trip_id,\n            trip_stops_1.id AS trip_stop_id,\n            trip_line_items_1.id AS trip_line_item_id,\n            NULL::uuid AS billing_id\n           FROM ((trips trips_1\n             LEFT JOIN trip_stops trip_stops_1 ON ((trip_stops_1.trip_id = trips_1.id)))\n             LEFT JOIN trip_line_items trip_line_items_1 ON (((trip_line_items_1.trip_stop_id = trip_stops_1.id) AND (trip_line_items_1.trip_id = trips_1.id))))\n        UNION ALL\n         SELECT billings_1.trip_id,\n            NULL::uuid AS uuid,\n            NULL::uuid AS uuid,\n            billings_1.id\n           FROM billings billings_1\n        ), unique_active_primary_assignments AS (\n         SELECT assignment.id,\n            assignment.trip_id,\n            assignment.truck_id,\n            assignment.driver_id,\n            assignment.trucking_company_id,\n            assignment.assignment_type,\n            assignment.assigned_at,\n            assignment.unassigned_at,\n            assignment.remarks,\n            assignment.created_at,\n            assignment.updated_at\n           FROM trip_truck_assignments assignment\n          WHERE ((assignment.assignment_type = 'PRIMARY'::text) AND (assignment.unassigned_at IS NULL) AND (NOT (EXISTS ( SELECT 1\n                   FROM trip_truck_assignments other\n                  WHERE ((other.trip_id = assignment.trip_id) AND (other.assignment_type = 'PRIMARY'::text) AND (other.unassigned_at IS NULL) AND (other.id <> assignment.id))))))\n        )\n SELECT\n        CASE\n            WHEN (trip_booking_scopes.trip_stop_id IS NULL) THEN trips.dispatch_number\n            ELSE trip_stops.dispatch_number\n        END AS dispatch_number,\n    trips.loading_date,\n    trips.estimated_delivery_date,\n    trip_types.name AS trip_type,\n    warehouses.code AS warehouse_code,\n    warehouses.name AS warehouse_name,\n    trip_stops.stop_sequence,\n    customers.name AS customer_name,\n    customer_stores.name AS store_name,\n    trucks.plate_number,\n    ((profiles.first_name || ' '::text) || profiles.last_name) AS driver_name,\n    trucking_companies.name AS trucking_company,\n    trip_line_items.dr_number,\n    trip_line_items.sap_so_number,\n    trip_line_items.customer_po_number,\n    trip_line_items.internal_po_number,\n    products.sku,\n    products.model_code,\n    products.name AS product_name,\n    trip_line_items.quantity,\n    trip_line_items.cbm,\n    trips.status AS trip_status,\n    trip_stops.delivery_status,\n    trips.remarks,\n        CASE\n            WHEN (trip_booking_scopes.trip_stop_id IS NULL) THEN trips.transaction_number\n            ELSE trip_stops.transaction_number\n        END AS transaction_number,\n    trips.trip_number,\n    trips.added_to_report,\n    trips.letter_status,\n    trips.truck_allocated_by,\n    ((profiles_allocated.first_name || ' '::text) || profiles_allocated.last_name) AS truck_allocated_by_name,\n    products.category AS product_category,\n    trip_line_items.customer_model,\n    trips.subcon_rate_manual,\n    trips.signed_dr_upload_date,\n    trips.transmittal_date,\n    trips.tms_date,\n    trips.tms_done_by,\n    ((profiles_tms.first_name || ' '::text) || profiles_tms.last_name) AS tms_done_by_name,\n    trips.pod_ac_shipping_date,\n    trips.lbc_tracking_number,\n    billings.invoice_number,\n    trips.id AS _trip_id,\n    trip_booking_scopes.trip_stop_id AS _trip_stop_id,\n    trip_booking_scopes.trip_line_item_id AS _trip_line_item_id,\n    trip_line_items.product_id AS _product_id,\n    trips.trip_type_id AS _trip_type_id,\n    trips.warehouse_id AS _warehouse_id,\n    trip_stops.customer_id AS _customer_id,\n    trip_stops.store_id AS _store_id,\n    tta.truck_id AS _truck_id,\n    tta.driver_id AS _driver_id,\n    tta.trucking_company_id AS _trucking_company_id,\n    tta.id AS _assignment_id,\n    trips.truck_allocated_by AS _truck_allocated_by,\n    trips.tms_done_by AS _tms_done_by,\n    trip_booking_scopes.billing_id AS _billing_id\n   FROM ((((((((((((((((trip_booking_scopes\n     JOIN trips ON ((trips.id = trip_booking_scopes.trip_id)))\n     LEFT JOIN trip_types ON ((trip_types.id = trips.trip_type_id)))\n     LEFT JOIN warehouses ON ((warehouses.id = trips.warehouse_id)))\n     LEFT JOIN trip_stops ON (((trip_stops.id = trip_booking_scopes.trip_stop_id) AND (trip_stops.trip_id = trips.id))))\n     LEFT JOIN customers ON ((customers.id = trip_stops.customer_id)))\n     LEFT JOIN customer_stores ON ((customer_stores.id = trip_stops.store_id)))\n     LEFT JOIN trip_line_items ON (((trip_line_items.id = trip_booking_scopes.trip_line_item_id) AND (trip_line_items.trip_id = trips.id) AND (NOT (trip_line_items.trip_stop_id IS DISTINCT FROM trip_booking_scopes.trip_stop_id)))))\n     LEFT JOIN products ON ((products.id = trip_line_items.product_id)))\n     LEFT JOIN unique_active_primary_assignments tta ON ((tta.trip_id = trips.id)))\n     LEFT JOIN trucks ON ((trucks.id = tta.truck_id)))\n     LEFT JOIN drivers ON ((drivers.id = tta.driver_id)))\n     LEFT JOIN trucking_companies ON ((trucking_companies.id = tta.trucking_company_id)))\n     LEFT JOIN profiles ON ((profiles.id = drivers.profile_id)))\n     LEFT JOIN profiles profiles_allocated ON ((profiles_allocated.id = trips.truck_allocated_by)))\n     LEFT JOIN profiles profiles_tms ON ((profiles_tms.id = trips.tms_done_by)))\n     LEFT JOIN billings ON (((billings.id = trip_booking_scopes.billing_id) AND (billings.trip_id = trips.id))));"
+    },
+    {
+      "viewname": "vw_store_calling_tracker",
+      "definition": " WITH unique_active_primary_assignments AS (\n         SELECT a.id,\n            a.trip_id,\n            a.truck_id,\n            a.driver_id,\n            a.trucking_company_id,\n            a.assignment_type,\n            a.assigned_at,\n            a.unassigned_at,\n            a.remarks,\n            a.created_at,\n            a.updated_at\n           FROM trip_truck_assignments a\n          WHERE ((a.assignment_type = 'PRIMARY'::text) AND (a.unassigned_at IS NULL) AND (NOT (EXISTS ( SELECT 1\n                   FROM trip_truck_assignments b\n                  WHERE ((b.trip_id = a.trip_id) AND (b.assignment_type = 'PRIMARY'::text) AND (b.unassigned_at IS NULL) AND (b.id <> a.id))))))\n        )\n SELECT sc.id AS store_call_id,\n    t.id AS trip_id,\n        CASE\n            WHEN (sc.trip_stop_id IS NULL) THEN t.dispatch_number\n            ELSE ts.dispatch_number\n        END AS dispatch_number,\n        CASE\n            WHEN (sc.trip_stop_id IS NULL) THEN t.transaction_number\n            ELSE ts.transaction_number\n        END AS transaction_number,\n    t.trip_number,\n    tt.id AS trip_type_id,\n    tt.code AS trip_type_code,\n    tt.name AS trip_type,\n    w.id AS warehouse_id,\n    w.code AS warehouse_code,\n    w.name AS ship_from,\n    ts.id AS trip_stop_id,\n    ts.stop_sequence,\n    cs.id AS store_id,\n    cs.name AS ship_to,\n    cs.code AS store_code,\n    c.id AS customer_id,\n    c.name AS customer_name,\n    cs.province,\n    cs.city,\n    cs.region,\n    d.id AS driver_id,\n    TRIM(BOTH FROM concat(COALESCE(d.first_name, ''::text), ' ', COALESCE(d.last_name, ''::text))) AS driver_name,\n    tr.id AS truck_id,\n    tr.plate_number,\n    tc.id AS trucking_company_id,\n    tc.name AS trucker_gc_name,\n    sc.assigned_to AS assigned_to_id,\n    TRIM(BOTH FROM concat(COALESCE(ap.first_name, ''::text), ' ', COALESCE(ap.last_name, ''::text))) AS assigned_to_name,\n    sc.contact_id,\n    COALESCE(sc.contact_name, scon.name) AS contact_name,\n    COALESCE(sc.contact_number, scon.phone) AS contact_number,\n    scon.email AS contact_email,\n    scon.\"position\" AS contact_position,\n    sc.date_assigned,\n    sc.date_of_contact,\n    sc.time_texted,\n    sc.time_called,\n        CASE\n            WHEN (sc.time_called IS NOT NULL) THEN sc.time_called\n            WHEN (sc.time_texted IS NOT NULL) THEN sc.time_texted\n            ELSE NULL::timestamp with time zone\n        END AS time_contacted,\n    sc.status AS contact_status,\n    sc.confirmation_status,\n    sc.remarks,\n    ts.delivery_status,\n    sc.created_at,\n    sc.updated_at\n   FROM ((((((((((((store_calls sc\n     LEFT JOIN trips t ON ((t.id = sc.trip_id)))\n     LEFT JOIN trip_types tt ON ((tt.id = t.trip_type_id)))\n     LEFT JOIN warehouses w ON ((w.id = t.warehouse_id)))\n     LEFT JOIN trip_stops ts ON (((ts.id = sc.trip_stop_id) AND ((sc.trip_id IS NULL) OR (ts.trip_id = sc.trip_id)))))\n     LEFT JOIN customer_stores cs ON ((cs.id = ts.store_id)))\n     LEFT JOIN customers c ON ((c.id = ts.customer_id)))\n     LEFT JOIN profiles ap ON ((ap.id = sc.assigned_to)))\n     LEFT JOIN store_contacts scon ON ((scon.id = sc.contact_id)))\n     LEFT JOIN unique_active_primary_assignments tta ON ((tta.trip_id = t.id)))\n     LEFT JOIN drivers d ON ((d.id = tta.driver_id)))\n     LEFT JOIN trucks tr ON ((tr.id = tta.truck_id)))\n     LEFT JOIN trucking_companies tc ON ((tc.id = COALESCE(tta.trucking_company_id, tr.trucking_company_id, d.trucking_company_id))));"
+    }
+  ],
+  "columns": [
+    {
+      "data_type": "uuid",
+      "table_name": "admin_notifications",
+      "column_name": "id",
+      "is_nullable": "NO",
+      "column_default": "gen_random_uuid()"
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "admin_notifications",
+      "column_name": "recipient_profile_id",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "admin_notifications",
+      "column_name": "actor_profile_id",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "admin_notifications",
+      "column_name": "notification_type",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "admin_notifications",
+      "column_name": "reference_type",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "admin_notifications",
+      "column_name": "reference_id",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "admin_notifications",
+      "column_name": "message",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "data_type": "jsonb",
+      "table_name": "admin_notifications",
+      "column_name": "metadata",
+      "is_nullable": "NO",
+      "column_default": "'{}'::jsonb"
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "admin_notifications",
+      "column_name": "event_key",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "admin_notifications",
+      "column_name": "read_at",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "admin_notifications",
+      "column_name": "created_at",
+      "is_nullable": "NO",
+      "column_default": "now()"
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "backloads",
+      "column_name": "id",
+      "is_nullable": "NO",
+      "column_default": "gen_random_uuid()"
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "backloads",
+      "column_name": "trip_id",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "backloads",
+      "column_name": "trip_stop_id",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "backloads",
+      "column_name": "reason",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "numeric",
+      "table_name": "backloads",
+      "column_name": "number_of_boxes",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "backloads",
+      "column_name": "comments",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "backloads",
+      "column_name": "created_by",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "backloads",
+      "column_name": "created_at",
+      "is_nullable": "NO",
+      "column_default": "now()"
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "backloads",
+      "column_name": "updated_at",
+      "is_nullable": "NO",
+      "column_default": "now()"
+    },
+    {
+      "data_type": "date",
+      "table_name": "backloads",
+      "column_name": "report_date",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "backloads",
+      "column_name": "subject",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "backloads",
+      "column_name": "dispatch_number_snapshot",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "backloads",
+      "column_name": "narrative",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "backloads",
+      "column_name": "pickup_location",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "backloads",
+      "column_name": "driver_name_snapshot",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "backloads",
+      "column_name": "plate_number_snapshot",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "backloads",
+      "column_name": "route_id",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "backloads",
+      "column_name": "route_name_snapshot",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "backloads",
+      "column_name": "status",
+      "is_nullable": "NO",
+      "column_default": "'SUBMITTED'::text"
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "backloads",
+      "column_name": "submitted_by",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "backloads",
+      "column_name": "submitted_at",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "backloads",
+      "column_name": "event_type",
+      "is_nullable": "NO",
+      "column_default": "'Backload'::text"
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "demurrages",
+      "column_name": "id",
+      "is_nullable": "NO",
+      "column_default": "gen_random_uuid()"
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "demurrages",
+      "column_name": "trip_id",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "demurrages",
+      "column_name": "trip_stop_id",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "demurrages",
+      "column_name": "time_in",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "demurrages",
+      "column_name": "time_out",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "integer",
+      "table_name": "demurrages",
+      "column_name": "waiting_minutes",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "demurrages",
+      "column_name": "reason",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "numeric",
+      "table_name": "demurrages",
+      "column_name": "rate",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "numeric",
+      "table_name": "demurrages",
+      "column_name": "amount",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "demurrages",
+      "column_name": "status",
+      "is_nullable": "NO",
+      "column_default": "'PENDING'::text"
+    },
+    {
+      "data_type": "text",
+      "table_name": "demurrages",
+      "column_name": "checking_status",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "demurrages",
+      "column_name": "remarks",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "demurrages",
+      "column_name": "created_by",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "demurrages",
+      "column_name": "created_at",
+      "is_nullable": "NO",
+      "column_default": "now()"
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "demurrages",
+      "column_name": "updated_at",
+      "is_nullable": "NO",
+      "column_default": "now()"
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "drivers",
+      "column_name": "id",
+      "is_nullable": "NO",
+      "column_default": "gen_random_uuid()"
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "drivers",
+      "column_name": "trucking_company_id",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "drivers",
+      "column_name": "first_name",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "drivers",
+      "column_name": "last_name",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "drivers",
+      "column_name": "contact_number",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "drivers",
+      "column_name": "license_number",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "drivers",
+      "column_name": "status",
+      "is_nullable": "NO",
+      "column_default": "'ACTIVE'::text"
+    },
+    {
+      "data_type": "text",
+      "table_name": "drivers",
+      "column_name": "notes",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "drivers",
+      "column_name": "created_at",
+      "is_nullable": "NO",
+      "column_default": "now()"
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "drivers",
+      "column_name": "updated_at",
+      "is_nullable": "NO",
+      "column_default": "now()"
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "drivers",
+      "column_name": "profile_id",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "flex_cells",
+      "column_name": "id",
+      "is_nullable": "NO",
+      "column_default": "gen_random_uuid()"
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "flex_cells",
+      "column_name": "row_id",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "flex_cells",
+      "column_name": "column_id",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "data_type": "jsonb",
+      "table_name": "flex_cells",
+      "column_name": "value",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "integer",
+      "table_name": "flex_cells",
+      "column_name": "version",
+      "is_nullable": "NO",
+      "column_default": "1"
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "flex_cells",
+      "column_name": "updated_by",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "flex_cells",
+      "column_name": "created_at",
+      "is_nullable": "NO",
+      "column_default": "now()"
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "flex_cells",
+      "column_name": "updated_at",
+      "is_nullable": "NO",
+      "column_default": "now()"
+    },
+    {
+      "data_type": "jsonb",
+      "table_name": "flex_cells",
+      "column_name": "formula",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "flex_rows",
+      "column_name": "id",
+      "is_nullable": "NO",
+      "column_default": "gen_random_uuid()"
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "flex_rows",
+      "column_name": "table_id",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "flex_rows",
+      "column_name": "row_kind",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "flex_rows",
+      "column_name": "source_entity_type",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "flex_rows",
+      "column_name": "source_entity_id",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "bigint",
+      "table_name": "flex_rows",
+      "column_name": "position",
+      "is_nullable": "NO",
+      "column_default": "0"
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "flex_rows",
+      "column_name": "created_by",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "integer",
+      "table_name": "flex_rows",
+      "column_name": "version",
+      "is_nullable": "NO",
+      "column_default": "1"
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "flex_rows",
+      "column_name": "created_at",
+      "is_nullable": "NO",
+      "column_default": "now()"
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "flex_rows",
+      "column_name": "updated_at",
+      "is_nullable": "NO",
+      "column_default": "now()"
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "flex_rows",
+      "column_name": "archived_at",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "incidents",
+      "column_name": "id",
+      "is_nullable": "NO",
+      "column_default": "gen_random_uuid()"
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "incidents",
+      "column_name": "trip_id",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "incidents",
+      "column_name": "trip_stop_id",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "incidents",
+      "column_name": "incident_reason_id",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "date",
+      "table_name": "incidents",
+      "column_name": "incident_date",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "incidents",
+      "column_name": "status",
+      "is_nullable": "NO",
+      "column_default": "'OPEN'::text"
+    },
+    {
+      "data_type": "date",
+      "table_name": "incidents",
+      "column_name": "submitted_date",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "incidents",
+      "column_name": "description",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "incidents",
+      "column_name": "created_by",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "incidents",
+      "column_name": "created_at",
+      "is_nullable": "NO",
+      "column_default": "now()"
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "incidents",
+      "column_name": "updated_at",
+      "is_nullable": "NO",
+      "column_default": "now()"
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "offloads",
+      "column_name": "id",
+      "is_nullable": "NO",
+      "column_default": "gen_random_uuid()"
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "offloads",
+      "column_name": "trip_id",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "offloads",
+      "column_name": "trip_stop_id",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "offloads",
+      "column_name": "reason",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "numeric",
+      "table_name": "offloads",
+      "column_name": "number_of_boxes",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "offloads",
+      "column_name": "comments",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "offloads",
+      "column_name": "created_by",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "offloads",
+      "column_name": "created_at",
+      "is_nullable": "NO",
+      "column_default": "now()"
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "offloads",
+      "column_name": "updated_at",
+      "is_nullable": "NO",
+      "column_default": "now()"
+    },
+    {
+      "data_type": "date",
+      "table_name": "offloads",
+      "column_name": "report_date",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "offloads",
+      "column_name": "customer_name_snapshot",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "offloads",
+      "column_name": "dr_number",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "offloads",
+      "column_name": "route_id",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "offloads",
+      "column_name": "route_name_snapshot",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "offloads",
+      "column_name": "driver_name_snapshot",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "offloads",
+      "column_name": "plate_number_snapshot",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "offloads",
+      "column_name": "status",
+      "is_nullable": "NO",
+      "column_default": "'SUBMITTED'::text"
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "offloads",
+      "column_name": "submitted_by",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "offloads",
+      "column_name": "submitted_at",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "offloads",
+      "column_name": "event_type",
+      "is_nullable": "NO",
+      "column_default": "'Offload'::text"
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "offloads",
+      "column_name": "reported_at",
+      "is_nullable": "YES",
+      "column_default": "now()"
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "offloads",
+      "column_name": "reported_by",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "pod_records",
+      "column_name": "id",
+      "is_nullable": "NO",
+      "column_default": "gen_random_uuid()"
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "pod_records",
+      "column_name": "trip_id",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "pod_records",
+      "column_name": "trip_stop_id",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "pod_records",
+      "column_name": "dr_number",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "pod_records",
+      "column_name": "pod_status",
+      "is_nullable": "NO",
+      "column_default": "'PENDING_TRUCKER_CONFIRMATION'::text"
+    },
+    {
+      "data_type": "text",
+      "table_name": "pod_records",
+      "column_name": "transmittal_reference",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "pod_records",
+      "column_name": "remarks",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "pod_records",
+      "column_name": "created_at",
+      "is_nullable": "NO",
+      "column_default": "now()"
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "pod_records",
+      "column_name": "updated_at",
+      "is_nullable": "NO",
+      "column_default": "now()"
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "pod_records",
+      "column_name": "pod_received_at",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "report_receipts",
+      "column_name": "id",
+      "is_nullable": "NO",
+      "column_default": "gen_random_uuid()"
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "report_receipts",
+      "column_name": "trip_id",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "report_receipts",
+      "column_name": "trip_stop_id",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "report_receipts",
+      "column_name": "loading_report_id",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "report_receipts",
+      "column_name": "unloading_report_id",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "report_receipts",
+      "column_name": "backload_id",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "report_receipts",
+      "column_name": "offload_id",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "report_receipts",
+      "column_name": "storage_path",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "report_receipts",
+      "column_name": "file_name",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "report_receipts",
+      "column_name": "mime_type",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "data_type": "bigint",
+      "table_name": "report_receipts",
+      "column_name": "file_size_bytes",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "report_receipts",
+      "column_name": "uploaded_by",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "report_receipts",
+      "column_name": "received_at",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "report_receipts",
+      "column_name": "created_at",
+      "is_nullable": "NO",
+      "column_default": "now()"
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "report_receipts",
+      "column_name": "upload_request_id",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "report_receipts",
+      "column_name": "upload_sha256",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "report_receipts",
+      "column_name": "upload_status",
+      "is_nullable": "NO",
+      "column_default": "'READY'::text"
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "spreadsheet_cell_formulas",
+      "column_name": "id",
+      "is_nullable": "NO",
+      "column_default": "gen_random_uuid()"
+    },
+    {
+      "data_type": "text",
+      "table_name": "spreadsheet_cell_formulas",
+      "column_name": "table_key",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "spreadsheet_cell_formulas",
+      "column_name": "row_identity",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "spreadsheet_cell_formulas",
+      "column_name": "column_key",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "spreadsheet_cell_formulas",
+      "column_name": "formula_expression",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "jsonb",
+      "table_name": "spreadsheet_cell_formulas",
+      "column_name": "reference_bindings",
+      "is_nullable": "NO",
+      "column_default": "'{}'::jsonb"
+    },
+    {
+      "data_type": "boolean",
+      "table_name": "spreadsheet_cell_formulas",
+      "column_name": "is_deleted",
+      "is_nullable": "NO",
+      "column_default": "false"
+    },
+    {
+      "data_type": "integer",
+      "table_name": "spreadsheet_cell_formulas",
+      "column_name": "version",
+      "is_nullable": "NO",
+      "column_default": "1"
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "spreadsheet_cell_formulas",
+      "column_name": "created_by",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "spreadsheet_cell_formulas",
+      "column_name": "updated_by",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "spreadsheet_cell_formulas",
+      "column_name": "created_at",
+      "is_nullable": "NO",
+      "column_default": "now()"
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "spreadsheet_cell_formulas",
+      "column_name": "updated_at",
+      "is_nullable": "NO",
+      "column_default": "now()"
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "store_calls",
+      "column_name": "id",
+      "is_nullable": "NO",
+      "column_default": "gen_random_uuid()"
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "store_calls",
+      "column_name": "trip_id",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "store_calls",
+      "column_name": "trip_stop_id",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "store_calls",
+      "column_name": "assigned_to",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "store_calls",
+      "column_name": "contact_id",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "store_calls",
+      "column_name": "date_assigned",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "store_calls",
+      "column_name": "date_of_contact",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "store_calls",
+      "column_name": "time_texted",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "store_calls",
+      "column_name": "time_called",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "store_calls",
+      "column_name": "contact_number",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "store_calls",
+      "column_name": "contact_name",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "store_calls",
+      "column_name": "status",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "store_calls",
+      "column_name": "confirmation_status",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "store_calls",
+      "column_name": "remarks",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "store_calls",
+      "column_name": "created_at",
+      "is_nullable": "NO",
+      "column_default": "now()"
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "store_calls",
+      "column_name": "updated_at",
+      "is_nullable": "NO",
+      "column_default": "now()"
+    },
+    {
+      "data_type": "bigint",
+      "table_name": "store_calls",
+      "column_name": "collaboration_version",
+      "is_nullable": "NO",
+      "column_default": "0"
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "trip_images",
+      "column_name": "id",
+      "is_nullable": "NO",
+      "column_default": "gen_random_uuid()"
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "trip_images",
+      "column_name": "trip_id",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "trip_images",
+      "column_name": "storage_path",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "trip_images",
+      "column_name": "file_name",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "data_type": "integer",
+      "table_name": "trip_images",
+      "column_name": "display_order",
+      "is_nullable": "NO",
+      "column_default": "0"
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "trip_images",
+      "column_name": "created_at",
+      "is_nullable": "NO",
+      "column_default": "now()"
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "trip_images",
+      "column_name": "updated_at",
+      "is_nullable": "NO",
+      "column_default": "now()"
+    },
+    {
+      "data_type": "text",
+      "table_name": "trip_images",
+      "column_name": "kind",
+      "is_nullable": "NO",
+      "column_default": "'photo'::text"
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "trip_images",
+      "column_name": "trip_stop_id",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "trip_images",
+      "column_name": "uploaded_by",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "trip_images",
+      "column_name": "dr_number",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "trip_images",
+      "column_name": "ocr_text",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "double precision",
+      "table_name": "trip_images",
+      "column_name": "ocr_confidence",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "integer",
+      "table_name": "trip_images",
+      "column_name": "ocr_version",
+      "is_nullable": "NO",
+      "column_default": "0"
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "trip_images",
+      "column_name": "reviewed_at",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "trip_images",
+      "column_name": "reviewed_by",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "trip_images",
+      "column_name": "pod_review_status",
+      "is_nullable": "NO",
+      "column_default": "'PENDING'::text"
+    },
+    {
+      "data_type": "bigint",
+      "table_name": "trip_images",
+      "column_name": "pod_review_version",
+      "is_nullable": "NO",
+      "column_default": "0"
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "trip_images",
+      "column_name": "pod_reviewed_at",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "trip_images",
+      "column_name": "pod_reviewed_by",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "trip_images",
+      "column_name": "pod_rejection_reason",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "trip_images",
+      "column_name": "pod_record_id",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "trip_images",
+      "column_name": "mime_type",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "trip_images",
+      "column_name": "file_sha256",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "trip_line_items",
+      "column_name": "id",
+      "is_nullable": "NO",
+      "column_default": "gen_random_uuid()"
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "trip_line_items",
+      "column_name": "trip_id",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "trip_line_items",
+      "column_name": "trip_stop_id",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "trip_line_items",
+      "column_name": "product_id",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "numeric",
+      "table_name": "trip_line_items",
+      "column_name": "quantity",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "numeric",
+      "table_name": "trip_line_items",
+      "column_name": "cbm",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "trip_line_items",
+      "column_name": "dr_number",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "trip_line_items",
+      "column_name": "sap_so_number",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "trip_line_items",
+      "column_name": "customer_po_number",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "trip_line_items",
+      "column_name": "internal_po_number",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "trip_line_items",
+      "column_name": "customer_model",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "trip_line_items",
+      "column_name": "remarks",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "trip_line_items",
+      "column_name": "created_at",
+      "is_nullable": "NO",
+      "column_default": "now()"
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "trip_line_items",
+      "column_name": "updated_at",
+      "is_nullable": "NO",
+      "column_default": "now()"
+    },
+    {
+      "data_type": "bigint",
+      "table_name": "trip_line_items",
+      "column_name": "collaboration_version",
+      "is_nullable": "NO",
+      "column_default": "0"
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "trip_stops",
+      "column_name": "id",
+      "is_nullable": "NO",
+      "column_default": "gen_random_uuid()"
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "trip_stops",
+      "column_name": "trip_id",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "data_type": "integer",
+      "table_name": "trip_stops",
+      "column_name": "stop_sequence",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "trip_stops",
+      "column_name": "customer_id",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "trip_stops",
+      "column_name": "store_id",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "trip_stops",
+      "column_name": "delivery_status",
+      "is_nullable": "NO",
+      "column_default": "'PENDING'::text"
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "trip_stops",
+      "column_name": "arrival_time",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "trip_stops",
+      "column_name": "start_unloading_time",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "trip_stops",
+      "column_name": "finish_unloading_time",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "trip_stops",
+      "column_name": "departure_time",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "trip_stops",
+      "column_name": "remarks",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "trip_stops",
+      "column_name": "created_at",
+      "is_nullable": "NO",
+      "column_default": "now()"
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "trip_stops",
+      "column_name": "updated_at",
+      "is_nullable": "NO",
+      "column_default": "now()"
+    },
+    {
+      "data_type": "text",
+      "table_name": "trip_stops",
+      "column_name": "dispatch_number",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "trip_stops",
+      "column_name": "transaction_number",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "trip_stops",
+      "column_name": "dr_number",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "bigint",
+      "table_name": "trip_stops",
+      "column_name": "dr_version",
+      "is_nullable": "NO",
+      "column_default": "0"
+    },
+    {
+      "data_type": "numeric",
+      "table_name": "trip_stops",
+      "column_name": "quantity",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "numeric",
+      "table_name": "trip_stops",
+      "column_name": "total_cbm",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "trip_stops",
+      "column_name": "archived_at",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "trip_stops",
+      "column_name": "archived_by",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "bigint",
+      "table_name": "trip_stops",
+      "column_name": "collaboration_version",
+      "is_nullable": "NO",
+      "column_default": "0"
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "trip_tracking_locations",
+      "column_name": "assignment_id",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "trip_tracking_locations",
+      "column_name": "profile_id",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "trip_tracking_locations",
+      "column_name": "tracking_session_id",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "data_type": "boolean",
+      "table_name": "trip_tracking_locations",
+      "column_name": "enabled",
+      "is_nullable": "NO",
+      "column_default": "true"
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "trip_tracking_locations",
+      "column_name": "consented_at",
+      "is_nullable": "NO",
+      "column_default": "now()"
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "trip_tracking_locations",
+      "column_name": "disabled_at",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "double precision",
+      "table_name": "trip_tracking_locations",
+      "column_name": "latitude",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "double precision",
+      "table_name": "trip_tracking_locations",
+      "column_name": "longitude",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "double precision",
+      "table_name": "trip_tracking_locations",
+      "column_name": "accuracy_meters",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "trip_tracking_locations",
+      "column_name": "captured_at",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "trip_tracking_locations",
+      "column_name": "received_at",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "bigint",
+      "table_name": "trip_tracking_locations",
+      "column_name": "revision",
+      "is_nullable": "NO",
+      "column_default": "0"
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "trip_truck_assignments",
+      "column_name": "id",
+      "is_nullable": "NO",
+      "column_default": "gen_random_uuid()"
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "trip_truck_assignments",
+      "column_name": "trip_id",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "trip_truck_assignments",
+      "column_name": "truck_id",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "trip_truck_assignments",
+      "column_name": "driver_id",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "trip_truck_assignments",
+      "column_name": "trucking_company_id",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "trip_truck_assignments",
+      "column_name": "assignment_type",
+      "is_nullable": "NO",
+      "column_default": "'PRIMARY'::text"
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "trip_truck_assignments",
+      "column_name": "assigned_at",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "trip_truck_assignments",
+      "column_name": "unassigned_at",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "trip_truck_assignments",
+      "column_name": "remarks",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "trip_truck_assignments",
+      "column_name": "created_at",
+      "is_nullable": "NO",
+      "column_default": "now()"
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "trip_truck_assignments",
+      "column_name": "updated_at",
+      "is_nullable": "NO",
+      "column_default": "now()"
+    },
+    {
+      "data_type": "bigint",
+      "table_name": "trip_truck_assignments",
+      "column_name": "collaboration_version",
+      "is_nullable": "NO",
+      "column_default": "0"
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "trips",
+      "column_name": "id",
+      "is_nullable": "NO",
+      "column_default": "gen_random_uuid()"
+    },
+    {
+      "data_type": "text",
+      "table_name": "trips",
+      "column_name": "dispatch_number",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "trips",
+      "column_name": "trip_type_id",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "trips",
+      "column_name": "warehouse_id",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "date",
+      "table_name": "trips",
+      "column_name": "loading_date",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "date",
+      "table_name": "trips",
+      "column_name": "estimated_delivery_date",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "trips",
+      "column_name": "status",
+      "is_nullable": "NO",
+      "column_default": "'PLANNED'::text"
+    },
+    {
+      "data_type": "text",
+      "table_name": "trips",
+      "column_name": "authorization_letter",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "trips",
+      "column_name": "page_no",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "trips",
+      "column_name": "remarks",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "trips",
+      "column_name": "created_by",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "trips",
+      "column_name": "created_at",
+      "is_nullable": "NO",
+      "column_default": "now()"
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "trips",
+      "column_name": "updated_at",
+      "is_nullable": "NO",
+      "column_default": "now()"
+    },
+    {
+      "data_type": "text",
+      "table_name": "trips",
+      "column_name": "transaction_number",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "integer",
+      "table_name": "trips",
+      "column_name": "trip_number",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "boolean",
+      "table_name": "trips",
+      "column_name": "added_to_report",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "trips",
+      "column_name": "letter_status",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "trips",
+      "column_name": "truck_allocated_by",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "numeric",
+      "table_name": "trips",
+      "column_name": "subcon_rate_manual",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "date",
+      "table_name": "trips",
+      "column_name": "signed_dr_upload_date",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "date",
+      "table_name": "trips",
+      "column_name": "transmittal_date",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "date",
+      "table_name": "trips",
+      "column_name": "tms_date",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "trips",
+      "column_name": "tms_done_by",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "date",
+      "table_name": "trips",
+      "column_name": "pod_ac_shipping_date",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "trips",
+      "column_name": "lbc_tracking_number",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "trips",
+      "column_name": "request_received_at",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "trips",
+      "column_name": "departure_from_warehouse_at",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "trips",
+      "column_name": "archived_at",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "trips",
+      "column_name": "archived_by",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "bigint",
+      "table_name": "trips",
+      "column_name": "collaboration_version",
+      "is_nullable": "NO",
+      "column_default": "0"
+    },
+    {
+      "data_type": "text",
+      "table_name": "trips",
+      "column_name": "trip_reference",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "trucks",
+      "column_name": "id",
+      "is_nullable": "NO",
+      "column_default": "gen_random_uuid()"
+    },
+    {
+      "data_type": "text",
+      "table_name": "trucks",
+      "column_name": "plate_number",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "data_type": "uuid",
+      "table_name": "trucks",
+      "column_name": "trucking_company_id",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "trucks",
+      "column_name": "truck_type",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "numeric",
+      "table_name": "trucks",
+      "column_name": "capacity_cbm",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "text",
+      "table_name": "trucks",
+      "column_name": "status",
+      "is_nullable": "NO",
+      "column_default": "'ACTIVE'::text"
+    },
+    {
+      "data_type": "text",
+      "table_name": "trucks",
+      "column_name": "notes",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "trucks",
+      "column_name": "created_at",
+      "is_nullable": "NO",
+      "column_default": "now()"
+    },
+    {
+      "data_type": "timestamp with time zone",
+      "table_name": "trucks",
+      "column_name": "updated_at",
+      "is_nullable": "NO",
+      "column_default": "now()"
+    }
+  ],
+  "indexes": [
+    {
+      "indexdef": "CREATE UNIQUE INDEX admin_notifications_pkey ON public.admin_notifications USING btree (id)",
+      "indexname": "admin_notifications_pkey",
+      "tablename": "admin_notifications"
+    },
+    {
+      "indexdef": "CREATE INDEX admin_notifications_recipient_created_idx ON public.admin_notifications USING btree (recipient_profile_id, created_at DESC)",
+      "indexname": "admin_notifications_recipient_created_idx",
+      "tablename": "admin_notifications"
+    },
+    {
+      "indexdef": "CREATE UNIQUE INDEX admin_notifications_recipient_event_uq ON public.admin_notifications USING btree (recipient_profile_id, event_key)",
+      "indexname": "admin_notifications_recipient_event_uq",
+      "tablename": "admin_notifications"
+    },
+    {
+      "indexdef": "CREATE INDEX admin_notifications_recipient_unread_idx ON public.admin_notifications USING btree (recipient_profile_id, created_at DESC) WHERE (read_at IS NULL)",
+      "indexname": "admin_notifications_recipient_unread_idx",
+      "tablename": "admin_notifications"
+    },
+    {
+      "indexdef": "CREATE INDEX flex_cells_column_row_idx ON public.flex_cells USING btree (column_id, row_id)",
+      "indexname": "flex_cells_column_row_idx",
+      "tablename": "flex_cells"
+    },
+    {
+      "indexdef": "CREATE UNIQUE INDEX flex_cells_pkey ON public.flex_cells USING btree (id)",
+      "indexname": "flex_cells_pkey",
+      "tablename": "flex_cells"
+    },
+    {
+      "indexdef": "CREATE UNIQUE INDEX flex_cells_row_column_uq ON public.flex_cells USING btree (row_id, column_id)",
+      "indexname": "flex_cells_row_column_uq",
+      "tablename": "flex_cells"
+    },
+    {
+      "indexdef": "CREATE UNIQUE INDEX flex_rows_pkey ON public.flex_rows USING btree (id)",
+      "indexname": "flex_rows_pkey",
+      "tablename": "flex_rows"
+    },
+    {
+      "indexdef": "CREATE UNIQUE INDEX flex_rows_source_identity_uq ON public.flex_rows USING btree (table_id, source_entity_type, source_entity_id) WHERE ((row_kind = 'SOURCE'::text) AND (archived_at IS NULL))",
+      "indexname": "flex_rows_source_identity_uq",
+      "tablename": "flex_rows"
+    },
+    {
+      "indexdef": "CREATE INDEX flex_rows_table_position_idx ON public.flex_rows USING btree (table_id, \"position\", id) WHERE (archived_at IS NULL)",
+      "indexname": "flex_rows_table_position_idx",
+      "tablename": "flex_rows"
+    },
+    {
+      "indexdef": "CREATE UNIQUE INDEX flex_rows_id_table_id_row_kind_source_binding_uq ON public.flex_rows USING btree (id, table_id, row_kind)",
+      "indexname": "flex_rows_id_table_id_row_kind_source_binding_uq",
+      "tablename": "flex_rows"
+    },
+    {
+      "indexdef": "CREATE UNIQUE INDEX spreadsheet_cell_formulas_pkey ON public.spreadsheet_cell_formulas USING btree (id)",
+      "indexname": "spreadsheet_cell_formulas_pkey",
+      "tablename": "spreadsheet_cell_formulas"
+    },
+    {
+      "indexdef": "CREATE UNIQUE INDEX spreadsheet_cell_formulas_table_key_row_identity_column_key_key ON public.spreadsheet_cell_formulas USING btree (table_key, row_identity, column_key)",
+      "indexname": "spreadsheet_cell_formulas_table_key_row_identity_column_key_key",
+      "tablename": "spreadsheet_cell_formulas"
+    },
+    {
+      "indexdef": "CREATE UNIQUE INDEX store_calls_pkey ON public.store_calls USING btree (id)",
+      "indexname": "store_calls_pkey",
+      "tablename": "store_calls"
+    },
+    {
+      "indexdef": "CREATE INDEX idx_store_calls_trip ON public.store_calls USING btree (trip_id)",
+      "indexname": "idx_store_calls_trip",
+      "tablename": "store_calls"
+    },
+    {
+      "indexdef": "CREATE INDEX idx_store_calls_stop ON public.store_calls USING btree (trip_stop_id)",
+      "indexname": "idx_store_calls_stop",
+      "tablename": "store_calls"
+    },
+    {
+      "indexdef": "CREATE INDEX idx_store_calls_assigned_to ON public.store_calls USING btree (assigned_to)",
+      "indexname": "idx_store_calls_assigned_to",
+      "tablename": "store_calls"
+    },
+    {
+      "indexdef": "CREATE INDEX idx_store_calls_status ON public.store_calls USING btree (status)",
+      "indexname": "idx_store_calls_status",
+      "tablename": "store_calls"
+    },
+    {
+      "indexdef": "CREATE UNIQUE INDEX trip_line_items_pkey ON public.trip_line_items USING btree (id)",
+      "indexname": "trip_line_items_pkey",
+      "tablename": "trip_line_items"
+    },
+    {
+      "indexdef": "CREATE INDEX idx_trip_line_items_trip ON public.trip_line_items USING btree (trip_id)",
+      "indexname": "idx_trip_line_items_trip",
+      "tablename": "trip_line_items"
+    },
+    {
+      "indexdef": "CREATE INDEX idx_trip_line_items_stop ON public.trip_line_items USING btree (trip_stop_id)",
+      "indexname": "idx_trip_line_items_stop",
+      "tablename": "trip_line_items"
+    },
+    {
+      "indexdef": "CREATE INDEX idx_trip_line_items_product ON public.trip_line_items USING btree (product_id)",
+      "indexname": "idx_trip_line_items_product",
+      "tablename": "trip_line_items"
+    },
+    {
+      "indexdef": "CREATE INDEX idx_trip_line_items_dr ON public.trip_line_items USING btree (dr_number)",
+      "indexname": "idx_trip_line_items_dr",
+      "tablename": "trip_line_items"
+    },
+    {
+      "indexdef": "CREATE UNIQUE INDEX trip_stops_pkey ON public.trip_stops USING btree (id)",
+      "indexname": "trip_stops_pkey",
+      "tablename": "trip_stops"
+    },
+    {
+      "indexdef": "CREATE UNIQUE INDEX trip_stops_trip_id_stop_sequence_key ON public.trip_stops USING btree (trip_id, stop_sequence)",
+      "indexname": "trip_stops_trip_id_stop_sequence_key",
+      "tablename": "trip_stops"
+    },
+    {
+      "indexdef": "CREATE INDEX idx_trip_stops_trip ON public.trip_stops USING btree (trip_id)",
+      "indexname": "idx_trip_stops_trip",
+      "tablename": "trip_stops"
+    },
+    {
+      "indexdef": "CREATE INDEX idx_trip_stops_customer ON public.trip_stops USING btree (customer_id)",
+      "indexname": "idx_trip_stops_customer",
+      "tablename": "trip_stops"
+    },
+    {
+      "indexdef": "CREATE INDEX idx_trip_stops_store ON public.trip_stops USING btree (store_id)",
+      "indexname": "idx_trip_stops_store",
+      "tablename": "trip_stops"
+    },
+    {
+      "indexdef": "CREATE UNIQUE INDEX proposed_trip_stops_id_trip_uq ON public.trip_stops USING btree (id, trip_id)",
+      "indexname": "proposed_trip_stops_id_trip_uq",
+      "tablename": "trip_stops"
+    },
+    {
+      "indexdef": "CREATE INDEX trip_stops_dispatch_number_idx ON public.trip_stops USING btree (dispatch_number) WHERE (dispatch_number IS NOT NULL)",
+      "indexname": "trip_stops_dispatch_number_idx",
+      "tablename": "trip_stops"
+    },
+    {
+      "indexdef": "CREATE UNIQUE INDEX trip_truck_assignments_pkey ON public.trip_truck_assignments USING btree (id)",
+      "indexname": "trip_truck_assignments_pkey",
+      "tablename": "trip_truck_assignments"
+    },
+    {
+      "indexdef": "CREATE INDEX idx_trip_truck_assignments_trip ON public.trip_truck_assignments USING btree (trip_id)",
+      "indexname": "idx_trip_truck_assignments_trip",
+      "tablename": "trip_truck_assignments"
+    },
+    {
+      "indexdef": "CREATE INDEX idx_trip_truck_assignments_truck ON public.trip_truck_assignments USING btree (truck_id)",
+      "indexname": "idx_trip_truck_assignments_truck",
+      "tablename": "trip_truck_assignments"
+    },
+    {
+      "indexdef": "CREATE UNIQUE INDEX trips_pkey ON public.trips USING btree (id)",
+      "indexname": "trips_pkey",
+      "tablename": "trips"
+    },
+    {
+      "indexdef": "CREATE INDEX idx_trips_dispatch_number ON public.trips USING btree (dispatch_number)",
+      "indexname": "idx_trips_dispatch_number",
+      "tablename": "trips"
+    },
+    {
+      "indexdef": "CREATE INDEX idx_trips_loading_date ON public.trips USING btree (loading_date)",
+      "indexname": "idx_trips_loading_date",
+      "tablename": "trips"
+    },
+    {
+      "indexdef": "CREATE INDEX idx_trips_status ON public.trips USING btree (status)",
+      "indexname": "idx_trips_status",
+      "tablename": "trips"
+    },
+    {
+      "indexdef": "CREATE INDEX idx_trips_warehouse ON public.trips USING btree (warehouse_id)",
+      "indexname": "idx_trips_warehouse",
+      "tablename": "trips"
+    },
+    {
+      "indexdef": "CREATE INDEX idx_trips_request_received_at ON public.trips USING btree (request_received_at)",
+      "indexname": "idx_trips_request_received_at",
+      "tablename": "trips"
+    },
+    {
+      "indexdef": "CREATE INDEX idx_trips_departure_from_warehouse_at ON public.trips USING btree (departure_from_warehouse_at)",
+      "indexname": "idx_trips_departure_from_warehouse_at",
+      "tablename": "trips"
+    },
+    {
+      "indexdef": "CREATE UNIQUE INDEX trips_dispatch_trip_number_key ON public.trips USING btree (dispatch_number, trip_number)",
+      "indexname": "trips_dispatch_trip_number_key",
+      "tablename": "trips"
+    },
+    {
+      "indexdef": "CREATE UNIQUE INDEX trips_trip_reference_unique ON public.trips USING btree (trip_reference)",
+      "indexname": "trips_trip_reference_unique",
+      "tablename": "trips"
+    }
+  ],
+  "policies": [
+    {
+      "cmd": "SELECT",
+      "qual": "(EXISTS ( SELECT 1\n   FROM profiles\n  WHERE ((profiles.id = auth.uid()) AND (upper(profiles.role) = ANY (ARRAY['ADMIN'::text, 'STAFF'::text])))))",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "spreadsheet_cell_formulas",
+      "policyname": "spreadsheet_formulas_management_read",
+      "with_check": null
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "true",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "store_calls",
+      "policyname": "authenticated users can read store calls",
+      "with_check": null
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "true",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "trip_line_items",
+      "policyname": "authenticated users can read trip line items",
+      "with_check": null
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "true",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "trip_stops",
+      "policyname": "authenticated users can read trip stops",
+      "with_check": null
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "true",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "trip_truck_assignments",
+      "policyname": "authenticated users can read trip truck assignments",
+      "with_check": null
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "true",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "trips",
+      "policyname": "authenticated users can read trips",
+      "with_check": null
+    }
+  ],
+  "triggers": [
+    {
+      "tgname": "admin_change_signal_trg",
+      "relname": "flex_rows",
+      "definition": "CREATE TRIGGER admin_change_signal_trg AFTER INSERT OR DELETE OR UPDATE OR TRUNCATE ON public.flex_rows FOR EACH STATEMENT EXECUTE FUNCTION notify_admin_source_change()",
+      "function_definition": "CREATE OR REPLACE FUNCTION public.notify_admin_source_change()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'public'\nAS $function$\nBEGIN\n  -- Only the trigger's table name is emitted. Old/new row contents are never read.\n  INSERT INTO public.admin_change_signals(topic) VALUES(TG_TABLE_NAME)\n    ON CONFLICT(topic) DO UPDATE SET revision=gen_random_uuid(),changed_at=clock_timestamp();\n  RETURN NULL;\nEND;\n$function$\n"
+    },
+    {
+      "tgname": "admin_change_signal_trg",
+      "relname": "store_calls",
+      "definition": "CREATE TRIGGER admin_change_signal_trg AFTER INSERT OR DELETE OR UPDATE OR TRUNCATE ON public.store_calls FOR EACH STATEMENT EXECUTE FUNCTION notify_admin_source_change()",
+      "function_definition": "CREATE OR REPLACE FUNCTION public.notify_admin_source_change()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'public'\nAS $function$\nBEGIN\n  -- Only the trigger's table name is emitted. Old/new row contents are never read.\n  INSERT INTO public.admin_change_signals(topic) VALUES(TG_TABLE_NAME)\n    ON CONFLICT(topic) DO UPDATE SET revision=gen_random_uuid(),changed_at=clock_timestamp();\n  RETURN NULL;\nEND;\n$function$\n"
+    },
+    {
+      "tgname": "collaboration_version_v1",
+      "relname": "store_calls",
+      "definition": "CREATE TRIGGER collaboration_version_v1 BEFORE UPDATE ON public.store_calls FOR EACH ROW EXECUTE FUNCTION bump_collaboration_version_v1()",
+      "function_definition": "CREATE OR REPLACE FUNCTION public.bump_collaboration_version_v1()\n RETURNS trigger\n LANGUAGE plpgsql\n SET search_path TO 'pg_catalog', 'public'\nAS $function$\nBEGIN\n NEW.collaboration_version := OLD.collaboration_version + 1;\n RETURN NEW;\nEND;\n$function$\n"
+    },
+    {
+      "tgname": "trg_store_calls_updated_at",
+      "relname": "store_calls",
+      "definition": "CREATE TRIGGER trg_store_calls_updated_at BEFORE UPDATE ON public.store_calls FOR EACH ROW EXECUTE FUNCTION set_updated_at()",
+      "function_definition": "CREATE OR REPLACE FUNCTION public.set_updated_at()\n RETURNS trigger\n LANGUAGE plpgsql\nAS $function$\r\nBEGIN\r\n    NEW.updated_at = now();\r\n    RETURN NEW;\r\nEND;\r\n$function$\n"
+    },
+    {
+      "tgname": "admin_change_signal_trg",
+      "relname": "trip_line_items",
+      "definition": "CREATE TRIGGER admin_change_signal_trg AFTER INSERT OR DELETE OR UPDATE OR TRUNCATE ON public.trip_line_items FOR EACH STATEMENT EXECUTE FUNCTION notify_admin_source_change()",
+      "function_definition": "CREATE OR REPLACE FUNCTION public.notify_admin_source_change()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'public'\nAS $function$\nBEGIN\n  -- Only the trigger's table name is emitted. Old/new row contents are never read.\n  INSERT INTO public.admin_change_signals(topic) VALUES(TG_TABLE_NAME)\n    ON CONFLICT(topic) DO UPDATE SET revision=gen_random_uuid(),changed_at=clock_timestamp();\n  RETURN NULL;\nEND;\n$function$\n"
+    },
+    {
+      "tgname": "collaboration_version_v1",
+      "relname": "trip_line_items",
+      "definition": "CREATE TRIGGER collaboration_version_v1 BEFORE UPDATE ON public.trip_line_items FOR EACH ROW EXECUTE FUNCTION bump_collaboration_version_v1()",
+      "function_definition": "CREATE OR REPLACE FUNCTION public.bump_collaboration_version_v1()\n RETURNS trigger\n LANGUAGE plpgsql\n SET search_path TO 'pg_catalog', 'public'\nAS $function$\nBEGIN\n NEW.collaboration_version := OLD.collaboration_version + 1;\n RETURN NEW;\nEND;\n$function$\n"
+    },
+    {
+      "tgname": "trg_trip_line_items_updated_at",
+      "relname": "trip_line_items",
+      "definition": "CREATE TRIGGER trg_trip_line_items_updated_at BEFORE UPDATE ON public.trip_line_items FOR EACH ROW EXECUTE FUNCTION set_updated_at()",
+      "function_definition": "CREATE OR REPLACE FUNCTION public.set_updated_at()\n RETURNS trigger\n LANGUAGE plpgsql\nAS $function$\r\nBEGIN\r\n    NEW.updated_at = now();\r\n    RETURN NEW;\r\nEND;\r\n$function$\n"
+    },
+    {
+      "tgname": "admin_change_signal_trg",
+      "relname": "trip_stops",
+      "definition": "CREATE TRIGGER admin_change_signal_trg AFTER INSERT OR DELETE OR UPDATE OR TRUNCATE ON public.trip_stops FOR EACH STATEMENT EXECUTE FUNCTION notify_admin_source_change()",
+      "function_definition": "CREATE OR REPLACE FUNCTION public.notify_admin_source_change()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'public'\nAS $function$\nBEGIN\n  -- Only the trigger's table name is emitted. Old/new row contents are never read.\n  INSERT INTO public.admin_change_signals(topic) VALUES(TG_TABLE_NAME)\n    ON CONFLICT(topic) DO UPDATE SET revision=gen_random_uuid(),changed_at=clock_timestamp();\n  RETURN NULL;\nEND;\n$function$\n"
+    },
+    {
+      "tgname": "collaboration_version_v1",
+      "relname": "trip_stops",
+      "definition": "CREATE TRIGGER collaboration_version_v1 BEFORE UPDATE ON public.trip_stops FOR EACH ROW EXECUTE FUNCTION bump_collaboration_version_v1()",
+      "function_definition": "CREATE OR REPLACE FUNCTION public.bump_collaboration_version_v1()\n RETURNS trigger\n LANGUAGE plpgsql\n SET search_path TO 'pg_catalog', 'public'\nAS $function$\nBEGIN\n NEW.collaboration_version := OLD.collaboration_version + 1;\n RETURN NEW;\nEND;\n$function$\n"
+    },
+    {
+      "tgname": "converted_unloading_stop_immutable_trg",
+      "relname": "trip_stops",
+      "definition": "CREATE TRIGGER converted_unloading_stop_immutable_trg BEFORE DELETE OR UPDATE ON public.trip_stops FOR EACH ROW EXECUTE FUNCTION guard_converted_unloading_stop_v1()",
+      "function_definition": "CREATE OR REPLACE FUNCTION public.guard_converted_unloading_stop_v1()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'public'\nAS $function$\ndeclare\n  v_converted boolean;\n  v_column text;\n  v_protected text[] := array['id','trip_id','stop_sequence','store_id','customer_id','delivery_status','arrival_time','start_unloading_time','finish_unloading_time','departure_time','remarks'];\nbegin\n  select exists (\n    select 1 from public.unloading_reports ur\n    join public.operations_report_conversions c on c.source_type='UNLOADING' and c.source_id=ur.id\n    where ur.trip_stop_id=OLD.id\n  ) into v_converted;\n  if not v_converted then\n    if TG_OP='DELETE' then return OLD; end if;\n    return NEW;\n  end if;\n  if TG_OP='DELETE' then\n    raise exception using errcode='55000', message='Stop identity or timeline belongs to a converted Unloading source.';\n  end if;\n  foreach v_column in array v_protected loop\n    if to_jsonb(NEW)->v_column is distinct from to_jsonb(OLD)->v_column then\n      raise exception using errcode='55000', message=format('Stop field %s belongs to a converted Unloading source and is immutable.',v_column);\n    end if;\n  end loop;\n  return NEW;\nend;\n$function$\n"
+    },
+    {
+      "tgname": "transaction_dr_version_trg",
+      "relname": "trip_stops",
+      "definition": "CREATE TRIGGER transaction_dr_version_trg BEFORE UPDATE OF dr_number ON public.trip_stops FOR EACH ROW EXECUTE FUNCTION bump_transaction_dr_version()",
+      "function_definition": "CREATE OR REPLACE FUNCTION public.bump_transaction_dr_version()\n RETURNS trigger\n LANGUAGE plpgsql\n SET search_path TO 'pg_catalog', 'public'\nAS $function$\nBEGIN\n  NEW.dr_version := OLD.dr_version + 1;\n  RETURN NEW;\nEND;\n$function$\n"
+    },
+    {
+      "tgname": "trg_trip_stops_updated_at",
+      "relname": "trip_stops",
+      "definition": "CREATE TRIGGER trg_trip_stops_updated_at BEFORE UPDATE ON public.trip_stops FOR EACH ROW EXECUTE FUNCTION set_updated_at()",
+      "function_definition": "CREATE OR REPLACE FUNCTION public.set_updated_at()\n RETURNS trigger\n LANGUAGE plpgsql\nAS $function$\r\nBEGIN\r\n    NEW.updated_at = now();\r\n    RETURN NEW;\r\nEND;\r\n$function$\n"
+    },
+    {
+      "tgname": "admin_change_signal_trg",
+      "relname": "trip_truck_assignments",
+      "definition": "CREATE TRIGGER admin_change_signal_trg AFTER INSERT OR DELETE OR UPDATE OR TRUNCATE ON public.trip_truck_assignments FOR EACH STATEMENT EXECUTE FUNCTION notify_admin_source_change()",
+      "function_definition": "CREATE OR REPLACE FUNCTION public.notify_admin_source_change()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'public'\nAS $function$\nBEGIN\n  -- Only the trigger's table name is emitted. Old/new row contents are never read.\n  INSERT INTO public.admin_change_signals(topic) VALUES(TG_TABLE_NAME)\n    ON CONFLICT(topic) DO UPDATE SET revision=gen_random_uuid(),changed_at=clock_timestamp();\n  RETURN NULL;\nEND;\n$function$\n"
+    },
+    {
+      "tgname": "collaboration_version_v1",
+      "relname": "trip_truck_assignments",
+      "definition": "CREATE TRIGGER collaboration_version_v1 BEFORE UPDATE ON public.trip_truck_assignments FOR EACH ROW EXECUTE FUNCTION bump_collaboration_version_v1()",
+      "function_definition": "CREATE OR REPLACE FUNCTION public.bump_collaboration_version_v1()\n RETURNS trigger\n LANGUAGE plpgsql\n SET search_path TO 'pg_catalog', 'public'\nAS $function$\nBEGIN\n NEW.collaboration_version := OLD.collaboration_version + 1;\n RETURN NEW;\nEND;\n$function$\n"
+    },
+    {
+      "tgname": "trg_trip_truck_assignments_updated_at",
+      "relname": "trip_truck_assignments",
+      "definition": "CREATE TRIGGER trg_trip_truck_assignments_updated_at BEFORE UPDATE ON public.trip_truck_assignments FOR EACH ROW EXECUTE FUNCTION set_updated_at()",
+      "function_definition": "CREATE OR REPLACE FUNCTION public.set_updated_at()\n RETURNS trigger\n LANGUAGE plpgsql\nAS $function$\r\nBEGIN\r\n    NEW.updated_at = now();\r\n    RETURN NEW;\r\nEND;\r\n$function$\n"
+    },
+    {
+      "tgname": "admin_change_signal_trg",
+      "relname": "trips",
+      "definition": "CREATE TRIGGER admin_change_signal_trg AFTER INSERT OR DELETE OR UPDATE OR TRUNCATE ON public.trips FOR EACH STATEMENT EXECUTE FUNCTION notify_admin_source_change()",
+      "function_definition": "CREATE OR REPLACE FUNCTION public.notify_admin_source_change()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'public'\nAS $function$\nBEGIN\n  -- Only the trigger's table name is emitted. Old/new row contents are never read.\n  INSERT INTO public.admin_change_signals(topic) VALUES(TG_TABLE_NAME)\n    ON CONFLICT(topic) DO UPDATE SET revision=gen_random_uuid(),changed_at=clock_timestamp();\n  RETURN NULL;\nEND;\n$function$\n"
+    },
+    {
+      "tgname": "collaboration_version_v1",
+      "relname": "trips",
+      "definition": "CREATE TRIGGER collaboration_version_v1 BEFORE UPDATE ON public.trips FOR EACH ROW EXECUTE FUNCTION bump_collaboration_version_v1()",
+      "function_definition": "CREATE OR REPLACE FUNCTION public.bump_collaboration_version_v1()\n RETURNS trigger\n LANGUAGE plpgsql\n SET search_path TO 'pg_catalog', 'public'\nAS $function$\nBEGIN\n NEW.collaboration_version := OLD.collaboration_version + 1;\n RETURN NEW;\nEND;\n$function$\n"
+    },
+    {
+      "tgname": "trg_trips_updated_at",
+      "relname": "trips",
+      "definition": "CREATE TRIGGER trg_trips_updated_at BEFORE UPDATE ON public.trips FOR EACH ROW EXECUTE FUNCTION set_updated_at()",
+      "function_definition": "CREATE OR REPLACE FUNCTION public.set_updated_at()\n RETURNS trigger\n LANGUAGE plpgsql\nAS $function$\r\nBEGIN\r\n    NEW.updated_at = now();\r\n    RETURN NEW;\r\nEND;\r\n$function$\n"
+    },
+    {
+      "tgname": "trips_generate_trip_reference",
+      "relname": "trips",
+      "definition": "CREATE TRIGGER trips_generate_trip_reference BEFORE INSERT ON public.trips FOR EACH ROW EXECUTE FUNCTION generate_trip_reference()",
+      "function_definition": "CREATE OR REPLACE FUNCTION public.generate_trip_reference()\n RETURNS trigger\n LANGUAGE plpgsql\n SET search_path TO 'public', 'pg_temp'\nAS $function$\r\nDECLARE\r\n  prefix text;\r\n  next_number bigint;\r\nBEGIN\r\n  -- Assign on insert under a date-specific transaction lock so concurrent\r\n  -- creators receive different references even if their previews matched.\r\n  prefix := 'TRIP' || to_char(coalesce(NEW.loading_date::date, (now() AT TIME ZONE 'Asia/Manila')::date), 'YYMMDD');\r\n  PERFORM pg_advisory_xact_lock(hashtextextended(prefix, 0));\r\n  SELECT coalesce(max(substring(trip_reference FROM '^TRIP[0-9]{6}-([0-9]+)$')::bigint), 0) + 1\r\n    INTO next_number FROM public.trips WHERE trip_reference LIKE prefix || '-%';\r\n  NEW.trip_reference := prefix || '-' || next_number::text;\r\n  RETURN NEW;\r\nEND;\r\n$function$\n"
+    }
+  ],
+  "functions": [
+    {
+      "args": "p_actor uuid, p_table text, p_changes jsonb",
+      "proname": "save_spreadsheet_formulas_v1",
+      "definition": "CREATE OR REPLACE FUNCTION public.save_spreadsheet_formulas_v1(p_actor uuid, p_table text, p_changes jsonb)\n RETURNS SETOF spreadsheet_cell_formulas\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'public'\nAS $function$\r\nDECLARE change jsonb; current_version integer; changed public.spreadsheet_cell_formulas; ids uuid[]='{}'; bad_graph boolean;\r\nBEGIN\r\n IF NOT EXISTS(SELECT 1 FROM public.profiles WHERE id=p_actor AND upper(role) IN ('ADMIN','STAFF')) THEN RAISE EXCEPTION 'Formula access denied' USING ERRCODE='42501'; END IF;\r\n IF p_table NOT IN ('trips','report:combined','report:dispatch-monitoring','report:dispatch','report:trip-booking','report:store-calling','report:pod-status','report:pod-drive-files','report:trip-exceptions','transmittal-tracker','operations')\r\n OR jsonb_typeof(p_changes)<>'array' OR jsonb_array_length(p_changes) NOT BETWEEN 1 AND 50 THEN RAISE EXCEPTION 'Invalid formula batch' USING ERRCODE='22023'; END IF;\r\n PERFORM pg_advisory_xact_lock(hashtext('spreadsheet-formula:'||p_table));\r\n IF (SELECT count(*) FROM jsonb_array_elements(p_changes))<>(SELECT count(DISTINCT (c->>'row_identity',c->>'column_key')) FROM jsonb_array_elements(p_changes)c) THEN RAISE EXCEPTION 'Duplicate formula target' USING ERRCODE='22023'; END IF;\r\n FOR change IN SELECT value FROM jsonb_array_elements(p_changes) ORDER BY value->>'row_identity',value->>'column_key' LOOP\r\n  SELECT version INTO current_version FROM public.spreadsheet_cell_formulas WHERE table_key=p_table AND row_identity=change->>'row_identity' AND column_key=change->>'column_key' FOR UPDATE;\r\n  IF COALESCE(current_version,0)<>(change->>'expected_version')::integer THEN RAISE EXCEPTION 'Formula version conflict' USING ERRCODE='40001'; END IF;\r\n  INSERT INTO public.spreadsheet_cell_formulas(table_key,row_identity,column_key,formula_expression,reference_bindings,is_deleted,created_by,updated_by)\r\n  VALUES(p_table,change->>'row_identity',change->>'column_key',change->>'expression',COALESCE(change->'references','{}'::jsonb),change->>'expression' IS NULL,p_actor,p_actor)\r\n  ON CONFLICT(table_key,row_identity,column_key) DO UPDATE SET formula_expression=EXCLUDED.formula_expression,reference_bindings=EXCLUDED.reference_bindings,is_deleted=EXCLUDED.is_deleted,version=spreadsheet_cell_formulas.version+1,updated_by=p_actor,updated_at=now()\r\n  RETURNING * INTO changed;\r\n  ids=array_append(ids,changed.id);\r\n END LOOP;\r\n -- Serialized graph validation includes the complete resulting batch, not a stale preview.\r\n WITH RECURSIVE edges AS (\r\n  SELECT f.id a,g.id b FROM public.spreadsheet_cell_formulas f CROSS JOIN LATERAL jsonb_each(f.reference_bindings) r, public.spreadsheet_cell_formulas g\r\n  WHERE g.table_key=f.table_key AND g.row_identity=r.value->>'rowId' AND g.column_key=r.value->>'columnId' AND NOT g.is_deleted AND f.table_key=p_table AND NOT f.is_deleted\r\n ), walk AS (\r\n  SELECT a,b FROM edges\r\n  UNION SELECT w.a,e.b FROM walk w JOIN edges e ON e.a=w.b\r\n ) SELECT EXISTS(SELECT 1 FROM walk WHERE a=b) INTO bad_graph;\r\n IF bad_graph THEN RAISE EXCEPTION 'Circular formula dependencies' USING ERRCODE='23514'; END IF;\r\n RETURN QUERY SELECT * FROM public.spreadsheet_cell_formulas WHERE id=ANY(ids);\r\nEND $function$\n"
+    },
+    {
+      "args": "p_trip_id uuid, p_stop_id uuid, p_actor_id uuid",
+      "proname": "delete_transaction_with_cleanup_v1",
+      "definition": "CREATE OR REPLACE FUNCTION public.delete_transaction_with_cleanup_v1(p_trip_id uuid, p_stop_id uuid, p_actor_id uuid)\n RETURNS jsonb\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'public'\nAS $function$\nDECLARE\n  v_job public.transaction_deletion_jobs%ROWTYPE;\n  v_trip jsonb; v_stop jsonb; v_last boolean; v_invalid boolean; v_table text;\n  v_rows jsonb; v_snapshot jsonb := '{}'; v_objects jsonb := '[]';\n  v_offloads uuid[]; v_backloads uuid[]; v_unloading uuid[]; v_loading uuid[];\n  v_flex_ids uuid[];\n  v_receipt record; v_image record; v_type text; v_id uuid; v_prefix text;\nBEGIN\n  IF NOT EXISTS(SELECT 1 FROM public.profiles WHERE id=p_actor_id AND role IN ('ADMIN','STAFF')) THEN\n    RAISE EXCEPTION USING ERRCODE='42501',MESSAGE='Only ADMIN or STAFF may delete transactions.';\n  END IF;\n  -- A short, bounded lock serializes ownership checks with report/item/flex\n  -- writers (some logical flex references have no FK). No partial DB deletion.\n  PERFORM set_config('lock_timeout','3s',true);\n  LOCK TABLE public.trips,public.trip_stops,public.trip_line_items,\n    public.trip_truck_assignments,public.trip_events,public.store_calls,\n    public.documents,public.incidents,public.demurrages,public.billings,\n    public.payables,public.receivables,public.pod_records,public.pod_drive_files,\n    public.trip_images,public.offloads,public.offload_items,public.backloads,\n    public.backload_items,public.loading_reports,public.unloading_reports,\n    public.report_receipts,public.operations_report_conversions,\n    public.flex_rows,public.flex_cells,public.driver_trip_updates IN SHARE ROW EXCLUSIVE MODE;\n  SELECT * INTO v_job FROM public.transaction_deletion_jobs WHERE transaction_id=coalesce(p_stop_id,p_trip_id);\n  IF FOUND THEN\n    IF v_job.trip_id<>p_trip_id OR v_job.trip_stop_id IS DISTINCT FROM p_stop_id THEN\n      RAISE EXCEPTION USING ERRCODE='55000',MESSAGE='Deletion identity does not match the original transaction.';\n    END IF;\n    RETURN to_jsonb(v_job);\n  END IF;\n  SELECT to_jsonb(t) INTO v_trip FROM public.trips t WHERE id=p_trip_id FOR UPDATE;\n  IF NOT FOUND THEN RAISE EXCEPTION USING ERRCODE='P0002',MESSAGE='Trip not found.'; END IF;\n  IF p_stop_id IS NOT NULL THEN\n    SELECT to_jsonb(s) INTO v_stop FROM public.trip_stops s WHERE id=p_stop_id AND trip_id=p_trip_id FOR UPDATE;\n    IF NOT FOUND THEN RAISE EXCEPTION USING ERRCODE='P0002',MESSAGE='Transaction does not belong to this trip.'; END IF;\n  ELSIF EXISTS(SELECT 1 FROM public.trip_stops WHERE trip_id=p_trip_id) THEN\n    RAISE EXCEPTION USING ERRCODE='55000',MESSAGE='Select the exact delivery transaction; this trip has stops.';\n  END IF;\n  v_last := NOT EXISTS(SELECT 1 FROM public.trip_stops WHERE trip_id=p_trip_id AND id IS DISTINCT FROM p_stop_id);\n  -- Trip-level legacy updates have no stop identity. Only resolve them when\n  -- the parent itself is being removed, under the same transaction and locks.\n  IF v_last AND EXISTS(SELECT FROM public.inspect_legacy_pod_ownership_v1(ARRAY[p_trip_id]) WHERE status='BLOCKED') THEN\n    RAISE EXCEPTION USING ERRCODE='55000',MESSAGE='Legacy POD ownership/retention is unresolved; inspect the attachment review. Nothing was deleted.';\n  END IF;\n  IF EXISTS(SELECT FROM public.report_receipts WHERE trip_id=p_trip_id AND (v_last OR trip_stop_id=p_stop_id) AND upload_status='PENDING') THEN\n    RAISE EXCEPTION USING ERRCODE='55000',MESSAGE='An image upload is incomplete; nothing was deleted.';\n  END IF;\n  IF NOT v_last AND EXISTS(SELECT FROM public.trip_images i JOIN public.driver_trip_updates d ON d.pod_image_path=i.storage_path WHERE i.trip_stop_id=p_stop_id AND d.trip_id=p_trip_id) THEN\n   RAISE EXCEPTION USING ERRCODE='55000',MESSAGE='This stop has retained driver POD history; use the reviewed whole-trip workflow or retain the stop.';\n  END IF;\n  IF v_last AND EXISTS(SELECT FROM storage.objects o CROSS JOIN unnest(ARRAY[p_trip_id]) selected_trip\n WHERE ((o.bucket_id='trip-images' AND left(o.name,length('trips/'||selected_trip||'/'))='trips/'||selected_trip||'/' AND NOT EXISTS(SELECT FROM public.trip_images i WHERE i.trip_id=selected_trip AND i.storage_path=o.name))\n OR (o.bucket_id='report-receipts' AND left(o.name,length('operations/'||selected_trip||'/'))='operations/'||selected_trip||'/' AND NOT EXISTS(SELECT FROM public.report_receipts r WHERE r.trip_id=selected_trip AND r.storage_path=o.name)))\n AND NOT EXISTS(SELECT FROM public.transaction_deletion_jobs j CROSS JOIN LATERAL jsonb_array_elements(j.storage_objects) manifest WHERE j.trip_id=selected_trip AND manifest->>'bucket'=o.bucket_id AND manifest->>'path'=o.name AND manifest->>'object_id'=o.id::text AND manifest->>'metadata_fingerprint'=md5(coalesce(o.metadata::text,'')) AND manifest->>'object_version' IS NOT DISTINCT FROM to_jsonb(o)->>'version')) THEN RAISE EXCEPTION 'Unregistered Storage objects require ownership review; nothing was deleted.' USING ERRCODE='55000'; END IF;\n  FOREACH v_table IN ARRAY ARRAY['trip_line_items','trip_events','store_calls','documents','incidents','demurrages','pod_records','pod_drive_files','offloads','backloads','unloading_reports','report_receipts'] LOOP\n    EXECUTE format('SELECT EXISTS(SELECT 1 FROM public.%I t WHERE (t.trip_stop_id=$2 AND t.trip_id IS DISTINCT FROM $1) OR (t.trip_id=$1 AND t.trip_stop_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.trip_stops s WHERE s.id=t.trip_stop_id AND s.trip_id=$1)))',v_table) INTO v_invalid USING p_trip_id,p_stop_id;\n    IF v_invalid THEN RAISE EXCEPTION USING ERRCODE='55000',MESSAGE='A child record has inconsistent trip/stop ownership; review it before deletion.'; END IF;\n  END LOOP;\n  IF EXISTS(SELECT 1 FROM public.operations_report_conversions WHERE trip_id=p_trip_id AND (v_last OR trip_stop_id=p_stop_id OR trip_stop_id IS NULL)) THEN\n    RAISE EXCEPTION USING ERRCODE='55000',MESSAGE='Conversion history protects this transaction or its shared trip reports.';\n  END IF;\n  IF EXISTS(SELECT 1 FROM public.billings WHERE trip_id=p_trip_id)\n    OR EXISTS(SELECT 1 FROM public.payables WHERE trip_id=p_trip_id)\n    OR EXISTS(SELECT 1 FROM public.receivables WHERE trip_id=p_trip_id) THEN\n    RAISE EXCEPTION USING ERRCODE='55000',MESSAGE='Trip has billing, payable or receivable records; financial ownership must be reviewed before deletion.';\n  END IF;\n  IF EXISTS(SELECT 1 FROM public.documents WHERE trip_id=p_trip_id AND (v_last OR trip_stop_id=p_stop_id) AND nullif(btrim(file_path),'') IS NOT NULL)\n    OR EXISTS(SELECT 1 FROM public.pod_drive_files WHERE trip_id=p_trip_id AND (v_last OR trip_stop_id=p_stop_id OR pod_record_id IN (SELECT id FROM public.pod_records WHERE trip_id=p_trip_id AND trip_stop_id=p_stop_id))) THEN\n    RAISE EXCEPTION USING ERRCODE='55000',MESSAGE='Document or Drive attachments require an ownership/retention review; nothing was deleted.';\n  END IF;\n  SELECT coalesce(array_agg(id),'{}') INTO v_offloads FROM public.offloads WHERE trip_id=p_trip_id AND (v_last OR trip_stop_id=p_stop_id);\n  SELECT coalesce(array_agg(id),'{}') INTO v_backloads FROM public.backloads WHERE trip_id=p_trip_id AND (v_last OR trip_stop_id=p_stop_id);\n  SELECT coalesce(array_agg(id),'{}') INTO v_unloading FROM public.unloading_reports WHERE trip_id=p_trip_id AND (v_last OR trip_stop_id=p_stop_id);\n  SELECT coalesce(array_agg(id),'{}') INTO v_loading FROM public.loading_reports WHERE trip_id=p_trip_id AND v_last;\n  -- A retained report's source items must never be removed by a stop cascade.\n  IF EXISTS(SELECT 1 FROM public.offload_items WHERE trip_line_item_id IN (SELECT id FROM public.trip_line_items WHERE trip_id=p_trip_id AND (v_last OR trip_stop_id=p_stop_id)) AND NOT(offload_id=ANY(v_offloads)))\n    OR EXISTS(SELECT 1 FROM public.backload_items WHERE trip_line_item_id IN (SELECT id FROM public.trip_line_items WHERE trip_id=p_trip_id AND (v_last OR trip_stop_id=p_stop_id)) AND NOT(backload_id=ANY(v_backloads))) THEN\n    RAISE EXCEPTION USING ERRCODE='55000',MESSAGE='A retained report references this transaction line item.';\n  END IF;\n  FOR v_receipt IN SELECT * FROM public.report_receipts WHERE trip_id=p_trip_id AND (v_last OR trip_stop_id=p_stop_id) LOOP\n    IF v_receipt.offload_id=ANY(v_offloads) THEN v_type:='offload'; v_id:=v_receipt.offload_id;\n    ELSIF v_receipt.backload_id=ANY(v_backloads) THEN v_type:='backload'; v_id:=v_receipt.backload_id;\n    ELSIF v_receipt.unloading_report_id=ANY(v_unloading) THEN v_type:='unloading'; v_id:=v_receipt.unloading_report_id;\n    ELSIF v_receipt.loading_report_id=ANY(v_loading) THEN v_type:='loading'; v_id:=v_receipt.loading_report_id;\n    ELSE RAISE EXCEPTION USING ERRCODE='55000',MESSAGE='A receipt belongs to a retained/shared report.';\n    END IF;\n    v_prefix:='operations/'||p_trip_id||'/'||v_type||'/'||v_id||'/';\n    IF v_receipt.storage_path IS NULL OR left(v_receipt.storage_path,length(v_prefix))<>v_prefix OR substring(v_receipt.storage_path from length(v_prefix)+1) !~ '^[a-f0-9-]{36}\\.(jpg|jpeg|png|webp)$' THEN\n      RAISE EXCEPTION USING ERRCODE='55000',MESSAGE='Receipt storage ownership requires review.';\n    END IF;\n    v_objects:=v_objects||jsonb_build_array(jsonb_build_object('bucket','report-receipts','path',v_receipt.storage_path));\n  END LOOP;\n  IF v_last THEN\n    FOR v_image IN SELECT * FROM public.trip_images WHERE trip_id=p_trip_id LOOP\n      v_prefix:='trips/'||p_trip_id||'/';\n      IF v_image.storage_path IS NULL OR left(v_image.storage_path,length(v_prefix))<>v_prefix OR substring(v_image.storage_path from length(v_prefix)+1) !~ '^[a-f0-9-]{36}\\.(jpg|jpeg|png|webp)$' THEN\n        RAISE EXCEPTION USING ERRCODE='55000',MESSAGE='Trip image ownership requires review.';\n      END IF;\n      v_objects:=v_objects||jsonb_build_array(jsonb_build_object('bucket','trip-images','path',v_image.storage_path));\n    END LOOP;\n  END IF;\n  IF EXISTS(SELECT 1 FROM public.documents d CROSS JOIN jsonb_array_elements(v_objects) o WHERE position(o->>'path' in coalesce(d.file_path,''))>0) THEN\n    RAISE EXCEPTION USING ERRCODE='55000',MESSAGE='An image is referenced by a retained document.';\n  END IF;\n  IF EXISTS(SELECT 1 FROM public.trip_images i CROSS JOIN jsonb_array_elements(v_objects) o WHERE i.storage_path=o->>'path' AND (i.trip_id<>p_trip_id OR NOT v_last))\n    OR EXISTS(SELECT 1 FROM public.report_receipts r CROSS JOIN jsonb_array_elements(v_objects) o WHERE r.storage_path=o->>'path' AND NOT(r.trip_id=p_trip_id AND (v_last OR r.trip_stop_id=p_stop_id))) THEN\n    RAISE EXCEPTION USING ERRCODE='55000',MESSAGE='An image is also referenced by retained business data.';\n  END IF;\n  -- Protect exact objects also referenced by legacy driver history, including\n  -- another trip. Never guess that a legacy URL/path is exclusively owned.\n  IF EXISTS(SELECT FROM public.driver_trip_updates d CROSS JOIN jsonb_array_elements(v_objects) o\n    WHERE (position(o->>'path' in coalesce(d.pod_image_path,''))>0\n       OR position(o->>'path' in coalesce(d.pod_image_url,''))>0)\n     AND NOT(v_last AND d.trip_id=p_trip_id AND EXISTS(SELECT FROM public.inspect_legacy_pod_ownership_v1(ARRAY[p_trip_id]) verified WHERE verified.update_id=d.id AND verified.status='VERIFIED'))) THEN\n    RAISE EXCEPTION USING ERRCODE='55000',MESSAGE='An image is referenced by retained driver history; ownership review is required.';\n  END IF;\n  -- Capture immutable Storage object IDs, not just names, before removing relations.\n  SELECT coalesce(jsonb_agg(DISTINCT object || jsonb_build_object('object_id',s.id,'metadata_fingerprint',md5(coalesce(s.metadata::text,'')),'object_version',to_jsonb(s)->>'version')),'[]') INTO v_objects\n   FROM jsonb_array_elements(v_objects) object LEFT JOIN storage.objects s ON s.bucket_id=object->>'bucket' AND s.name=object->>'path';\n  IF EXISTS(SELECT FROM jsonb_array_elements(v_objects) object WHERE object->>'object_id' IS NULL) THEN\n   RAISE EXCEPTION USING ERRCODE='55000',MESSAGE='Storage object identity cannot be verified; nothing was deleted.';\n  END IF;\n  v_snapshot:=jsonb_build_object('trip',v_trip,'stop',v_stop,'parent_deleted',v_last,'actor_profile_id',p_actor_id,'legacy_pod_ownership',(SELECT coalesce(jsonb_agg(to_jsonb(r)),'[]') FROM public.inspect_legacy_pod_ownership_v1(ARRAY[p_trip_id]) r));\n  -- Fixed allowlist only, never a client-supplied relation or predicate.\n  FOREACH v_table IN ARRAY ARRAY['trip_line_items','trip_events','store_calls','documents','incidents','demurrages','pod_records','offloads','backloads','unloading_reports','report_receipts'] LOOP\n    EXECUTE format('SELECT coalesce(jsonb_agg(to_jsonb(t)),''[]''::jsonb) FROM public.%I t WHERE trip_id=$1 AND ($3 OR trip_stop_id=$2)',v_table) INTO v_rows USING p_trip_id,p_stop_id,v_last;\n    v_snapshot:=v_snapshot||jsonb_build_object(v_table,v_rows);\n  END LOOP;\n  SELECT coalesce(jsonb_agg(to_jsonb(t)),'[]') INTO v_rows FROM public.offload_items t WHERE offload_id=ANY(v_offloads);\n  v_snapshot:=v_snapshot||jsonb_build_object('offload_items',v_rows);\n  SELECT coalesce(jsonb_agg(to_jsonb(t)),'[]') INTO v_rows FROM public.backload_items t WHERE backload_id=ANY(v_backloads);\n  v_snapshot:=v_snapshot||jsonb_build_object('backload_items',v_rows);\n  SELECT coalesce(array_agg(id),'{}') INTO v_flex_ids FROM public.flex_rows WHERE row_kind='SOURCE' AND (\n    (source_entity_type='STOP' AND source_entity_id=p_stop_id)\n    OR (source_entity_type='TRIP' AND source_entity_id=p_trip_id AND v_last)\n    OR (source_entity_type='LINE_ITEM' AND source_entity_id IN (SELECT id FROM public.trip_line_items WHERE trip_id=p_trip_id AND (v_last OR trip_stop_id=p_stop_id)))\n    OR (source_entity_type='STORE_CALL' AND source_entity_id IN (SELECT id FROM public.store_calls WHERE trip_id=p_trip_id AND (v_last OR trip_stop_id=p_stop_id)))\n    OR (source_entity_type='ASSIGNMENT' AND v_last AND source_entity_id IN (SELECT id FROM public.trip_truck_assignments WHERE trip_id=p_trip_id))\n  );\n  SELECT coalesce(jsonb_agg(to_jsonb(t)),'[]') INTO v_rows FROM public.flex_rows t WHERE id=ANY(v_flex_ids);\n  v_snapshot:=v_snapshot||jsonb_build_object('flex_rows',v_rows);\n  SELECT coalesce(jsonb_agg(to_jsonb(c)),'[]') INTO v_rows FROM public.flex_cells c WHERE row_id=ANY(v_flex_ids);\n  v_snapshot:=v_snapshot||jsonb_build_object('flex_cells',v_rows);\n  IF v_last THEN\n    SELECT coalesce(jsonb_agg(to_jsonb(t)),'[]') INTO v_rows FROM public.trip_truck_assignments t WHERE trip_id=p_trip_id;\n    v_snapshot:=v_snapshot||jsonb_build_object('assignments',v_rows);\n    SELECT coalesce(jsonb_agg(to_jsonb(t)),'[]') INTO v_rows FROM public.trip_images t WHERE trip_id=p_trip_id;\n    v_snapshot:=v_snapshot||jsonb_build_object('trip_images',v_rows);\n    SELECT coalesce(jsonb_agg(to_jsonb(t)),'[]') INTO v_rows FROM public.loading_reports t WHERE trip_id=p_trip_id;\n    v_snapshot:=v_snapshot||jsonb_build_object('loading_reports',v_rows);\n  END IF;\n  IF v_last THEN\n    SELECT coalesce(jsonb_agg(id ORDER BY id),'[]'::jsonb) INTO v_rows FROM public.driver_trip_updates WHERE trip_id=p_trip_id;\n    v_snapshot:=v_snapshot||jsonb_build_object('driver_update_cleanup',jsonb_build_object('ids',v_rows,'count',jsonb_array_length(v_rows)));\n  END IF;\n  INSERT INTO public.transaction_deletion_jobs(transaction_id,trip_id,trip_stop_id,requested_by,state,storage_objects,snapshot,completed_at)\n    VALUES(coalesce(p_stop_id,p_trip_id),p_trip_id,p_stop_id,p_actor_id,CASE WHEN jsonb_array_length(v_objects)=0 THEN 'COMPLETE' ELSE 'PENDING_STORAGE' END,v_objects,v_snapshot,CASE WHEN jsonb_array_length(v_objects)=0 THEN now() END) RETURNING * INTO v_job;\n  -- Immutable manifests and complete image snapshots were captured above under\n  -- the same ownership/retention locks. Remove final-parent image relations now,\n  -- before POD/stop ON DELETE SET NULL can trigger their journal reuse guard.\n  -- Storage bytes remain untouched until the existing post-commit validator runs.\n  -- Earlier stops keep their image relations exactly as before.\n  IF v_last THEN DELETE FROM public.trip_images WHERE trip_id=p_trip_id; END IF;\n  DELETE FROM public.report_receipts WHERE trip_id=p_trip_id AND (v_last OR trip_stop_id=p_stop_id);\n  DELETE FROM public.offloads WHERE id=ANY(v_offloads);\n  DELETE FROM public.backloads WHERE id=ANY(v_backloads);\n  DELETE FROM public.unloading_reports WHERE id=ANY(v_unloading);\n  DELETE FROM public.loading_reports WHERE id=ANY(v_loading);\n  DELETE FROM public.flex_rows WHERE id=ANY(v_flex_ids);\n  FOREACH v_table IN ARRAY ARRAY['incidents','demurrages','pod_records','documents','store_calls','trip_events','trip_line_items'] LOOP\n    EXECUTE format('DELETE FROM public.%I WHERE trip_id=$1 AND ($3 OR trip_stop_id=$2)',v_table) USING p_trip_id,p_stop_id,v_last;\n  END LOOP;\n  DELETE FROM public.trip_stops WHERE id=p_stop_id AND trip_id=p_trip_id;\n  IF v_last THEN\n    -- Explicit eligible cleanup, not FK CASCADE. Any later failure restores\n    -- updates, stops, reports and the private audit/Storage journal together.\n    DELETE FROM public.driver_trip_updates WHERE trip_id=p_trip_id;\n    DELETE FROM public.trips WHERE id=p_trip_id;\n  END IF;\n  RETURN to_jsonb(v_job);\nEND;\n$function$\n"
+    },
+    {
+      "args": "p_trip_ids uuid[], p_actor_id uuid",
+      "proname": "preview_whole_trip_deletion_v1",
+      "definition": "CREATE OR REPLACE FUNCTION public.preview_whole_trip_deletion_v1(p_trip_ids uuid[], p_actor_id uuid)\n RETURNS jsonb\n LANGUAGE plpgsql\n STABLE SECURITY DEFINER\n SET search_path TO 'pg_catalog'\nAS $function$\r\nDECLARE trips_json jsonb; counts jsonb:='{}'; blockers jsonb:='[]'; relation text; n bigint; flex_ids uuid[];\r\nBEGIN\r\n IF NOT EXISTS(SELECT FROM public.profiles WHERE id=p_actor_id AND role='ADMIN') THEN\r\n  RAISE EXCEPTION 'Only ADMIN may preview whole-trip deletion.' USING ERRCODE='42501'; END IF;\r\n IF p_trip_ids IS NULL OR cardinality(p_trip_ids) NOT BETWEEN 1 AND 20 OR array_position(p_trip_ids,NULL) IS NOT NULL THEN\r\n  RAISE EXCEPTION 'Select one to twenty physical trip IDs.' USING ERRCODE='22023'; END IF;\r\n SELECT jsonb_agg(jsonb_build_object('id',id,'dispatch_number',dispatch_number) ORDER BY id)\r\n INTO trips_json FROM public.trips WHERE id=ANY(p_trip_ids);\r\n IF coalesce(jsonb_array_length(trips_json),0)<>(SELECT count(DISTINCT id) FROM unnest(p_trip_ids) id) THEN\r\n  RAISE EXCEPTION 'One or more selected trips no longer exists.' USING ERRCODE='P0002'; END IF;\r\n FOREACH relation IN ARRAY ARRAY['trip_stops','trip_line_items','trip_truck_assignments',\r\n   'pod_records','trip_images','offloads','backloads','loading_reports','unloading_reports',\r\n   'report_receipts','billings','payables','receivables','documents','pod_drive_files',\r\n   'operations_report_conversions','incidents','store_calls','demurrages','trip_events','driver_trip_updates'] LOOP\r\n  EXECUTE format('SELECT count(*) FROM public.%I WHERE trip_id=ANY($1)',relation) INTO n USING p_trip_ids;\r\n  counts:=counts||jsonb_build_object(relation,n);\r\n END LOOP;\r\n SELECT count(*) INTO n FROM public.offload_items i JOIN public.offloads r ON r.id=i.offload_id WHERE r.trip_id=ANY(p_trip_ids);\r\n counts:=counts||jsonb_build_object('offload_items',n);\r\n SELECT count(*) INTO n FROM public.backload_items i JOIN public.backloads r ON r.id=i.backload_id WHERE r.trip_id=ANY(p_trip_ids);\r\n counts:=counts||jsonb_build_object('backload_items',n);\r\n SELECT count(*) INTO n FROM public.trip_tracking_locations l JOIN public.trip_truck_assignments a ON a.id=l.assignment_id WHERE a.trip_id=ANY(p_trip_ids);\r\n counts:=counts||jsonb_build_object('tracking_locations',n);\r\n SELECT count(*) INTO n FROM public.trip_route_cache c JOIN public.trip_truck_assignments a ON a.id=c.assignment_id WHERE a.trip_id=ANY(p_trip_ids);\r\n counts:=counts||jsonb_build_object('cached_routes',n);\r\n SELECT coalesce(array_agg(f.id),'{}') INTO flex_ids FROM public.flex_rows f WHERE row_kind='SOURCE' AND (\r\n  (source_entity_type='TRIP' AND source_entity_id=ANY(p_trip_ids)) OR\r\n  (source_entity_type='STOP' AND source_entity_id IN (SELECT id FROM public.trip_stops WHERE trip_id=ANY(p_trip_ids))) OR\r\n  (source_entity_type='LINE_ITEM' AND source_entity_id IN (SELECT id FROM public.trip_line_items WHERE trip_id=ANY(p_trip_ids))) OR\r\n  (source_entity_type='STORE_CALL' AND source_entity_id IN (SELECT id FROM public.store_calls WHERE trip_id=ANY(p_trip_ids))) OR\r\n  (source_entity_type='ASSIGNMENT' AND source_entity_id IN (SELECT id FROM public.trip_truck_assignments WHERE trip_id=ANY(p_trip_ids))));\r\n counts:=counts||jsonb_build_object('source_flex_rows',cardinality(flex_ids));\r\n SELECT count(*) INTO n FROM public.flex_cells WHERE row_id=ANY(flex_ids);\r\n counts:=counts||jsonb_build_object('source_flex_cells',n);\r\n SELECT count(*) INTO n FROM public.pod_review_events WHERE trip_id=ANY(p_trip_ids);\r\n counts:=counts||jsonb_build_object('pod_review_events_retained',n);\r\n IF (counts->>'billings')::bigint+(counts->>'payables')::bigint+(counts->>'receivables')::bigint>0 THEN\r\n  blockers:=blockers||jsonb_build_array('Billing, payable or receivable records require accounting retention review.'); END IF;\r\n IF (counts->>'operations_report_conversions')::bigint>0 THEN\r\n  blockers:=blockers||jsonb_build_array('Protected report conversion history prevents deletion.'); END IF;\r\n IF EXISTS(SELECT FROM public.documents WHERE trip_id=ANY(p_trip_ids) AND nullif(btrim(file_path),'') IS NOT NULL)\r\n    OR (counts->>'pod_drive_files')::bigint>0 THEN\r\n  blockers:=blockers||jsonb_build_array('Document or Drive attachments require an ownership/retention review.'); END IF;\r\n IF EXISTS(SELECT FROM public.inspect_legacy_pod_ownership_v1(p_trip_ids) WHERE status='BLOCKED') THEN\r\n  blockers:=blockers||jsonb_build_array('Legacy POD ownership or retention is unresolved. Review the exact attachment findings below.'); END IF;\r\n IF EXISTS(SELECT FROM public.report_receipts WHERE trip_id=ANY(p_trip_ids) AND upload_status='PENDING') THEN\r\n  blockers:=blockers||jsonb_build_array('An image upload is incomplete. Recover the original upload before deleting this trip.'); END IF;\r\n counts:=counts||jsonb_build_object('legacy_pod_references',(SELECT count(DISTINCT update_id) FROM public.inspect_legacy_pod_ownership_v1(p_trip_ids)),\r\n  'storage_objects',(SELECT count(*) FROM (SELECT 'trip-images' AS bucket,storage_path FROM public.trip_images WHERE trip_id=ANY(p_trip_ids) UNION SELECT 'report-receipts',storage_path FROM public.report_receipts WHERE trip_id=ANY(p_trip_ids)) objects),\r\n  'pending_uploads',(SELECT count(*) FROM public.report_receipts WHERE trip_id=ANY(p_trip_ids) AND upload_status='PENDING'));\r\n IF EXISTS(SELECT FROM storage.objects o CROSS JOIN unnest(p_trip_ids) selected_trip\r\n WHERE ((o.bucket_id='trip-images' AND left(o.name,length('trips/'||selected_trip||'/'))='trips/'||selected_trip||'/' AND NOT EXISTS(SELECT FROM public.trip_images i WHERE i.trip_id=selected_trip AND i.storage_path=o.name))\r\n OR (o.bucket_id='report-receipts' AND left(o.name,length('operations/'||selected_trip||'/'))='operations/'||selected_trip||'/' AND NOT EXISTS(SELECT FROM public.report_receipts r WHERE r.trip_id=selected_trip AND r.storage_path=o.name)))\r\n AND NOT EXISTS(SELECT FROM public.transaction_deletion_jobs j CROSS JOIN LATERAL jsonb_array_elements(j.storage_objects) manifest WHERE j.trip_id=selected_trip AND manifest->>'bucket'=o.bucket_id AND manifest->>'path'=o.name AND manifest->>'object_id'=o.id::text AND manifest->>'metadata_fingerprint'=md5(coalesce(o.metadata::text,'')) AND manifest->>'object_version' IS NOT DISTINCT FROM to_jsonb(o)->>'version')) THEN blockers:=blockers||jsonb_build_array('Unregistered Storage objects in a selected trip namespace require ownership review.'); END IF;\r\n IF EXISTS(SELECT FROM public.trip_images i WHERE i.trip_id=ANY(p_trip_ids) AND NOT EXISTS(SELECT FROM storage.objects o WHERE o.bucket_id='trip-images' AND o.name=i.storage_path)) THEN blockers:=blockers||jsonb_build_array('A receipt upload is incomplete or its private object is missing.'); END IF;\r\n -- Exact Storage paths and all ownership/retention guards are rechecked under\r\n -- locks during deletion. Preview never authorizes deletion on its own.\r\n RETURN jsonb_build_object('trips',trips_json,'counts',counts,'blockers',blockers,'attachment_review',(SELECT coalesce(jsonb_agg(to_jsonb(r)),'[]') FROM public.inspect_legacy_pod_ownership_v1(p_trip_ids) r));\r\nEND $function$\n"
+    },
+    {
+      "args": "p_trip_ids uuid[], p_actor_id uuid",
+      "proname": "delete_whole_trips_v1",
+      "definition": "CREATE OR REPLACE FUNCTION public.delete_whole_trips_v1(p_trip_ids uuid[], p_actor_id uuid)\n RETURNS jsonb\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog'\nAS $function$\r\nDECLARE trip uuid; stop uuid; had_stops boolean; jobs jsonb; audit jsonb; job jsonb; legacy_evidence jsonb;\r\nBEGIN\r\n IF NOT EXISTS(SELECT FROM public.profiles WHERE id=p_actor_id AND role='ADMIN') THEN\r\n  RAISE EXCEPTION 'Only ADMIN may permanently delete whole trips.' USING ERRCODE='42501'; END IF;\r\n IF p_trip_ids IS NULL OR cardinality(p_trip_ids) NOT BETWEEN 1 AND 20 OR array_position(p_trip_ids,NULL) IS NOT NULL THEN\r\n  RAISE EXCEPTION 'Select one to twenty physical trip IDs.' USING ERRCODE='22023'; END IF;\r\n -- Match the existing RPC's lock ordering. No independent stop delete requests:\r\n -- any error in any trip rolls back ALL calls and their audit/cleanup jobs.\r\n PERFORM set_config('lock_timeout','3s',true);\r\n LOCK TABLE public.trips,public.trip_stops,public.trip_line_items,\r\n    public.trip_truck_assignments,public.trip_events,public.store_calls,\r\n    public.documents,public.incidents,public.demurrages,public.billings,\r\n    public.payables,public.receivables,public.pod_records,public.pod_drive_files,\r\n    public.trip_images,public.offloads,public.offload_items,public.backloads,\r\n    public.backload_items,public.loading_reports,public.unloading_reports,\r\n    public.report_receipts,public.operations_report_conversions,\r\n    public.flex_rows,public.flex_cells,public.driver_trip_updates IN SHARE ROW EXCLUSIVE MODE;\r\n IF EXISTS(SELECT FROM public.inspect_legacy_pod_ownership_v1(p_trip_ids) WHERE status='BLOCKED') THEN\r\n  RAISE EXCEPTION 'Legacy POD ownership/retention is unresolved; inspect the attachment review. Nothing was deleted.' USING ERRCODE='55000'; END IF;\r\n IF EXISTS(SELECT FROM storage.objects o CROSS JOIN unnest(p_trip_ids) selected_trip\r\n WHERE ((o.bucket_id='trip-images' AND left(o.name,length('trips/'||selected_trip||'/'))='trips/'||selected_trip||'/' AND NOT EXISTS(SELECT FROM public.trip_images i WHERE i.trip_id=selected_trip AND i.storage_path=o.name))\r\n OR (o.bucket_id='report-receipts' AND left(o.name,length('operations/'||selected_trip||'/'))='operations/'||selected_trip||'/' AND NOT EXISTS(SELECT FROM public.report_receipts r WHERE r.trip_id=selected_trip AND r.storage_path=o.name)))\r\n AND NOT EXISTS(SELECT FROM public.transaction_deletion_jobs j CROSS JOIN LATERAL jsonb_array_elements(j.storage_objects) manifest WHERE j.trip_id=selected_trip AND manifest->>'bucket'=o.bucket_id AND manifest->>'path'=o.name AND manifest->>'object_id'=o.id::text AND manifest->>'metadata_fingerprint'=md5(coalesce(o.metadata::text,'')) AND manifest->>'object_version' IS NOT DISTINCT FROM to_jsonb(o)->>'version')) THEN RAISE EXCEPTION 'Unregistered Storage objects require ownership review; nothing was deleted.' USING ERRCODE='55000'; END IF;\r\n -- Independent legacy image/POD FKs do not enforce composite ownership.\r\n IF EXISTS(SELECT FROM public.trip_images i LEFT JOIN public.pod_records p ON p.id=i.pod_record_id\r\n   LEFT JOIN public.trip_stops s ON s.id=i.trip_stop_id\r\n   WHERE (i.trip_id=ANY(p_trip_ids) OR p.trip_id=ANY(p_trip_ids) OR s.trip_id=ANY(p_trip_ids))\r\n     AND ((i.trip_stop_id IS NOT NULL AND s.trip_id IS DISTINCT FROM i.trip_id)\r\n       OR (i.pod_record_id IS NOT NULL AND (p.trip_id IS DISTINCT FROM i.trip_id OR p.trip_stop_id IS DISTINCT FROM i.trip_stop_id)))) THEN\r\n   RAISE EXCEPTION 'Image trip/stop/POD ownership is inconsistent; nothing was deleted.' USING ERRCODE='55000';\r\n END IF;\r\n FOR trip IN SELECT DISTINCT id FROM unnest(p_trip_ids) id ORDER BY id LOOP\r\n  IF NOT EXISTS(SELECT FROM public.trips WHERE id=trip) THEN\r\n   IF NOT EXISTS(SELECT FROM public.transaction_deletion_jobs WHERE trip_id=trip) THEN\r\n    RAISE EXCEPTION 'Trip does not exist and no matching deletion operation is recorded.' USING ERRCODE='P0002';\r\n   END IF;\r\n   CONTINUE;\r\n  END IF;\r\n  SELECT coalesce(jsonb_agg(to_jsonb(r)),'[]') INTO legacy_evidence FROM public.inspect_legacy_pod_ownership_v1(ARRAY[trip]) r;\r\n  audit:=public.preview_whole_trip_deletion_v1(ARRAY[trip],p_actor_id);\r\n  audit:=jsonb_build_object('actor_id',p_actor_id,'trip_ids',to_jsonb(p_trip_ids),\r\n    'trip_id',trip,'dispatch_number',audit->'trips'->0->'dispatch_number',\r\n    'affected_counts',audit->'counts','legacy_pod_ownership',legacy_evidence,'deleted_at',transaction_timestamp(),'result','DATABASE_COMMITTED');\r\n  -- The shared transaction RPC resolves eligible driver updates on the last\r\n  -- stop and records their IDs in its private cleanup journal.\r\n  -- Ownership was checked with all original stops/PODs intact. Remove only the\r\n  -- verified attachment-bearing history now; retain evidence in every trip journal.\r\n  -- Later failure in any trip rolls these removals back with the entire batch.\r\n  DELETE FROM public.driver_trip_updates WHERE trip_id=trip AND id IN (SELECT (r->>'update_id')::uuid FROM jsonb_array_elements(legacy_evidence) r);\r\n  had_stops:=false;\r\n  FOR stop IN SELECT id FROM public.trip_stops WHERE trip_id=trip ORDER BY id LOOP\r\n   had_stops:=true;\r\n   job:=public.delete_transaction_with_cleanup_v1(trip,stop,p_actor_id);\r\n   UPDATE public.transaction_deletion_jobs SET snapshot=snapshot||jsonb_build_object('whole_trip_deletion',audit)\r\n    WHERE id=(job->>'id')::uuid AND NOT(snapshot ? 'whole_trip_deletion');\r\n  END LOOP;\r\n  IF NOT had_stops THEN\r\n   job:=public.delete_transaction_with_cleanup_v1(trip,NULL,p_actor_id);\r\n   UPDATE public.transaction_deletion_jobs SET snapshot=snapshot||jsonb_build_object('whole_trip_deletion',audit)\r\n    WHERE id=(job->>'id')::uuid AND NOT(snapshot ? 'whole_trip_deletion');\r\n  END IF;\r\n  IF EXISTS(SELECT FROM public.trips WHERE id=trip) THEN RAISE EXCEPTION 'Parent deletion was not confirmed.' USING ERRCODE='55000'; END IF;\r\n END LOOP;\r\n SELECT coalesce(jsonb_agg(jsonb_build_object('id',j.id,'trip_id',j.trip_id,'trip_stop_id',j.trip_stop_id,'state',j.state) ORDER BY j.created_at,j.id),'[]') INTO jobs FROM public.transaction_deletion_jobs j WHERE j.trip_id=ANY(p_trip_ids);\r\n RETURN jobs;\r\nEND $function$\n"
+    },
+    {
+      "args": "",
+      "proname": "guard_deleted_trip_attachment_reference_v1",
+      "definition": "CREATE OR REPLACE FUNCTION public.guard_deleted_trip_attachment_reference_v1()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog'\nAS $function$\r\nDECLARE record jsonb:=to_jsonb(NEW); object jsonb;\r\nBEGIN\r\n FOR object IN SELECT value FROM public.transaction_deletion_jobs j CROSS JOIN LATERAL jsonb_array_elements(j.storage_objects) WHERE jsonb_array_length(j.storage_objects)>0 LOOP\r\n  IF nullif(btrim(record->>'pod_image_url'),'') IS NOT NULL\r\n   OR position('%' in coalesce(record->>'file_path',''))>0\r\n   OR position('%' in coalesce(record->>'drive_link',''))>0\r\n   OR record->>'storage_path'=object->>'path'\r\n   OR position(object->>'path' in coalesce(record->>'pod_image_path',''))>0\r\n   OR position(object->>'path' in coalesce(record->>'pod_image_url',''))>0\r\n   OR position(object->>'path' in coalesce(record->>'file_path',''))>0\r\n   OR position(object->>'path' in coalesce(record->>'drive_link',''))>0 THEN\r\n   RAISE EXCEPTION 'Attachment belongs to a committed deletion journal and cannot be reused.' USING ERRCODE='55000';\r\n  END IF;\r\n END LOOP;\r\n RETURN NEW;\r\nEND $function$\n"
+    }
+  ],
+  "connections": [
+    {
+      "count": 1,
+      "state": "active",
+      "wait_event_type": "Client"
+    },
+    {
+      "count": 1,
+      "state": "active",
+      "wait_event_type": null
+    },
+    {
+      "count": 18,
+      "state": "idle",
+      "wait_event_type": "Client"
+    },
+    {
+      "count": 1,
+      "state": "idle",
+      "wait_event_type": "Extension"
+    },
+    {
+      "count": 1,
+      "state": null,
+      "wait_event_type": "Extension"
+    }
+  ],
+  "incoming_fks": [
+    {
+      "child": "trip_truck_assignments",
+      "parent": "trips",
+      "conname": "trip_truck_assignments_trip_id_fkey",
+      "definition": "FOREIGN KEY (trip_id) REFERENCES trips(id) ON UPDATE CASCADE ON DELETE CASCADE"
+    },
+    {
+      "child": "trip_stops",
+      "parent": "trips",
+      "conname": "trip_stops_trip_id_fkey",
+      "definition": "FOREIGN KEY (trip_id) REFERENCES trips(id) ON UPDATE CASCADE ON DELETE CASCADE"
+    },
+    {
+      "child": "trip_line_items",
+      "parent": "trips",
+      "conname": "trip_line_items_trip_id_fkey",
+      "definition": "FOREIGN KEY (trip_id) REFERENCES trips(id) ON UPDATE CASCADE ON DELETE CASCADE"
+    },
+    {
+      "child": "trip_line_items",
+      "parent": "trip_stops",
+      "conname": "trip_line_items_trip_stop_id_fkey",
+      "definition": "FOREIGN KEY (trip_stop_id) REFERENCES trip_stops(id) ON UPDATE CASCADE ON DELETE CASCADE"
+    },
+    {
+      "child": "trip_events",
+      "parent": "trips",
+      "conname": "trip_events_trip_id_fkey",
+      "definition": "FOREIGN KEY (trip_id) REFERENCES trips(id) ON UPDATE CASCADE ON DELETE CASCADE"
+    },
+    {
+      "child": "trip_events",
+      "parent": "trip_stops",
+      "conname": "trip_events_trip_stop_id_fkey",
+      "definition": "FOREIGN KEY (trip_stop_id) REFERENCES trip_stops(id) ON UPDATE CASCADE ON DELETE CASCADE"
+    },
+    {
+      "child": "store_calls",
+      "parent": "trips",
+      "conname": "store_calls_trip_id_fkey",
+      "definition": "FOREIGN KEY (trip_id) REFERENCES trips(id) ON UPDATE CASCADE ON DELETE CASCADE"
+    },
+    {
+      "child": "store_calls",
+      "parent": "trip_stops",
+      "conname": "store_calls_trip_stop_id_fkey",
+      "definition": "FOREIGN KEY (trip_stop_id) REFERENCES trip_stops(id) ON UPDATE CASCADE ON DELETE CASCADE"
+    },
+    {
+      "child": "documents",
+      "parent": "trips",
+      "conname": "documents_trip_id_fkey",
+      "definition": "FOREIGN KEY (trip_id) REFERENCES trips(id) ON UPDATE CASCADE ON DELETE CASCADE"
+    },
+    {
+      "child": "documents",
+      "parent": "trip_stops",
+      "conname": "documents_trip_stop_id_fkey",
+      "definition": "FOREIGN KEY (trip_stop_id) REFERENCES trip_stops(id) ON UPDATE CASCADE ON DELETE CASCADE"
+    },
+    {
+      "child": "incidents",
+      "parent": "trips",
+      "conname": "incidents_trip_id_fkey",
+      "definition": "FOREIGN KEY (trip_id) REFERENCES trips(id) ON UPDATE CASCADE ON DELETE CASCADE"
+    },
+    {
+      "child": "incidents",
+      "parent": "trip_stops",
+      "conname": "incidents_trip_stop_id_fkey",
+      "definition": "FOREIGN KEY (trip_stop_id) REFERENCES trip_stops(id) ON UPDATE CASCADE ON DELETE SET NULL"
+    },
+    {
+      "child": "backloads",
+      "parent": "trips",
+      "conname": "backloads_trip_id_fkey",
+      "definition": "FOREIGN KEY (trip_id) REFERENCES trips(id) ON UPDATE CASCADE ON DELETE CASCADE"
+    },
+    {
+      "child": "backloads",
+      "parent": "trip_stops",
+      "conname": "backloads_trip_stop_id_fkey",
+      "definition": "FOREIGN KEY (trip_stop_id) REFERENCES trip_stops(id) ON UPDATE CASCADE ON DELETE SET NULL"
+    },
+    {
+      "child": "offloads",
+      "parent": "trips",
+      "conname": "offloads_trip_id_fkey",
+      "definition": "FOREIGN KEY (trip_id) REFERENCES trips(id) ON UPDATE CASCADE ON DELETE CASCADE"
+    },
+    {
+      "child": "offloads",
+      "parent": "trip_stops",
+      "conname": "offloads_trip_stop_id_fkey",
+      "definition": "FOREIGN KEY (trip_stop_id) REFERENCES trip_stops(id) ON UPDATE CASCADE ON DELETE SET NULL"
+    },
+    {
+      "child": "demurrages",
+      "parent": "trips",
+      "conname": "demurrages_trip_id_fkey",
+      "definition": "FOREIGN KEY (trip_id) REFERENCES trips(id) ON UPDATE CASCADE ON DELETE CASCADE"
+    },
+    {
+      "child": "demurrages",
+      "parent": "trip_stops",
+      "conname": "demurrages_trip_stop_id_fkey",
+      "definition": "FOREIGN KEY (trip_stop_id) REFERENCES trip_stops(id) ON UPDATE CASCADE ON DELETE SET NULL"
+    },
+    {
+      "child": "billings",
+      "parent": "trips",
+      "conname": "billings_trip_id_fkey",
+      "definition": "FOREIGN KEY (trip_id) REFERENCES trips(id) ON UPDATE CASCADE ON DELETE CASCADE"
+    },
+    {
+      "child": "payables",
+      "parent": "trips",
+      "conname": "payables_trip_id_fkey",
+      "definition": "FOREIGN KEY (trip_id) REFERENCES trips(id) ON UPDATE CASCADE ON DELETE CASCADE"
+    },
+    {
+      "child": "receivables",
+      "parent": "trips",
+      "conname": "receivables_trip_id_fkey",
+      "definition": "FOREIGN KEY (trip_id) REFERENCES trips(id) ON UPDATE CASCADE ON DELETE CASCADE"
+    },
+    {
+      "child": "pod_records",
+      "parent": "trips",
+      "conname": "pod_records_trip_id_fkey",
+      "definition": "FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE CASCADE"
+    },
+    {
+      "child": "pod_records",
+      "parent": "trip_stops",
+      "conname": "pod_records_trip_stop_id_fkey",
+      "definition": "FOREIGN KEY (trip_stop_id) REFERENCES trip_stops(id) ON DELETE CASCADE"
+    },
+    {
+      "child": "pod_drive_files",
+      "parent": "trips",
+      "conname": "pod_drive_files_trip_id_fkey",
+      "definition": "FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE CASCADE"
+    },
+    {
+      "child": "pod_drive_files",
+      "parent": "trip_stops",
+      "conname": "pod_drive_files_trip_stop_id_fkey",
+      "definition": "FOREIGN KEY (trip_stop_id) REFERENCES trip_stops(id) ON DELETE SET NULL"
+    },
+    {
+      "child": "trip_images",
+      "parent": "trips",
+      "conname": "trip_images_trip_id_fkey",
+      "definition": "FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE CASCADE"
+    },
+    {
+      "child": "unloading_reports",
+      "parent": "trips",
+      "conname": "unloading_reports_trip_id_fkey",
+      "definition": "FOREIGN KEY (trip_id) REFERENCES trips(id)"
+    },
+    {
+      "child": "unloading_reports",
+      "parent": "trip_stops",
+      "conname": "unloading_reports_trip_stop_id_fkey",
+      "definition": "FOREIGN KEY (trip_stop_id) REFERENCES trip_stops(id)"
+    },
+    {
+      "child": "loading_reports",
+      "parent": "trips",
+      "conname": "loading_reports_trip_id_fkey",
+      "definition": "FOREIGN KEY (trip_id) REFERENCES trips(id)"
+    },
+    {
+      "child": "backload_items",
+      "parent": "trip_line_items",
+      "conname": "backload_items_trip_line_item_id_fkey",
+      "definition": "FOREIGN KEY (trip_line_item_id) REFERENCES trip_line_items(id)"
+    },
+    {
+      "child": "offload_items",
+      "parent": "trip_line_items",
+      "conname": "offload_items_trip_line_item_id_fkey",
+      "definition": "FOREIGN KEY (trip_line_item_id) REFERENCES trip_line_items(id)"
+    },
+    {
+      "child": "report_receipts",
+      "parent": "trips",
+      "conname": "report_receipts_trip_id_fkey",
+      "definition": "FOREIGN KEY (trip_id) REFERENCES trips(id)"
+    },
+    {
+      "child": "report_receipts",
+      "parent": "trip_stops",
+      "conname": "report_receipts_trip_stop_id_fkey",
+      "definition": "FOREIGN KEY (trip_stop_id) REFERENCES trip_stops(id)"
+    },
+    {
+      "child": "unloading_reports",
+      "parent": "trip_stops",
+      "conname": "proposed_unloading_report_stop_trip_fk",
+      "definition": "FOREIGN KEY (trip_stop_id, trip_id) REFERENCES trip_stops(id, trip_id) ON UPDATE RESTRICT ON DELETE RESTRICT"
+    },
+    {
+      "child": "backloads",
+      "parent": "trip_stops",
+      "conname": "proposed_backload_stop_trip_fk",
+      "definition": "FOREIGN KEY (trip_stop_id, trip_id) REFERENCES trip_stops(id, trip_id) ON UPDATE RESTRICT ON DELETE RESTRICT"
+    },
+    {
+      "child": "offloads",
+      "parent": "trip_stops",
+      "conname": "proposed_offload_stop_trip_fk",
+      "definition": "FOREIGN KEY (trip_stop_id, trip_id) REFERENCES trip_stops(id, trip_id) ON UPDATE RESTRICT ON DELETE RESTRICT"
+    },
+    {
+      "child": "report_receipts",
+      "parent": "trip_stops",
+      "conname": "proposed_receipt_stop_trip_fk",
+      "definition": "FOREIGN KEY (trip_stop_id, trip_id) REFERENCES trip_stops(id, trip_id) ON UPDATE RESTRICT ON DELETE RESTRICT"
+    },
+    {
+      "child": "operations_report_conversions",
+      "parent": "trips",
+      "conname": "operations_report_conversions_trip_id_fkey",
+      "definition": "FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE RESTRICT"
+    },
+    {
+      "child": "operations_report_conversions",
+      "parent": "trip_stops",
+      "conname": "operations_report_conversions_trip_stop_id_fkey",
+      "definition": "FOREIGN KEY (trip_stop_id) REFERENCES trip_stops(id) ON DELETE RESTRICT"
+    },
+    {
+      "child": "trip_images",
+      "parent": "trip_stops",
+      "conname": "trip_images_trip_stop_id_fkey",
+      "definition": "FOREIGN KEY (trip_stop_id) REFERENCES trip_stops(id) ON DELETE SET NULL"
+    },
+    {
+      "child": "trip_tracking_locations",
+      "parent": "trip_truck_assignments",
+      "conname": "trip_tracking_locations_assignment_id_fkey",
+      "definition": "FOREIGN KEY (assignment_id) REFERENCES trip_truck_assignments(id) ON DELETE CASCADE"
+    },
+    {
+      "child": "driver_trip_updates",
+      "parent": "trips",
+      "conname": "whole_trip_driver_update_parent_fk",
+      "definition": "FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE RESTRICT NOT VALID"
+    },
+    {
+      "child": "trip_route_cache",
+      "parent": "trip_truck_assignments",
+      "conname": "trip_route_cache_assignment_id_fkey",
+      "definition": "FOREIGN KEY (assignment_id) REFERENCES trip_truck_assignments(id) ON DELETE CASCADE"
+    }
+  ],
+  "publications": [
+    {
+      "pubname": "supabase_realtime",
+      "tablename": "profiles",
+      "schemaname": "public"
+    },
+    {
+      "pubname": "supabase_realtime",
+      "tablename": "customers",
+      "schemaname": "public"
+    },
+    {
+      "pubname": "supabase_realtime",
+      "tablename": "customer_stores",
+      "schemaname": "public"
+    },
+    {
+      "pubname": "supabase_realtime",
+      "tablename": "warehouses",
+      "schemaname": "public"
+    },
+    {
+      "pubname": "supabase_realtime",
+      "tablename": "trucking_companies",
+      "schemaname": "public"
+    },
+    {
+      "pubname": "supabase_realtime",
+      "tablename": "trucks",
+      "schemaname": "public"
+    },
+    {
+      "pubname": "supabase_realtime",
+      "tablename": "drivers",
+      "schemaname": "public"
+    },
+    {
+      "pubname": "supabase_realtime",
+      "tablename": "products",
+      "schemaname": "public"
+    },
+    {
+      "pubname": "supabase_realtime",
+      "tablename": "trip_types",
+      "schemaname": "public"
+    },
+    {
+      "pubname": "supabase_realtime",
+      "tablename": "trips",
+      "schemaname": "public"
+    },
+    {
+      "pubname": "supabase_realtime",
+      "tablename": "trip_truck_assignments",
+      "schemaname": "public"
+    },
+    {
+      "pubname": "supabase_realtime",
+      "tablename": "trip_stops",
+      "schemaname": "public"
+    },
+    {
+      "pubname": "supabase_realtime",
+      "tablename": "trip_line_items",
+      "schemaname": "public"
+    },
+    {
+      "pubname": "supabase_realtime",
+      "tablename": "trip_events",
+      "schemaname": "public"
+    },
+    {
+      "pubname": "supabase_realtime",
+      "tablename": "store_calls",
+      "schemaname": "public"
+    },
+    {
+      "pubname": "supabase_realtime",
+      "tablename": "incidents",
+      "schemaname": "public"
+    },
+    {
+      "pubname": "supabase_realtime",
+      "tablename": "backloads",
+      "schemaname": "public"
+    },
+    {
+      "pubname": "supabase_realtime",
+      "tablename": "offloads",
+      "schemaname": "public"
+    },
+    {
+      "pubname": "supabase_realtime",
+      "tablename": "billings",
+      "schemaname": "public"
+    },
+    {
+      "pubname": "supabase_realtime",
+      "tablename": "admin_notifications",
+      "schemaname": "public"
+    },
+    {
+      "pubname": "supabase_realtime",
+      "tablename": "trip_images",
+      "schemaname": "public"
+    },
+    {
+      "pubname": "supabase_realtime",
+      "tablename": "loading_reports",
+      "schemaname": "public"
+    },
+    {
+      "pubname": "supabase_realtime",
+      "tablename": "unloading_reports",
+      "schemaname": "public"
+    },
+    {
+      "pubname": "supabase_realtime",
+      "tablename": "admin_change_signals",
+      "schemaname": "public"
+    },
+    {
+      "pubname": "supabase_realtime",
+      "tablename": "spreadsheet_cell_formulas",
+      "schemaname": "public"
+    }
+  ]
+}

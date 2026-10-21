@@ -44,7 +44,7 @@ export default function ReportDropdownEditor({
   canManageOptions = false,
   autoOpen = true,
   popoverZIndex = 120,
-  showStoredValue = true,
+  showStoredValue: _showStoredValue = false,
   onSelect,
   onSearch,
   onCommitSelection,
@@ -216,19 +216,19 @@ export default function ReportDropdownEditor({
         const managedOption = managedOptions.find((candidate) => candidate.option_value === option.value);
         const isEditing = managedOption?.id === editingOptionId;
         return (
-          <div key={option.value} className={`group flex min-h-10 items-center gap-1 px-1 ${index === activeIndex ? "bg-amber-50" : "hover:bg-amber-50/70"}`}>
+          <div key={option.value} className={`group flex min-h-7 items-center gap-1 px-1 ${index === activeIndex ? "bg-amber-50" : "hover:bg-amber-50/70"}`}>
             {isEditing && managedOption ? (
               <form className="flex min-w-0 flex-1 items-center gap-1 px-1" onSubmit={(event) => { event.preventDefault(); void saveOptionLabel(managedOption); }}>
-                <input autoFocus value={editingLabel} onChange={(event) => setEditingLabel(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); setEditingOptionId(null); setManagementError(""); } }} aria-label={`Edit display label for ${option.label}`} className="min-w-0 flex-1 rounded border border-slate-300 px-2 py-1 text-sm outline-none focus:border-[#2678b9] focus:ring-2 focus:ring-blue-100" />
+                <input autoFocus value={editingLabel} onChange={(event) => setEditingLabel(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); setEditingOptionId(null); setManagementError(""); } }} aria-label={`Edit display label for ${option.label}`} className="min-w-0 flex-1 rounded border border-slate-300 px-2 py-1 text-xs outline-none focus:border-[#2678b9] focus:ring-2 focus:ring-blue-100" />
                 <button type="submit" title={busy ? "Saving label..." : "Save label"} aria-label={busy ? "Saving option label" : "Save option label"} disabled={busy || !editingLabel.trim()} className="rounded p-1 text-emerald-700 hover:bg-emerald-50 disabled:opacity-50"><Save aria-hidden="true" className="h-4 w-4" /></button>
                 <button type="button" title="Cancel" aria-label="Cancel label edit" disabled={busy} onClick={() => { setEditingOptionId(null); setManagementError(""); }} className="rounded p-1 text-slate-500 hover:bg-slate-100"><X aria-hidden="true" className="h-4 w-4" /></button>
               </form>
             ) : (
               <>
-                <button type="button" role="option" aria-selected={option.value === value} onMouseDown={(event) => event.preventDefault()} onMouseEnter={() => setActiveIndex(index)} onClick={() => { onSelect(option.value); close(false); requestAnimationFrame(() => triggerRef.current?.focus()); }} className="flex min-h-10 min-w-0 flex-1 items-center justify-between gap-2 px-2.5 py-1.5 text-left text-xs text-slate-700">
+                <button type="button" role="option" aria-selected={option.value === value} onMouseDown={(event) => event.preventDefault()} onMouseEnter={() => setActiveIndex(index)} onClick={() => { onSelect(option.value); close(false); requestAnimationFrame(() => triggerRef.current?.focus()); }} className="flex min-h-7 min-w-0 flex-1 items-center justify-between gap-2 px-2.5 py-1.5 text-left text-xs text-slate-700">
                   <span className="min-w-0 flex-1">
                     <span style={(option.color??managedOption?.color)?{color:option.color??managedOption?.color??undefined,backgroundColor:`${option.color??managedOption?.color}18`}:undefined} className="block truncate rounded-sm px-1 text-xs font-medium text-slate-800">{option.label}</span>
-                    {showStoredValue && <span className="block truncate text-[10px] font-normal text-slate-500">{option.value}</span>}
+                    
                   </span>
                   {option.value === value && <Check aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-emerald-700" />}
                 </button>
@@ -242,16 +242,16 @@ export default function ReportDropdownEditor({
       }) : <p className="px-3 py-2 text-xs text-slate-500">No matching options.</p>}
 
       {canOfferAdd && !addingOption && !loading && !error && (
-        <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => { setNewLabel(query.trim()); setAddingOption(true); setManagementError(""); }} className="flex w-full items-center gap-2 border-t border-slate-100 px-3 py-2 text-left text-sm font-semibold text-[#2678b9] hover:bg-blue-50"><Plus aria-hidden="true" className="h-4 w-4" />Add "{query.trim()}"</button>
+        <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => { setNewLabel(query.trim()); setAddingOption(true); setManagementError(""); }} className="flex w-full items-center gap-2 border-t border-slate-100 px-3 py-2 text-left text-xs font-semibold text-[#2678b9] hover:bg-blue-50"><Plus aria-hidden="true" className="h-4 w-4" />Add "{query.trim()}"</button>
       )}
 
       {canManageOptions && allowAdd && onAdd && !loading && !error && !addingOption && !canOfferAdd && (
-        <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => { setNewLabel(""); setAddingOption(true); setManagementError(""); }} className="flex w-full items-center gap-2 border-t border-slate-100 px-3 py-2 text-left text-sm font-semibold text-[#2678b9] hover:bg-blue-50"><Plus aria-hidden="true" className="h-4 w-4" />Add option</button>
+        <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => { setNewLabel(""); setAddingOption(true); setManagementError(""); }} className="flex w-full items-center gap-2 border-t border-slate-100 px-3 py-2 text-left text-xs font-semibold text-[#2678b9] hover:bg-blue-50"><Plus aria-hidden="true" className="h-4 w-4" />Add option</button>
       )}
 
       {addingOption && (
         <form onSubmit={(event) => { event.preventDefault(); void createOption(); }} className="grid gap-2 border-t border-slate-100 bg-slate-50 p-2.5">
-          <label className="grid gap-1 text-xs font-medium text-slate-600">New display label<input autoFocus maxLength={80} value={newLabel} onChange={(event) => setNewLabel(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); setAddingOption(false); setManagementError(""); } }} className="min-h-9 rounded-md border border-slate-300 bg-white px-2.5 text-sm font-normal text-slate-800 outline-none focus:border-[#2678b9] focus:ring-2 focus:ring-blue-100" /></label>
+          <label className="grid gap-1 text-xs font-medium text-slate-600">New display label<input autoFocus maxLength={80} value={newLabel} onChange={(event) => setNewLabel(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); setAddingOption(false); setManagementError(""); } }} className="min-h-9 rounded-md border border-slate-300 bg-white px-2.5 text-xs font-normal text-slate-800 outline-none focus:border-[#2678b9] focus:ring-2 focus:ring-blue-100" /></label>
           <div className="flex justify-end gap-1.5"><button type="button" disabled={busy} onClick={() => { setAddingOption(false); setManagementError(""); }} className="rounded-md px-2.5 py-1.5 text-xs text-slate-600 hover:bg-white">Cancel</button><button type="submit" disabled={busy || !newLabel.trim()} className="rounded-md bg-[#0b2341] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50">{busy ? "Saving..." : "Save option"}</button></div>
         </form>
       )}

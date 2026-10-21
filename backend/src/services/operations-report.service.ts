@@ -1,5 +1,5 @@
 import { collaborationEvents } from "./collaboration-events.js";
-import { withCurrentUserPassword, type DeletionCredentials } from "./deletion-password.service.js";
+import { withCurrentUserSession, type DeletionCredentials } from "./deletion-password.service.js";
 import { operationsPageRequest, parseOperationsPageQuery } from "./operations-pagination.js";
 import { randomUUID } from "node:crypto";
 import { submissionRequest, submitReportOnce, uploadReceiptOnce } from "./operations-submission.service.js";
@@ -904,8 +904,8 @@ export async function updateOffload(actor: ReportActor, recordId: string, input:
   return { report: savedReport, item: data };
 }
 
-/** One fresh password confirmation is bound to this immutable, bounded record batch. */
-export function createOperationsReportDeleter(verify=withCurrentUserPassword){
+/** One fresh session authorization is bound to this immutable, bounded record batch. */
+export function createOperationsReportDeleter(verify=withCurrentUserSession){
  return async function deleteBatch(actor: ReportActor, input: unknown, credentials: DeletionCredentials) {
   assertOperationsManagementRole(actor);
   if(!Array.isArray(input)||!input.length||input.length>20) throw new ApiError("Select between 1 and 20 report records.",400,"INVALID_REPORT_BATCH");

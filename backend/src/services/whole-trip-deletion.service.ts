@@ -1,4 +1,4 @@
-import {withDeletionPassword,type DeletionCredentials} from "./deletion-password.service.js";
+import {withDeletionSession,type DeletionCredentials} from "./deletion-password.service.js";
 import {supabaseAdmin as db} from "../config/supabase.js";
 import {ApiError} from "../utils/api-response.js";
 import {isValidUuid} from "../utils/validation.js";
@@ -11,7 +11,7 @@ export function wholeTripIds(actor:{id:string;role:string},input:unknown):string
  if(!isValidUuid(actor.id))throw new ApiError("Authenticated Admin identity is required.",403,"WHOLE_TRIP_FORBIDDEN");
  const ids=[...new Set(input.map(id=>(id as string).toLowerCase()))] as string[];if(ids.length>20)throw new ApiError("Select at most twenty distinct trips.",400,"WHOLE_TRIP_IDS");return ids.sort();
 }
-export const WHOLE_TRIP_IMPACT_COUNTS=["trip_stops","trip_line_items","trip_truck_assignments","pod_records","trip_images","offloads","backloads","loading_reports","unloading_reports","report_receipts","billings","payables","receivables","documents","pod_drive_files","operations_report_conversions","incidents","store_calls","demurrages","trip_events","driver_trip_updates","offload_items","backload_items","tracking_locations","cached_routes","source_flex_rows","source_flex_cells","pod_review_events_retained"] as const;
+export const WHOLE_TRIP_IMPACT_COUNTS=["trip_stops","trip_line_items","trip_truck_assignments","pod_records","trip_images","offloads","backloads","loading_reports","unloading_reports","report_receipts","billings","payables","receivables","documents","pod_drive_files","operations_report_conversions","incidents","store_calls","demurrages","trip_events","driver_trip_updates","offload_items","backload_items","tracking_locations","cached_routes","source_flex_rows","source_flex_cells","pod_review_events_retained","trip_cargo_allocations","trip_assignment_stops","spreadsheet_formulas","trip_notifications"] as const;
 export async function wholeTripImpact(actor:{id:string;role:string},input:unknown){
  const ids=wholeTripIds(actor,input);
  const {data,error}=await db.rpc("preview_whole_trip_deletion_v1",{p_trip_ids:ids,p_actor_id:actor.id});
@@ -27,7 +27,7 @@ export async function wholeTripImpact(actor:{id:string;role:string},input:unknow
  if(attachmentReview?.some(row=>row.status==="BLOCKED")&&!blockers.some(value=>value.includes("ownership")))blockers.push("Attachment ownership or retention requires review.");
  return {trips:data.trips,counts:data.counts,blockers,can_delete:blockers.length===0,...(attachmentReview?{attachment_review:attachmentReview.map(row=>({update_id:row.update_id,trip_id:row.trip_id,image_id:row.image_id,trip_stop_id:row.trip_stop_id,status:row.status,reason:row.reason}))}:{})};
 }
-export function createWholeTripDeleter(verify=withDeletionPassword){return async function deleteWholeTrips(actor:{id:string;role:string},input:unknown,credentials?:DeletionCredentials){
+export function createWholeTripDeleter(verify=withDeletionSession){return async function deleteWholeTrips(actor:{id:string;role:string},input:unknown,credentials?:DeletionCredentials){
  const admin=Object.freeze({...actor}),ids=Object.freeze(wholeTripIds(admin,input));
  if(process.env.WHOLE_TRIP_DELETE_ENABLED!=="true")throw new ApiError("Whole-trip deletion is disabled pending approved SQL and acceptance checks.",503,"WHOLE_TRIP_DISABLED");
  return verify(admin,credentials??{password:undefined,accessToken:"",appSessionId:null},async()=>{

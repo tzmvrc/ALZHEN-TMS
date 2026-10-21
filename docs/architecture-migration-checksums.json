@@ -1,0 +1,30 @@
+﻿[
+    {
+        "file":  "2026_10_21_trip_convoy_integrity.sql",
+        "sha256":  "ED551B79373B8E30732C8FE6C5E00F5BFDB6A09DE04129B6FAD387617932CEB9"
+    },
+    {
+        "file":  "2026_10_21_convoy_report_projections.sql",
+        "sha256":  "D05C414DA0B0E8DCF0B99DB7DBF19A793FA623A50C44A3D12513EFB8600DDEAF"
+    },
+    {
+        "file":  "2026_10_21_trip_presentation_ownership.sql",
+        "sha256":  "75E7FECA57DB01455DAE2E80BA29D6AAEB3B264EFFC1EE64E5F8D9B3838961E2"
+    },
+    {
+        "file":  "2026_10_21_complete_trip_presentation_cleanup.sql",
+        "sha256":  "9F7E6B695DE04C575A781C5877B8B9D102E2301597CE8C1535848DAB16B26036"
+    },
+    {
+        "file":  "2026_10_21_proposed_narrow_record_deletion.sql",
+        "sha256":  "95930B74FF706FFE0891F037E4876E2290BE60946E2FDD9057F49BEC8962EE9C"
+    },
+    {
+        "file":  "2026_10_21_convoy_projection_completion.sql",
+        "sha256":  "9B71095C60A327B9A52D13ACDF83B903D65F5012B174D9A520C66271F84C2F62"
+    },
+    {
+        "file":  "2026_10_21_convoy_stop_history.sql",
+        "sha256":  "88E11A811AD6B6A6DB4F9C133F0A7913D24723637CFDD8C2D375FB2E5E029970"
+    }
+]

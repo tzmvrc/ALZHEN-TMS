@@ -149,7 +149,7 @@ export async function updateDropdownOption(
   }
   const allowedFields = ["display_label", "sort_order", "active", "color"];
   const unknownFields = Object.keys(input).filter(
-    (field) => !allowedFields.includes(field) && field !== "confirm_in_use",
+    (field) => !allowedFields.includes(field) && field !== "confirm_in_use" && field !== "remove_if_unused",
   );
   if (unknownFields.length) {
     throw new Error(
@@ -198,6 +198,12 @@ export async function updateDropdownOption(
   }
 
   const usageCount = await getUsageCount(field, existing.option_value);
+  if(input.remove_if_unused===true){
+    if(existing.is_system||field==="letter_status")throw Object.assign(new Error("This is a protected system option."),{statusCode:409});
+    if(usageCount>0)throw Object.assign(new Error("This option is used by existing records and cannot be removed."),{statusCode:409});
+    if(patch.active!==false)throw new Error("An option removal must remove it from available choices.");
+  }
+
   const affectsInUseOption =
     usageCount > 0 &&
     (("display_label" in patch &&

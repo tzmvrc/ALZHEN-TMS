@@ -95,11 +95,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const retryRefreshTimerRef = useRef<number | undefined>(undefined);
   const refreshSessionRef = useRef<AuthContextValue["refreshSession"] | null>(null);
   const authSyncLockedRef = useRef(false);
+  const refreshFlight = useRef<Promise<void>|null>(null);
+  const sessionEpoch = useRef(0);
   const lastRefreshAtRef = useRef(0);
   const sessionExpiredRef = useRef(false);
   const { addToast } = useToast();
 
   const clearSessionState = useCallback(() => {
+    sessionEpoch.current++;
     cancelAdminPreload();
     sessionExpiredRef.current = false;
     window.clearTimeout(retryRefreshTimerRef.current);
@@ -177,6 +180,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
 
+      if(refreshFlight.current)return refreshFlight.current;
+      const epoch=sessionEpoch.current;
+      const run=async()=>{
       let preserveInitialLoading = false;
 
       try {
@@ -189,6 +195,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           throw error;
         }
 
+        if(epoch!==sessionEpoch.current||authSyncLockedRef.current)return;
         if (!session?.access_token) {
           clearSessionState();
           return;
@@ -215,6 +222,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           data: AuthSessionResponse & { role: string; expiresAt?: string | null };
         }>("/auth/session/bootstrap", {}, session.access_token);
 
+        if(epoch!==sessionEpoch.current||authSyncLockedRef.current)return;
         if (!response.success || !response.data) {
           throw new Error(response.message ?? "Unable to load account profile");
         }
@@ -242,6 +250,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setAccessToken(session.access_token);
         setSessionExpiresAt(response.data.expiresAt ?? null);
       } catch (error) {
+        if(epoch!==sessionEpoch.current||authSyncLockedRef.current)return;
         const definitiveAuthFailure = error instanceof ApiError && (
           error.status === 401 ||
           (error.status === 403 && /access denied|not authorized|unauthorized/i.test(error.message))
@@ -270,10 +279,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }, 5000);
         }
       } finally {
-        if (!silent && !preserveInitialLoading) {
-          setLoading(false);
-        }
+        if (epoch===sessionEpoch.current && !preserveInitialLoading) setLoading(false);
       }
+      };
+      const pending=run();refreshFlight.current=pending;
+      try{await pending;}finally{if(refreshFlight.current===pending)refreshFlight.current=null;}
     },
     [clearSessionState, handleSessionExpired, user],
   );
@@ -289,6 +299,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       allowedRole?: AllowedPortalRole,
     ) => {
       authSyncLockedRef.current = true;
+      sessionEpoch.current++;
 
       try {
         const response = await apiPost<{
@@ -408,13 +419,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [handleSessionExpired]);
 
   useEffect(() => {
-    void refreshSession({ silent: false });
+    void refreshSessionRef.current?.({ silent: false });
 
     const handleFocusOrVisible = () => {
       if (document.visibilityState === "visible" || document.hasFocus()) {
         const elapsed = Date.now() - lastRefreshAtRef.current;
         if (elapsed > 30000) {
-          void refreshSession({ silent: true });
+          void refreshSessionRef.current?.({ silent: true });
         }
       }
     };
@@ -441,7 +452,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         event === "SIGNED_IN" ||
         event === "TOKEN_REFRESHED"
       ) {
-        void refreshSession({ silent: false });
+        void refreshSessionRef.current?.({ silent: false });
       }
     });
 
@@ -453,7 +464,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       window.removeEventListener("focus", handleFocusOrVisible);
       document.removeEventListener("visibilitychange", handleFocusOrVisible);
     };
-  }, [clearSessionState, refreshSession]);
+  }, [clearSessionState]);
 
   useEffect(() => {
     if (!user || profile?.role !== "TRUCKER" || !accessToken) return;

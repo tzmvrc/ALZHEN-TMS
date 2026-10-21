@@ -1,3 +1,4 @@
+import {reportReadTiming} from "./utils/report-read-timing.js";
 import express from "express";
 import { collaborationResponseMiddleware } from "./services/collaboration-events.js";
 import tableLayoutRoutes from "./routes/table-layout.routes.js";
@@ -34,6 +35,7 @@ app.disable("x-powered-by");
 app.set("trust proxy",httpConfig.trustProxy);
 app.use(cors(httpConfig.cors));
 app.use(express.json());
+app.use(reportReadTiming);
 app.use(collaborationResponseMiddleware);
 app.use("/api/website", websiteContentRoutes);
 app.use("/api", healthRoutes);

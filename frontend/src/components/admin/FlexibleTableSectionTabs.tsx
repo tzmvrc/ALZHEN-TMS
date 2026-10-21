@@ -1,7 +1,7 @@
 import { useSpreadsheetFeedback } from "./SpreadsheetPresentation";
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState, type ReactNode } from "react";
 import { Link2Off, Table2 } from "lucide-react";
-import FlexibleTablesView from "../../pages/Admin/views/FlexibleTablesView";
+const FlexibleTablesView=lazy(()=>import("../../pages/Admin/views/FlexibleTablesView"));
 import { subscribeToAdminRealtime } from "../../services/realtime.service";
 import { useDeferredRealtimeRefresh } from "./useDeferredRealtimeRefresh";
 import {
@@ -83,7 +83,7 @@ export default function FlexibleTableSectionTabs({ sectionKey, sectionLabel, acc
     </div>}
     {loading && !hideSectionTab && <div aria-label="Loading connected table tabs" className="h-8 w-40 animate-pulse rounded bg-slate-100" />}
     {error && <button type="button" onClick={() => void reload()} className="text-xs font-semibold text-blue-700 underline">Retry loading tables</button>}
-    {activeTableId ? <FlexibleTablesView key={activeTableId} accessToken={accessToken} role={role} embeddedTableId={activeTableId} onExit={() => { setActiveTableId(null); void reload(); }} /> : children}
+    {activeTableId ? <Suspense fallback={<div className="h-24 animate-pulse bg-slate-50"/>}><FlexibleTablesView key={activeTableId} accessToken={accessToken} role={role} embeddedTableId={activeTableId} onExit={() => { setActiveTableId(null); void reload(); }} /></Suspense> : children}
 
   </div>;
 }

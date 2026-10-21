@@ -401,7 +401,8 @@ export default function OverviewView({
       return;
     }
 
-    let active = true;
+    if (!active) return;
+    let isCurrent = true;
     void (async () => {
       try {
         const [firstPage,inProgressPage,completedPage] = await Promise.all([
@@ -410,6 +411,20 @@ export default function OverviewView({
           fetchTrips(accessToken,{limit:1,status:"COMPLETED",archiveScope:"active"}),
         ]);
         const allTrips = { ...firstPage, rows: [...firstPage.rows] };
+        if (!isCurrent) return;
+        // Make the essential snapshot usable before booking, activity or photo requests.
+        setSnapshot(previous => ({
+          recent: allTrips.rows, photoUrls: previous?.photoUrls ?? {},
+          tracks: previous?.tracks ?? [], events: previous?.events ?? [],
+          bookingRows: previous?.bookingRows ?? [], eventsUnavailable: false,
+          bookingUnavailable: false, total: allTrips.pagination.total,
+          inProgress: inProgressPage.pagination.total,
+          completed: completedPage.pagination.total, fetchedAt: Date.now(),
+        }));
+        setLoadedKey(requestKey);
+        // Yield to navigation and rendering before starting nonessential reads.
+        await new Promise(resolve => window.setTimeout(resolve, 1500));
+        if (!isCurrent) return;
         let bookingRows: ReportRow[] = [];
         let bookingUnavailable = false;
         try {
@@ -438,24 +453,49 @@ export default function OverviewView({
             typeof trip.id === "string" && trip.id.length > 0,
         );
         const activeStopIds = new Set(bookingRows.map((row) => textValue(row.trip_stop_id ?? row._trip_stop_id)).filter(Boolean));
-        if(active)setSnapshot(previous=>previous??{recent:allTrips.rows,photoUrls:{},tracks:tripsWithIds.map(trip=>({trip,events:[]})),events:[],bookingRows,eventsUnavailable:false,bookingUnavailable,total:allTrips.pagination.total,inProgress:inProgressPage.pagination.total,completed:completedPage.pagination.total,fetchedAt:Date.now()});
-        const [eventResults, photoResults] = await Promise.all([
-          settledBackgroundPreload(
-            tripsWithIds.map((trip) => async()=>({
-              trip,
-              events: (await fetchTripEvents(accessToken, trip.id)).filter(
-                (event) => !event.trip_stop_id || (!bookingUnavailable && activeStopIds.has(event.trip_stop_id)),
-              ),
-            })),2,()=>active,
-          ),
-          settledBackgroundPreload(
-            tripsWithIds.map((trip) => async()=>({
-              tripId: trip.id,
-              images: await fetchTripImages(accessToken, trip.id),
-            })),2,()=>active,
-          ),
-        ]);
-        if(!active)return;
+        if (!isCurrent) return;
+        setSnapshot(previous => previous ? {...previous, bookingRows, bookingUnavailable} : previous);
+        const partialTracks: OverviewSnapshot["tracks"] = [];
+        const partialPhotos: Record<string,string> = {};
+        let detailAuthFailure: ApiError | undefined;
+        // One bounded queue for both resources; never run two independent 100-trip queues.
+        const details = await settledBackgroundPreload(tripsWithIds.map((trip, index) => async () => {
+          await new Promise(resolve => window.setTimeout(resolve, 200));
+          if (!isCurrent) throw new Error("Overview navigation changed");
+          const events = await Promise.allSettled([fetchTripEvents(accessToken, trip.id)]);
+          if (events[0].status === "rejected" && events[0].reason instanceof ApiError && events[0].reason.status === 401) detailAuthFailure = events[0].reason;
+          if (!isCurrent || detailAuthFailure) return {trip, events: events[0], images: null};
+          const images = await Promise.allSettled([fetchTripImages(accessToken, trip.id)]);
+          if (images[0].status === "rejected" && images[0].reason instanceof ApiError && images[0].reason.status === 401) detailAuthFailure = images[0].reason;
+          if (events[0].status === "fulfilled") partialTracks.push({trip, events: events[0].value.filter(event => !event.trip_stop_id || (!bookingUnavailable && activeStopIds.has(event.trip_stop_id)))});
+          if (images[0].status === "fulfilled" && images[0].value[0]) partialPhotos[trip.id] = images[0].value[0].signed_url;
+          // Publish early map/activity detail, then batches, without rerendering per request.
+          if (isCurrent && (index < 3 || index % 10 === 9)) {
+            const tracks = [...partialTracks], photoUrls = {...partialPhotos};
+            setSnapshot(previous => previous ? {...previous, tracks, photoUrls,
+              events: tracks.flatMap(({trip,events}) => events.map(event => ({...event, dispatch_number: String(trip.dispatch_number ?? trip.id ?? "Trip")}))),
+            } : previous);
+          }
+          return {trip, events: events[0], images: images[0]};
+        }), 1, () => isCurrent && !detailAuthFailure);
+        if (detailAuthFailure) throw detailAuthFailure;
+        const eventResults = details.map(result => {
+          if (result.status === "rejected") return result;
+          const {trip, events} = result.value;
+          return events.status === "rejected" ? events : {
+            status: "fulfilled" as const, value: {trip, events: events.value.filter(
+              event => !event.trip_stop_id || (!bookingUnavailable && activeStopIds.has(event.trip_stop_id)),
+            )},
+          };
+        });
+        const photoResults = details.map(result => {
+          if (result.status === "rejected") return result;
+          const {trip, images} = result.value;
+          return !images ? {status: "rejected" as const, reason: "Navigation changed"} : images.status === "rejected" ? images : {
+            status: "fulfilled" as const, value: {tripId: trip.id, images: images.value},
+          };
+        });
+        if(!isCurrent)return;
         const authFailure = eventResults.find(
           (result) =>
             result.status === "rejected" &&
@@ -488,7 +528,7 @@ export default function OverviewView({
             result.reason,
           );
         });
-        if (!active) return;
+        if (!isCurrent) return;
         setSnapshot({
           recent: allTrips.rows,
           photoUrls,
@@ -505,7 +545,7 @@ export default function OverviewView({
           fetchedAt: Date.now(),
         });
       } catch (cause) {
-        if (!active) return;
+        if (!isCurrent) return;
         if (cause instanceof ApiError && cause.status === 401) {
           await refreshSession();
           return;
@@ -520,14 +560,14 @@ export default function OverviewView({
                 : "Unable to load trip data.",
         });
       } finally {
-        if (active) setLoadedKey(requestKey);
+        if (isCurrent) setLoadedKey(requestKey);
       }
     })();
 
     return () => {
-      active = false;
+      isCurrent = false;
     };
-  }, [accessToken, navigate, refreshSession, requestKey]);
+  }, [accessToken, navigate, refreshSession, requestKey, active]);
 
   useEffect(() => {
     if (!accessToken) return;
@@ -573,10 +613,8 @@ export default function OverviewView({
       inactiveChanges.current = false;
       scheduleReload();
     }
-    const interval = active ? window.setInterval(scheduleReload, 60_000) : undefined;
     return () => {
       unsubscribe();
-      if (interval !== undefined) window.clearInterval(interval);
       if (reloadTimer !== null) window.clearTimeout(reloadTimer);
     };
   }, [accessToken, active, snapshot?.recent]);

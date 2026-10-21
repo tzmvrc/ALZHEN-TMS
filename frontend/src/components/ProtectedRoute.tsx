@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { Navigate, useLocation } from "react-router-dom";
-import { PageSkeleton } from "./admin/DashboardPrimitives";
+import RouteLoading from "./RouteLoading";
 import { getRoleBasedHomePath, useAuth } from "../context/AuthContext";
 
 type ProtectedRouteProps = {
@@ -16,7 +16,7 @@ export default function ProtectedRoute({
   const location = useLocation();
 
   if (loading && !user) {
-    return <PageSkeleton />;
+    return <RouteLoading />;
   }
 
   if (!user) {

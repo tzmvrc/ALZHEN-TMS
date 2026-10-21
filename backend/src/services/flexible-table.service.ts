@@ -488,6 +488,11 @@ export async function updateOption(actor: FlexActor, tableIdInput: unknown, colu
   if (!existing) throw new ApiError("Dropdown option not found.", 404, "FLEX_OPTION_NOT_FOUND");
   const patch = validateOption(input, true);
   if (!Object.keys(patch).length) badRequest("Provide at least one option field to update.");
+  if((patch.is_active===false&&existing.is_active!==false)||(typeof patch.stored_value==="string"&&patch.stored_value!==existing.stored_value)){
+    const usage=await supabaseAdmin.from("flex_cells").select("id",{count:"exact",head:true}).eq("column_id",column.id).eq("value",JSON.stringify(existing.stored_value));
+    if(usage.error)failDb("verify dropdown option usage",usage.error);
+    if((usage.count??0)>0)throw new ApiError("This option is used by saved cells. Rename its label instead of removing or changing its stored value.",409,"FLEX_OPTION_IN_USE");
+  }
   const { data, error } = await supabaseAdmin.from("flex_dropdown_options").update({ ...patch, updated_at: new Date().toISOString() }).eq("id", optionId).eq("column_id", column.id).select(OPTION_FIELDS).maybeSingle();
   if (error) {
     if (error.code === "23505") throw new ApiError("That active stored value already exists for this column.", 409, "FLEX_DUPLICATE_OPTION");

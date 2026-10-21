@@ -1,0 +1,50 @@
+{
+  "project": "hdmknewarynwpbrhfgai",
+  "measuredAt": "2026-10-21T00:28:38.415Z",
+  "databaseEngineTiming": false,
+  "results": [
+    {
+      "view": "v_dispatch_monitoring",
+      "status": 200,
+      "ms": 444,
+      "rows": 1,
+      "total": "1"
+    },
+    {
+      "view": "v_dispatch_report",
+      "status": 200,
+      "ms": 390,
+      "rows": 1,
+      "total": "1"
+    },
+    {
+      "view": "vw_store_calling_tracker",
+      "status": 403,
+      "ms": 131,
+      "rows": null,
+      "total": null,
+      "error": "42501"
+    },
+    {
+      "view": "v_trip_booking",
+      "status": 200,
+      "ms": 231,
+      "rows": 1,
+      "total": "1"
+    },
+    {
+      "view": "v_store_calling",
+      "status": 200,
+      "ms": 112,
+      "rows": 0,
+      "total": "0"
+    },
+    {
+      "view": "v_transmittal_tracker_page",
+      "status": 200,
+      "ms": 117,
+      "rows": 0,
+      "total": "0"
+    }
+  ]
+}

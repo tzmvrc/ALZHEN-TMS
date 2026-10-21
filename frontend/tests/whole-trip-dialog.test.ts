@@ -15,7 +15,7 @@ for (const [name, tripIds, label] of [
     }));
     assert.equal(html.split(`>${label}<`).length - 1, 2, "matching title and confirmation");
     assert.match(html, /This action cannot be undone\./);
-    assert.match(html, /type="password"/);
+    assert.doesNotMatch(html, /type="password"|Current account password/);
     assert.match(html, /including transmittals, reports, PODs, receipts, and attachments/);
     assert.doesNotMatch(html, /<dl|<details|selected rows|unique trips|ownership|trip-a|trip-b|trip_stops|Calculating dependent/);
     assert.match(html, /disabled=""/);

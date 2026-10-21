@@ -3,6 +3,8 @@ import { invalidateReportPageCache } from "./report.service";
 
 export type TransmittalTrackerCell = { value: unknown; version: number; row_id: string };
 export type TransmittalTrackerRow = {
+  assignment_id?: string | null;
+  assigned_plate_number?: string | null;
   trip_stop_id: string;
   trip_id: string;
   transmittal_ref: string;
@@ -22,6 +24,8 @@ export type TransmittalTrackerRow = {
   cells: Record<string, TransmittalTrackerCell>;
   legacy_conflicts: string[];
 };
+/** Projection key is local UI identity; every write still uses trip_stop_id. */
+export const trackerRowKey=(row:Pick<TransmittalTrackerRow,"trip_stop_id"|"assignment_id">)=>`${row.trip_stop_id}${row.assignment_id?`~${row.assignment_id}`:""}`;
 export type TransmittalTrackerResponse = {
   table_id: string;
   pagination?: {page:number;limit:number;total:number;totalPages:number};
@@ -75,7 +79,7 @@ export async function fetchPagedTrackerExportRows(token:string,options:TrackerPa
     if(expectedTotal!==undefined&&expectedTotal!==result.pagination.total)throw new Error("Tracker records changed during export. Retry to export current data.");
     expectedTotal=result.pagination.total;
     if(expectedTotal>20000)throw new Error("Export exceeds 20,000 rows. Filter by a Transmittal Reference or narrow the export.");
-    for(const row of result.rows){if(seen.has(row.trip_stop_id))throw new Error("Tracker rows changed during export. Retry.");seen.add(row.trip_stop_id);rows.push(row);}
+    for(const row of result.rows){const identity=trackerRowKey(row);if(seen.has(identity))throw new Error("Tracker rows changed during export. Retry.");seen.add(identity);rows.push(row);}
     if(page>=result.pagination.totalPages)break;
     if(!result.rows.length)throw new Error("Tracker records changed during export. Retry.");
   }
@@ -97,3 +101,17 @@ export const saveTransmittalTrackerCell = async (token: string, stopId: string, 
   invalidateTransmittalTrackerCache();
   return result;
 };
+
+/** Clear only saved tracker overlays. DR remains an authoritative stop field. */
+export async function resetTrackerOverrides(token:string,rows:TransmittalTrackerRow[]){
+ const fields=new Set(["warehouse_code_override","delivered_to_override","plate_number_override","sales_order_no_override","transmittal_ref","date_created_override","tracker_status","lbc_waybill_no","lbc_shipping_date","tracker_remarks","loading_date_override","delivery_date_override"]);
+ const unique=[...new Map(rows.map(row=>[row.trip_stop_id,row])).values()];if(!unique.length||unique.length>20)throw Error("Select at most 20 delivery stops.");
+ const completed:string[]=[],failed:TransmittalTrackerRow[]=[];let auditWarnings=0;
+ for(const row of unique){let success=true;
+  for(const [field,cell] of Object.entries(row.cells)){if(!fields.has(field)||cell.value===null)continue;if(row.legacy_conflicts.includes(field)){success=false;continue;}
+   try{const saved=await saveTransmittalTrackerCell(token,row.trip_stop_id,field,null,cell.version);cell.version=saved.cell.version;cell.value=null;if(saved.audit_warning)auditWarnings++;}catch{success=false;}
+  }
+  if(success)completed.push(row.trip_stop_id);else failed.push(row);
+ }
+ return {completed,failed,auditWarnings};
+}

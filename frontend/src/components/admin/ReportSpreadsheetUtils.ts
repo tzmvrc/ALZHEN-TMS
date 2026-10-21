@@ -15,11 +15,19 @@ export const REPORT_COLUMN_COLORS = [
 ];
 
 export const REPORT_GRID_VIEWPORT_CLASS = "spreadsheet-viewport relative min-h-0 min-w-0 overflow-auto overscroll-contain rounded-sm border border-slate-200 bg-white";
-export const REPORT_GRID_HEADER_CELL_CLASS = "sticky top-0 z-30 whitespace-normal break-words border-b border-r border-slate-200 bg-slate-50 px-3 py-1 align-middle text-[12px] leading-4 font-semibold uppercase tracking-wide text-slate-600 last:border-r-0";
+export const REPORT_GRID_HEADER_CELL_CLASS = "sticky top-0 z-30 whitespace-normal break-words border-b border-r border-slate-200 bg-slate-50 px-3 py-1 align-middle text-[12px] leading-4 font-bold uppercase tracking-wide text-slate-600 last:border-r-0";
 export const REPORT_GRID_BODY_CELL_CLASS = "border-b border-r border-slate-100 px-4 py-1 align-middle text-[12px] leading-5 text-slate-800 last:border-r-0";
 export const REPORT_GRID_ROW_CLASS = "border-b border-slate-100/80 transition-colors last:border-0";
 
 export type {CellDesign as ReportCellFormat} from "../../services/shared-table-design";
+
+/** A stop/item's earlier shared appearance remains a default after convoy
+ * expansion; an explicitly formatted assignment cell always takes precedence. */
+export function reportCellFormatFor(formats:Record<string,ReportCellFormat>,key:string):ReportCellFormat|undefined{
+  const inheritedKey=key.replace(/:assignment:[0-9a-f-]{36}/i,"").replace(/~[0-9a-f-]{36}/i,"");
+  const specific=formats[key],inherited=formats[inheritedKey];
+  return inheritedKey===key||!inherited?specific:!specific?inherited:{...inherited,...specific};
+}
 import type {CellDesign as ReportCellFormat} from "../../services/shared-table-design";
 
 export function reportCellFormatKey(rowKey: string, field: string) {
@@ -103,7 +111,7 @@ export function reportColumnAppearance(column?: ColumnDesign, cell?: ReportCellF
 
 /** Separate header appearance overrides never leak into data cells. */
 export function reportHeaderAppearance(column?: ColumnDesign, legacyBackground?: string): CSSProperties {
-  return { ...reportColumnAppearance(column, column?.header, legacyBackground) };
+  return { fontWeight: 700, ...reportColumnAppearance(column, column?.header, legacyBackground) };
 }
 
 export const REPORT_TOOLBAR_ROW_CLASS = "report-toolbar-row flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-2";

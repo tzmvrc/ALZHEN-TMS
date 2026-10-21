@@ -7,7 +7,9 @@ test("design overlays preserve actual column keys and diff only changed settings
  assert.deepEqual(designChanges(local,{...local,hidden:["route"]}),{route:{hidden:true}});
  const next=designLayout(local,local.order,{route:{position:0,pin:"right",hidden:true,color:"#abcdef"},dispatch:{position:1}},true);
  assert.deepEqual(next.order,["route","dispatch"]);assert.deepEqual(next.hidden,["route"]);assert.deepEqual(next.pins,{route:"right"});
- assert.equal(designLayout(local,local.order,{},false),local);
+ assert.deepEqual(designLayout(local,local.order,{},false),local);
+ const stale={...local,hidden:["route"],colors:{dispatch:"#ff0000"},pins:{route:"right" as const}};
+ assert.deepEqual(designLayout(stale,local.order,{},false),local,"legacy browser colors/pins must not flash before shared hydration");
 });
 test("shared design confirms saves, retains failed drafts, retries and isolates logout/session responses",async()=>{
  const original=globalThis.fetch;let row={column_key:"route",revision:1,width_px:480,design:{color:"#abcdef"}},fail=false,writes=0;

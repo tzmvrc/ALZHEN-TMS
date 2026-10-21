@@ -1,5 +1,5 @@
 export const WORKSPACE_SHEETS = [
-  { key: "trips", title: "Trips", report: "dispatch-monitoring" },
+  { key: "trips", title: "Master List", report: "dispatch-monitoring" },
   { key: "dispatch-monitoring", title: "Dispatch Monitoring", report: "dispatch-monitoring" },
   { key: "dispatch", title: "Dispatch Report", report: "dispatch" },
   { key: "trip-booking", title: "Trip Booking", report: "trip-booking" },

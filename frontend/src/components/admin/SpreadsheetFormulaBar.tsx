@@ -39,7 +39,7 @@ export function SpreadsheetFormulaBar({ value, onChange, onCommit, onCancel, rea
     <input ref={inputRef} aria-label="Formula or cell value" aria-describedby={reasonId} title={readOnly?readOnlyReason:undefined} readOnly={readOnly} value={value}
       onFocus={onFocus} onBlur={onBlur} onChange={event=>{if(!readOnly)onChange?.(event.target.value);}}
       onKeyDown={event=>{if(event.key==="Enter"){event.preventDefault();event.stopPropagation();if(!readOnly)onCommit?.();}if(event.key==="Escape"){event.preventDefault();event.stopPropagation();onCancel?.();}}}
-      className="h-6 w-full min-w-0 flex-1 border-0 bg-transparent px-2 text-xs text-slate-800 outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-blue-400 read-only:cursor-default read-only:text-slate-500" />
+      className="h-6 w-full min-w-0 flex-1 border-0 bg-transparent px-2 text-[10px] text-slate-800 outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-blue-400 read-only:cursor-default read-only:text-slate-500" />
     </div>
     <button ref={helpButton} type="button" aria-label="Formula help" title="How to use formulas" aria-expanded={Boolean(help)} aria-controls={help?helpId:undefined}
       onMouseDown={event=>event.preventDefault()} onClick={()=>{if(help){setHelp(null);return;}const rect=helpButton.current?.getBoundingClientRect();if(rect){const top=Math.max(8,Math.min(rect.bottom+6,window.innerHeight-320));setHelp({left:Math.max(8,Math.min(rect.left,window.innerWidth-368)),top,maxHeight:Math.max(120,window.innerHeight-top-8)});}}}

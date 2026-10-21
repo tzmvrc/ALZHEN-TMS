@@ -16,7 +16,7 @@ export function parseTrackerPageQuery(input: Record<string, unknown>): TrackerPa
 }
 /** Page in PostgreSQL, then enrich only these stable stop identities. */
 export function trackerPageRequest(client: { from: (table: string) => any }, options: TrackerPageQuery) {
-  let query=client.from("v_transmittal_tracker_page").select("trip_stop_id",{count:"exact"});
+  let query=client.from("v_transmittal_tracker_page").select("*",{count:"exact"});
   const search=buildIlikeOrFilter(TRACKER_PAGE_FIELDS,options.search);
   const filter=buildIlikeOrFilter(options.filterBy?[options.filterBy]:[],options.filter);
   const predicates=[search,filter].filter((value):value is string=>Boolean(value));
@@ -24,6 +24,7 @@ export function trackerPageRequest(client: { from: (table: string) => any }, opt
   if(options.reference!==undefined)query=query.eq("transmittal_ref",options.reference);
   query=query.order(options.sortBy,{ascending:options.sortOrder==="asc",nullsFirst:false});
   if(options.sortBy!=="trip_stop_id")query=query.order("trip_stop_id",{ascending:true});
+  query=query.order("assignment_id",{ascending:true,nullsFirst:false});
   const offset=(options.page-1)*options.limit;
   return query.range(offset,offset+options.limit-1);
 }

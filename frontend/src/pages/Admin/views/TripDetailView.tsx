@@ -1,3 +1,4 @@
+import TripConvoyPanel from "../../../components/admin/TripConvoyPanel";
 import { useDeferredRealtimeRefresh } from "../../../components/admin/useDeferredRealtimeRefresh";
 import { useEffect,useLayoutEffect,useRef, useState, type ReactNode } from "react";
 import {
@@ -721,6 +722,7 @@ export default function TripDetailView({
   initialStopId?: string | null;
 }) {
   const { accessToken, refreshSession } = useAuth();
+  const [convoyOpen,setConvoyOpen]=useState(false);
   const navigate = useNavigate();
   const snapshotEndpoint=`/trips/${encodeURIComponent(tripId)}/screen-snapshot`;
   const scope=`${accessToken}:${tripId}`;
@@ -959,7 +961,7 @@ export default function TripDetailView({
         ...item,
         trip_line_item_id: item.id,
       }))
-    : bookingRows.filter((row) => row.trip_line_item_id || row._trip_line_item_id || row.product_id || row._product_id);
+    : [...new Map(bookingRows.filter((row) => row.trip_line_item_id || row._trip_line_item_id).map(row=>[String(row.trip_line_item_id??row._trip_line_item_id),row])).values()];
   const reportRows = bookingRows;
   const orderedEvents = (detail?.events ?? [])
     .slice()
@@ -1062,6 +1064,7 @@ export default function TripDetailView({
 
   return (
     <div className="space-y-4">
+      {convoyOpen&&accessToken&&<TripConvoyPanel token={accessToken} tripId={tripId} onClose={()=>setConvoyOpen(false)}/>}
       {isLoading&&detail&&<p role="status" className="text-xs text-slate-500">Loading remaining trip details…</p>}
       {error&&detail&&<p role="alert" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">{error} Previous trip data is retained. <button type="button" className="underline" onClick={()=>setRetry(value=>value+1)}>Retry</button></p>}
       {/* Top bar */}
@@ -1326,7 +1329,7 @@ export default function TripDetailView({
             <p className="mt-3 text-2xl font-bold tabular-nums text-[#0b2341]">{formatNumber(totalCbm)} CBM</p>
             <p className="mt-1 text-xs text-slate-500">{lineItemCount} cargo lines · {formatNumber(totalQty)} units</p>
             <p className="mt-4 rounded-xl bg-amber-50 px-3 py-2.5 text-xs leading-relaxed text-amber-800">
-              Cargo is shown at trip level. Per-truck allocations are not currently recorded, so individual truck utilization cannot be calculated.
+              Cargo is shown at trip level. Use Truck assignments and cargo allocations to assign quantities and calculate individual truck utilization.
             </p>
           </section>
         ) : (
@@ -1374,6 +1377,7 @@ export default function TripDetailView({
 
           {sidePanel === "trucks" && (
             <div role="tabpanel" className="mt-3 min-h-0 flex-1 overflow-y-auto">
+              <button type="button" onClick={()=>setConvoyOpen(true)} className="mb-3 rounded border px-3 py-1.5 text-xs text-blue-800">Manage assignments / cargo allocations</button>
               {assignments.length === 0 ? (
                 <p className="rounded-xl bg-[#f7f9fc] px-4 py-8 text-center text-sm text-slate-500">
                   {placeholder ?? "No trucks are assigned to this trip yet."}
@@ -1425,7 +1429,7 @@ export default function TripDetailView({
                           </div>
                           <div className="rounded-xl bg-[#fff9e0] px-3 py-2 sm:col-span-1">
                             <dt className="text-[#8a7130]">Cargo allocation</dt>
-                            <dd className="mt-0.5 font-semibold text-[#6b5300]">Not tracked per truck</dd>
+                            <dd className="mt-0.5 font-semibold text-[#6b5300]"><button type="button" onClick={()=>setConvoyOpen(true)} className="underline">Manage allocations</button></dd>
                           </div>
                         </dl>
                       </li>

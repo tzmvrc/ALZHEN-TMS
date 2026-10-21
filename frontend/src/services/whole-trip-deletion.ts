@@ -35,13 +35,12 @@ type DeletionResult={cleanup_pending:boolean;deleted_trips?:number};
 // Only reuse a pending request for the same session and exact immutable batch.
 // Entries are removed on settlement; no authorization or password is persisted.
 const pendingDeletions=new Map<string,Promise<DeletionResult>>();
-export async function deleteWholeTrips(token: string, tripIds: string[], currentPassword: string) {
-  if (!currentPassword) throw Error("Enter your current account password.");
+export async function deleteWholeTrips(token: string, tripIds: string[], _currentPassword?: string) {
   const ids=[...new Set(tripIds)].sort(),key=JSON.stringify([apiCacheGeneration(),token,ids]);
   if(!ids.length||ids.length>20)throw Error("Select one to twenty unique trips.");
   const pending=pendingDeletions.get(key);if(pending)return pending;
   const request=(async()=>{
-    const response = await apiPost<ApiResponse<DeletionResult>>("/trips/whole-delete", { trip_ids: ids, current_password: currentPassword }, token);
+    const response = await apiPost<ApiResponse<DeletionResult>>("/trips/whole-delete", { trip_ids: ids }, token);
     if (!response.success || !response.data || typeof response.data.cleanup_pending !== "boolean" || (response.data.deleted_trips!==undefined&&response.data.deleted_trips!==ids.length)) throw Error("Deletion was not confirmed");
     invalidateWholeTripCaches();
     return response.data;

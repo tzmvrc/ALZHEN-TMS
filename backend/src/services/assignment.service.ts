@@ -264,7 +264,7 @@ export async function getTripAssignments(tripId: string) {
   const { data, error } = await supabaseAdmin
     .from("trip_truck_assignments")
     .select(
-      "id, trip_id, truck_id, driver_id, trucking_company_id, assignment_type, assigned_at, unassigned_at, remarks, created_at, updated_at",
+      "id, trip_id, truck_id, driver_id, trucking_company_id, assignment_type, assigned_at, unassigned_at, remarks, created_at, updated_at, stop_scope, collaboration_version",
     )
     .eq("trip_id", tripId)
     .order("assigned_at", { ascending: false, nullsFirst: false });
@@ -408,7 +408,7 @@ export async function createTripAssignment(
     .from("trip_truck_assignments")
     .insert(payload)
     .select(
-      "id, trip_id, truck_id, driver_id, trucking_company_id, assignment_type, assigned_at, unassigned_at, remarks, created_at, updated_at",
+      "id, trip_id, truck_id, driver_id, trucking_company_id, assignment_type, assigned_at, unassigned_at, remarks, created_at, updated_at, stop_scope, collaboration_version",
     )
     .single();
 
@@ -684,7 +684,7 @@ export async function getAssignmentByIdForTrip(
   const { data, error } = await supabaseAdmin
     .from("trip_truck_assignments")
     .select(
-      "id, trip_id, truck_id, driver_id, trucking_company_id, assignment_type, assigned_at, unassigned_at, remarks, created_at, updated_at",
+      "id, trip_id, truck_id, driver_id, trucking_company_id, assignment_type, assigned_at, unassigned_at, remarks, created_at, updated_at, stop_scope, collaboration_version",
     )
     .eq("id", assignmentId)
     .eq("trip_id", tripId)

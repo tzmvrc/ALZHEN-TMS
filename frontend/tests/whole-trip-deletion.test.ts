@@ -13,10 +13,10 @@ test("bulk scope reports exact unique parents and never silently truncates a bat
  assert.equal(selectedParentTripCount([rows[0],rows[0],rows[1]]),2);
  assert.equal(selectedParentTripIds(rows.slice(0,20))?.length,20);
 });
-test("missing passwords never issue a deletion request and synthetic passwords stay only in the POST body",async()=>{
+test("session-authorized requests contain only exact trip IDs and never forward legacy passwords",async()=>{
  const original=globalThis.fetch;let calls=0;
- globalThis.fetch=async(input,init)=>{calls++;assert.ok(!String(input).includes("synthetic-password"));assert.deepEqual(JSON.parse(String(init?.body)),{trip_ids:[one],current_password:"synthetic-password"});return new Response(JSON.stringify({success:true,data:{cleanup_pending:false}}),{status:200});};
- try{await assert.rejects(deleteWholeTrips("fixture",[one],""),/password/);assert.equal(calls,0);await deleteWholeTrips("fixture",[one],"synthetic-password");assert.equal(calls,1);}finally{globalThis.fetch=original;}
+ globalThis.fetch=async(input,init)=>{calls++;assert.ok(!String(input).includes("synthetic-password"));assert.deepEqual(JSON.parse(String(init?.body)),{trip_ids:[one]});return new Response(JSON.stringify({success:true,data:{cleanup_pending:false}}),{status:200});};
+ try{await deleteWholeTrips("fixture",[one]);assert.equal(calls,1);await deleteWholeTrips("fixture",[one],"synthetic-password");assert.equal(calls,2);}finally{globalThis.fetch=original;}
 });
 test("confirmed whole-trip success invalidates every affected feature, retains unrelated cache and fails closed on an unconfirmed write",async()=>{
  const original=globalThis.fetch;clearApiCache();const paths=["/trips?limit=100","/reports/combined/page","/reports/operations/page","/reports/transmittal-tracker/page","/dashboard/summary","/tracking/roads","/truckers/assigned","/users"];let confirmed=true;
