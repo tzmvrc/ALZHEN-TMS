@@ -150,7 +150,14 @@ function applyFilters(
     }
 
     if (filter.operator === "eq") {
-      queryBuilder = queryBuilder.eq(filter.field, value);
+      const column = definition.columns.find(column => column.key === filter.key);
+      // Text filters keep their exact-match semantics while ignoring capitalization.
+      // The assigned_to relationship remains a UUID equality filter.
+      if (column?.type === "text" && filter.key !== "assigned_to") {
+        queryBuilder = queryBuilder.or(buildIlikeOrFilter([filter.field], value, "exact")!);
+      } else {
+        queryBuilder = queryBuilder.eq(filter.field, value);
+      }
     }
 
     if (filter.operator === "gte") {

@@ -2,7 +2,7 @@ import {ChevronLeft,ChevronRight} from "lucide-react";
 import { useEffect, useRef, type RefObject } from "react";
 
 /** Small native scrollbar synchronized directly with the active sheet, without grid renders. */
-export default function SheetHorizontalScrollbar({ workspace, sheet, arrows=false }: { workspace: RefObject<HTMLElement | null>; sheet: string; arrows?:boolean }) {
+export default function SheetHorizontalScrollbar({ workspace, sheet, arrows=false, width }: { workspace: RefObject<HTMLElement | null>; sheet: string; arrows?:boolean; width?:number }) {
   const track = useRef<HTMLDivElement>(null);
   const spacer = useRef<HTMLDivElement>(null);
   const hold = useRef<ReturnType<typeof setInterval>|null>(null);
@@ -63,7 +63,7 @@ export default function SheetHorizontalScrollbar({ workspace, sheet, arrows=fals
     if (!connect()) observer.observe(root, { childList: true, subtree: true });
     return () => { observer.disconnect(); cleanup(); };
   }, [workspace, sheet]);
-  return <div className="flex w-1/4 min-w-32 shrink-0 items-center border-l border-slate-200 bg-slate-100 px-1">
+  return <div className={`flex shrink-0 items-center border-l border-slate-200 bg-slate-100 px-1 ${width === undefined ? "w-1/4 min-w-32" : "min-w-0"}`} style={width === undefined ? undefined : {width, minWidth:width, maxWidth:width, flex:`0 0 ${width}px`}}>
     {arrows&&<button type="button" aria-label="Scroll database left" title="Scroll left (hold to continue)" onPointerDown={()=>startHold(-1)} onPointerLeave={stopHold} onClick={()=>scroll(-1)} className="flex h-6 w-5 shrink-0 cursor-pointer items-center justify-center text-slate-500 hover:bg-white"><ChevronLeft className="h-3.5 w-3.5"/></button>}
     <div ref={track} tabIndex={0} role="region" aria-label="Scroll sheet horizontally" className="sheet-horizontal-scrollbar min-w-0 flex-1 overflow-x-scroll overflow-y-hidden focus-visible:outline-2 focus-visible:outline-blue-500"><div ref={spacer} style={{ height: 1 }} /></div>
     {arrows&&<button type="button" aria-label="Scroll database right" title="Scroll right (hold to continue)" onPointerDown={()=>startHold(1)} onPointerLeave={stopHold} onClick={()=>scroll(1)} className="flex h-6 w-5 shrink-0 cursor-pointer items-center justify-center text-slate-500 hover:bg-white"><ChevronRight className="h-3.5 w-3.5"/></button>}

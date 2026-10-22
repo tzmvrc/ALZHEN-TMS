@@ -259,3 +259,27 @@ export async function deleteMasterDataRecords(resource:string,ids:unknown,actor:
  }
  return {deleted,failed};
 }
+
+/** Count a query selection without materializing rows; resolve IDs only for confirmed bulk actions. */
+export async function readMasterDataSelection(resource:string,input:Record<string,unknown>){
+ const config=getConfig(resource);
+ if(typeof input.search!=="string")throw new ApiError("Invalid selection search.",400);
+ const before=input.before===undefined?new Date().toISOString():String(input.before);
+ if(!Number.isFinite(Date.parse(before))||Date.parse(before)>Date.now()+1000)throw new ApiError("Invalid selection time.",400);
+ const after=input.after===undefined?undefined:String(input.after);
+ if(after&&!uuidPattern.test(after))throw new ApiError("Invalid selection cursor.",400);
+ const excluded=input.excluded??[];
+ if(!Array.isArray(excluded)||excluded.some(id=>typeof id!=="string"||!uuidPattern.test(id)))throw new ApiError("Invalid excluded records.",400);
+ const filter=buildIlikeOrFilter(config.search,input.search);
+ const query=(head:boolean)=>{let request=(supabaseAdmin.from(config.table) as any).select("id",{count:"exact",head}).lte("created_at",before);if(filter)request=request.or(filter);return request;};
+ if(input.includeIds===true){
+  let request=query(false).order("id").limit(101);if(after)request=request.gt("id",after);
+  const result=await request;if(result.error)throw new ApiError("Unable to resolve the selected records.",502);
+  const ids=(result.data??[]).slice(0,100).map((row:{id:string})=>row.id);
+  return {search:input.search,before,total:result.count??0,ids,next:(result.data??[]).length>100?ids.at(-1)??null:null};
+ }
+ const result=await query(true);if(result.error)throw new ApiError("Unable to count the selected records.",502);
+ let total=result.count??0;const ids=[...new Set<string>(excluded)];
+ for(let offset=0;offset<ids.length;offset+=100){const omitted=await query(true).in("id",ids.slice(offset,offset+100));if(omitted.error)throw new ApiError("Unable to verify excluded records.",502);total-=omitted.count??0;}
+ return {search:input.search,before,total:Math.max(0,total),ids:[],next:null};
+}

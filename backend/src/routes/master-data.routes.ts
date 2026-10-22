@@ -1,6 +1,6 @@
 import { Router } from "express";
 import express from "express";
-import { create, list, listImages, read, removeRecords, removeImage, searchWarehouseLocations, update, uploadImage } from "../controllers/master-data.controller.js";
+import { create, list, listImages, read, removeRecords, removeImage, searchWarehouseLocations, selection, update, uploadImage } from "../controllers/master-data.controller.js";
 import { getPhoto, removePhoto, uploadPhoto } from "../controllers/product-photo.controller.js";
 import { authMiddleware } from "../middleware/auth.middleware.js";
 import { requireAdminOrStaff } from "../middleware/role.middleware.js";
@@ -14,6 +14,7 @@ router.get("/products/:productId/photo", getPhoto);
 router.put("/products/:productId/photo", express.raw({ type: ["image/jpeg", "image/png", "image/webp"], limit: "5mb" }), uploadPhoto);
 router.delete("/products/:productId/photo", removePhoto);
 router.get("/locations/search", searchWarehouseLocations);
+router.post("/:resource/selection", selection);
 router.get("/:resource", list);
 router.get("/:resource/:id", read);
 router.post("/:resource", create);

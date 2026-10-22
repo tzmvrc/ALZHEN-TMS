@@ -1,3 +1,5 @@
+import SpreadsheetQuickFilters from "./SpreadsheetQuickFilters";
+import {spreadsheetColumnLabel, matchesSpreadsheetSearch} from "../../services/spreadsheet-display";
 import { useSheetAutoFit } from "./useSheetAutoFit";
 import { cbmDisplay, isCbmField } from "../../services/cbm-display";
 import { scrollToTableColumn } from "./scrollToTableColumn";
@@ -38,7 +40,7 @@ import { useNavigate } from "react-router-dom";
 import { useSharedTableWidths } from "./useSharedTableWidths";
 import { useSharedTableDesign } from "./useSharedTableDesign";
 import ColumnFinder from "./ColumnFinder";
-import HiddenColumnsControl from "./HiddenColumnsControl";
+import {SpreadsheetHiddenColumns} from "./SpreadsheetWorkspace";
 import TransactionCleanupNotice from "./TransactionCleanupNotice";
 import {
   Building2,
@@ -1045,7 +1047,7 @@ export default function ReportDataView({
   const moreRowsFlight=useRef(false);
   const [moreRowsError,setMoreRowsError]=useState("");
   const [dataColumns, setColumns] = useState<ReportColumn[]>([]);
-  const columns=useMemo(()=>dataColumns.length?rows.length?withTripDetailsColumn(dataColumns.filter(column=>column.key!=="trip_issues"),transactionView||reportKey==="combined"):dataColumns.filter(column=>!["trip_issues","trip_details"].includes(column.key)):[],[dataColumns,rows.length,transactionView,reportKey]);
+  const columns=useMemo(()=>{const defaults=dataColumns.map(column=>({...column,title:spreadsheetColumnLabel(column.title)}));return defaults.length?rows.length?withTripDetailsColumn(defaults.filter(column=>column.key!=="trip_issues"),transactionView||reportKey==="combined"):defaults.filter(column=>!["trip_issues","trip_details"].includes(column.key)):[];},[dataColumns,rows.length,transactionView,reportKey]);
   const sharedWidths = useSharedTableWidths(transactionView ? "trips" : `report:${reportKey}`, accessToken, ["ADMIN", "STAFF"].includes(profile?.role ?? ""));
   const saveSharedColumnWidth = sharedWidths.save;
   const columnLayoutStorageKey = `alzhen:report-column-layout:${profile?.id ?? "user"}:${reportKey}`;
@@ -1182,6 +1184,16 @@ export default function ReportDataView({
     }
     return mapped;
   }, [activeDropdownOptionsByField]);
+  const quickFilterConfig = transactionView ? {field:"issue_filter", dropdown:null, label:"Trip status and issue filters"} :
+    reportKey === "dispatch-monitoring" ? {field:"trip_status", dropdown:"trip_status" as const, label:"Trip status filters"} :
+    reportKey === "dispatch" ? {field:"delivery_status", dropdown:"delivery_status" as const, label:"Delivery status filters"} :
+    reportKey === "trip-booking" ? {field:"letter_status", dropdown:"letter_status" as const, label:"Dispatch letter status filters"} :
+    reportKey === "store-calling" ? {field:"status", dropdown:"store_call_status" as const, label:"Store contact status filters"} : null;
+  const quickFilterValue = quickFilterConfig ? appliedFilters[quickFilterConfig.field] ?? (transactionView ? "All" : "") : "";
+  const quickFilterOptions = transactionView
+    ? ["All","In Progress","Demurrage","Offload","Backload","Completed"].map(value=>({value,label:value}))
+    : [{value:"",label:"All"},...(quickFilterConfig?.dropdown ? dropdownChoicesByField[quickFilterConfig.dropdown] ?? [] : [])];
+  if (quickFilterValue && !quickFilterOptions.some(option=>option.value===quickFilterValue)) quickFilterOptions.push({value:quickFilterValue,label:quickFilterValue});
   const dropdownValuesByField = useMemo(() => {
     const grouped: Partial<Record<DropdownField, string[]>> = {};
     for (const option of dropdownOptions) {
@@ -3127,12 +3139,12 @@ export default function ReportDataView({
           </div>
         )}
         {toolbarLeading && <div className="shrink-0" data-report-toolbar-leading>{toolbarLeading}</div>}
-      {transactionView&&<div className="flex min-w-0 flex-wrap items-center gap-1.5" aria-label="Trip status and issue filters">{["All","In Progress","Demurrage","Offload","Completed"].map(filter=><button type="button" key={filter} disabled={Boolean(editingCell||editModalOpen||fillGesture)} aria-pressed={(appliedFilters.issue_filter??"All")===filter} onClick={()=>{setAppliedFilters(current=>({...current,issue_filter:filter}));setPage(1);}} className={`inline-flex h-8 items-center rounded-full border px-3 text-xs disabled:opacity-50 ${(appliedFilters.issue_filter??"All")===filter?"border-slate-800 bg-slate-800 text-white":"border-slate-200 bg-white text-slate-600"}`}>{filter}</button>)}</div>}
+      {quickFilterConfig&&<SpreadsheetQuickFilters label={quickFilterConfig.label} options={quickFilterOptions} value={quickFilterValue} disabled={Boolean(editingCell||editModalOpen||fillGesture||formulas.draftPending)} onChange={value=>{setAppliedFilters(current=>({...current,[quickFilterConfig.field]:value}));setPage(1);}}/>}
 
         {/* Collaboration outcomes use deduplicated toasts; drafts and recovery stay in the hook. */}
         <div data-report-toolbar-actions className="flex w-full min-w-0 flex-wrap items-center justify-end gap-2 lg:flex-[1_1_36rem] lg:flex-nowrap">
           {sharedWidths.feedback}{sharedDesign.feedback}
-          <ColumnFinder tableKey={transactionView?"trips":reportKey} key={reportKey} rowSearch={{value:search,placeholder:"Search rows or columns...",onSearch:value=>{setSearch(value);setAppliedSearch(value);setPage(1);}}} columns={columns.filter((column) => !(transactionView && column.key === "warehouse_code")).map((column) => ({ ...column, hidden: hiddenColumnKeys.has(column.key), index: renderedGridColumns.findIndex((item) => item.key === column.key) }))} viewport={tableViewportRef} getHeader={(key) => headerCellRefs.current.get(key)} onReveal={restoreReportColumn} />
+          <ColumnFinder tableKey={transactionView?"trips":reportKey} key={reportKey} rowSearch={{value:search,placeholder:"Search rows or columns...",onSearch:value=>{setSearch(value);setAppliedSearch(value);setPage(1);}}} columns={columns.filter((column) => !(transactionView && column.key === "warehouse_code")).map((column) => ({ ...column, title:headerFormatting.title(column.key,column.title), hidden: hiddenColumnKeys.has(column.key), index: renderedGridColumns.findIndex((item) => item.key === column.key) }))} viewport={tableViewportRef} getHeader={(key) => headerCellRefs.current.get(key)} onReveal={restoreReportColumn} />
           {showReportPicker && (
             <label className="sr-only" htmlFor="report-select">
               Select report
@@ -3363,15 +3375,9 @@ export default function ReportDataView({
           {headerFormatting.configuration}{!showVisualCards && <ReportCellFormattingToolbar selectedFontSize={selectedFormats[0]?.fontSize ?? 12} formulaBar={formulas.bar} advanced selectionIsItalic={selectedFormats.length>0&&selectedFormats.every(f=>f.italic)} selectionIsUnderlined={selectedFormats.length>0&&selectedFormats.every(f=>f.underline)} selectedCellCount={sharedDesign.canEdit&&columns.length?selectedFormatCellKeys.size:0} selectionIsBold={selectionIsBold} selectedTextColor={selectedTextColor} selectedBackgroundColor={selectedBackgroundColor} onApply={applyCellFormat} {...headerFormatting.toolbarProps} />}
           <div ref={tableViewportRef} onPointerDownCapture={event=>{if(event.button===2&&(event.target as Element).closest("tbody td"))event.preventDefault();}} onPaste={(event) => void handleReportPaste(event)} onCopy={handleReportCopy} className={`${!showVisualCards ? `${REPORT_GRID_VIEWPORT_CLASS} ${SPREADSHEET_ATTACHED_VIEWPORT_CLASS}` : "relative min-h-48 w-full min-w-0 max-w-full overflow-x-auto overscroll-x-contain"} w-full`}>
             {activeError && <div role="alert" className="border-b border-rose-100 px-3 py-2 text-xs text-rose-700">Unable to load records. Your current data and drafts are preserved. Use Retry loading.</div>}
-            {!isLoading && !activeError && displayedRows.length === 0 && <div role="status" className="border-b border-slate-100 px-3 py-2 text-xs text-slate-500">No records match this sheet?s current search and filters.</div>}
             {showVisualCards ? (
               displayedRows.length === 0 ? (
-                <p className="px-4 py-12 text-center text-sm text-slate-500">
-                  {appliedSearch ||
-                  Object.values(appliedFilters).some((value) => value.trim())
-                    ? "No matching records found."
-                    : "No report records found."}
-                </p>
+                null
               ) : (
                 <ReportVisualCards
                   rows={displayedRows}
@@ -3512,7 +3518,7 @@ export default function ReportDataView({
                               key={column.key}
                               {...formulas.cellProps(row,column.key)}
                               data-report-column-key={column.key}
-                              data-search-match={searchNeedle && (String(row[column.key] ?? "").toLocaleLowerCase().includes(searchNeedle) || String(displayValue(row[column.key], column.type, column.key) ?? "").toLocaleLowerCase().includes(searchNeedle)) ? "true" : undefined}
+                              data-search-match={searchNeedle && (matchesSpreadsheetSearch(row[column.key],searchNeedle) || matchesSpreadsheetSearch(displayValue(row[column.key], column.type, column.key),searchNeedle)) ? "true" : undefined}
                               data-spreadsheet-selected={isFormatSelected ? "true" : undefined}
                               onContextMenu={event=>openCellContextMenu(event,formatRowKey,column.key)}
                               data-cell-hover-disabled={isPinned || isEditing || isFormatSelected || fillRange ? "true" : undefined}
@@ -3782,7 +3788,7 @@ export default function ReportDataView({
           </div>
           {(pageCount>1||page>1)&&<div aria-label="Table pagination" className="flex items-center justify-end gap-2 border-t border-slate-200 px-3 py-1 text-[11px] text-slate-500"><button type="button" disabled={isLoading||page<=1||Boolean(editingCell||editModalOpen||fillGesture||formulas.draftPending)} onClick={()=>setPage(current=>Math.max(1,current-1))} className="rounded-sm border px-2 py-1 disabled:opacity-40">Previous</button><label>Page <input key={page} aria-label="Go to page" inputMode="numeric" defaultValue={page} disabled={isLoading||Boolean(editingCell||editModalOpen||fillGesture||formulas.draftPending)} onKeyDown={event=>{if(event.key==="Enter")event.currentTarget.blur();}} onBlur={event=>{const next=Number(event.target.value);if(Number.isInteger(next)&&next>=1&&next<=pageCount)setPage(next);else event.target.value=String(page);}} className="w-12 rounded-sm border border-slate-200 px-1 text-center"/></label><span>of {pageCount}</span><button type="button" disabled={isLoading||page>=pageCount||Boolean(editingCell||editModalOpen||fillGesture||formulas.draftPending)} onClick={()=>setPage(current=>Math.min(pageCount,current+1))} className="rounded-sm border px-2 py-1 disabled:opacity-40">Next</button></div>}
           {allTripRecords&&hasMoreRows&&<div className="flex shrink-0 justify-center border-t border-slate-100 bg-white py-1"><button type="button" disabled={loadingMore} onClick={()=>void loadMoreRowsRef.current()} className="rounded-sm px-3 py-1 text-xs text-blue-700 hover:bg-blue-50 disabled:opacity-50">{loadingMore?"Loading more rows...":"Load more rows"}</button></div>}
-          <HiddenColumnsControl columns={hiddenColumns} onRestore={restoreReportColumn} onRestoreAll={() => saveColumnLayout({ ...columnLayout, order: layoutColumnKeys, hidden: [] })} />
+          <SpreadsheetHiddenColumns sheet={transactionView?"trips":reportKey} columns={hiddenColumns.map(column=>({...column,title:headerFormatting.title(column.key,column.title)}))} onRestore={restoreReportColumn} onRestoreAll={() => saveColumnLayout({ ...columnLayout, order: layoutColumnKeys, hidden: [] })} />
         </>
       </section>
       {physicalDeletion&&accessToken&&<PhysicalRecordDeletionDialog token={accessToken} targets={physicalDeletion} onClose={()=>setPhysicalDeletion(null)} onDeleted={deleted=>{const targets=new Set(deleted.map(target=>target.id));const field=deleted[0]?.source==="store_calls"?"store_call_id":"trip_stop_id";const retain=(current:ReportRow[])=>current.filter(row=>!targets.has(String(row[field]??row[`_${field}`])));const retainedKeys=new Set(retain(displayedRowsRef.current).flatMap(row=>{const key=getReportRowKey(reportKey,row);return key?[key]:[];}));reportSelection.selectOnly(reportKey,reportSelection.getKeys(reportKey).filter(key=>retainedKeys.has(key)));setCellSelection(current=>current?.mode==="row"?{...current,rows:current.rows?.filter(key=>retainedKeys.has(key))}:current);setRows(retain);scheduleRealtimeRefreshRef.current();}}/>}

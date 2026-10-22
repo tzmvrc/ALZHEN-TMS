@@ -1,3 +1,4 @@
+import {matchesSpreadsheetSearch} from "../../services/spreadsheet-display";
 import { useEffect, useId, useMemo, useRef, useState, type RefObject } from "react";
 import TableViewers from "./TableViewers";
 import { Search, X } from "lucide-react";
@@ -22,7 +23,7 @@ export default function ColumnFinder({ columns, viewport, getHeader, onReveal, l
   }, [query, selected]);
   const offset=rowSearch?1:0;
   const searchRows=(value=query)=>{rowSearch?.onSearch(value.trim());setSelected(null);setOpen(false);};
-  const matches = useMemo(() => columns.filter((column) => column.title.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())), [columns, query]);
+  const matches = useMemo(() => columns.filter((column) => matchesSpreadsheetSearch(column.title,query)), [columns, query]);
   const found = columns.find((column) => column.key === selected);
   const child = found && !found.hidden ? found.index + leadingColumns + 1 : 0;
   useEffect(() => {

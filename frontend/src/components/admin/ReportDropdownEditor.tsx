@@ -1,3 +1,4 @@
+import {matchesSpreadsheetSearch} from "../../services/spreadsheet-display";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Check, ChevronDown, Pencil, Plus, Save, X } from "lucide-react";
@@ -74,7 +75,7 @@ export default function ReportDropdownEditor({
     const normalized = query.trim().toLocaleLowerCase();
     if (!normalized) return options;
     return options
-      .filter((option) => `${option.label} ${option.value}`.toLocaleLowerCase().includes(normalized))
+      .filter((option) => matchesSpreadsheetSearch(`${option.label} ${option.value}`,normalized))
       .sort((a, b) => {
         const aStarts = `${a.label} ${a.value}`.toLocaleLowerCase().startsWith(normalized);
         const bStarts = `${b.label} ${b.value}`.toLocaleLowerCase().startsWith(normalized);

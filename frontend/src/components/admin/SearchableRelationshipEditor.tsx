@@ -1,3 +1,4 @@
+import {matchesSpreadsheetSearch} from "../../services/spreadsheet-display";
 import { useEffect, useId, useRef, useState } from "react";
 import { useAuth } from "../../context/AuthContext";
 import RelationshipCreateDialog, {creatableRelationship, normalizeRelationship} from "./RelationshipCreateDialog";
@@ -231,7 +232,7 @@ export default function SearchableRelationshipEditor({
         }}
         onChange={(event) => {
           const next=event.target.value;setQuery(next);setActiveIndex(0);
-          const cached=optionLoader?null:getCachedRelationshipOptions(token,kind,next,{storeId,customerId});const base=cached??(optionLoader?null:getCachedRelationshipOptions(token,kind,"",{storeId,customerId}));if(base)setOptions(cached??base.filter(option=>`${option.label} ${option.secondary??""}`.toLocaleLowerCase().includes(next.trim().toLocaleLowerCase())));
+          const cached=optionLoader?null:getCachedRelationshipOptions(token,kind,next,{storeId,customerId});const base=cached??(optionLoader?null:getCachedRelationshipOptions(token,kind,"",{storeId,customerId}));if(base)setOptions(cached??base.filter(option=>matchesSpreadsheetSearch(`${option.label} ${option.secondary??""}`,next)));
           setIsOpen(true);
         }}
         onBlur={(event) => {

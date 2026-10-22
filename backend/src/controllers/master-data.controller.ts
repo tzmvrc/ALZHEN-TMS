@@ -1,6 +1,6 @@
 import {ApiError} from "../utils/api-response.js";
 import type { Request, Response } from "express";
-import { deleteMasterDataRecords, listMasterData, readMasterDataRecord, saveMasterData } from "../services/master-data.service.js";
+import { deleteMasterDataRecords, listMasterData, readMasterDataSelection, readMasterDataRecord, saveMasterData } from "../services/master-data.service.js";
 import { LocationSearchError, searchLocations } from "../services/location-search.service.js";
 import { deleteTruckImage, listTruckImages, TruckImageError, uploadTruckImage } from "../services/truck-image.service.js";
 
@@ -73,3 +73,8 @@ export async function removeRecords(req:Request,res:Response){
 }
 
 export async function read(req:Request,res:Response){try{return res.json({success:true,data:await readMasterDataRecord(String(req.params.resource),String(req.params.id))});}catch(error){return failure(res,error);}}
+
+export async function selection(req:Request,res:Response){
+ try{return res.json({success:true,data:await readMasterDataSelection(String(req.params.resource),req.body??{})});}
+ catch(error){return failure(res,error);}
+}

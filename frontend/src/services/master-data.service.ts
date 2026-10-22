@@ -121,3 +121,10 @@ export async function deleteMasterDataRecords(token:string,resource:MasterDataKe
 export async function readMasterDataRecord(token:string,resource:MasterDataKey,id:string):Promise<MasterDataRow|null>{
  try{const response=await apiGet<ApiResponse<MasterDataRow>>(`/master-data/${resource}/${encodeURIComponent(id)}`,token);if(!response.success||!response.data)throw Error("Unable to read this record.");return response.data;}catch(error){if(error instanceof ApiError&&error.status===404)return null;throw error;}
 }
+
+export type MasterDataSelection = {search:string;before:string;total:number};
+export async function readMasterDataSelection(token:string,resource:MasterDataKey,input:{search:string;before?:string;after?:string;includeIds?:boolean;excluded?:string[]}){
+ const response=await apiPost<ApiResponse<MasterDataSelection&{ids:string[];next:string|null}>>(`/master-data/${resource}/selection`,input,token);
+ if(!response.success||!response.data)throw Error(response.message??"Unable to select matching records.");
+ return response.data;
+}

@@ -52,10 +52,11 @@ async function unwrap<T>(request: Promise<ApiResponse<T>>) {
 }
 
 export const TRACKER_PAGINATION_ENABLED = import.meta.env ? import.meta.env.VITE_TRACKER_PAGINATION !== "false" : false;
-export type TrackerPageOptions = {page?:number;limit?:number;search?:string;sortBy?:string;sortOrder?:"asc"|"desc";filterBy?:string;filter?:string;reference?:string};
+export type TrackerPageOptions = {page?:number;limit?:number;search?:string;sortBy?:string;sortOrder?:"asc"|"desc";filterBy?:string;filter?:string;status?:string;reference?:string};
 export function trackerPageEndpoint(options: TrackerPageOptions = {}) {
   const query=new URLSearchParams({page:String(options.page??1),limit:String(options.limit??50),search:options.search??"",sort_by:options.sortBy??"trip_stop_id",sort_order:options.sortOrder??"asc"});
   if(options.filterBy&&options.filter){query.set("filter_by",options.filterBy);query.set("filter",options.filter);}
+  if(options.status)query.set("status",options.status);
   if(options.reference!==undefined)query.set("reference",options.reference);
   return `${TRANSMITTAL_TRACKER_ENDPOINT}/page?${query}`;
 }

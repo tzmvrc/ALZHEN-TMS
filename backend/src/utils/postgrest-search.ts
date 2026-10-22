@@ -6,12 +6,13 @@ export const MAX_SEARCH_LENGTH = 100;
 export function buildIlikeOrFilter(
   columns: readonly string[],
   rawSearch: unknown,
+  match: "contains" | "exact" = "contains",
 ): string | undefined {
   if (typeof rawSearch !== "string") return undefined;
 
   const search = rawSearch.trim();
   if (!search) return undefined;
-  if (search.length > MAX_SEARCH_LENGTH) {
+  if (match === "contains" && search.length > MAX_SEARCH_LENGTH) {
     throw new ApiError(
       `Search must be ${MAX_SEARCH_LENGTH} characters or fewer.`,
       400,
@@ -28,7 +29,8 @@ export function buildIlikeOrFilter(
     );
   }
 
-  const escapedPattern = `%${search.replace(/[\\%_]/g, "\\$&")}%`;
+  const literal = search.replace(/[\\%_]/g, "\\$&");
+  const escapedPattern = match === "exact" ? literal : `%${literal}%`;
   const quotedValue = `"${escapedPattern
     .replace(/\\/g, "\\\\")
     .replace(/"/g, '\\"')}"`;

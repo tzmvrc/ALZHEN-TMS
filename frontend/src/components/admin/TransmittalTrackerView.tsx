@@ -1,3 +1,5 @@
+import SpreadsheetQuickFilters from "./SpreadsheetQuickFilters";
+import {matchesSpreadsheetSearch} from "../../services/spreadsheet-display";
 import { useSheetAutoFit } from "./useSheetAutoFit";
 import { scrollToTableColumn } from "./scrollToTableColumn";
 import {reportCellFormatFor} from "./ReportSpreadsheetUtils";
@@ -46,7 +48,7 @@ import {useSharedTableDesign} from "./useSharedTableDesign";
 import {designLayout,designChanges} from "../../services/shared-table-design";
 import ColumnFinder from "./ColumnFinder";
 import TableViewers from "./TableViewers";
-import HiddenColumnsControl from "./HiddenColumnsControl";
+import {SpreadsheetHiddenColumns} from "./SpreadsheetWorkspace";
 
 const trackerFormulaIdentity=(row:Record<string,unknown>)=>typeof row.trip_stop_id==="string"?`stop:${row.trip_stop_id}${row.assignment_id?`:assignment:${row.assignment_id}`:""}`:null;
 const LEGACY_TRACKER_PAGE_OPTIONS = {};
@@ -138,11 +140,11 @@ function text(value: unknown) {
 function filterTrackerRows(rows: TransmittalTrackerRow[], query: string, columnFilter: { key: keyof TransmittalTrackerRow; value: string } | null, sort: { key: keyof TransmittalTrackerRow; direction: "asc" | "desc" } | null) {
   const needle = query.trim().toLocaleLowerCase();
   let filtered = rows.filter((row) => !needle || [row.warehouse_code, row.delivered_to, row.plate_number, row.delivery_receipt_no, row.sales_order_no, row.transmittal_ref, row.date_created, row.status, row.lbc_waybill_no, row.shipping_date_via_lbc, row.remarks]
-    .some((value) => value.toLocaleLowerCase().includes(needle)));
+    .some((value) => matchesSpreadsheetSearch(value,needle)));
   if (columnFilter?.value.trim()) {
     const filterColumn = TRACKER_COLUMNS.find((column) => column.key === columnFilter.key);
     const filter = columnFilter.value.trim().toLocaleLowerCase();
-    if (filterColumn) filtered = filtered.filter((row) => String(row[filterColumn.key] ?? "").toLocaleLowerCase().includes(filter));
+    if (filterColumn) filtered = filtered.filter((row) => matchesSpreadsheetSearch(row[filterColumn.key],filter));
   }
   if (sort) filtered = [...filtered].sort((left, right) => String(left[sort.key] ?? "").localeCompare(String(right[sort.key] ?? ""), undefined, { numeric: true, sensitivity: "base" }) * (sort.direction === "asc" ? 1 : -1));
   return filtered;
@@ -173,12 +175,13 @@ export default function TransmittalTrackerView({toolbarLeading,onDataReady}:{too
   const isAdmin = profile?.role === "ADMIN";
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<{ key: keyof TransmittalTrackerRow; direction: "asc" | "desc" } | null>(null);
+  const [quickStatus,setQuickStatus]=useState("");
   const [columnFilter, setColumnFilter] = useState<{ key: keyof TransmittalTrackerRow; value: string } | null>(null);
-  const criteriaKey = JSON.stringify([query,sort,columnFilter]);
+  const criteriaKey = JSON.stringify([query,sort,columnFilter,quickStatus]);
   const [navigation,setNavigation]=useState({criteriaKey,page:1,limit:50});
   if (TRACKER_PAGINATION_ENABLED && navigation.criteriaKey!==criteriaKey) setNavigation({...navigation,criteriaKey,page:1});
   const page = navigation.criteriaKey===criteriaKey ? navigation.page : 1;
-  const pageOptions = useMemo<TrackerPageOptions>(()=>TRACKER_PAGINATION_ENABLED ? ({page,limit:navigation.limit,search:query,sortBy:sort?.key,sortOrder:sort?.direction,filterBy:columnFilter?.key,filter:columnFilter?.value}) : LEGACY_TRACKER_PAGE_OPTIONS,[page,navigation.limit,query,sort,columnFilter]);
+  const pageOptions = useMemo<TrackerPageOptions>(()=>TRACKER_PAGINATION_ENABLED ? ({page,limit:navigation.limit,search:query,sortBy:sort?.key,sortOrder:sort?.direction,filterBy:columnFilter?.key,filter:columnFilter?.value,status:quickStatus}) : LEGACY_TRACKER_PAGE_OPTIONS,[page,navigation.limit,query,sort,columnFilter,quickStatus]);
   const cached = accessToken ? getCachedTransmittalTracker(accessToken,pageOptions) : null;
   const deletedTripIds = useRef(new Set<string>());
   useEffect(()=>{deletedTripIds.current.clear();},[accessToken]);
@@ -437,7 +440,7 @@ export default function TransmittalTrackerView({toolbarLeading,onDataReady}:{too
     return { left, right };
   }, [columnLayout.widths, pinnedLeft, pinnedRight]);
 
-  const filteredRows = useMemo(() => data?.pagination ? data.rows : filterTrackerRows(data?.rows ?? [], query, columnFilter, sort), [columnFilter, data, query, sort]);
+  const filteredRows = useMemo(() => data?.pagination ? data.rows : filterTrackerRows(data?.rows ?? [], query, columnFilter, sort).filter(row=>!quickStatus||row.status.toLowerCase()===quickStatus.toLowerCase()), [columnFilter, data, query, sort, quickStatus]);
   const spreadsheetPadding = useSpreadsheetViewport(viewportRef, filteredRows.length);
   const virtualTrackerRows=useMemo(()=>Array.from({length:spreadsheetPadding.count},(_,index)=>({id:`virtual:transmittal-tracker:slot:${(page-1)*navigation.limit+filteredRows.length+index+1}`})),[spreadsheetPadding.count,page,navigation.limit,filteredRows.length]);
   const trackerRowKeys=useMemo(()=>filteredRows.map(row=>trackerRowKey(row)),[filteredRows]);
@@ -994,7 +997,7 @@ export default function TransmittalTrackerView({toolbarLeading,onDataReady}:{too
       // never use stale React state while save reconciliation is rendering.
       if (TRACKER_PAGINATION_ENABLED) {
         invalidateTransmittalTrackerCache();
-        const exported = await fetchTrackerExportRows(accessToken,scopeStopIds ? {reference:selectedReference} : {search:query,filterBy:columnFilter?.key,filter:columnFilter?.value});
+        const exported = await fetchTrackerExportRows(accessToken,scopeStopIds ? {reference:selectedReference,status:quickStatus} : {search:query,filterBy:columnFilter?.key,filter:columnFilter?.value,status:quickStatus});
         const reconciled = reconcileTrackerRows(exported,editableRows);
         if(rejectLegacyConflicts && reconciled.some(row=>row.legacy_conflicts.length))throw new Error("Resolve legacy conflicts before exporting.");
         return reconciled;
@@ -1020,7 +1023,7 @@ export default function TransmittalTrackerView({toolbarLeading,onDataReady}:{too
         ["WH CODE", "warehouse_code"], ["Delivered to", "delivered_to"], ["Plate #", "plate_number"], ["Delivery Receipt No.", "delivery_receipt_no"], ["S.O. No.", "sales_order_no"], ["Transmittal Ref#", "transmittal_ref"], ["Date created", "date_created"], ["Status", "status"], ["LBC Waybill no.", "lbc_waybill_no"], ["Shipping date via LBC", "shipping_date_via_lbc"], ["Remarks", "remarks"],
       ] as const;
       sheet.columns = columns.map(([header, key]) => ({ header, key, width: Math.max(15, Math.min(34, header.length + 5)) }));
-      const exportRows = filterTrackerRows(committedRows, query, columnFilter, sort);
+      const exportRows = filterTrackerRows(committedRows, query, columnFilter, sort).filter(row=>!quickStatus||row.status.toLowerCase()===quickStatus.toLowerCase());
       const textIdentifiers = ["delivery_receipt_no", "sales_order_no", "transmittal_ref", "lbc_waybill_no"];
       const exportValues = projectTrackerExportRows(exportRows, columns).map((row) =>
         Object.fromEntries(Object.entries(row).map(([key, value]) => [
@@ -1256,12 +1259,13 @@ export default function TransmittalTrackerView({toolbarLeading,onDataReady}:{too
   return <section className="space-y-2">
     {resetRows&&accessToken&&<TrackerResetDialog token={accessToken} rows={resetRows} onClose={()=>setResetRows(null)} onReset={ids=>{setSelectedRows(current=>new Set([...current].filter(id=>!ids.includes(id.split("~")[0]))));void load(true);}}/>}
     <div className={REPORT_TOOLBAR_ROW_CLASS} aria-label="Transmittal report toolbar">
+      <SpreadsheetQuickFilters label="Tracker status filters" value={quickStatus} options={[{value:"",label:"All"},...dropdownChoices,...(quickStatus&&!dropdownChoices.some(option=>option.value===quickStatus)?[{value:quickStatus,label:quickStatus}]:[])]} disabled={pageNavigationBlocked} onChange={setQuickStatus}/>
       <div className="flex shrink-0 items-center gap-2" data-report-toolbar-leading>{toolbarLeading}</div>
       <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2" data-report-toolbar-actions>
         {sharedWidths.feedback}{sharedDesign.feedback}
         {error && <button type="button" onClick={() => void load(false)} disabled={loading} className="h-9 rounded border border-slate-200 px-3 text-xs text-slate-600 disabled:opacity-40">Retry loading</button>}
         <TableViewers table="transmittal-tracker" />
-        <ColumnFinder rowSearch={{value:query,onSearch:setQuery,placeholder:"Search rows or columns…"}} columns={TRACKER_COLUMNS.map(column=>({key:column.key,title:column.title,hidden:columnLayout.hidden.includes(column.key),index:renderedColumns.findIndex(item=>item.key===column.key)}))} viewport={viewportRef} getHeader={key=>headerRefs.current.get(key)} onReveal={restoreColumn} />
+        <ColumnFinder rowSearch={{value:query,onSearch:setQuery,placeholder:"Search rows or columns…"}} columns={TRACKER_COLUMNS.map(column=>({key:column.key,title:headerFormatting.title(column.key,column.title),hidden:columnLayout.hidden.includes(column.key),index:renderedColumns.findIndex(item=>item.key===column.key)}))} viewport={viewportRef} getHeader={key=>headerRefs.current.get(key)} onReveal={restoreColumn} />
         <button type="button" onClick={openPrepareDialog} className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#12365a] px-3 text-sm font-medium text-[#12365a] hover:bg-blue-50"><FileSpreadsheet className="h-4 w-4"/>Prepare Sheet</button>
         {hasSelectedDataRows&&data?.access.canEdit&&<ReportRowActionButton action="edit" disabled={selectedRows.size!==1||pageNavigationBlocked} onClick={openSelectedRowEditor}/>}
         {hasSelectedDataRows&&data?.access.canEdit&&<ReportRowActionButton action="restore" label="Reset selected transmittal overrides" disabled={selectedStopCount>20||pageNavigationBlocked||loading} onClick={()=>setResetRows(selectedPhysicalRows.filter((row):row is TransmittalTrackerRow=>Boolean(row)))}/>}
@@ -1312,7 +1316,7 @@ export default function TransmittalTrackerView({toolbarLeading,onDataReady}:{too
           cellProps={(number,column)=>{const id=`virtual:transmittal-tracker:slot:${number}`,key=reportCellFormatKey(id,column);return {...formulas.virtualCellProps(id,column),onContextMenu:event=>trackerContext(event,id,column),"data-spreadsheet-selected":selectedFormatCellKeys.has(key)?"true":undefined,style:reportColumnAppearance(sharedColumns[column],cellFormats[key],columnLayout.colors[column])};}}
           columns={renderedColumns.map(column => ({ key: column.key, width: columnLayout.widths[column.key] ?? defaultTrackerColumnWidth(column), style: { ...reportHeaderAppearance(sharedColumns[column.key], columnLayout.colors[column.key]), ...(columnLayout.pins[column.key] ? { position: "sticky", backgroundColor: reportColumnAppearance(sharedColumns[column.key], undefined, columnLayout.colors[column.key]).backgroundColor ?? "white", left: columnLayout.pins[column.key] === "left" ? pinOffsets.left[column.key] : undefined, right: columnLayout.pins[column.key] === "right" ? pinOffsets.right[column.key] : undefined, zIndex: 20 } : {}) } }))} /></tbody>
       </table>
-      <HiddenColumnsControl columns={hiddenColumns} onRestore={restoreColumn} onRestoreAll={() => saveColumnLayout({ ...columnLayout, hidden: [] })} />
+      <SpreadsheetHiddenColumns sheet={"transmittal"} columns={hiddenColumns.map(column=>({...column,title:headerFormatting.title(column.key,column.title)}))} onRestore={restoreColumn} onRestoreAll={() => saveColumnLayout({ ...columnLayout, hidden: [] })} />
     </div>
     {cellMenu&&<SpreadsheetCellContextMenu x={cellMenu.x} y={cellMenu.y} count={selectedFormatCellKeys.size} canFormat={sharedDesign.canEdit} format={{bold:selectionIsBold,italic:selectedFormats.length>0&&selectedFormats.every(format=>format.italic),color:selectedTextColor,backgroundColor:selectedBackgroundColor}} onApply={applyCellFormat} onSelectRow={()=>selectTrackerRow(cellMenu.row)} onSelectColumn={()=>{headerFormatting.clear();setSelectedRows(new Set());setFormatSelection({mode:"column",keys:[cellMenu.column]});}} onClose={()=>setCellMenu(null)}/>}
     {Boolean(TRACKER_PAGINATION_ENABLED && data?.pagination && (data.pagination.totalPages>1 || page>1)) && <SpreadsheetFooter label="Tracker pagination" total={TRACKER_PAGINATION_ENABLED ? data?.pagination?.total ?? filteredRows.length : filteredRows.length} page={TRACKER_PAGINATION_ENABLED ? data?.pagination?.page ?? page : 1} totalPages={TRACKER_PAGINATION_ENABLED ? data?.pagination?.totalPages ?? 1 : 1}>
