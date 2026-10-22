@@ -1,14 +1,28 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { searchWarehouseLocations, type LocationSearchResult } from "../../services/master-data.service";
+import type { TripLocationLookup } from "../../services/trip-location.service";
+import { customerStoreKey, storeIdentityText } from "../../services/store-location";
 import SearchableRelationshipEditor from "./SearchableRelationshipEditor";
 import { MapPin, Search, AlertTriangle, CheckCircle2, ChevronDown } from "lucide-react";
 
 const RoadRouteMap = lazy(() => import("./RoadRouteMap"));
 
 export type DestinationSource = { key: string; customer: string; shipTo: string; province: string; city: string };
-export type LocationDecision = { customer_id?: string; store_id?: string; store_label?: string; store_verified?: boolean; address: string; province: string; city: string; latitude: string; longitude: string; verified: boolean; replace_verified: boolean };
+export type LocationDecision = { customer_id?: string; store_id?: string; store_label?: string; store_verified?: boolean; address: string; province: string; city: string; latitude: string; longitude: string; verified: boolean; replace_verified: boolean; lookup?: TripLocationLookup };
 
-export const destinationKey = (values: Record<string, string | null>) => JSON.stringify([values.customer_name, values.ship_to, values.province, values.city]);
+export const destinationKey = customerStoreKey;
+export function recoverDestinationDecisions(saved: Record<string, LocationDecision> = {}) {
+  const recovered: Record<string, LocationDecision> = {};
+  for (const [key, decision] of Object.entries(saved)) {
+    let identity = key;
+    try {
+      const parts: unknown = JSON.parse(key);
+      if (Array.isArray(parts) && parts.length === 4) identity = destinationKey({ customer_name: parts[0], ship_to: parts[1], province: parts[2], city: parts[3] });
+    } catch { /* Retain unknown historical keys rather than discard saved reviews. */ }
+    recovered[identity] = decision;
+  }
+  return recovered;
+}
 
 const inputClass = "w-full rounded-xl border border-slate-300 bg-white p-2.5 text-sm shadow-sm transition-colors focus:border-[#2678b9] focus:outline-none focus:ring-1 focus:ring-[#2678b9] disabled:opacity-60";
 
@@ -33,27 +47,15 @@ export default function ImportDestinationReview({
   const [busy, setBusy] = useState(false), [error, setError] = useState(""), [map, setMap] = useState(false);
 
   const source = destinations.find(d => d.key === selected) ?? destinations[0];
-  const sourceQuery = source ? [source.shipTo, source.city, source.province].filter(Boolean).join(', ') : '';
 
+  const sourceLookup = decisions[source?.key ?? ""]?.lookup;
   useEffect(() => {
-    const version = ++searchVersion.current;
-    if (!open || !sourceQuery) return;
-    void Promise.resolve().then(async () => {
-      if (version !== searchVersion.current) return;
-      setBusy(true); setError(''); setResults([]);
-      try { 
-        const candidates = await searchWarehouseLocations(token, sourceQuery); 
-        if (version === searchVersion.current) setResults(candidates); 
-      }
-      catch (cause) { 
-        if (version === searchVersion.current) setError(cause instanceof Error ? cause.message : 'Location search unavailable. Review the address manually.'); 
-      }
-      finally { 
-        if (version === searchVersion.current) setBusy(false); 
-      }
-    });
+    searchVersion.current++;
+    setResults(sourceLookup?.candidates ?? []);
+    setBusy(false);
+    setError("");
     return () => { searchVersion.current++; };
-  }, [open, token, source?.key, sourceQuery]);
+  }, [source?.key, sourceLookup]);
 
   if (!source) return null;
 
@@ -90,7 +92,7 @@ export default function ImportDestinationReview({
       {open && (
         <div className="border-t border-slate-100 p-5 bg-slate-50/30">
           <p className="mb-5 text-xs text-slate-500">
-            Unreviewed destinations stay unverified. Search results are candidates; choosing a result does not verify it. Select a customer/store to resolve ambiguous identities without changing original CSV text.
+            Each Ship To / Province / City is a separate destination. Choose an existing store only when all three match. To change supplied geography, edit the mapped CSV first; missing geography can be completed here. Location candidates still need verification.
           </p>
 
           <div className="space-y-6">
@@ -139,6 +141,14 @@ export default function ImportDestinationReview({
                     customerId={decision.customer_id} 
                     value={decision.store_label ?? source.shipTo} 
                     onSelect={option => { 
+                      const values = option.values ?? {};
+                      if (storeIdentityText(values.store_name) !== storeIdentityText(source.shipTo)
+                        || (source.province && storeIdentityText(values.province) !== storeIdentityText(source.province))
+                        || (source.city && storeIdentityText(values.city) !== storeIdentityText(source.city))) {
+                        setError("This store belongs to a different Ship To / Province / City. Choose the matching branch or leave it unselected to create this location.");
+                        return;
+                      }
+                      setError("");
                       searchVersion.current++; 
                       setBusy(false); 
                       setResults([]); 
@@ -190,14 +200,14 @@ export default function ImportDestinationReview({
                 />
                 <button 
                   type="button" 
-                  disabled={disabled || busy} 
+                  disabled={disabled || busy || !decision.province.trim() || !decision.city.trim()}
                   className="flex shrink-0 items-center gap-2 rounded-xl bg-[#2678b9] px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-[#1f6499] disabled:opacity-50" 
                   onClick={async () => { 
                     const version=++searchVersion.current; 
                     setBusy(true); 
                     setError(""); 
                     try { 
-                      const candidates=await searchWarehouseLocations(token, query.trim() || sourceQuery); 
+                      const candidates=await searchWarehouseLocations(token, query.trim() || [source.shipTo, decision.province, decision.city, "Philippines"].filter(Boolean).join(", "));
                       if(version===searchVersion.current)setResults(candidates); 
                     } catch (e) { 
                       if(version===searchVersion.current)setError(e instanceof Error ? e.message : "Location search unavailable."); 
@@ -234,6 +244,7 @@ export default function ImportDestinationReview({
                   ))}
                 </ul>
               )}
+              {results.length > 0 && <p className="mt-2 text-[11px] text-slate-500">Address search: <a href="https://www.geoapify.com/" target="_blank" rel="noreferrer" className="underline">Geoapify</a> / © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer" className="underline">OpenStreetMap contributors</a>. Saved store locations may also appear.</p>}
             </div>
 
             {/* Manual Form Grid */}
@@ -308,7 +319,7 @@ export default function ImportDestinationReview({
             </div>
 
             <p className="text-xs text-slate-500 text-center">
-              {decision.verified ? "✅ Proposed verified location. Saved only when this import succeeds." : "Unverified location. No guessed coordinates will be saved."}
+              {decision.verified ? "Proposed verified location. Saved only when this import succeeds." : "Matched or selected coordinates are saved as unverified. Map routing uses them only after admin confirmation."}
             </p>
 
           </div>

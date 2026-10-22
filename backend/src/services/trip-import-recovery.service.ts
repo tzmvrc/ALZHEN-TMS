@@ -14,8 +14,9 @@ function summary(batch: Batch, rows: ImportRow[], groups: ImportGroup[]) {
   const resolved = expected.filter((source:any)=>rows.some(row=>row.source_identity===source.source_identity&&row.status==="imported"&&row.line_item_id)||batch.workflow_outcomes?.[source.source_identity]?.status==="skipped").length;
   const failed = rows.filter(row => row.status === "failed");
   const pending = groups.filter(group => !group.allocation_plan && batch.workflow_draft.plans?.[group.group_key]?.trucks?.length).length;
-  const state = failed.length ? imported ? "Partially Imported" : "Failed" : batch.workflow_draft.preview && !expected.length ? "Completed" : !resolved ? batch.last_error ? "Failed" : "Pending" : resolved < expected.length ? "Partially Imported" : pending ? "Awaiting Allocation" : "Completed";
-  return { id: batch.id, created_at: batch.created_at, updated_at: batch.updated_at, revision: batch.workflow_revision, state, imported, failed: failed.length, awaiting_allocation: pending, last_error: batch.last_error ?? failed[0]?.error_details ?? null };
+  const location_retry_required = batch.workflow_draft.locationFollowupPending === true || Boolean(batch.last_error?.startsWith("Trip rows were saved, but location details or admin notifications are incomplete."));
+  const state = location_retry_required ? "Partially Imported" : failed.length ? imported ? "Partially Imported" : "Failed" : batch.workflow_draft.preview && !expected.length ? "Completed" : !resolved ? batch.last_error ? "Failed" : "Pending" : resolved < expected.length ? "Partially Imported" : pending ? "Awaiting Allocation" : "Completed";
+  return { id: batch.id, created_at: batch.created_at, updated_at: batch.updated_at, revision: batch.workflow_revision, state, imported, failed: failed.length, awaiting_allocation: pending, location_retry_required, last_error: batch.last_error ?? failed[0]?.error_details ?? null };
 }
 async function ownedBatch(actor: string, id: string): Promise<Batch> {
   if (!isValidUuid(id)) throw new ApiError("Choose a valid import batch.", 400);

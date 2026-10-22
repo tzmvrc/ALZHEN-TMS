@@ -1,4 +1,5 @@
 import { finalizeImportCargo, setDefaultTripDriver } from "../services/trip-workflow.service.js";
+import { parseDestination, resolveTripDestination } from "../services/trip-location.service.js";
 import { listImportBatches, readImportBatch, saveImportDraft, rememberImportBatchError } from "../services/trip-import-recovery.service.js";
 import {readTripConvoy,saveTripAllocations,saveAssignmentStops,saveAssignmentStopProgress} from "../services/trip-convoy.service.js";
 import {deletePhysicalRecord} from "../services/record-deletion.service.js";
@@ -48,6 +49,10 @@ import {
 } from "../controllers/trip.controller.js";
 
 const router = Router();
+router.get("/import/location", authMiddleware, requireRole("ADMIN", "STAFF"), async (req, res, next) => {
+  try { return sendSuccess(res, 200, "Destination location review", await resolveTripDestination(parseDestination(req.query))); }
+  catch (error) { next(error); }
+});
 router.get("/driver-availability",authMiddleware,requireRole("ADMIN","STAFF"),async(req,res,next)=>{try{return sendSuccess(res,200,"Driver availability",await getDriverAvailability(typeof req.query.start==="string"?req.query.start:undefined,typeof req.query.end==="string"?req.query.end:undefined,typeof req.query.exclude_trip_id==="string"?req.query.exclude_trip_id:undefined));}catch(error){next(error);}});
 router.post("/default-driver",authMiddleware,requireRole("ADMIN","STAFF"),async(req,res,next)=>{try{return sendSuccess(res,200,"Default driver saved",await setDefaultTripDriver(req.body,req.profile!.id));}catch(error){next(error);}});
 router.get("/import/batches",authMiddleware,requireRole("ADMIN","STAFF"),async(req,res,next)=>{try{return sendSuccess(res,200,"Import batches",await listImportBatches(req.profile!.id));}catch(error){next(error);}});

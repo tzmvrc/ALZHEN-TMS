@@ -1,9 +1,13 @@
 import { workflowFailure } from "./trip-workflow.service.js";
+import { prepareImportDestinationDecisions, persistImportDestinationLocations } from "./trip-location.service.js";
+import { destinationLookupKey, storeIdentityText } from "./trip-location.logic.js";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { supabaseAdmin } from "../config/supabase.js";
 import { ApiError } from "../utils/api-response.js";
 import { isValidUuid } from "../utils/validation.js";
 import { prepareImport, rowFingerprint, type SourceFile, type ImportRow, type ImportTarget } from "./trip-import.logic.js";
+
+const locationFingerprint = (row: ImportRow) => JSON.stringify([row.fingerprint, destinationLookupKey({ ship_to: row.values.ship_to ?? "", province: row.values.province ?? "", city: row.values.city ?? "" })]);
 
 function canonical(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonical);
@@ -39,11 +43,15 @@ export async function previewTripImport(files: SourceFile[]) {
   const hashes = [...new Set(rows.map(row => row.fingerprint))];
   for (let offset = 0; offset < hashes.length; offset += 100) {
     for (let page = 0; ; page++) {
-      const { data, error } = await supabaseAdmin.from("trip_import_rows").select("source_identity, fingerprint")
+      const { data, error } = await supabaseAdmin.from("trip_import_rows").select("source_identity, fingerprint, source_values")
         .eq("status", "imported").in("fingerprint", hashes.slice(offset, offset + 100)).range(page * 500, page * 500 + 499);
       if (missingImportSchema(error)) { setupRequired = true; break; }
       if (error) schemaError(error);
-      for (const row of data ?? []) { known.add(row.source_identity); fingerprints.add(row.fingerprint); }
+      for (const row of data ?? []) {
+        known.add(row.source_identity);
+        const values = row.source_values ?? {};
+        fingerprints.add(JSON.stringify([row.fingerprint, destinationLookupKey({ ship_to: values.ship_to ?? "", province: values.province ?? "", city: values.city ?? "" })]));
+      }
       if ((data?.length ?? 0) < 500) break;
     }
     if (setupRequired) break;
@@ -55,15 +63,17 @@ export async function previewTripImport(files: SourceFile[]) {
   for (let offset = 0; !setupRequired && offset < deliveryRefs.length; offset += 100) {
     for (let page = 0; ; page++) {
       const { data, error } = await supabaseAdmin.from("trip_line_items")
-        .select("dr_number, customer_model, order_item_number, sp_reference, dn_reference")
+        .select("dr_number, customer_model, order_item_number, sp_reference, dn_reference, source_province, source_city")
         .in("dr_number", deliveryRefs.slice(offset, offset + 100)).range(page * 500, page * 500 + 499);
       if (missingImportSchema(error)) { setupRequired = true; break; }
       if (error) schemaError(error);
       for (const item of data ?? []) for (const row of rowsByDelivery.get(item.dr_number) ?? []) {
         if (item.dr_number === row.values.dr_number && item.customer_model === row.values.customer_model
+          && (!item.source_province || storeIdentityText(item.source_province) === storeIdentityText(row.values.province))
+          && (!item.source_city || storeIdentityText(item.source_city) === storeIdentityText(row.values.city))
           && (!item.order_item_number || !row.values.order_item_number || item.order_item_number === row.values.order_item_number)
           && (!item.sp_reference || !row.values.sp_reference || item.sp_reference === row.values.sp_reference)
-          && (!item.dn_reference || !row.values.dn_reference || item.dn_reference === row.values.dn_reference)) businessMatches.add(row.fingerprint);
+          && (!item.dn_reference || !row.values.dn_reference || item.dn_reference === row.values.dn_reference)) businessMatches.add(locationFingerprint(row));
       }
       if ((data?.length ?? 0) < 500) break;
     }
@@ -71,13 +81,14 @@ export async function previewTripImport(files: SourceFile[]) {
   const seen = new Set<string>();
   const selectedFingerprints = new Map<string, Set<string>>();
   for (const row of rows) {
-    const documents = selectedFingerprints.get(row.fingerprint) ?? new Set<string>();
-    documents.add(row.document_hash); selectedFingerprints.set(row.fingerprint, documents);
+    const identity = locationFingerprint(row);
+    const documents = selectedFingerprints.get(identity) ?? new Set<string>();
+    documents.add(row.document_hash); selectedFingerprints.set(identity, documents);
   }
   rows = rows.map(row => {
     const duplicate = known.has(row.source_identity) || seen.has(row.source_identity);
     seen.add(row.source_identity);
-    return { ...row, duplicate, potential_duplicate: !duplicate && (businessMatches.has(row.fingerprint) || fingerprints.has(row.fingerprint) || (selectedFingerprints.get(row.fingerprint)?.size ?? 0) > 1), signature: signature(row) };
+    return { ...row, duplicate, potential_duplicate: !duplicate && (businessMatches.has(locationFingerprint(row)) || fingerprints.has(locationFingerprint(row)) || (selectedFingerprints.get(locationFingerprint(row))?.size ?? 0) > 1), signature: signature(row) };
   });
   return { rows, detected: rows.length, valid: rows.filter(row => !row.errors.length).length,
     setup_required: setupRequired, duplicate_check_status: setupRequired ? "unavailable" as const : "complete" as const,
@@ -102,14 +113,22 @@ export async function commitTripImport(input: { batch_id: string; rows: ImportRo
   if (!locations || typeof locations !== "object" || Array.isArray(locations) || Object.keys(locations).some(identity=>!input.rows.some(row=>row.source_identity===identity))) throw new ApiError("Invalid destination review scope.",400);
   for (const location of Object.values(locations)) {
     if (!location || typeof location !== "object" || Array.isArray(location)) throw new ApiError("Invalid destination review.",400);
+    for (const field of ["province", "city", "address"]) if (location[field] != null && (typeof location[field] !== "string" || String(location[field]).length > (field === "address" ? 2000 : 200))) throw new ApiError("Use text for the reviewed address, province and city within the supported field length.", 400);
     for(const key of ["customer_id","store_id"])if(location[key]&&(typeof location[key]!=="string"||!isValidUuid(location[key] as string)))throw new ApiError("Invalid destination identity.",400);
     if(location.verified===true){for(const key of ["latitude","longitude"]){const value=location[key];if(value===null||value===undefined||String(value).trim()===""||!Number.isFinite(Number(value))||Math.abs(Number(value))>(key==="latitude"?90:180))throw new ApiError("Review a valid destination coordinate pair.",400);}}
   }
+  const preparedLocations = await prepareImportDestinationDecisions(input.rows, locations);
   const { data, error } = await supabaseAdmin.rpc("import_trip_source_rows_v2", {
     p_batch: input.batch_id, p_creator: creator, p_group: input.group.trim(), p_target: input.target,
-    p_rows: input.rows, p_verified: input.verified_matches === true, p_locations: locations,
+    p_rows: input.rows, p_verified: input.verified_matches === true, p_locations: preparedLocations,
   });
   if (error) workflowFailure(error);
+  try {
+    await persistImportDestinationLocations(creator, input.batch_id, input.rows, data?.rows ?? [], preparedLocations);
+  } catch (failure) {
+    console.error("Trip location follow-up incomplete", { code: (failure as { code?: string })?.code });
+    throw new ApiError("Trip rows were saved, but location details or admin notifications are incomplete. Retry this same batch; completed products will not be duplicated.", 503, "TRIP_LOCATION_FOLLOWUP_REQUIRED");
+  }
   if(data?.rows?.every((row:{status:string})=>row.status!=="failed")){
     const updated=await supabaseAdmin.from("trip_import_batches").update({last_error:null,updated_at:new Date().toISOString()}).eq("id",input.batch_id).eq("created_by",creator);
     if(updated.error)console.error("Unable to update import recovery timestamp",{code:updated.error.code});

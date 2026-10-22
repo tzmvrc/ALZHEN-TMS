@@ -12,6 +12,23 @@ export const importFields = [
 ] as const satisfies ReadonlyArray<readonly [string, string, CsvField]>;
 export type ImportField = typeof importFields[number][0];
 export type ImportFile = { id: string; name: string; headers: string[]; originalHeaders?: string[]; mapping: Record<ImportField, number>; rows: { line: number; cells: string[]; originalCells?: string[]; group: string }[] };
+export function editImportRows(files: ImportFile[], changes: Array<{ fileId: string; line: number; field: ImportField; value: string }>): ImportFile[] {
+  return files.map(file => {
+    const edits = changes.filter(change => change.fileId === file.id);
+    if (!edits.length) return file;
+    const byRow = new Map<number, typeof edits>();
+    for (const edit of edits) { const row = byRow.get(edit.line) ?? []; row.push(edit); byRow.set(edit.line, row); }
+    const headers = [...file.headers], mapping = { ...file.mapping };
+    for (const edit of edits) if (mapping[edit.field] < 0) { mapping[edit.field] = headers.length; headers.push(importFields.find(([field]) => field === edit.field)![1]); }
+    return { ...file, originalHeaders: file.originalHeaders ?? [...file.headers], headers, mapping, rows: file.rows.map(row => {
+      const rowEdits = byRow.get(row.line);
+      if (!rowEdits) return row;
+      const cells = [...row.cells];
+      for (const edit of rowEdits) cells[mapping[edit.field]] = edit.value;
+      return { ...row, originalCells: row.originalCells ?? [...row.cells], cells };
+    }) };
+  });
+}
 const normalize = (value: string) => value.normalize("NFKC").trim().toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 export function detectImportMapping(headers: string[]) {
   return Object.fromEntries(importFields.map(([key, , field]) => [key,

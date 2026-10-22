@@ -4,7 +4,7 @@ import { tableUi } from "./dashboardStyles";
 import type { CsvField } from "./tripCsv";
 import { cbmDisplay, isCbmField } from "../../services/cbm-display";
 
-export type TripPreviewRow = Partial<Record<CsvField | "status" | "drivers", string>>;
+export type TripPreviewRow = Partial<Record<CsvField | "status" | "drivers" | "tripGroup" | "source" | "dn" | "sp", string>>;
 const columns: Array<{ key: keyof TripPreviewRow; title: string }> = [
   { key: "dispatch", title: "Dispatch no." }, { key: "trip", title: "Trip no." },
   { key: "tripType", title: "Trip type" }, { key: "status", title: "Status" },
@@ -18,13 +18,16 @@ const columns: Array<{ key: keyof TripPreviewRow; title: string }> = [
   { key: "unitCbm", title: "Unit CBM" }, { key: "cbm", title: "Total CBM" },
   { key: "province", title: "Province" }, { key: "city", title: "City" },
   { key: "notes", title: "Remarks" },
+  { key: "tripGroup", title: "Trip group" }, { key: "dn", title: "DN" },
+  { key: "sp", title: "SP" }, { key: "source", title: "Source" },
 ];
 
-export default function TripTablePreview({ rows, title, description }: { rows: TripPreviewRow[]; title: string; description: string }) {
+export default function TripTablePreview({ rows, title, description, productColumns = false }: { rows: TripPreviewRow[]; title: string; description: string; productColumns?: boolean }) {
   const [page, setPage] = useState(1);
   const [showAll, setShowAll] = useState(false);
-  const mainColumns = new Set<keyof TripPreviewRow>(["dispatch", "plate", "store", "product", "qty", "cbm", "dr", "status"]);
-  const visibleColumns = showAll ? columns : columns.filter(column => mainColumns.has(column.key));
+  const mainColumns = new Set<keyof TripPreviewRow>(productColumns ? ["store", "province", "city", "product", "category", "qty", "unitCbm", "cbm", "dr", "status"] : ["dispatch", "plate", "store", "product", "qty", "cbm", "dr", "status"]);
+  const optionalColumns = new Set<keyof TripPreviewRow>(["tripGroup", "source", "dn", "sp"]);
+  const visibleColumns = showAll ? columns.filter(column => !optionalColumns.has(column.key) || rows.some(row => row[column.key])) : columns.filter(column => mainColumns.has(column.key));
   const numeric = (key: keyof TripPreviewRow) => ["qty", "unitCbm", "cbm", "trip"].includes(key);
   const width = (key: keyof TripPreviewRow) => numeric(key) ? 100 : key === "notes" ? 320 : ["store", "product", "customer"].includes(key) ? 220 : 170;
   const pages = Math.max(1, Math.ceil(rows.length / 50));

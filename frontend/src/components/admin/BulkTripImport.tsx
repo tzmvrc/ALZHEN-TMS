@@ -1,15 +1,21 @@
 import TripImportPreview from "./TripImportPreview";
 import SearchableRelationshipEditor from "./SearchableRelationshipEditor";
 import TripCargoPlanner from "./TripCargoPlanner";
-import ImportDestinationReview, { destinationKey, type LocationDecision } from "./ImportDestinationReview";
+import { destinationKey, recoverDestinationDecisions, type LocationDecision } from "./ImportDestinationReview";
 import { cargoSignature, emptyCargoPlan, validateCargo, type CargoPlan, type CargoLine } from "../../services/cargo-planning";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronRight, Download, FileSpreadsheet, Loader2, Upload, X, Package, Truck, CheckCircle2, AlertTriangle } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
-import { readImportFile, importFields, importMappingSummary, importPayload, type ImportFile, type ImportField } from "./tripImportFiles";
+import { readImportFile, editImportRows, importFields, importMappingSummary, importPayload, type ImportFile, type ImportField } from "./tripImportFiles";
 import { previewImport, commitImport, confirmImportCargo, saveImportAssignmentCompanies, fetchImportBatches, reopenImportBatch, saveImportBatchDraft, type ImportRecoveryDraft, type ImportBatchSummary, type ImportPreview, type ImportTarget, type ImportOutcome } from "../../services/trip-import.service";
 import { fetchTrips, type TripRecord } from "../../services/trip.service";
 import TripFormNotice from "./TripFormNotice";
+import ImportLocationNotices from "./ImportLocationNotices";
+import ImportStoreProductsPreview from "./ImportStoreProductsPreview";
+import ImportStoreCards, { type ImportCardRow } from "./ImportStoreCards";
+import { storeLocationLabel } from "../../services/store-location";
+import { failedTripLocation, resolveTripLocation, type TripLocationLookup } from "../../services/trip-location.service";
+import { ApiError } from "../../services/api.service";
 
 const control = "min-w-0 max-w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-[#2678b9]/20 disabled:bg-slate-100 disabled:text-slate-500";
 const button = "inline-flex items-center justify-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-[#0b2341] shadow-sm hover:bg-slate-50 disabled:opacity-50 transition-colors";
@@ -20,6 +26,10 @@ export default function BulkTripImport({ onClose, onComplete, onImported, initia
   const defaultTarget = (): ImportTarget => inheritedTarget ? { ...inheritedTarget } : ({ mode: "new", value: "", allow_create: true });
   const [plans, setPlans] = useState<Record<string, CargoPlan>>({});
   const [locations, setLocations] = useState<Record<string, LocationDecision>>({});
+  const locationsRef = useRef(locations);
+  locationsRef.current = locations;
+  const [locationChecking, setLocationChecking] = useState(false);
+  const [locationRetryRequired, setLocationRetryRequired] = useState(false);
   const [cargoSaved, setCargoSaved] = useState<Record<string, boolean>>({});
   const [started, setStarted] = useState(false);
   const [companiesSaved, setCompaniesSaved] = useState<Record<string, boolean>>({});
@@ -48,6 +58,7 @@ export default function BulkTripImport({ onClose, onComplete, onImported, initia
   const [phase, setPhase] = useState(0);
   const [mappedFileRequest, setMappedFileRequest] = useState<{ fileId: string; id: number }>();
   const [draftLoaded, setDraftLoaded] = useState(false);
+  const [detailsDirty, setDetailsDirty] = useState(false);
   const bodyRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (error) bodyRef.current?.scrollTo({ top: 0, behavior: "smooth" });
@@ -56,7 +67,7 @@ export default function BulkTripImport({ onClose, onComplete, onImported, initia
   const [query, setQuery] = useState("");
   const [existingError, setExistingError] = useState("");
   const [warehouseLabels, setWarehouseLabels] = useState<Record<string, string>>({});
-  const draft = useMemo<ImportRecoveryDraft>(() => ({ files, preview, targets, plans, locations, initialTarget: inheritedTarget, confirmed, verified, verifiedCbm, verifiedUnmapped, started }), [files, preview, targets, plans, locations, inheritedTarget, confirmed, verified, verifiedCbm, verifiedUnmapped, started]);
+  const draft = useMemo<ImportRecoveryDraft>(() => ({ files, preview, targets, plans, locations, initialTarget: inheritedTarget, confirmed, verified, verifiedCbm, verifiedUnmapped, started, locationFollowupPending: locationRetryRequired, detailsDirty }), [files, preview, targets, plans, locations, inheritedTarget, confirmed, verified, verifiedCbm, verifiedUnmapped, started, locationRetryRequired, detailsDirty]);
   
   async function persistDraft(snapshot: ImportRecoveryDraft = draft) {
     if (!accessToken || !snapshot.files.length) return;
@@ -83,7 +94,8 @@ export default function BulkTripImport({ onClose, onComplete, onImported, initia
       if (files.length) await persistDraft(); else await draftWrites.current.catch(() => undefined);
       const recovered = await reopenImportBatch(accessToken, id), saved = recovered.draft;
       if (!Array.isArray(saved.files) || !saved.files.length) throw Error("This older batch has no saved source preview. Its imported records are preserved.");
-      batchRevision.current = recovered.revision; setBatchId(id); setFiles(saved.files); setPreview(saved.preview); setTargets(saved.targets ?? {}); setPlans(saved.plans ?? {}); setLocations(saved.locations ?? {}); setInheritedTarget(saved.initialTarget); setConfirmed(false); setVerified(Boolean(saved.verified)); setVerifiedCbm(Boolean(saved.verifiedCbm)); setVerifiedUnmapped(Boolean(saved.verifiedUnmapped)); setOutcomes(Object.fromEntries(recovered.outcomes.map(row => [row.source_identity, row]))); setCargoSaved(recovered.cargo_saved); setCompaniesSaved({}); setStarted(Boolean(saved.started) || recovered.outcomes.length > 0); setDraftLoaded(Boolean(saved.preview)); setPhase(saved.preview ? 2 : 1); setWarehouseLabels({}); setDraftStatus(`Reopened ${recovered.state}. ${recovered.last_error ?? "Existing trip and product IDs are preserved."}`);
+      setLocationRetryRequired(Boolean(recovered.location_retry_required)); setDetailsDirty(Boolean(saved.detailsDirty));
+      batchRevision.current = recovered.revision; setBatchId(id); setFiles(saved.files); setPreview(saved.preview); setTargets(saved.targets ?? {}); setPlans(saved.plans ?? {}); setLocations(recoverDestinationDecisions(saved.locations)); setInheritedTarget(saved.initialTarget); setConfirmed(false); setVerified(Boolean(saved.verified)); setVerifiedCbm(Boolean(saved.verifiedCbm)); setVerifiedUnmapped(Boolean(saved.verifiedUnmapped)); setOutcomes(Object.fromEntries(recovered.outcomes.map(row => [row.source_identity, row]))); setCargoSaved(recovered.cargo_saved); setCompaniesSaved({}); setStarted(Boolean(saved.started) || recovered.outcomes.length > 0); setDraftLoaded(Boolean(saved.preview)); setPhase(saved.preview ? 2 : 1); setWarehouseLabels({}); setDraftStatus(`Reopened ${recovered.state}. ${recovered.last_error ?? "Existing trip and product IDs are preserved."}`);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Unable to reopen this batch."); } finally { setBusy(false); }
   }
   const groups = [...new Set(files.flatMap(file => file.rows.map(row => row.group.trim())).filter(Boolean))];
@@ -92,14 +104,68 @@ export default function BulkTripImport({ onClose, onComplete, onImported, initia
   const skipped = results.filter(row => row.status === "skipped").length, failed = results.filter(row => row.status === "failed").length;
   const locked = started || results.some(row => row.status !== "failed");
   const validRows = preview?.rows.filter(row => !row.errors.length) ?? [];
-  const stopCounts = new Set(validRows.filter(row => !row.duplicate).map(row => JSON.stringify([row.group, row.values.customer_name, row.values.ship_to, row.values.province, row.values.city]))).size;
+  const stopCounts = new Set(validRows.filter(row => !row.duplicate).map(row => JSON.stringify([row.group, destinationKey(row.values)]))).size;
   const destinations = [...new Map(validRows.map(row => [destinationKey(row.values), { key: destinationKey(row.values), customer: row.values.customer_name || '', shipTo: row.values.ship_to || '', province: row.values.province || '', city: row.values.city || '' }])).values()];
-  const cargoLines = (group: string): CargoLine[] => validRows.filter(row => row.group === group && !row.duplicate && !(outcomes[row.source_identity]?.status === "skipped" && outcomes[row.source_identity]?.original_batch_id !== batchId)).map(row => ({ key: row.source_identity, dr: row.values.dr_number || '', stop: row.values.ship_to || '', label: row.values.customer_model || row.values.dr_number || 'Product', quantity: row.values.quantity || '', cbm: row.values.cbm || '' }));
+  const destinationSignature = JSON.stringify(destinations);
+  const locationLookupActive = draftLoaded && !locked && !detailsDirty;
+  useEffect(() => {
+    if (!locationLookupActive || !accessToken) { setLocationChecking(false); return; }
+    let active = true;
+    const sources = JSON.parse(destinationSignature) as typeof destinations;
+    setLocationChecking(true);
+    void (async () => {
+      for (const source of sources) {
+        if (!active) break;
+        if (locationsRef.current[source.key]?.lookup?.source_key === source.key) continue;
+        let lookup: TripLocationLookup;
+        try { lookup = await resolveTripLocation(accessToken, source); }
+        catch { lookup = failedTripLocation(source); }
+        if (!active) break;
+        setLocations(current => {
+          const decision = current[source.key] ?? { address: "", province: source.province, city: source.city, latitude: "", longitude: "", verified: false, replace_verified: false };
+          const candidate = lookup.status === "found" ? lookup.candidates[0] : undefined;
+          const point = candidate && !decision.verified && !decision.latitude && !decision.longitude
+            ? { address: candidate.display_name, latitude: String(candidate.latitude), longitude: String(candidate.longitude) } : {};
+          return { ...current, [source.key]: { ...decision, ...point, lookup } };
+        });
+      }
+    })().finally(() => { if (active) setLocationChecking(false); });
+    return () => { active = false; };
+  }, [locationLookupActive, accessToken, destinationSignature]);
+  const cargoLines = (group: string): CargoLine[] => validRows.filter(row => row.group === group && !row.duplicate && !(outcomes[row.source_identity]?.status === "skipped" && outcomes[row.source_identity]?.original_batch_id !== batchId)).map(row => ({ key: row.source_identity, dr: row.values.dr_number || '', stop: storeLocationLabel(row.values), label: row.values.customer_model || row.values.dr_number || 'Product', quantity: row.values.quantity || '', cbm: row.values.cbm || '' }));
   
   function editCell(fileId: string, line: number, key: ImportField, value: string) {
     setFiles(current => current.map(file => { if (file.id !== fileId) return file; const index = file.mapping[key] >= 0 ? file.mapping[key] : file.headers.length; return { ...file, originalHeaders: file.originalHeaders ?? [...file.headers], headers: file.mapping[key] >= 0 ? file.headers : [...file.headers, importFields.find(([field]) => field === key)![1]], mapping: { ...file.mapping, [key]: index }, rows: file.rows.map(row => { if (row.line !== line) return row; const cells = [...row.cells]; cells[index] = value; return { ...row, cells }; }) }; })); changed();
   }
-  function changed() { setDraftLoaded(false); setPhase(1); setPreview(null); setConfirmed(false); setVerified(false); setVerifiedCbm(false); setVerifiedUnmapped(false); setError(""); }
+  function editDetails(changes: Array<{ fileId: string; line: number; field: ImportField; value: string }>) {
+    if (locked || saving) return;
+    setFiles(current => editImportRows(current, changes)); setDetailsDirty(true); setConfirmed(false);
+  }
+  function addDetailsProduct(source: ImportCardRow) {
+    if (locked || saving) return;
+    setFiles(current => current.map(file => {
+      if (file.id !== source.file_id) return file;
+      const cells = Array<string>(file.headers.length).fill("");
+      for (const field of ["ship_to", "customer_name", "province", "city", "source_warehouse"] as const) if (file.mapping[field] >= 0) cells[file.mapping[field]] = source.values[field] ?? "";
+      const line = file.rows.reduce((maximum, row) => Math.max(maximum, row.line), 0) + 1;
+      return { ...file, rows: [...file.rows, { line, cells, originalCells: [], group: source.group }] };
+    })); setDetailsDirty(true); setConfirmed(false);
+  }
+  function removeDetailsProduct(source: ImportCardRow) {
+    if (locked || saving) return;
+    setFiles(current => current.map(file => file.id === source.file_id ? { ...file, rows: file.rows.filter(row => row.line !== source.line) } : file)); setDetailsDirty(true); setConfirmed(false);
+  }
+  async function applyDetails() {
+    if (!accessToken || locked || saving || busy) return;
+    setBusy(true); setError("");
+    try {
+      const checked = await previewImport(accessToken, importPayload(files));
+      setPreview(checked); setDetailsDirty(false); setVerified(false); setVerifiedCbm(false); setVerifiedUnmapped(false);
+      setPlans(current => Object.fromEntries(Object.entries(current).map(([group, plan]) => [group, { ...plan, placements: [], signature: "", confirmed: false }])));
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Unable to check the edited product lines."); }
+    finally { setBusy(false); }
+  }
+  function changed() { setDetailsDirty(false); setDraftLoaded(false); setPhase(1); setPreview(null); setConfirmed(false); setVerified(false); setVerifiedCbm(false); setVerifiedUnmapped(false); setError(""); }
   async function load(selected: FileList) {
     setBusy(true); setError("");
     try { const loaded = []; for (const file of Array.from(selected)) loaded.push(...await readImportFile(file)); setFiles(loaded); changed(); setOutcomes({}); setPhase(1); }
@@ -120,19 +186,22 @@ export default function BulkTripImport({ onClose, onComplete, onImported, initia
     catch (cause) { setExistingError(cause instanceof Error ? cause.message : "Unable to find trips."); }
   }
   async function save() {
+    if (detailsDirty) { setError("Apply the store and product changes before saving this trip."); return; }
+    if (locationChecking) { setError("Wait for delivery location checks to finish before saving."); return; }
     if (!preview || !draftLoaded || !accessToken || !confirmed || preview.setup_required || savingRef.current) return;
     for (const group of groups) { const plan = plans[group], lines = cargoLines(group); if (plan?.trucks.length && lines.length && !cargoSaved[group]) { const problem = validateCargo(lines, plan.trucks, plan.placements); if (!plan.confirmed || plan.signature !== cargoSignature(lines, plan.trucks) || problem) { setError(problem || "Review and confirm the current cargo proposal for every group."); return; } } }
     savingRef.current = true; setStarted(true);
     setSaving(true); setError(""); setProgress(0);
     let processed = 0;
     try {
-      await persistDraft({ ...draft, started: true });
+      await persistDraft({ ...draft, started: true, locationFollowupPending: true });
+      setLocationRetryRequired(true);
       const failures: string[] = [];
       for (const group of groups) {
         let groupFailed = false;
         const latestOutcomes = { ...outcomes };
         const target = targets[group] ?? defaultTarget();
-        const pending = validRows.filter(row => row.group === group && !["imported", "skipped"].includes(outcomes[row.source_identity]?.status ?? ""));
+        const pending = validRows.filter(row => row.group === group && (locationRetryRequired || !["imported", "skipped"].includes(outcomes[row.source_identity]?.status ?? "")));
         for (let index = 0; index < pending.length; index += 100) {
           const chunk = pending.slice(index, index + 100);
           const result = await commitImport(accessToken, batchId, group, target, chunk, verified, verifiedCbm, verifiedUnmapped, Object.fromEntries(chunk.flatMap(row => locations[destinationKey(row.values)] ? [[row.source_identity, locations[destinationKey(row.values)]]] : [])));
@@ -160,7 +229,15 @@ export default function BulkTripImport({ onClose, onComplete, onImported, initia
         }
       }
       if (failures.length) setError(failures.join(" "));
+      else {
+        await persistDraft({ ...draft, started: true, locationFollowupPending: false });
+        setLocationRetryRequired(false);
+      }
     } catch (cause) {
+      if (cause instanceof ApiError && cause.code === "TRIP_LOCATION_FOLLOWUP_REQUIRED") {
+        setLocationRetryRequired(true);
+        refreshOnClose.current = true;
+      }
       setError(`${cause instanceof Error ? cause.message : "Import interrupted."} Retry this batch; completed rows are protected from duplicates.`);
     } finally { savingRef.current = false; setSaving(false); }
   }
@@ -181,7 +258,7 @@ export default function BulkTripImport({ onClose, onComplete, onImported, initia
   }
   const unresolved = groups.some(group => { const target = targets[group] ?? defaultTarget(); return target.mode !== "new" && !target.value || new Set(validRows.filter(row => row.group === group).map(row => row.values.source_warehouse).filter(Boolean)).size > 1 && !target.origin_warehouse_id; });
   const steps = ["Upload CSV", "Preview & import", "Complete details", "Review & save"];
-  const finished = results.length > 0 && validRows.every(row => row.duplicate || ["imported", "skipped"].includes(outcomes[row.source_identity]?.status ?? "")) && groups.every(group => !cargoLines(group).length || !plans[group]?.trucks.length || (cargoSaved[group] && (!plans[group].trucks.some(truck => truck.companyId) || companiesSaved[group])));
+  const finished = !locationRetryRequired && results.length > 0 && validRows.every(row => row.duplicate || ["imported", "skipped"].includes(outcomes[row.source_identity]?.status ?? "")) && groups.every(group => !cargoLines(group).length || !plans[group]?.trucks.length || (cargoSaved[group] && (!plans[group].trucks.some(truck => truck.companyId) || companiesSaved[group])));
   function navigate(target: number) {
     if (busy || saving) return;
     setPhase(target); setError("");
@@ -226,6 +303,7 @@ export default function BulkTripImport({ onClose, onComplete, onImported, initia
 
           </section>
           {preview && <TripFormNotice tone={preview.invalid || preview.setup_required ? "warning" : "success"} title={preview.setup_required ? "Database setup required" : "CSV checked"}>{preview.setup_message || `${preview.detected} rows checked / ${preview.valid} valid / ${preview.invalid} need correction / ${preview.duplicates} exact duplicates will be skipped.`}</TripFormNotice>}
+          {preview && <ImportStoreProductsPreview rows={validRows} />}
         </>}
         
         {phase === 2 && preview && (
@@ -332,9 +410,9 @@ export default function BulkTripImport({ onClose, onComplete, onImported, initia
             })}
 
             {/* Destinations */}
-            {accessToken && preview && (
-              <ImportDestinationReview token={accessToken} destinations={destinations} decisions={locations} onChange={next => { setLocations(next); setConfirmed(false); }} disabled={locked || saving} />
-            )}
+            {detailsDirty && <TripFormNotice tone="warning" title="Store or product changes need checking">Apply changes to update the signed preview and cargo proposal before continuing. Original CSV values are preserved.</TripFormNotice>}
+            {accessToken && <ImportStoreCards token={accessToken} rows={rawRows} locations={locations} locationChecking={locationChecking} disabled={locked || saving || busy} onLocations={next => { setLocations(next); setConfirmed(false); }} onEdit={editDetails} onAdd={addDetailsProduct} onRemove={removeDetailsProduct} />}
+            {detailsDirty && <button type="button" className={primaryButton} disabled={busy || saving || locked} onClick={() => void applyDetails()}>{busy && <Loader2 size={15} className="animate-spin" />}Apply store &amp; product changes</button>}
 
             {/* Trucks & Cargo */}
             {accessToken && preview && groups.map((group: string) => {
@@ -373,6 +451,8 @@ export default function BulkTripImport({ onClose, onComplete, onImported, initia
         )}
         
         {phase === 3 && preview && <>
+          <ImportStoreProductsPreview rows={validRows} />
+          <ImportLocationNotices destinations={destinations} decisions={locations} checking={locationChecking} />
           <div><h3 className="text-lg font-semibold text-[#0b2341]">Review and save your trip</h3><p className="mt-1 text-sm text-slate-500">Check the assignments and source rows before creating records.</p></div>
           <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><h3 className="text-base font-semibold text-[#0b2341] mb-4">Trip assignments</h3><div className="space-y-3">{groups.map(group => <div key={group} className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm shadow-sm"><strong className="text-slate-800">{group}</strong><p className="mt-1 text-slate-500 text-xs">{(targets[group] ?? defaultTarget()).mode === "new" ? "New dispatch and trip" : (targets[group] ?? defaultTarget()).value}</p>{plans[group]?.trucks.length ? <div className="mt-3 space-y-1.5 border-t border-slate-200 pt-3">{plans[group].trucks.map(truck => <p key={truck.id} className="text-xs text-slate-600 font-medium"><span className="text-slate-800">{truck.label}</span> / {truck.driverLabel || "Driver to be assigned"} / {truck.companyLabel || "Company from truck"} / {truck.capacity || "Unknown"} CBM capacity</p>)}</div> : <p className="mt-2 text-xs text-slate-500 italic">Trucks and drivers can be assigned later.</p>}</div>)}</div></section>
           {preview && <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><h3 className="text-base font-semibold text-[#0b2341]">Review trip details</h3><p className="text-sm font-medium text-slate-700">{preview.detected} detected · {preview.valid} valid · {preview.invalid} invalid · {preview.duplicates} duplicates · {preview.potential_duplicates} potential matches</p>
@@ -400,8 +480,8 @@ export default function BulkTripImport({ onClose, onComplete, onImported, initia
             {preview && (preview.invalid > 0 || failed > 0) && <button type="button" className={button} onClick={downloadFailures}><Download size={16} />Download failed rows</button>}
             {phase === 0 && files.length > 0 && <button type="button" className={primaryButton} onClick={() => navigate(1)}>Preview CSV <ChevronRight size={14} /></button>}
             {phase === 1 && <>{!locked && <button type="button" className={button} disabled={busy || saving} onClick={() => void prepare()}>{preview ? "Recheck CSV" : "Check CSV"}</button>}<button type="button" className={primaryButton} disabled={busy || saving || !preview || preview.setup_required || !validRows.length} onClick={() => { setDraftLoaded(true); navigate(2); }}>Import CSV <ChevronRight size={14} /></button></>}
-            {phase === 2 && <button type="button" className={primaryButton} disabled={busy || saving || unresolved} onClick={() => navigate(3)}>Review trip <ChevronRight size={14} /></button>}
-            {phase === 3 && <button type="button" className={primaryButton} disabled={finished || busy || saving || Boolean(preview?.rows.some(row => Object.keys(row.unmapped ?? {}).length > 0) && !verifiedUnmapped) || preview?.setup_required || !confirmed || unresolved || !validRows.length || Boolean(preview?.potential_duplicates && !verified) || Boolean(preview?.rows.some(row => row.warnings.some(warning => warning.includes("Total CBM differs"))) && !verifiedCbm)} onClick={() => void save()}>{saving && <Loader2 size={16} className="animate-spin" />}{finished ? "Trip saved" : saving ? "Saving trip..." : locked ? "Retry unfinished save" : "Save trip"}</button>}
+            {phase === 2 && <button type="button" className={primaryButton} disabled={busy || saving || unresolved || detailsDirty || !validRows.length} onClick={() => navigate(3)}>Review trip <ChevronRight size={14} /></button>}
+            {phase === 3 && <button type="button" className={primaryButton} disabled={finished || busy || saving || locationChecking || detailsDirty || Boolean(preview?.rows.some(row => Object.keys(row.unmapped ?? {}).length > 0) && !verifiedUnmapped) || preview?.setup_required || !confirmed || unresolved || !validRows.length || Boolean(preview?.potential_duplicates && !verified) || Boolean(preview?.rows.some(row => row.warnings.some(warning => warning.includes("Total CBM differs"))) && !verifiedCbm)} onClick={() => void save()}>{saving && <Loader2 size={16} className="animate-spin" />}{finished ? "Trip saved" : saving ? "Saving trip..." : locked ? "Retry unfinished save" : "Save trip"}</button>}
           </div>
         </div>
       </footer>

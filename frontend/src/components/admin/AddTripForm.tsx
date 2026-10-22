@@ -10,7 +10,8 @@ import { useAuth } from "../../context/AuthContext";
 import SearchableRelationshipEditor from "./SearchableRelationshipEditor";
 import { fetchTruckAvailability, fetchDriverAvailability, type DriverAvailability, type TruckAvailability, searchRelationshipOptions, getNextTripReferences, searchDispatches, type DispatchOption, type RelationshipOption } from "../../services/lookup.service";
 import { tripCapacity } from "./tripCsv";
-import TripTablePreview, { type TripPreviewRow } from "./TripTablePreview";
+import type { TripPreviewRow } from "./TripTablePreview";
+import ImportStoreProductsPreview, { type StoreProductPreviewRow } from "./ImportStoreProductsPreview";
 import TripFormNotice from "./TripFormNotice";
 import BulkTripImport from "./BulkTripImport";
 
@@ -588,11 +589,20 @@ export default function AddTripForm({
     drivers: selectedTruckAssignments.map(assignment => labelOf(lookups.drivers, assignment.driverId)).filter(Boolean).join(", "),
     warehouse: labelOf(lookups.warehouses, warehouseId) || "", notes: remarks,
   };
-  const previewRows: TripPreviewRow[] = populatedStops.flatMap(stop => {
+  const previewRows = populatedStops.flatMap<TripPreviewRow & { storeOnly?: boolean }>(stop => {
     const items = stop.items.filter(hasItemData);
     const base: TripPreviewRow = { ...previewTrip, store: labelOf(lookups.stores, stop.storeId) || stop.pendingDestination || "Unassigned", customer: stop.customer, province: stop.province, city: stop.city };
-    return items.length ? items.map(item => ({ ...base, product: productLabel(item) || "", category: item.category, qty: item.qty, unitCbm: item.unitCbm, cbm: item.cbm, dr: item.dr, sapSo: item.sapSo, customerPo: item.customerPo, po: item.po, notes: [remarks, stop.importNotes, stop.address && `Ship-to address: ${stop.address}`, item.sp && `SP: ${item.sp}`, item.dn && `DN: ${item.dn}`, item.so && `SO: ${item.so}`, item.itemStatus && `Source status: ${item.itemStatus}`, item.warehouse && `Source warehouse: ${item.warehouse}`, item.importNotes].filter(Boolean).join(" · ") })) : [{ ...base, notes: [remarks, stop.importNotes, stop.address].filter(Boolean).join(" · ") }];
+    return items.length ? items.map(item => ({ ...base, product: productLabel(item) || "", category: item.category, qty: item.qty, unitCbm: item.unitCbm, cbm: item.cbm, dr: item.dr, sapSo: item.sapSo, customerPo: item.customerPo, po: item.po, notes: [remarks, stop.importNotes, stop.address && `Ship-to address: ${stop.address}`, item.sp && `SP: ${item.sp}`, item.dn && `DN: ${item.dn}`, item.so && `SO: ${item.so}`, item.itemStatus && `Source status: ${item.itemStatus}`, item.warehouse && `Source warehouse: ${item.warehouse}`, item.importNotes].filter(Boolean).join(" · ") })) : [{ ...base, storeOnly: true, notes: [remarks, stop.importNotes, stop.address].filter(Boolean).join(" · ") }];
   });
+
+  const storePreviewRows: StoreProductPreviewRow[] = previewRows.map((row, index) => ({
+    source_identity: `manual-${index}`, group: tripReference || "New trip", preview: row,
+    store_only: row.storeOnly,
+    values: { ship_to: row.store ?? null, customer_name: row.customer ?? null,
+      province: row.province ?? null, city: row.city ?? null, customer_model: row.product ?? null,
+      product_category: row.category ?? null, quantity: row.qty ?? null,
+      unit_cbm: row.unitCbm ?? null, cbm: row.cbm ?? null, dr_number: row.dr ?? null },
+  }));
 
   /* ───────────────────────────── render ───────────────────────────── */
   if (bulkImportOpen) return <BulkTripImport initialTarget={dispatchMode === "existing" && existingDispatch ? { mode: "dispatch", value: existingNo, allow_create: true } : undefined} onClose={() => setBulkImportOpen(false)} onComplete={onClose} onImported={() => onImported?.()} />;
@@ -733,7 +743,7 @@ export default function AddTripForm({
 
                 {stopsView === "preview" ? (
                   populatedStops.length > 0
-                    ? <TripTablePreview title="Product table preview" description="Read-only. Switch to Edit stops to change anything." rows={previewRows} />
+                    ? <ImportStoreProductsPreview rows={storePreviewRows} />
                     : (
                       <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-16 text-center shadow-sm">
                         <Package className="mx-auto h-10 w-10 text-slate-300 mb-3" />
