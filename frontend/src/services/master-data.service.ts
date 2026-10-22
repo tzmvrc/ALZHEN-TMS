@@ -112,7 +112,7 @@ export async function fetchCalendarEvents(token: string, start: string, end: str
 }
 
 export async function deleteMasterDataRecords(token:string,resource:MasterDataKey,ids:string[]){
- const response=await apiPost<ApiResponse<{deleted:string[];failed:Array<{id:string;message:string}>}>>(`/master-data/${resource}/delete-records`,{ids},token);
+ const response=await apiPost<ApiResponse<{deleted:string[];failed:Array<{id:string;message:string}>;cleanup_pending?:Array<{id:string;operation_id:string}>}>>(`/master-data/${resource}/delete-records`,{ids},token);
  if(!response.success||!response.data)throw Error("Unable to delete the selected records. Please try again.");
  if(response.data.deleted.length){invalidateApiCache(`/master-data/${resource}`);invalidateApiCache("/lookups/");}
  return response.data;

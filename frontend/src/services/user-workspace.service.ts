@@ -1,3 +1,4 @@
+import {collectSelectionPages} from "./spreadsheet-selection";
 import {apiGetCached,apiGet,apiPatch,apiPut,apiPost,getAppSessionHeaders,handleSessionExpiredResponse,getCachedApiResponse,invalidateApiCache,type ApiResponse} from './api.service';
 import type {MasterDataPage,MasterDataRow} from './master-data.service';
 export type UserProfile=MasterDataRow&{first_name:string;last_name:string;email:string|null;role:string;is_admin:boolean;contact_number:string|null;created_at:string;account_status:string;profile_picture_url:string|null;driver:{id:string;status:string;contact_number:string|null;license_number:string|null;trucking_company_id:string|null;notes:string|null;assigned_truck_id:string|null;trucks?:{id:string;plate_number:string;truck_type:string}|null}|null};
@@ -24,3 +25,6 @@ export async function uploadUserPicture(token:string,id:string,file:File){
  const response=await fetch(`${import.meta.env.VITE_API_URL??'http://localhost:5000/api'}/users/${id}/picture`,{method:'POST',headers:{Authorization:`Bearer ${token}`,...getAppSessionHeaders(),'Content-Type':file.type},body:file});
  const result=await response.json().catch(()=>null);if(!response.ok)await handleSessionExpiredResponse(response.status,result,true);if(!response.ok||!result?.success||!result.data)throw Error(result?.message??'Profile image could not be saved.');invalidateUserWorkspace();return result.data as {path:string;signed_url:string|null};
 }
+
+export const selectUserSheet=(token:string,category:string,search:string,sort:string,direction:string,current:()=>boolean=()=>true)=>collectSelectionPages<MasterDataRow>(
+ page=>unwrap(apiGet<ApiResponse<MasterDataPage>>(`${directory(category,search,page,sort,direction)}&selection_only=true`,token)),row=>row.id,current);

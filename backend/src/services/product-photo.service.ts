@@ -2,7 +2,10 @@ import { randomUUID } from "node:crypto";
 import { supabaseAdmin } from "../config/supabase.js";
 import { imageMime } from "../models/clientwebsite.validation.js";
 
-const bucket = "product-photos";
+export const PRODUCT_PHOTO_BUCKET = "product-photos";
+const bucket = PRODUCT_PHOTO_BUCKET;
+/** Shared exact-path Storage removal for photo management and durable cleanup. */
+export const removeProductPhotoObjects = (paths: string[]) => supabaseAdmin.storage.from(bucket).remove(paths);
 const maxBytes = 5 * 1024 * 1024;
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const extensions: Record<string, string> = {
@@ -83,7 +86,7 @@ export async function uploadProductPhoto(
     if (!url) throw new ProductPhotoError("Unable to create a secure product photo link.", 502);
     signedUrl = url;
   } catch (error) {
-    const { error: cleanupError } = await supabaseAdmin.storage.from(bucket).remove([storagePath]);
+    const { error: cleanupError } = await removeProductPhotoObjects([storagePath]);
     if (cleanupError) console.error("Product photo cleanup failed after signed URL error:", cleanupError);
     throw error;
   }
@@ -95,16 +98,14 @@ export async function uploadProductPhoto(
     .select("id")
     .maybeSingle();
   if (updateError || !updated) {
-    const { error: cleanupError } = await supabaseAdmin.storage.from(bucket).remove([storagePath]);
+    const { error: cleanupError } = await removeProductPhotoObjects([storagePath]);
     if (cleanupError) console.error("Product photo cleanup failed after database update error:", cleanupError);
     if (updateError) console.error("Product photo database update failed:", updateError);
     throw new ProductPhotoError("Unable to save product photo details.", 502);
   }
 
   if (product.photo_path) {
-    const { error: removeError } = await supabaseAdmin.storage
-      .from(bucket)
-      .remove([product.photo_path]);
+    const { error: removeError } = await removeProductPhotoObjects([product.photo_path]);
     if (removeError) {
       console.error("Previous product photo cleanup failed:", removeError);
     }
@@ -125,9 +126,7 @@ export async function deleteProductPhoto(productId: string) {
     console.error("Product photo database delete failed:", updateError);
     throw new ProductPhotoError("Unable to remove product photo details.", 502);
   }
-  const { error: removeError } = await supabaseAdmin.storage
-    .from(bucket)
-    .remove([product.photo_path]);
+  const { error: removeError } = await removeProductPhotoObjects([product.photo_path]);
   if (removeError) {
     const { error: restoreError } = await supabaseAdmin
       .from("products")

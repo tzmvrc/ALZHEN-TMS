@@ -809,6 +809,10 @@ export async function getReportData(
       const enriched = ["combined", "dispatch", "dispatch-monitoring", "trip-booking", "store-calling"].includes(key)
         ? await attachOperationalRecordIds(rows, key === "dispatch-monitoring", parentTrips, getQueryString(query.record_delete_versions)==="true")
         : rows;
+      if(getQueryString(query.selection_only)==="true"){
+        const identityFields=new Set(["id","trip_id","trip_stop_id","trip_line_item_id","assignment_id","billing_id","incident_id","backload_id","offload_id","store_call_id","_trip_id","_trip_stop_id","_trip_line_item_id","_assignment_id","_billing_id","_incident_id","_backload_id","_offload_id","_store_call_id"]);
+        return {rows:enriched.map(row=>Object.fromEntries(Object.entries(row).filter(([field])=>identityFields.has(field)||/^_.*version$/.test(field)))),pagination:buildPaginationMeta(page,limit,count??enriched.length)};
+      }
       const tripIds = [...new Set(enriched.map(row => row.trip_id).filter((id): id is string => typeof id === "string" && id.length > 0))];
       await Promise.all([
         legacySourceLines ? attachLegacyStopData(enriched,parentTrips) : Promise.resolve(),

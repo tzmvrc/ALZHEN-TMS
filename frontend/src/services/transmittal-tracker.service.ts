@@ -1,3 +1,4 @@
+import {collectSelectionPages} from "./spreadsheet-selection";
 import { apiGet, apiGetCached, apiPatch, apiPost, getCachedApiResponse, invalidateApiCache, type ApiResponse } from "./api.service";
 import { invalidateReportPageCache } from "./report.service";
 
@@ -24,6 +25,7 @@ export type TransmittalTrackerRow = {
   cells: Record<string, TransmittalTrackerCell>;
   legacy_conflicts: string[];
 };
+export type TrackerSelectionRow=Pick<TransmittalTrackerRow,"trip_stop_id"|"trip_id"|"assignment_id"|"cells"|"legacy_conflicts">;
 /** Projection key is local UI identity; every write still uses trip_stop_id. */
 export const trackerRowKey=(row:Pick<TransmittalTrackerRow,"trip_stop_id"|"assignment_id">)=>`${row.trip_stop_id}${row.assignment_id?`~${row.assignment_id}`:""}`;
 export type TransmittalTrackerResponse = {
@@ -52,10 +54,11 @@ async function unwrap<T>(request: Promise<ApiResponse<T>>) {
 }
 
 export const TRACKER_PAGINATION_ENABLED = import.meta.env ? import.meta.env.VITE_TRACKER_PAGINATION !== "false" : false;
-export type TrackerPageOptions = {page?:number;limit?:number;search?:string;sortBy?:string;sortOrder?:"asc"|"desc";filterBy?:string;filter?:string;status?:string;reference?:string};
+export type TrackerPageOptions = {page?:number;limit?:number;search?:string;sortBy?:string;sortOrder?:"asc"|"desc";filterBy?:string;filter?:string;status?:string;reference?:string;selectionOnly?:boolean};
 export function trackerPageEndpoint(options: TrackerPageOptions = {}) {
   const query=new URLSearchParams({page:String(options.page??1),limit:String(options.limit??50),search:options.search??"",sort_by:options.sortBy??"trip_stop_id",sort_order:options.sortOrder??"asc"});
   if(options.filterBy&&options.filter){query.set("filter_by",options.filterBy);query.set("filter",options.filter);}
+  if(options.selectionOnly)query.set("selection_only","true");
   if(options.status)query.set("status",options.status);
   if(options.reference!==undefined)query.set("reference",options.reference);
   return `${TRANSMITTAL_TRACKER_ENDPOINT}/page?${query}`;
@@ -104,10 +107,10 @@ export const saveTransmittalTrackerCell = async (token: string, stopId: string, 
 };
 
 /** Clear only saved tracker overlays. DR remains an authoritative stop field. */
-export async function resetTrackerOverrides(token:string,rows:TransmittalTrackerRow[]){
+export async function resetTrackerOverrides(token:string,rows:TrackerSelectionRow[]){
  const fields=new Set(["warehouse_code_override","delivered_to_override","plate_number_override","sales_order_no_override","transmittal_ref","date_created_override","tracker_status","lbc_waybill_no","lbc_shipping_date","tracker_remarks","loading_date_override","delivery_date_override"]);
  const unique=[...new Map(rows.map(row=>[row.trip_stop_id,row])).values()];if(!unique.length||unique.length>20)throw Error("Select at most 20 delivery stops.");
- const completed:string[]=[],failed:TransmittalTrackerRow[]=[];let auditWarnings=0;
+ const completed:string[]=[],failed:TrackerSelectionRow[]=[];let auditWarnings=0;
  for(const row of unique){let success=true;
   for(const [field,cell] of Object.entries(row.cells)){if(!fields.has(field)||cell.value===null)continue;if(row.legacy_conflicts.includes(field)){success=false;continue;}
    try{const saved=await saveTransmittalTrackerCell(token,row.trip_stop_id,field,null,cell.version);cell.version=saved.cell.version;cell.value=null;if(saved.audit_warning)auditWarnings++;}catch{success=false;}
@@ -116,3 +119,6 @@ export async function resetTrackerOverrides(token:string,rows:TransmittalTracker
  }
  return {completed,failed,auditWarnings};
 }
+
+export const fetchTrackerSelection=(token:string,options:TrackerPageOptions,current:()=>boolean)=>collectSelectionPages<TrackerSelectionRow>(
+ async page=>{const result=await unwrap(apiGet<ApiResponse<{rows:TrackerSelectionRow[];pagination?:NonNullable<TransmittalTrackerResponse["pagination"]>}>>(trackerPageEndpoint({...options,page,limit:100,selectionOnly:true}),token));if(!result.pagination)throw Error("Selection pagination is unavailable.");return {rows:result.rows,pagination:result.pagination};},trackerRowKey,current);

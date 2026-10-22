@@ -1,3 +1,4 @@
+import {runMasterImageCleanup} from "./master-image-cleanup.service.js";
 import { ApiError } from "../utils/api-response.js";
 import { locationVerificationAvailable } from "./location-verification.schema.js";
 import { supabaseAdmin } from "../config/supabase.js";
@@ -247,17 +248,24 @@ export async function deleteMasterDataRecords(resource:string,ids:unknown,actor:
  getConfig(resource);
  if(!["ADMIN","STAFF"].includes(actor.role))throw new ApiError("You do not have permission to delete database records.",403);
  if(!Array.isArray(ids)||!ids.length||ids.length>100||ids.some(id=>typeof id!=="string"||!uuidPattern.test(id)))throw new ApiError("Select between 1 and 100 valid records.",400);
- const unique=[...new Set(ids as string[])],deleted:string[]=[],failed:Array<{id:string;message:string}>=[];
+ const unique=[...new Set(ids as string[])],deleted:string[]=[],failed:Array<{id:string;message:string}>=[],cleanup_pending:Array<{id:string;operation_id:string}>=[];
  for(const id of unique){
-  const result=await supabaseAdmin.rpc("delete_master_data_record_v1",{p_resource:resource,p_id:id,p_actor:actor.id});
+  const result=await Promise.resolve(supabaseAdmin.rpc(["products","trucks"].includes(resource)?"delete_master_data_with_images_v1":"delete_master_data_record_v1",{p_resource:resource,p_id:id,p_actor:actor.id})).catch(()=>({data:null,error:{code:"TRANSPORT_UNCONFIRMED"}}));
   if(result.error){
    console.error("Master record delete rejected",{resource,id,code:result.error.code});
-   const message=result.error.code==="55000"?(/photo/i.test(result.error.message)?"Remove the product photo through Manage photo first.":(resource==="trucks"?"This truck has protected references or attached images. It was not deleted; its history and files are preserved.":"This record is used by other records or attachments. Clear eligible relationships, or mark it inactive to preserve history.")):result.error.code==="23503"?"This record is still referenced and cannot be safely deleted.":result.error.code==="P0002"?"This record no longer exists. Refresh the sheet.":result.error.code==="42501"?"You do not have permission to delete this record.":"Unable to delete this record. Please try again.";
+   const message=result.error.code==="TRANSPORT_UNCONFIRMED"?"Deletion was not confirmed. Refresh before retrying.":["products","trucks"].includes(resource)&&["PGRST202","42883","42P01"].includes(result.error.code)?"Image-aware deletion is not available yet. No record or image was deleted.":result.error.code==="55000"?(resource==="trucks"?"This truck has protected references. It was not deleted; its history and files are preserved.":"This record is used by other records or protected attachments. Clear eligible relationships, or mark it inactive to preserve history."):result.error.code==="23503"?"This record is still referenced and cannot be safely deleted.":result.error.code==="P0002"?"This record no longer exists. Refresh the sheet.":result.error.code==="42501"?"You do not have permission to delete this record.":"Unable to delete this record. Please try again.";
    failed.push({id,message});continue;
   }
-  if(result.data?.deleted===true&&result.data?.id===id)deleted.push(id);else failed.push({id,message:"Deletion was not confirmed. Refresh before retrying."});
+  if(result.data?.deleted===true&&result.data?.id===id){
+   deleted.push(id);
+   if(result.data.cleanup_pending===true&&typeof result.data.operation_id==="string"){
+    let complete=false;
+    try{complete=await runMasterImageCleanup(result.data.operation_id);}catch{/* The committed cleanup journal is retried by the worker. */}
+    if(!complete)cleanup_pending.push({id,operation_id:result.data.operation_id});
+   }
+  }else failed.push({id,message:"Deletion was not confirmed. Refresh before retrying."});
  }
- return {deleted,failed};
+ return {deleted,failed,cleanup_pending};
 }
 
 /** Count a query selection without materializing rows; resolve IDs only for confirmed bulk actions. */

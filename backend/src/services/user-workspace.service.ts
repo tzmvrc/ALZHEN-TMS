@@ -23,7 +23,7 @@ export async function userSheet(actor:Actor,query:Record<string,unknown>){
  let request=db.from('v_managed_users_directory').select('*',{count:'exact'}).is('deactivated_at',null).in('role',category==='staff'?['ADMIN','STAFF']:['TRUCKER']).order(sort,{ascending:query.direction==='asc'}).order('id').range((page-1)*limit,page*limit-1);
  const filter=buildIlikeOrFilter(['first_name','last_name','contact_number','email','plate_number','license_number'],query.search);if(filter)request=request.or(filter);
  const {data,error,count}=await request;if(error)throw new ApiError('Unable to load users. Retry loading.',502);
- const rows=(data??[]).map((row:any)=>({...row,trucking_companies:row.trucking_company_name?{name:row.trucking_company_name}:null}));
+ const rows=(data??[]).map((row:any)=>query.selection_only==='true'?{id:row.id,is_admin:row.is_admin,created_at:row.created_at,role:row.role}:{...row,trucking_companies:row.trucking_company_name?{name:row.trucking_company_name}:null});
  return {rows,pagination:{page,limit,total:count??0,totalPages:Math.max(1,Math.ceil((count??0)/limit))}};
 }
 export async function patchProfile(actor:Actor,id:string,patch:Record<string,unknown>){

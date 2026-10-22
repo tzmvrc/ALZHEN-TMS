@@ -1,3 +1,4 @@
+import {collectSelectionPages} from "./spreadsheet-selection";
 import { invalidateOperationalFormulaReads } from "./operational-formula.service";
 import { getReportRowIdentity } from "./report-row-identity";
 import { apiGet, apiGetCached, invalidateApiCache, type ApiResponse } from "./api.service";
@@ -324,7 +325,7 @@ export async function fetchReportColumns(
 export async function fetchReportRows(
   reportKey: ReportKey,
   token: string,
-  options: ReportPageOptions & { fresh?: boolean },
+  options: ReportPageOptions & { fresh?: boolean; selectionOnly?:boolean },
 ): Promise<ReportData<ReportRow>> {
   const params = new URLSearchParams({
     page: String(options.page),
@@ -332,6 +333,7 @@ export async function fetchReportRows(
     sort_by: options.sortBy,
     sort_order: options.sortOrder,
   });
+  if(options.selectionOnly)params.set("selection_only","true");
   if (options.search.trim()) params.set("search", options.search.trim());
   if (!params.get("sort_by")) params.delete("sort_by");
   if(options.filters.trip_id) params.set("trip_id",options.filters.trip_id);
@@ -534,3 +536,6 @@ export function removeCachedReportRecord(source:string,id:string){
  for(const [key,entry] of reportPageCache)reportPageCache.set(key,{...entry,value:remove(entry.value)});
  for(const [key,entry] of reportCollections)reportCollections.set(key,{...entry,value:remove(entry.value)});
 }
+
+export const fetchReportSelection=(report:ReportKey,token:string,options:ReportPageOptions,current:()=>boolean)=>collectSelectionPages(
+ page=>fetchReportRows(report,token,{...options,page,limit:100,fresh:true,selectionOnly:true}),row=>getReportRowIdentity(report,row),current);

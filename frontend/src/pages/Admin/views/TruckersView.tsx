@@ -9,7 +9,7 @@ import UserManagementModal from '../../../components/admin/UserManagementModal';
 import TruckerDetailDrawer from '../../../components/admin/TruckerDetailDrawer';
 import UserActivityHistory from '../../../components/admin/UserActivityHistory';
 import {fetchTruckerDetail,type TruckerDetail} from '../../../services/trucker.service';
-import {cachedUserSheet,loadUserSheet,readUserProfile,saveUserProfile,deleteUsers,invalidateUserWorkspace,availableDriverTrucks,assignDriverTruck} from '../../../services/user-workspace.service';
+import {cachedUserSheet,loadUserSheet,readUserProfile,saveUserProfile,deleteUsers,invalidateUserWorkspace,availableDriverTrucks,assignDriverTruck,selectUserSheet} from '../../../services/user-workspace.service';
 import type {MasterDataRow} from '../../../services/master-data.service';
 import type {ManagedUser} from '../../../services/user-management.service';
 import {subscribeToAdminRealtime} from '../../../services/realtime.service';
@@ -41,6 +41,7 @@ export default function TruckersView(){
  useEffect(()=>{if(!driverId||!accessToken)return;let live=true;void fetchTruckerDetail(accessToken,driverId).then(value=>{if(live)setTrucker(value);}).catch(()=>{if(live)setDetailError('Driver details could not load. Please close and retry.');}).finally(()=>{if(live)setDetailLoading(false);});return()=>{live=false;};},[accessToken,driverId,revision,detailRevision]);
  const edit=async(row:MasterDataRow)=>{if(!accessToken||!admin)return;try{const value=await readUserProfile(accessToken,row.id);setModal({user:value as unknown as ManagedUser});setError('');}catch{setError('User details could not load. Please retry.');}};
  const sources=useMemo(()=>Object.fromEntries(['staff','truckers'].map(sheet=>[sheet,{
+  selectAll:(query:string,sort:string,direction:string,current:()=>boolean)=>selectUserSheet(accessToken!,sheet,query,sort,direction,current),
   tableKey:`users:${sheet}`,sheetId:`users-${sheet}`,topics:['profiles','drivers','trucks','trucking_companies','trip_truck_assignments','trips'],recordNoun:'user',deleteDescription:'The selected accounts will be deactivated. Current truck assignments will be released. Previous trips, deliveries, PODs, cargo and activity history are retained. Your own account and required administrators cannot be deleted.',
   load:(query:string,page:number,sort:string,direction:string)=>loadUserSheet(accessToken!,sheet,query,page,sort,direction),cached:(query:string,sort:string,direction:string)=>cachedUserSheet(accessToken!,sheet,query,sort,direction),read:async(id:string)=>{try{return await readUserProfile(accessToken!,id);}catch{return null;}},
   save:async(id:string,values:Record<string,unknown>,row:MasterDataRow)=>{if(Object.prototype.hasOwnProperty.call(values,'plate_number')){if(typeof row.driver_id!=='string')throw Error('This user has no driver record.');const result=await assignDriverTruck(accessToken!,row.driver_id,values.plate_number as string|null);return {id,assigned_truck_id:result.assigned_truck_id,plate_number:result.plate_number,truck_type:result.truck_type};}return saveUserProfile(accessToken!,id,values);},remove:(ids:string[])=>deleteUsers(accessToken!,ids),invalidate:invalidateUserWorkspace,

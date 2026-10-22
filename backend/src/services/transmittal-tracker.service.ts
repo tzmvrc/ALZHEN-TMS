@@ -326,7 +326,8 @@ export async function getTracker(actor: FlexActor, searchInput: unknown, request
     const base=byId.get(String(projection.trip_stop_id));
     return base?[{...base,...projection,assignment_id:projection.assignment_id as string|null,assigned_plate_number:projection.assigned_plate_number as string|null,cells:base.cells,legacy_conflicts:base.legacy_conflicts}]:[];
   });
-  const rows = pageOptions ? projected : filterTransmittalTrackerRows(projected,searchInput === undefined ? "" : String(searchInput));
+  const matching = pageOptions ? projected : filterTransmittalTrackerRows(projected,searchInput === undefined ? "" : String(searchInput));
+  const rows=pageInput?.selection_only==="true"?matching.map(row=>({trip_stop_id:row.trip_stop_id,trip_id:row.trip_id,assignment_id:row.assignment_id,cells:Object.fromEntries(Object.entries(row.cells).map(([field,cell])=>[field,{...cell,value:cell.value===null?null:true}])),legacy_conflicts:row.legacy_conflicts})):matching;
   const requestIdValue = requestId && requestId.length <= 100 ? requestId : undefined;
   return { table_id: table.id, access, columns, rows, request_id: requestIdValue, ...(pageOptions ? {pagination:{page:pageOptions.page,limit:pageOptions.limit,total,totalPages:Math.max(1,Math.ceil(total/pageOptions.limit))}} : {}) };
 }

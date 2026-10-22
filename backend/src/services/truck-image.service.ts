@@ -2,7 +2,10 @@ import { randomUUID } from "node:crypto";
 import { supabaseAdmin } from "../config/supabase.js";
 import { imageMime } from "../models/clientwebsite.validation.js";
 
-const bucket = "truck-images";
+export const TRUCK_IMAGE_BUCKET = "truck-images";
+const bucket = TRUCK_IMAGE_BUCKET;
+/** Shared exact-path Storage removal for photo management and durable cleanup. */
+export const removeTruckImageObjects = (paths: string[]) => supabaseAdmin.storage.from(bucket).remove(paths);
 const maxBytes = 5 * 1024 * 1024;
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const extensions: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" };
@@ -47,14 +50,14 @@ export async function uploadTruckImage(truckId: string, bytes: Buffer, contentTy
 
   const { data: last, error: orderError } = await supabaseAdmin.from("truck_images").select("display_order").eq("truck_id", truckId).order("display_order", { ascending: false }).limit(1).maybeSingle();
   if (orderError) {
-    const { error: cleanupError } = await supabaseAdmin.storage.from(bucket).remove([storagePath]);
+    const { error: cleanupError } = await removeTruckImageObjects([storagePath]);
     if (cleanupError) console.error("Truck image cleanup failed after order lookup error:", cleanupError);
     throw new TruckImageError("Unable to determine the image order.", 502);
   }
   const displayOrder = Number(last?.display_order ?? -1) + 1;
   const { data: inserted, error: insertError } = await supabaseAdmin.from("truck_images").insert({ truck_id: truckId, storage_path: storagePath, file_name: fileName, display_order: displayOrder }).select("id, truck_id, storage_path, file_name, display_order, created_at, updated_at").single();
   if (insertError || !inserted) {
-    const { error: cleanupError } = await supabaseAdmin.storage.from(bucket).remove([storagePath]);
+    const { error: cleanupError } = await removeTruckImageObjects([storagePath]);
     if (cleanupError) console.error("Truck image cleanup failed after database insert error:", cleanupError);
     throw new TruckImageError("Unable to save truck image details.", 502);
   }
@@ -62,7 +65,7 @@ export async function uploadTruckImage(truckId: string, bytes: Buffer, contentTy
     return await withSignedUrl(inserted as Record<string, unknown>);
   } catch (error) {
     const { error: rowCleanupError } = await supabaseAdmin.from("truck_images").delete().eq("id", inserted.id).eq("truck_id", truckId);
-    const { error: fileCleanupError } = await supabaseAdmin.storage.from(bucket).remove([storagePath]);
+    const { error: fileCleanupError } = await removeTruckImageObjects([storagePath]);
     if (rowCleanupError || fileCleanupError) console.error("Truck image cleanup failed after signed URL creation error:", { rowCleanupError, fileCleanupError });
     throw error;
   }
@@ -75,7 +78,7 @@ export async function deleteTruckImage(truckId: string, imageId: string) {
   if (deleteError) throw new TruckImageError("Unable to remove truck image details.", 502);
   if (!deleted) throw new TruckImageError("Truck image not found.", 404);
 
-  const { error: storageError } = await supabaseAdmin.storage.from(bucket).remove([deleted.storage_path]);
+  const { error: storageError } = await removeTruckImageObjects([deleted.storage_path]);
   if (storageError) {
     const { error: restoreError } = await supabaseAdmin.from("truck_images").insert(deleted);
     if (restoreError) console.error("Truck image metadata restore failed after storage deletion error:", restoreError);

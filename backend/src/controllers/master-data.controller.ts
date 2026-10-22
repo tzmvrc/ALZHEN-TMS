@@ -1,3 +1,4 @@
+import {listMasterImageCleanup,retryMasterImageCleanup} from "../services/master-image-cleanup.service.js";
 import {ApiError} from "../utils/api-response.js";
 import type { Request, Response } from "express";
 import { deleteMasterDataRecords, listMasterData, readMasterDataSelection, readMasterDataRecord, saveMasterData } from "../services/master-data.service.js";
@@ -77,4 +78,11 @@ export async function read(req:Request,res:Response){try{return res.json({succes
 export async function selection(req:Request,res:Response){
  try{return res.json({success:true,data:await readMasterDataSelection(String(req.params.resource),req.body??{})});}
  catch(error){return failure(res,error);}
+}
+
+export async function pendingImageCleanup(_req:Request,res:Response){
+ try{return res.json({success:true,data:await listMasterImageCleanup()});}catch(error){return failure(res,error);}
+}
+export async function retryImageCleanup(req:Request,res:Response){
+ try{return res.json({success:true,data:await retryMasterImageCleanup(String(req.params.operationId))});}catch(error){return failure(res,error);}
 }

@@ -1,7 +1,7 @@
 import {useEffect,useRef,useState} from "react";
-import {resetTrackerOverrides,type TransmittalTrackerRow} from "../../services/transmittal-tracker.service";
+import {resetTrackerOverrides,type TrackerSelectionRow} from "../../services/transmittal-tracker.service";
 import {useOptionalToast} from "../ui/toast-context";
-export default function TrackerResetDialog({token,rows,onClose,onReset}:{token:string;rows:TransmittalTrackerRow[];onClose:()=>void;onReset:(ids:string[])=>void}){
+export default function TrackerResetDialog({token,rows,onClose,onReset}:{token:string;rows:TrackerSelectionRow[];onClose:()=>void;onReset:(ids:string[])=>void}){
  const lock=useRef(false),alive=useRef(true),toast=useOptionalToast();const [pending,setPending]=useState(()=>rows.map(row=>({...row,cells:structuredClone(row.cells)}))),[busy,setBusy]=useState(false),[error,setError]=useState("");
  useEffect(()=>{alive.current=true;return()=>{alive.current=false;};},[]);
  const run=async()=>{if(lock.current)return;lock.current=true;setBusy(true);try{const result=await resetTrackerOverrides(token,pending);if(!alive.current)return;onReset(result.completed);if(result.failed.length){setPending(result.failed);setError("Some fields could not be reset. Completed fields remain reset; retry only the remaining fields.");}else onClose();toast?.addToast({title:result.failed.length?`${result.completed.length} rows reset; ${result.failed.length} need review.`:result.auditWarnings?"Overrides reset. Audit confirmation needs administrator review.":"Transmittal overrides reset.",variant:result.failed.length||result.auditWarnings?"warning":"success"});}catch{if(alive.current)setError("Unable to reset the selected overrides. Please try again.");}finally{lock.current=false;if(alive.current)setBusy(false);}};
