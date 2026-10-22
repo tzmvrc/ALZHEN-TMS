@@ -28,11 +28,13 @@ export async function userSheet(actor:Actor,query:Record<string,unknown>){
 }
 export async function patchProfile(actor:Actor,id:string,patch:Record<string,unknown>){
  assertView(actor,id);const {error}=await db.rpc('user_profile_patch_v1',{p_actor:actor.id,p_subject:id,p_patch:patch});rpcError(error);
- const value=await profileRecord(actor,id);return {...value,driver_id:value.driver?.id??null,contact_number:value.driver?.contact_number??value.contact_number,license_number:value.driver?.license_number??null,driver_notes:value.driver?.notes??null,driver_status:value.driver?.status??null,trucking_company_id:value.driver?.trucking_company_id??null,trucking_companies:value.driver?.trucking_companies??null,plate_number:value.driver?.trucks?.plate_number??null};
+ const value=await profileRecord(actor,id);return {...value,driver_id:value.driver?.id??null,contact_number:value.driver?.contact_number??value.contact_number,license_number:value.driver?.license_number??null,driver_notes:value.driver?.notes??null,driver_status:value.driver?.status??null,trucking_company_id:value.driver?.trucking_company_id??null,trucking_companies:value.driver?.trucking_companies??null,assigned_truck_id:value.driver?.assigned_truck_id??null,plate_number:value.driver?.trucks?.plate_number??null,truck_type:value.driver?.trucks?.truck_type??null};
 }
 export async function currentDriverTruck(actor:Actor,driverId:string,truckId:unknown){
  userId(driverId);if(truckId!==null&&(typeof truckId!=='string'||!valid(truckId)))throw new ApiError('Select a truck or remove the assignment.',400);
- const result=await db.rpc('user_assign_current_truck_v1',{p_actor:actor.id,p_driver:driverId,p_truck:truckId});rpcError(result.error);return result.data;
+ const truck=truckId===null?null:await db.from('trucks').select('plate_number,truck_type').eq('id',truckId).maybeSingle();
+ if(truck?.error)throw new ApiError('Unable to verify the selected truck. Please retry.',502);
+ const result=await db.rpc('user_assign_current_truck_v1',{p_actor:actor.id,p_driver:driverId,p_truck:truckId});rpcError(result.error);return {...result.data,plate_number:truck?.data?.plate_number??null,truck_type:truck?.data?.truck_type??null};
 }
 export async function availableDriverTrucks(actor:Actor,driverId:string,query:Record<string,unknown>){
  userId(driverId);const {data,error}=await db.rpc('user_available_trucks_v1',{p_actor:actor.id,p_driver:driverId,p_search:String(query.q??'').slice(0,100),p_after:typeof query.after==='string'?query.after:null});rpcError(error);

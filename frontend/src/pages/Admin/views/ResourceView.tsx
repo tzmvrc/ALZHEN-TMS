@@ -357,7 +357,7 @@ export default function ResourceView({
     "dispatch-monitoring",
     "store-calling",
   ].includes(id);
-  const showInlineTableHeading = isTripsScope || isReportsScope || id === "database";
+  const showInlineTableHeading = isTripsScope || isReportsScope || id === "database" || id === "truckers";
   const barTitle = isTripsScope
     ? "Trips"
     : isReportsScope

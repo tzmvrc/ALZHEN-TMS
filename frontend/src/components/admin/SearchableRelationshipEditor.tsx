@@ -119,6 +119,7 @@ export default function SearchableRelationshipEditor({
   }, [isOpen]);
 
   function selectOption(option: RelationshipOption | undefined, commit = false) {
+    if (disabled) return;
     if (option && unavailableIds?.includes(option.id)) return;
     if (!option) return;
     setIsOpen(false);
@@ -224,13 +225,13 @@ export default function SearchableRelationshipEditor({
             // previous placeholder-only treatment looked like existing data
             // but left the editor empty, so typing replaced an invisible value.
             setQuery("");
-            const cached=getCachedRelationshipOptions(token,kind,"",{storeId,customerId});if(cached)setOptions(cached);
+            const cached=optionLoader?null:getCachedRelationshipOptions(token,kind,"",{storeId,customerId});if(cached)setOptions(cached);
             setIsOpen(true);
           }
         }}
         onChange={(event) => {
           const next=event.target.value;setQuery(next);setActiveIndex(0);
-          const cached=getCachedRelationshipOptions(token,kind,next,{storeId,customerId});const base=cached??getCachedRelationshipOptions(token,kind,"",{storeId,customerId});if(base)setOptions(cached??base.filter(option=>`${option.label} ${option.secondary??""}`.toLocaleLowerCase().includes(next.trim().toLocaleLowerCase())));
+          const cached=optionLoader?null:getCachedRelationshipOptions(token,kind,next,{storeId,customerId});const base=cached??(optionLoader?null:getCachedRelationshipOptions(token,kind,"",{storeId,customerId}));if(base)setOptions(cached??base.filter(option=>`${option.label} ${option.secondary??""}`.toLocaleLowerCase().includes(next.trim().toLocaleLowerCase())));
           setIsOpen(true);
         }}
         onBlur={(event) => {

@@ -18,7 +18,7 @@ function readHidden(key: string) {
  * record IDs, editing and permissions remain owned by each management view. */
 export function useManagementTableColumns(options: {
   table: string; token: string | null; profileId?: string; columns: readonly ManagementColumn[];
-  showFinder?:boolean; reportMenu?:boolean; sortActions?:(key:string)=>SortAction[]; onAutoFit?:()=>void;
+  hiddenMenuPortal?:boolean; showFinder?:boolean; reportMenu?:boolean; sortActions?:(key:string)=>SortAction[]; onAutoFit?:()=>void;
   onRenameColumn?:(key:string)=>void; onRestoreColumnTitle?:(key:string)=>void; onSelectColumn?:(key:string)=>void; onFormatHeader?:(key:string)=>void;
   contextMenuOnly?: boolean; columnMenuActions?: (column:ManagementColumn)=>ReactNode;
   enabled?: boolean; omitsHiddenCells?: boolean; leadingColumns?: number; leadingWidth?: number; trailingWidth?: number;
@@ -125,7 +125,7 @@ export function useManagementTableColumns(options: {
     columnWidth:width,visibleColumns,orderedColumns,renderCells,attachViewport, viewportProps: { "data-management-columns": scope },
     tableStyle: { tableLayout: "fixed", width: tableWidth, minWidth: "100%" } as CSSProperties,
     controls: <><style>{css}</style>{colorColumn&&<ReportColumnColorDialog columnName={options.columns.find(c=>c.key===colorColumn)?.title??colorColumn} color={design.columns[colorColumn]?.color??""} onChange={color=>void design.save(colorColumn,{color},width(colorColumn))} onReset={()=>void design.save(colorColumn,{color:null},width(colorColumn))} onClose={()=>setColorColumn(null)} />}{options.showFinder!==false&&<ColumnFinder tableKey={options.enabled===false?undefined:options.table} key={options.table} rowSearch={options.rowSearch} leadingColumns={leading} columns={finderColumns} viewport={viewport} getHeader={(key) => headers.current.get(key)} onReveal={reveal} />}{shared.feedback}{design.feedback}</>,
-    hiddenControl: <HiddenColumnsControl columns={hiddenColumns} onRestore={reveal} onRestoreAll={restoreAll} />,
+    hiddenControl: <HiddenColumnsControl portalMenu={options.hiddenMenuPortal} columns={hiddenColumns} onRestore={reveal} onRestoreAll={restoreAll} />,
     colgroup: <colgroup>{Array.from({ length: leading }, (_, index) => <col key={`leading-${index}`} style={{ width: leadingWidth }} />)}{orderedColumns.filter((column) => !hidden.includes(column.key)).map((column) => <col key={column.key} style={{ width: width(column.key) }} />)}{Boolean(options.trailingWidth) && <col style={{ width: options.trailingWidth }} />}</colgroup>,
     bodyProps:(key:string)=>({style:cellStyle(key)}),
     headerProps: (key: string) => ({ ref: (element: HTMLTableCellElement | null) => { if (element) headers.current.set(key, element); else headers.current.delete(key); }, style: cellStyle(key,true) }),
