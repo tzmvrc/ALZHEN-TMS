@@ -663,3 +663,29 @@ input[type="checkbox"] { width: 14px; height: 14px; min-width: 14px; min-height:
 @container sheet-footer (max-width: 360px) {
   .spreadsheet-footer-layout { grid-template-columns: minmax(0, 1fr) max-content max-content minmax(0, 24%); }
 }
+
+/* Explicit shared row heights clip content instead of letting wrapped text grow the row.
+   Unconfigured rows retain their existing natural layout. */
+.spreadsheet-grid tr[style*="--spreadsheet-row-height"] > :is(td,th) {
+  height: var(--spreadsheet-row-height);
+  max-height: var(--spreadsheet-row-height);
+  box-sizing: border-box;
+  padding-block: 2px !important;
+  overflow: hidden;
+}
+.spreadsheet-grid tr[style*="--spreadsheet-row-height"] > :is(td,th) > :not(.spreadsheet-row-resize-handle):not(.database-header-controls):not([role="menu"]) {
+  min-height: 0;
+  max-height: calc(var(--spreadsheet-row-height) - 5px);
+  overflow: hidden;
+}
+.spreadsheet-grid tr[style*="--spreadsheet-row-height"] :is(.spreadsheet-header-content,.database-header-content) [data-spreadsheet-header-title] {
+  max-height: calc(var(--spreadsheet-row-height) - 5px);
+  overflow: hidden;
+}
+.spreadsheet-row-resize-guide {
+  position: fixed;
+  z-index: 10000;
+  height: 0;
+  border-top: 2px solid #2678b9;
+  pointer-events: none;
+}

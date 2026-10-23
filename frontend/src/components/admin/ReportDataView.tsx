@@ -1179,8 +1179,8 @@ export default function ReportDataView({
   const [retryVersion, setRetryVersion] = useState(0);
   const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
   const bufferedTextDraft = useRef<EditingCell | null>(null);
-  const rowHeights = useSpreadsheetRowHeights(`${profile?.id ?? "guest"}:${transactionView ? "trips" : reportKey}`, ["ADMIN", "STAFF"].includes(profile?.role ?? ""));
   const sharedDesign=useSharedTableDesign(transactionView?"trips":`report:${reportKey}`,accessToken,["ADMIN","STAFF"].includes(profile?.role??""),Boolean(editingCell||editModalOpen||columnResize||draggedColumnKey||fillGesture));
+  const rowHeights = useSpreadsheetRowHeights(transactionView ? "trips" : `report:${reportKey}`, sharedDesign);
   const fixedHeaders = useMemo(() => allTripRecords ? Object.fromEntries(columns.flatMap(column => column.sourceHeader ? [[column.key, { backgroundColor: column.sourceHeader.background, color: column.sourceHeader.color }]] : [])) : undefined, [allTripRecords, columns]);
   const sourceHeaderGroups = useMemo(() => allTripRecords ? [...new Map(columns.flatMap(column => column.sourceHeader ? [[column.sourceHeader.group, column.sourceHeader] as const] : [])).values()] : [], [allTripRecords, columns]);
   const headerFormatting = useSpreadsheetHeaderFormatting(transactionView ? "trips" : `report:${reportKey}`, sharedDesign.canEdit, sharedDesign.columns, (key, header) => { void sharedDesign.save(key, { header }, getColumnWidth(key)); }, (key, alias) => { void sharedDesign.save(key, { alias }, getColumnWidth(key)); }, (key, input) => { void sharedDesign.save(key, { input }, getColumnWidth(key)); }, fixedHeaders);
@@ -1353,7 +1353,7 @@ export default function ReportDataView({
   }), [activeSortBy, queryFilters, effectiveSearch, page, sortOrder, allTripRecords]);
   const formulas=useOperationalFormulas({token:accessToken,table:transactionView?"trips":`report:${reportKey}`,rows:displayedRows,columns:formulaColumns,identity:physicalRowIdentity,sourceEditor:prepareFormulaSource,virtualRows:virtualGridRows,onSelect:syncGridCellSelection,rowOffset:sheetRowOffset,canEdit:["ADMIN","STAFF"].includes(profile?.role??"")&&!headerFormatting.key,paused:Boolean(editingCell||editModalOpen||fillGesture)});
   const formulaFocusIndex=useMemo(()=>formulas.selectedIdentity?(formulaRowLookup.get(formulas.selectedIdentity)?.index??-1):-1,[formulas.selectedIdentity,formulaRowLookup]);
-  const virtualItems = useVirtualSpreadsheetRows(tableViewportRef, physicalGridKeys, viewMode === "table", editingCell?physicalGridKeys.indexOf(editingCell.rowKey):formulaFocusIndex);
+  const virtualItems = useVirtualSpreadsheetRows(tableViewportRef, physicalGridKeys, viewMode === "table", editingCell?physicalGridKeys.indexOf(editingCell.rowKey):formulaFocusIndex,rowHeights.heights);
   const snapshotKeyRef = useRef(snapshotKey);
   const loadedSnapshotKeyRef = useRef<string | null>(null);
   const reportKeyRef = useRef(reportKey);
@@ -3465,14 +3465,14 @@ export default function ReportDataView({
             ) : (
               <table {...headerFormatting.tableProps} data-compact-headers={transactionView ? "true" : undefined} className="spreadsheet-grid w-max min-w-full border-separate border-spacing-0 text-left">
                 <thead className={`${tableUi.thead} bg-white`}>
-                  <tr>
+                  <tr style={rowHeights.headerStyle}>
                     <th
                       ref={selectionColumnRef}
                       style={{ width: SPREADSHEET_GUTTER_WIDTH, minWidth: SPREADSHEET_GUTTER_WIDTH }}
                       scope="col"
                       className="spreadsheet-gutter sticky left-0 top-0 z-[70] whitespace-nowrap border-b border-r border-slate-100/70 bg-slate-50 px-1 py-1">
                       <SpreadsheetRowSelectionHeader active={cellSelection?.mode==="row"&&selectedRowKeys.length>0} checked={allMatchingRowsSelected} partial={selectedRowKeys.length>0&&!allMatchingRowsSelected} disabled={isLoading||selectAllRequest.busy||Boolean(editingCell||editModalOpen||fillGesture||formulas.draftPending)} onChange={checked=>{if(checked)selectAllGridCells();else{setCellSelection(null);reportSelection.clear(reportKey);setSelectionRecords([]);}}}/>
-                    </th>
+                    {rowHeights.headerHandle()}</th>
                     {presentationColumns.map((column) => {
                       if(!columns.length)return <th key={column.key} scope="col" style={{width:180,minWidth:180}} className={REPORT_GRID_HEADER_CELL_CLASS}><div aria-hidden="true" className="h-3 w-20 animate-pulse rounded-sm bg-slate-100"/></th>;
                       const columnWidth = columnLayout.widths?.[column.key] ?? defaultReportColumnWidth(column);

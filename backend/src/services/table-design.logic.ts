@@ -1,5 +1,5 @@
 import {ApiError} from "../utils/api-response.js";
-const fail=():never=>{throw new ApiError("Invalid shared table design. Use supported colors, fonts and column settings.",400,"INVALID_TABLE_DESIGN");};
+const fail=():never=>{throw new ApiError("Invalid shared table design. Use supported colors, fonts, row heights and column settings.",400,"INVALID_TABLE_DESIGN");};
 function object(value:unknown):Record<string,unknown>{if(!value||typeof value!=="object"||Array.isArray(value))return fail();return value as Record<string,unknown>;}
 const color=(v:unknown)=>v===null||typeof v==="string"&&/^#[0-9a-f]{6}$/i.test(v);
 export function validateFormat(value:unknown){
@@ -16,7 +16,15 @@ export function validateFormat(value:unknown){
 export function validateDesignPatch(value:unknown){
  const v=object(value);if(Buffer.byteLength(JSON.stringify(v))>250000)fail();
  for(const [key,item] of Object.entries(v)){
-  if(key==="alias"){if(item!==null&&(typeof item!=="string"||!item.trim()||item.length>100||/[\x00-\x1f]/.test(item)))fail();}
+  if(key==="headerHeight"){if(item!==null&&(!Number.isInteger(item)||Number(item)<24||Number(item)>1200))fail();}
+  else if(key==="rowHeights"){
+   const heights=object(item);
+   for(const [row,height] of Object.entries(heights)){
+    if(!row||row.length>512||/[\x00-\x1f]/.test(row)||["__proto__","constructor","prototype"].includes(row))fail();
+    if(height!==null&&(!Number.isInteger(height)||Number(height)<24||Number(height)>1200))fail();
+   }
+  }
+  else if(key==="alias"){if(item!==null&&(typeof item!=="string"||!item.trim()||item.length>100||/[\x00-\x1f]/.test(item)))fail();}
   else if(key==="combined"){if(typeof item!=="boolean")fail();}
   else if(key==="input"){
    const config=object(item);if(Object.keys(config).some(key=>!["type","options"].includes(key))||!["TEXT","NUMBER","DATE","DROPDOWN"].includes(String(config.type)))fail();
@@ -38,6 +46,7 @@ export function validateDesignPatch(value:unknown){
 }
 export function mergeDesign(current:Record<string,unknown>,patch:Record<string,unknown>){
  const next={...current,...patch};
+ if(patch.rowHeights){const heights={...object(current.rowHeights??{}),...object(patch.rowHeights)};for(const [key,height] of Object.entries(heights))if(height===null)delete heights[key];next.rowHeights=heights;}
  if(patch.header)next.header={...object(current.header??{}),...object(patch.header)};
  if(patch.format)next.format={...object(current.format??{}),...object(patch.format)};
  if(patch.cells){const cells={...object(current.cells??{}),...object(patch.cells)};for(const [key,value] of Object.entries(object(patch.cells)))if(value===null)delete cells[key];else cells[key]={...object(object(current.cells??{})[key]??{}),...object(value)};if(Object.keys(cells).length>1000)fail();next.cells=cells;}

@@ -226,8 +226,8 @@ export default function TransmittalTrackerView({toolbarLeading,onDataReady}:{too
   const dropdownRefreshPending = useRef(false);
   const [reorderSource, setReorderSource] = useState<string | null>(null);
   const [resizeState, setResizeState] = useState<{ key: string; startX: number; startWidth: number } | null>(null);
-  const rowHeights = useSpreadsheetRowHeights(`${profile?.id ?? "guest"}:transmittal-tracker`, ["ADMIN", "STAFF"].includes(profile?.role ?? ""));
   const sharedDesign=useSharedTableDesign("transmittal-tracker",accessToken,["ADMIN","STAFF"].includes(profile?.role??""),Boolean(editingCellKey||rowEdit||resizeState||reorderSource));
+  const rowHeights = useSpreadsheetRowHeights("transmittal-tracker", sharedDesign);
   const headerFormatting = useSpreadsheetHeaderFormatting("transmittal-tracker", sharedDesign.canEdit, sharedDesign.columns, (key, header) => { void sharedDesign.save(key, { header }, designColumnWidth(key)); }, (key, alias) => { void sharedDesign.save(key, { alias }, designColumnWidth(key)); }, (key, input) => { void sharedDesign.save(key, { input }, designColumnWidth(key)); });
   const {columns:sharedColumns,loaded:designLoaded,save:saveSharedColumnDesign}=sharedDesign;
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -853,7 +853,7 @@ export default function TransmittalTrackerView({toolbarLeading,onDataReady}:{too
     if(id)formulas.selectCell(id,column,true);
     requestAnimationFrame(()=>viewportRef.current?.querySelector<HTMLElement>(`td[data-range-row="${CSS.escape(key)}"][data-range-column="${CSS.escape(column)}"]`)?.focus({preventScroll:true}));
   }});
-  const trackerItems=useVirtualSpreadsheetRows(viewportRef,trackerRowKeys,true,editingCellKey?trackerRowKeys.findIndex(key=>editingCellKey.startsWith(key+":")):trackerRowKeys.indexOf(formulas.selectedIdentity?.replace(/^stop:/,"").replace(":assignment:","~")??""));
+  const trackerItems=useVirtualSpreadsheetRows(viewportRef,trackerRowKeys,true,editingCellKey?trackerRowKeys.findIndex(key=>editingCellKey.startsWith(key+":")):trackerRowKeys.indexOf(formulas.selectedIdentity?.replace(/^stop:/,"").replace(":assignment:","~")??""),rowHeights.heights);
   const saveSelectedTrackerRow = async () => {
     if (rowEditSaving.current || !rowEdit || rowEdit.profileId !== (profile?.id ?? null) || !data?.access.canEdit) return;
     const row = data.rows.find((candidate) => trackerRowKey(candidate) === rowEdit.stopId);
@@ -1309,7 +1309,7 @@ export default function TransmittalTrackerView({toolbarLeading,onDataReady}:{too
       {error&&<div role="alert" className="border-b border-rose-100 px-3 py-2 text-xs text-rose-700">Unable to load tracker records. Your drafts are preserved. Use Retry loading.</div>}
       {!loading&&!error&&data&&!filteredRows.length&&<div role="status" className="border-b border-slate-100 px-3 py-2 text-xs text-slate-500">No eligible transmittal records match this view.</div>}
       <table {...headerFormatting.tableProps} className="spreadsheet-grid w-max min-w-full border-separate border-spacing-0 text-left">
-        <thead className={tableUi.thead}><tr><th scope="col" style={{ top: "var(--spreadsheet-toolbar-height, 36px)", width: SPREADSHEET_GUTTER_WIDTH, minWidth: SPREADSHEET_GUTTER_WIDTH }} className={`${REPORT_GRID_HEADER_CELL_CLASS} sticky left-0 z-[70] spreadsheet-gutter whitespace-nowrap text-center !px-1`}><SpreadsheetRowSelectionHeader active={formatSelection?.mode==="row"&&formatSelection.keys.length>0} checked={allMatchingRowsSelected} partial={formatSelection?.mode==="row"&&formatSelection.keys.length>0&&!allMatchingRowsSelected} disabled={loading||pageNavigationBlocked||selectAllRequest.busy} onChange={checked=>{if(checked)selectAllTrackerRows();else{setFormatSelection(null);setSelectedRows(new Set());setCellSelection(null);setSelectionRecords([]);}}}/></th>{renderedColumns.map((column) => {
+        <thead className={tableUi.thead}><tr style={rowHeights.headerStyle}><th scope="col" style={{ top: "var(--spreadsheet-toolbar-height, 36px)", width: SPREADSHEET_GUTTER_WIDTH, minWidth: SPREADSHEET_GUTTER_WIDTH }} className={`${REPORT_GRID_HEADER_CELL_CLASS} sticky left-0 z-[70] spreadsheet-gutter whitespace-nowrap text-center !px-1`}><SpreadsheetRowSelectionHeader active={formatSelection?.mode==="row"&&formatSelection.keys.length>0} checked={allMatchingRowsSelected} partial={formatSelection?.mode==="row"&&formatSelection.keys.length>0&&!allMatchingRowsSelected} disabled={loading||pageNavigationBlocked||selectAllRequest.busy} onChange={checked=>{if(checked)selectAllTrackerRows();else{setFormatSelection(null);setSelectedRows(new Set());setCellSelection(null);setSelectionRecords([]);}}}/>{rowHeights.headerHandle()}</th>{renderedColumns.map((column) => {
           const width = columnLayout.widths[column.key] ?? defaultTrackerColumnWidth(column);
           const pin = columnLayout.pins[column.key];
           const activeSort = sort?.key === column.key;

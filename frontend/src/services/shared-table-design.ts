@@ -2,7 +2,7 @@ import {apiGet,apiPatch,ApiError,type ApiResponse} from "./api.service";
 export type CellDesign={bold?:boolean;italic?:boolean;underline?:boolean;color?:string|null;backgroundColor?:string|null;fontSize?:number|null;fontFamily?:string|null};
 export type HeaderDesign=CellDesign;
 export type ConfiguredInput={type:"TEXT"|"NUMBER"|"DATE"|"DROPDOWN";options?:Array<{value:string;label:string;color:string|null;active:boolean}>};
-export type ColumnDesign={alias?:string|null;combined?:boolean;input?:ConfiguredInput;header?:HeaderDesign;hidden?:boolean;position?:number;pin?:"left"|"right"|null;color?:string|null;alignment?:"left"|"center"|"right"|null;format?:CellDesign;cells?:Record<string,CellDesign|null>};
+export type ColumnDesign={rowHeights?:Record<string,number|null>;headerHeight?:number|null;alias?:string|null;combined?:boolean;input?:ConfiguredInput;header?:HeaderDesign;hidden?:boolean;position?:number;pin?:"left"|"right"|null;color?:string|null;alignment?:"left"|"center"|"right"|null;format?:CellDesign;cells?:Record<string,CellDesign|null>};
 type Row={table_key?:string;updated_at?:string;updated_by?:string|null;column_key:string;revision:number;width_px:number;design:ColumnDesign};
 export type DesignSnapshot={columns:Record<string,ColumnDesign>;loaded:boolean;saving:boolean;error:string};
 type Layout={order:string[];hidden:string[];colors?:Record<string,string>;pins?:Record<string,"left"|"right">};
@@ -20,7 +20,9 @@ function entry(token:string,table:string){const key=`${token}:${table}`;if(!entr
 function merge(base:ColumnDesign,patch:ColumnDesign,keepTombstones=false):ColumnDesign{
  const cells=patch.cells?{...base.cells,...patch.cells}:undefined;
  if(cells)for(const [key,value] of Object.entries(patch.cells??{})){if(value===null){if(keepTombstones)cells[key]=null;else delete cells[key];}else cells[key]={...base.cells?.[key],...value};}
- return {...base,...patch,...(patch.header?{header:{...base.header,...patch.header}}:{}),...(patch.format?{format:{...base.format,...patch.format}}:{}),...(cells?{cells}:{})};
+ const rowHeights=patch.rowHeights?{...base.rowHeights,...patch.rowHeights}:undefined;
+ if(rowHeights&&!keepTombstones)for(const [key,value] of Object.entries(rowHeights))if(value===null)delete rowHeights[key];
+ return {...base,...patch,...(rowHeights?{rowHeights}:{}),...(patch.header?{header:{...base.header,...patch.header}}:{}),...(patch.format?{format:{...base.format,...patch.format}}:{}),...(cells?{cells}:{})};
 }
 export const mergeColumnDesign = merge;
 export const mergeDesignPatches=(base:ColumnDesign,patch:ColumnDesign)=>merge(base,patch,true);

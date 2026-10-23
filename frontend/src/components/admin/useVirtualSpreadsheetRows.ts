@@ -2,11 +2,11 @@ import { useLayoutEffect, useMemo, useRef, useState, type RefObject } from "reac
 
 type Item = {index:number; spacer?:never} | {index:number;spacer:number};
 /** Variable-height windowing. Gaps keep the real scroll geometry and source indexes. */
-export function useVirtualSpreadsheetRows(ref:RefObject<HTMLDivElement|null>, keys:string[], enabled:boolean, keepAlive=-1) {
- const heights=useRef(new Map<string,number>());
+export function useVirtualSpreadsheetRows(ref:RefObject<HTMLDivElement|null>, keys:string[], enabled:boolean, keepAlive=-1, configuredHeights?:Readonly<Record<string,number>>) {
+ const heights=useRef(new Map<string,{height:number;configured:number|undefined}>());
  const [window,setWindow]=useState({start:0,end:60,revision:0,active:-1});
  const signature=useMemo(()=>keys.join("|"),[keys]);
- const offsets=useMemo(()=>{const values=[0];for(const key of keys)values.push(values[values.length-1]+(heights.current.get(key)??30));return values;},[signature,window.revision]);
+ const offsets=useMemo(()=>{const values=[0];for(const key of keys){const configured=configuredHeights?.[key],measured=heights.current.get(key);values.push(values[values.length-1]+((measured?.configured===configured?measured?.height:undefined)??configured??30));}return values;},[signature,window.revision,configuredHeights]);
  useLayoutEffect(()=>{
   const viewport=ref.current;if(!viewport||!enabled)return;
   let frame=0;
@@ -15,7 +15,8 @@ export function useVirtualSpreadsheetRows(ref:RefObject<HTMLDivElement|null>, ke
    let changed=false;
    for(const row of viewport.querySelectorAll<HTMLTableRowElement>("tr[data-virtual-index]")){
     const index=Number(row.dataset.virtualIndex),key=keys[index],height=row.getBoundingClientRect().height;
-    if(key&&height>0&&Math.abs((heights.current.get(key)??30)-height)>.5){heights.current.set(key,height);changed=true;}
+    const previous=heights.current.get(key),configured=configuredHeights?.[key];
+    if(key&&height>0&&(!previous||previous.configured!==configured||Math.abs(previous.height-height)>.5)){heights.current.set(key,{height,configured});changed=true;}
    }
    const start=Math.max(0,find(viewport.scrollTop)-15),end=Math.min(keys.length,find(viewport.scrollTop+viewport.clientHeight)+15);
    const activeRow=document.activeElement?.closest<HTMLTableRowElement>("tr[data-virtual-index]");
