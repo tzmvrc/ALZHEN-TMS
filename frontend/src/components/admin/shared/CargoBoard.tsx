@@ -1,0 +1,7 @@
+import type { DragEventHandler, ReactNode } from "react";
+import StatChip from "./StatChip";
+export type CargoBoardColumn = { id: string; domId?: string; title: string; count: number; children: ReactNode; summary?: ReactNode; onDragOver?: DragEventHandler<HTMLElement>; onDrop?: DragEventHandler<HTMLElement> };
+/** Presentational board: assignments and validation remain owned by the flow. */
+export default function CargoBoard({ columns, label = "Cargo assignment board" }: { columns: readonly CargoBoardColumn[]; label?: string }) {
+  return <div aria-label={label} className="flex min-w-0 items-start gap-4 overflow-x-auto pb-3 focus-visible:outline-2 focus-visible:outline-[#2678b9]" tabIndex={0}>{columns.map(column => <section id={column.domId} tabIndex={-1} aria-label={column.title} key={column.id} onDragOver={column.onDragOver} onDrop={column.onDrop} className="w-[min(22rem,85vw)] min-w-[min(22rem,85vw)] shrink-0 rounded-2xl border border-slate-200 bg-slate-50/80 p-3 focus-visible:outline-2 focus-visible:outline-[#2678b9]"><header className="mb-3 flex flex-wrap items-center justify-between gap-2"><h4 className="break-words text-sm font-semibold text-[#0b2341]">{column.title}</h4><StatChip label="Lines" value={column.count} /></header>{column.summary && <div className="mb-3 text-xs tabular-nums text-slate-600">{column.summary}</div>}<div className="space-y-3">{column.children}</div></section>)}</div>;
+}

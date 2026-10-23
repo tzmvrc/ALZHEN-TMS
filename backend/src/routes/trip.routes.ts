@@ -48,9 +48,18 @@ import {
   updateTripStop,
 } from "../controllers/trip.controller.js";
 
+import { saveMasterListCell } from "../services/master-list.service.js";
 const router = Router();
+router.patch("/:id/master-list-cell", authMiddleware, requireRole("ADMIN", "STAFF"), async (req, res, next) => {
+  try { return sendSuccess(res, 200, "Master List value saved", await saveMasterListCell(req.profile!.id, String(req.params.id), req.body ?? {})); }
+  catch (error) { next(error); }
+});
 router.get("/import/location", authMiddleware, requireRole("ADMIN", "STAFF"), async (req, res, next) => {
-  try { return sendSuccess(res, 200, "Destination location review", await resolveTripDestination(parseDestination(req.query))); }
+  try {
+    const query = req.query.q;
+    if (query !== undefined && (typeof query !== "string" || query.length > 300)) throw new ApiError("Use an address search of 300 characters or fewer.", 400);
+    return sendSuccess(res, 200, "Destination location review", await resolveTripDestination(parseDestination(req.query), typeof query === "string" ? query : ""));
+  }
   catch (error) { next(error); }
 });
 router.get("/driver-availability",authMiddleware,requireRole("ADMIN","STAFF"),async(req,res,next)=>{try{return sendSuccess(res,200,"Driver availability",await getDriverAvailability(typeof req.query.start==="string"?req.query.start:undefined,typeof req.query.end==="string"?req.query.end:undefined,typeof req.query.exclude_trip_id==="string"?req.query.exclude_trip_id:undefined));}catch(error){next(error);}});

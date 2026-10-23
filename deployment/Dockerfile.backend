@@ -6,6 +6,7 @@ COPY backend/package.json backend/package-lock.json ./
 RUN npm ci
 COPY backend/tsconfig.json ./
 COPY backend/src ./src
+COPY packages/trip-import /packages/trip-import
 COPY backend/scripts/copy-pdf-worker.cjs ./scripts/copy-pdf-worker.cjs
 RUN npm run build
 
@@ -19,6 +20,7 @@ ENV NODE_ENV=production PORT=5000 NODE_OPTIONS=--max-old-space-size=1024
 WORKDIR /app
 COPY --from=dependencies --chown=1000:1000 /app/node_modules ./node_modules
 COPY --from=build --chown=1000:1000 /app/dist ./dist
+COPY --from=build --chown=1000:1000 /packages/trip-import /packages/trip-import
 COPY deployment/container-healthcheck.cjs ./healthcheck.cjs
 RUN mkdir -p /run/pdf && chown 1000:1000 /run/pdf
 USER 1000:1000
@@ -33,6 +35,7 @@ ENV NODE_ENV=production PDF_WORKER_PROCESS=true PDF_WORKER_SOCKET=/run/pdf/rende
 WORKDIR /app
 COPY --from=dependencies --chown=1000:1000 /app/node_modules ./node_modules
 COPY --from=build --chown=1000:1000 /app/dist ./dist
+COPY --from=build --chown=1000:1000 /packages/trip-import /packages/trip-import
 COPY deployment/container-healthcheck.cjs ./healthcheck.cjs
 RUN mkdir -p /run/pdf && chown 1000:1000 /run/pdf
 USER 1000:1000

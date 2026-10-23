@@ -14,6 +14,7 @@ type Target = {
 /** A successful HTTP response alone is not confirmation of this cell's write. */
 export function confirmReportCellWrite(record: Record<string, unknown>, target: Target, field: string, requested?: {value: unknown; editor: ReportEditor}): unknown {
   const id = {
+    masterList: target.tripId,
     trip: target.tripId, stop: target.stopId, lineItem: target.lineItemId,
     assignment: target.assignmentId, billing: target.billingId, storeCall: target.storeCallId, loadingReport: target.loadingReportId,
   }[target.sourceEntity];
@@ -25,6 +26,9 @@ export function confirmReportCellWrite(record: Record<string, unknown>, target: 
   }
   if (target.sourceEntity === "lineItem" && record.trip_stop_id !== target.stopId) {
     throw new Error("The save response belongs to a different stop. Your draft is retained; refresh to verify the record.");
+  }
+  if (target.sourceEntity === "masterList" && ((record.trip_stop_id ?? undefined) !== target.stopId || (record.trip_line_item_id ?? undefined) !== target.lineItemId)) {
+    throw new Error("The save response belongs to a different Master List row.");
   }
   if (requested) {
     const actual = record[field], expected = requested.value;

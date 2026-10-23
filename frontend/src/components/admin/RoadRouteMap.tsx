@@ -18,7 +18,7 @@ export default function RoadRouteMap({rows,mode,selected,onSelect,height=440,off
   map.addControl(new mapboxgl.NavigationControl(),"top-right");
   const load=()=>{if(disposed)return;layer.current=createRoadLayers(map,key=>callback.current(key));setLoaded(true);ready.current?.(map);};
   const failure=()=>{if(!disposed)setError("Map resources could not be loaded. Cached route details remain available.");};
-  const coordinate=(event:mapboxgl.MapMouseEvent)=>pick.current?.({latitude:event.lngLat.lat,longitude:event.lngLat.wrap().lng});
+  const coordinate=(event:mapboxgl.MapMouseEvent)=>{if(event.originalEvent.target instanceof Element&&event.originalEvent.target.closest(".mapboxgl-marker"))return;pick.current?.({latitude:event.lngLat.lat,longitude:event.lngLat.wrap().lng});};
   map.on("click",coordinate);
   map.on("load",load);map.on("error",failure);
   const resize=new ResizeObserver(()=>map.resize());resize.observe(container.current);
@@ -30,7 +30,8 @@ export default function RoadRouteMap({rows,mode,selected,onSelect,height=440,off
   const used=new Set<string>();
   const marker=(id:string,point:{latitude:number;longitude:number},text:string,title:string,key:string)=>{
    used.add(id);let pin=markers.current.get(id);
-   if(!pin){const el=document.createElement("button");el.type="button";el.className=`flex h-7 min-w-7 items-center justify-center border-2 border-white px-1.5 text-[11px] font-bold text-white shadow-md transition-opacity ${text==="W"?"rounded-lg bg-[#0b2341]":text==="T"?"h-8 min-w-8 rounded-full bg-emerald-600 text-sm":text==="Draft"?"rounded-full bg-amber-500":"rounded-full bg-[#2678b9]"}`;el.addEventListener("click",()=>callback.current(key));pin=new mapboxgl.Marker({element:el}).setLngLat([point.longitude,point.latitude]).addTo(map);markers.current.set(id,pin);}
+   if(!pin){const el=document.createElement("button");el.type="button";el.className=`flex h-7 min-w-7 items-center justify-center border-2 border-white px-1.5 text-[11px] font-bold text-white shadow-md transition-opacity ${text==="W"?"rounded-lg bg-[#0b2341]":text==="T"?"h-8 min-w-8 rounded-full bg-emerald-600 text-sm":text==="Draft"?"rounded-full bg-amber-500":"rounded-full bg-[#2678b9]"}`;el.addEventListener("click",()=>callback.current(key));pin=new mapboxgl.Marker({element:el}).setLngLat([point.longitude,point.latitude]).addTo(map);markers.current.set(id,pin);if(id==="coordinate-draft")pin.on("dragend",()=>{const point=pin!.getLngLat().wrap();pick.current?.({latitude:point.lat,longitude:point.lng});});}
+   if(id==="coordinate-draft")pin.setDraggable(Boolean(onCoordinatePick));
    pin.setLngLat([point.longitude,point.latitude]);pin.getElement().textContent=text==="T"?"🚚":text;pin.getElement().title=title;pin.getElement().setAttribute("aria-label",title);pin.getElement().style.opacity=key===selected?"1":"0.65";
   };
   for(const row of rows){const view=roadDisplayView(row,mode,now);
@@ -40,10 +41,11 @@ export default function RoadRouteMap({rows,mode,selected,onSelect,height=440,off
   }
   if(validPoint(draftPoint))marker("coordinate-draft",draftPoint,"Draft","Unsaved coordinate draft",selected);
   for(const [id,pin] of markers.current)if(!used.has(id)){pin.remove();markers.current.delete(id);}
+  if(!rows.length&&validPoint(draftPoint)){const center:[number,number]=[draftPoint.longitude,draftPoint.latitude];if(fitted.current!=="coordinate-draft"||!map.getBounds()?.contains(center)){map.jumpTo({center,zoom:15});fitted.current="coordinate-draft";}return;}
   const chosen=rows.find(r=>r.key===selected),view=chosen?roadDisplayView(chosen,mode,now):null;
   const identity=`${selected}:${mode}:${JSON.stringify(view?.geometry??chosen?.stops.map(s=>[s.id,s.point]))}`;
   if(identity!==fitted.current){fitted.current=identity;const anchors:[number,number][]=[chosen?.warehouse.point,...(view?.stops.map(s=>s.point)??chosen?.stops.map(s=>s.point)??[]),chosen?.position].filter(validPoint).map(p=>[p.longitude,p.latitude]);const points:[number,number][]=[...(view?.geometry?.coordinates??[]) as [number,number][],...anchors];if(points.length){const bounds=new mapboxgl.LngLatBounds(points[0],points[0]);points.forEach(p=>bounds.extend(p));map.fitBounds(bounds,{padding:55,maxZoom:15,duration:0});}}
- },[rows,mode,selected,loaded,draftPoint]);
+ },[rows,mode,selected,loaded,draftPoint,onCoordinatePick]);
  return <div className="space-y-2">
   <div className="relative overflow-hidden rounded-2xl bg-[#eceff3] ring-1 ring-slate-900/5">
    <div ref={container} style={{height}} aria-label="Road routes map"/>

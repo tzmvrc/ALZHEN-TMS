@@ -1,4 +1,5 @@
 import {runMasterImageCleanup} from "./master-image-cleanup.service.js";
+import { invalidateDeliveryLocationLookup } from "./trip-location.service.js";
 import { ApiError } from "../utils/api-response.js";
 import { locationVerificationAvailable } from "./location-verification.schema.js";
 import { supabaseAdmin } from "../config/supabase.js";
@@ -167,6 +168,8 @@ async function saveMasterDataRecord(resource: string, input: Record<string, unkn
   if (id && !uuidPattern.test(id)) throw new Error("Invalid master-data record id.");
   const config = getConfig(resource);
   const payload = buildPayload(resource, input, creating);
+  let locationReviewVersion: string | undefined;
+  if (input.location_review === true && (resource !== "stores" || !id)) throw new Error("Select an existing store before saving its reviewed location.");
   if (creating && resource==="products" && !payload.sku && !payload.model_code) throw new Error("SKU or model code is required to identify the product.");
   if (!Object.keys(payload).length) throw new Error("Enter at least one field to save.");
   await validatePayloadRelationships(resource, payload);
@@ -175,6 +178,12 @@ async function saveMasterDataRecord(resource: string, input: Record<string, unkn
     if (!supported && payload.location_verified === true) throw new Error("Location verification requires the reviewed trip_workflow_completion migration.");
     let current:Record<string,unknown>={};
     if(id){const result=await supabaseAdmin.from(config.table).select("*").eq("id",id).maybeSingle();if(result.error||!result.data)throw new Error("Unable to validate existing location.");current=result.data;}
+    if (input.location_review === true) {
+      if (input.pin_address_mismatch === true) throw new ApiError("Review the address against the moved map pin before saving.", 400, "LOCATION_PIN_ADDRESS_MISMATCH");
+      if (typeof current.updated_at !== "string") throw new Error("Unable to confirm the current store location version.");
+      if (current.location_verified === true && ["address", "province", "city", "latitude", "longitude"].some(key => String(payload[key] ?? current[key] ?? "") !== String(current[key] ?? "")) && input.replace_verified !== true) throw new ApiError("The store has a verified location. Confirm replacement before saving changes.", 409, "LOCATION_REPLACEMENT_REQUIRED");
+      locationReviewVersion = current.updated_at;
+    }
     const location={...current,...payload};
     const hasLatitude=location.latitude!==null&&location.latitude!==undefined&&location.latitude!=="",hasLongitude=location.longitude!==null&&location.longitude!==undefined&&location.longitude!=="";
     if(hasLatitude!==hasLongitude)throw new Error("Latitude and longitude must be supplied together.");
@@ -221,15 +230,18 @@ async function saveMasterDataRecord(resource: string, input: Record<string, unkn
   const builder = creating
     ? table.insert(payload)
     : table.update({ ...payload, updated_at: new Date().toISOString() }).eq("id", id!);
+  if (locationReviewVersion) builder.eq("updated_at", locationReviewVersion);
   const verification=["warehouses","stores"].includes(resource)&&await locationVerificationAvailable();
   const { data, error } = await builder.select(config.select+(verification?",location_verified,location_verified_at":"")).single();
   if (error) {
+    if (locationReviewVersion && error.code === "PGRST116") throw new ApiError("The store location changed while saving. Reload the store and review it before retrying.", 409, "LOCATION_REVIEW_CONFLICT");
     console.error("Master-data save failed:", { resource, id, error });
     if (error.code === "23505") throw new Error("A record with this identifier already exists.");
     if (error.code === "23503") throw new Error("A related master-data record is no longer available.");
     if (error.code === "23514") throw new Error("One of the entered values is not allowed.");
     throw new Error("Unable to save this master-data record.");
   }
+  if (locationReviewVersion && typeof data?.name === "string") invalidateDeliveryLocationLookup(data.name);
   return data;
 }
 

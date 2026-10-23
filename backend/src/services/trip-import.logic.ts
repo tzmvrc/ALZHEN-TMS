@@ -1,18 +1,15 @@
 import { createHash } from "node:crypto";
+import { masterImportValues } from "./master-list-import.logic.js";
+import { SOURCE_FIELD_LABELS, mappingConflicts, type ImportField } from "../../../packages/trip-import/index.js";
+import type { TripDetails } from "../../../packages/trip-import/trip-details.js";
 
-export const SOURCE_FIELDS = {
-  sp_reference: "SP", ph_truck_reference: "PH TRUCK NAME", dn_reference: "DN", dr_number: "DR",
-  order_item_number: "Order Item No.", customer_name: "Customer Name", ship_to: "Ship To",
-  sap_so_number: "SAP SO No.", so_number: "SO NO.", customer_po_number: "Customer PO",
-  internal_po_number: "PO NO.", product_category: "Product Category", province: "Province", city: "City",
-  customer_model: "Customer Model", quantity: "Qty", stock_quantity: "stocks", source_warehouse: "Warehouse",
-  unit_cbm: "CBM", cbm: "Total CBM", so_approval_date: "SO Approval Date", item_status: "Item Status",
-} as const;
+export const SOURCE_FIELDS = SOURCE_FIELD_LABELS;
 export type SourceField = keyof typeof SOURCE_FIELDS;
 export type SourceValues = Record<SourceField, string | null>;
-export type SourceFile = { name: string; rows: Array<{ line: number; values: Record<string, unknown>; group: string; original_values?: Record<string,string>; unmapped?: Record<string, string> }> };
-export type ImportTarget = { mode: "new" | "dispatch" | "trip"; value: string; allow_create: boolean; warehouse_ids?: Record<string,string>; origin_warehouse_id?: string };
+export type SourceFile = { name: string; headers?: string[]; column_mapping?: Array<ImportField|null>; mapping_errors?: string[]; rows: Array<{ line: number; values: Record<string, unknown>; group: string; original_values?: Record<string,string>; unmapped?: Record<string, string> }> };
+export type ImportTarget = { mode: "new" | "dispatch" | "trip"; value: string; allow_create: boolean; warehouse_ids?: Record<string,string>; origin_warehouse_id?: string; trip_details?: TripDetails };
 export type ImportRow = {
+  master_values?: Record<string, string | null>;
   filename: string; line: number; group: string; values: SourceValues; errors: string[]; warnings: string[];
   document_hash: string; source_identity: string; fingerprint: string; signature?: string;
   duplicate?: boolean; potential_duplicate?: boolean;
@@ -58,9 +55,16 @@ export function prepareImport(files: SourceFile[]): ImportRow[] {
   const result: ImportRow[] = [];
   for (const file of files) {
     if (!file || typeof file.name !== "string" || !Array.isArray(file.rows)) throw new Error("Invalid import file.");
+    if (file.headers !== undefined) {
+      if (!Array.isArray(file.headers) || file.headers.some(header => typeof header !== "string")) throw new Error("Invalid source headers.");
+      const conflicts = mappingConflicts(file.headers, file.column_mapping ?? []);
+      if (conflicts.length) throw new Error(`${file.name}: ${conflicts.join(" ")}`);
+    }
+    if (file.mapping_errors?.length) throw new Error(`${file.name}: resolve conflicting column mappings before checking rows.`);
     const rows = file.rows.map(row => {
       if (!row || !Number.isSafeInteger(row.line) || row.line < 1 || !row.values || typeof row.group !== "string") throw new Error("Invalid source row.");
       const errors: string[] = [], warnings: string[] = [];
+      const master_values = masterImportValues(row.values, warnings, errors);
       const values = Object.fromEntries(Object.keys(SOURCE_FIELDS).map(key => {
         const raw = row.values[key];
         if (raw !== null && raw !== undefined && typeof raw !== "string" && typeof raw !== "number") throw new Error(`Invalid ${key} value.`);
@@ -82,12 +86,12 @@ export function prepareImport(files: SourceFile[]): ImportRow[] {
         if (typeof value !== "string") throw new Error("Unmapped source cells must be text.");
         return [key, value];
       }));
-      return { ...row, values, errors, warnings, unmapped };
+      return { ...row, values, errors, warnings, unmapped, master_values };
     });
     // Filename and grouping are deliberately excluded: renaming a file or changing a trip cannot duplicate it.
-    const document_hash = digest(rows.map(row => Object.keys(row.unmapped).length ? [row.values, row.unmapped] : row.values));
+    const document_hash = digest(rows.map(row => Object.keys(row.master_values).length ? [row.values, row.unmapped, row.master_values] : Object.keys(row.unmapped).length ? [row.values, row.unmapped] : row.values));
     for (const [index, row] of rows.entries()) result.push({ filename: file.name, line: row.line, group: row.group.trim(), values: row.values, errors: row.errors, warnings: row.warnings, unmapped: row.unmapped, original_values: row.original_values,
-      document_hash, source_identity: digest([document_hash, index]), fingerprint: rowFingerprint(row.values) });
+      master_values: row.master_values, document_hash, source_identity: digest([document_hash, index]), fingerprint: rowFingerprint(row.values) });
   }
   return result;
 }

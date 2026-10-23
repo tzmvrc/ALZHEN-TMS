@@ -1,31 +1,45 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { customerStoreKey, storeLocationLabel } from "../../services/store-location";
-import TripTablePreview, { type TripPreviewRow } from "./TripTablePreview";
+import type { TripPreviewRow } from "./TripTablePreview";
+import type { LocationDecision } from "./ImportDestinationReview";
+import { StoreMasterDetail, StoreProductsTable, SectionCard, StatusChip } from "./shared";
+import { cbmDisplay } from "../../services/cbm-display";
+import { invalidProduct, navigationNumber, useStoreWorkspaceMemory, type StoreNavigationItem, type StoreWorkspaceMemory } from "./shared/storeWorkspace";
 
 export type StoreProductPreviewRow = {
   source_identity: string; values: Record<string, string | null>; group: string;
   filename?: string; line?: number; duplicate?: boolean; store_only?: boolean;
   preview?: TripPreviewRow;
+  file_id?: string; navigation_store_id?: string; navigation_row_id?: string; location_verified?: boolean; errors?: readonly string[];
 };
 
 /** Keep individual source products intact; only their destination is grouped. */
-export default function ImportStoreProductsPreview({ rows }: { rows: StoreProductPreviewRow[] }) {
-  const [selected, setSelected] = useState("");
-  const [storePage, setStorePage] = useState(0);
+export default function ImportStoreProductsPreview({ rows, navigation, locations }: { rows: StoreProductPreviewRow[]; navigation?: StoreWorkspaceMemory; locations?: Record<string, LocationDecision> }) {
+  const local = useStoreWorkspaceMemory(), memory = navigation ?? local;
+  const rowId = (row: StoreProductPreviewRow) => row.navigation_row_id ?? (row.file_id != null && row.line != null ? `${row.file_id}:${row.line}` : row.source_identity);
   const stores = useMemo(() => {
-    const grouped = new Map<string, { key: string; values: StoreProductPreviewRow["values"]; groups: Set<string>; products: StoreProductPreviewRow[] }>();
+    const grouped = new Map<string, { key: string; values: StoreProductPreviewRow["values"]; source: StoreProductPreviewRow; groups: Set<string>; products: StoreProductPreviewRow[] }>();
     for (const row of rows) {
-      const key = customerStoreKey(row.values);
+      const key = row.navigation_store_id ?? customerStoreKey(row.values);
       let store = grouped.get(key);
-      if (!store) { store = { key, values: row.values, groups: new Set(), products: [] }; grouped.set(key, store); }
+      if (!store) { store = { key, values: row.values, source: row, groups: new Set(), products: [] }; grouped.set(key, store); }
       store.groups.add(row.group);
       if (!row.store_only) store.products.push(row);
     }
     return [...grouped.values()];
   }, [rows]);
+  const items: StoreNavigationItem[] = stores.map(store => {
+    const location = locations?.[customerStoreKey(store.values)];
+    return { id: store.source.navigation_store_id ?? rowId(store.source), title: store.values.ship_to || "Unassigned store", customer: store.values.customer_name ?? "", city: store.values.city ?? "", province: store.values.province ?? "",
+      products: store.products.length, qty: store.products.reduce((sum, row) => sum + navigationNumber(row.values.quantity), 0), cbm: store.products.reduce((sum, row) => sum + navigationNumber(row.values.cbm), 0),
+      status: store.products.some(row => row.errors?.length || invalidProduct(row.values)) ? "attention" : !store.values.province?.trim() || !store.values.city?.trim() || !(store.source.location_verified || location?.verified || location?.store_verified) ? "location" : "ready",
+      members: [rowId(store.source), ...store.products.map(rowId)], searchText: [Object.values(store.values).join(" "), ...store.products.map(row => Object.values(row.values).join(" "))].join(" ") };
+  });
   if (!stores.length) return null;
-  const current = Math.min(storePage, Math.floor((stores.length - 1) / 20));
-  const store = stores.find(item => item.key === selected) ?? stores[0];
+  return <section aria-label="Stores and their products" className="space-y-4">
+    <div><h3 className="text-sm font-semibold text-[#0b2341]">Stores &amp; products by delivery location</h3><p className="mt-1 text-xs text-slate-500">Select a store to review its original product lines and trip groups. Use the input forms to make changes.</p></div>
+    <StoreMasterDetail items={items} memory={memory}>{item => {
+      const store = stores.find(candidate => (candidate.source.navigation_store_id ?? rowId(candidate.source)) === item.id)!;
   const products: TripPreviewRow[] = store.products.map(row => ({
     store: row.values.ship_to ?? "", customer: row.values.customer_name ?? "",
     province: row.values.province ?? "", city: row.values.city ?? "",
@@ -38,16 +52,20 @@ export default function ImportStoreProductsPreview({ rows }: { rows: StoreProduc
     source: row.filename ? `${row.filename}${row.line == null ? "" : `, row ${row.line}`}` : "Manual entry",
     ...row.preview,
   }));
-  const cell = "border-b border-slate-100 px-3 py-2.5 text-left align-top";
-  return <section aria-label="Stores and their products" className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-    <div className="p-4 sm:p-5"><h3 className="text-sm font-semibold text-[#0b2341]">Stores &amp; products by delivery location</h3><p className="mt-1 text-xs text-slate-500">Each Ship To + Province + City is a separate store location within its customer. All products for that location appear together, with their original trip groups preserved.</p></div>
-    <div className="overflow-x-auto"><table className="w-full text-xs"><thead className="bg-slate-50 text-slate-600"><tr>{["Ship To", "Province", "City", "Customer / trip group", "Products"].map(label => <th key={label} className={cell}>{label}</th>)}</tr></thead><tbody>
-      {stores.slice(current * 20, current * 20 + 20).map(item => <tr key={item.key} className={item.key === store.key ? "bg-blue-50/60" : ""}>
-        <td className={cell}>{item.values.ship_to}</td><td className={cell}>{item.values.province || "Missing province"}</td><td className={cell}>{item.values.city || "Missing city"}</td><td className={cell}>{item.values.customer_name}<span className="mt-1 block text-slate-500">{[...item.groups].join(", ")}</span></td>
-        <td className={cell}><button type="button" aria-pressed={item.key === store.key} className="whitespace-nowrap font-medium text-[#2678b9] hover:underline" onClick={() => setSelected(item.key)}>{item.products.length} product line{item.products.length === 1 ? "" : "s"} — View</button></td>
-      </tr>)}
-    </tbody></table></div>
-    {stores.length > 20 && <div className="flex items-center justify-end gap-3 p-3 text-xs"><button type="button" disabled={!current} onClick={() => setStorePage(current - 1)}>Previous stores</button><span>{current + 1} / {Math.ceil(stores.length / 20)}</span><button type="button" disabled={(current + 1) * 20 >= stores.length} onClick={() => setStorePage(current + 1)}>Next stores</button></div>}
-    <div className="border-t border-slate-200 bg-slate-50/60 p-4"><TripTablePreview key={store.key} rows={products} title={`Products for ${storeLocationLabel(store.values)}`} description="Read-only preview. Each product stays linked to this store location. Use the input forms to make changes." productColumns /></div>
+      return <SectionCard title={`Products for ${storeLocationLabel(store.values)}`} description={`${store.values.customer_name ?? ""} \u00b7 ${[...store.groups].join(", ")}`}>
+        <StoreProductsTable rows={store.products} storeId={item.id} memory={memory} rowKey={rowId} searchText={row => [Object.values(row.values).join(" "), row.group, row.filename, row.line, ...Object.values(row.preview ?? {})].join(" ")}
+          columns={[
+            { key: "code", label: "Product code", render: row => row.preview?.product ?? row.values.customer_model ?? "\u2014" },
+            { key: "qty", label: "Qty", render: row => row.preview?.qty ?? row.values.quantity ?? "\u2014" },
+            { key: "cbm", label: "Total CBM", render: row => cbmDisplay(row.preview?.cbm ?? row.values.cbm) },
+            { key: "dr", label: "DR", render: row => row.preview?.dr ?? row.values.dr_number ?? "\u2014" },
+            { key: "status", label: "Status", render: row => <StatusChip label={row.errors?.length || invalidProduct(row.values) ? "Needs attention" : row.duplicate ? "Duplicate - skipped on save" : row.preview?.status || "Not saved"} tone={row.errors?.length || invalidProduct(row.values) || row.duplicate ? "warning" : "neutral"} /> },
+          ]}
+          renderMore={row => {
+            const product = products[store.products.indexOf(row)];
+            return <div className="space-y-3"><dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{Object.entries({ ...row.values, ...product }).map(([key, value]) => <div key={key}><dt className="text-xs font-medium text-slate-500">{key.replace(/_/g, " ")}</dt><dd className="mt-1 break-words text-xs text-slate-800 tabular-nums">{value || "\u2014"}</dd></div>)}</dl>{Boolean(row.errors?.length) && <p className="text-xs text-rose-700">{row.errors?.join(" / ")}</p>}</div>;
+          }} />
+      </SectionCard>;
+    }}</StoreMasterDetail>
   </section>;
 }

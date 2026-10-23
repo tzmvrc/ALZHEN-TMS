@@ -41,6 +41,7 @@ export const REPORT_REALTIME_TABLES: Record<ReportKey, readonly string[]> = {
     "warehouses",
   ],
   "dispatch-monitoring": [
+    "trip_line_items", "products", "incidents", "backloads", "offloads", "pod_records", "billings",
     "loading_reports",
     "flex_cells", "flex_rows", "flex_columns", "flex_tables",
     "trips",

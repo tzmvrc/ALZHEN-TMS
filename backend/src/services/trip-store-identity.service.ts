@@ -6,8 +6,13 @@ import { destinationLookupKey, storeIdentityText, type Destination } from "./tri
 type Decision = Record<string, unknown>;
 type Store = { id: string; customer_id: string; name: string; province: string | null; city: string | null };
 const pattern = (name: string) => name.trim().split(/\s+/).map(part => part.replace(/[\\%_]/g, "\\$&")).join("%");
+const matchesLocation = (store: Store, source: Destination) => storeIdentityText(store.name) === storeIdentityText(source.ship_to)
+  && (["province", "city"] as const).every(field => !source[field] || storeIdentityText(store[field]) === storeIdentityText(source[field]));
+const knownGeography = (store: Store, decision: Decision): Decision => ({ ...decision,
+  province: decision.province || store.province || "", city: decision.city || store.city || "" });
 
-/** Resolve only by customer + full location identity, never by Ship To alone.
+/** Resolve by customer + name and all supplied geography, never by name alone.
+ * Missing optional geography is accepted only for a unique existing branch.
  * New locations use the existing RPC's customer-scoped code identity so the
  * installed resolver can create same-name branches without a schema change.
  */
@@ -35,14 +40,14 @@ export function importStoreResolver() {
     if (!stores.has(key)) stores.set(key, (async () => {
       const rows: Store[] = [];
       for (let offset = 0; ; offset += 1000) {
-        const result = await db.from("customer_stores").select("id,customer_id,name,province,city").eq("customer_id", customer).ilike("name", pattern(source.ship_to)).order("id").range(offset, offset + 999);
+        const result = await db.from("customer_stores").select("id,customer_id,name,province,city").eq("status", "ACTIVE").eq("customer_id", customer).ilike("name", pattern(source.ship_to)).order("id").range(offset, offset + 999);
         if (result.error) throw result.error;
         rows.push(...(result.data ?? []).filter(row => storeIdentityText(row.name) === storeIdentityText(source.ship_to)));
         if ((result.data?.length ?? 0) < 1000) break;
       }
       return rows;
     })());
-    return (await stores.get(key)!).filter(row => destinationLookupKey({ ship_to: row.name, province: row.province ?? "", city: row.city ?? "" }) === destinationLookupKey(source));
+    return (await stores.get(key)!).filter(row => matchesLocation(row, source));
   }
   return async (source: Destination, decision: Decision): Promise<Decision> => {
     for (const field of ["province", "city"] as const) {
@@ -56,21 +61,21 @@ export function importStoreResolver() {
     if (decision.store_id) {
       const id = String(decision.store_id);
       if (!selectedStores.has(id)) selectedStores.set(id, (async () => {
-        const selected = await db.from("customer_stores").select("id,customer_id,name,province,city").eq("id", id).maybeSingle();
+        const selected = await db.from("customer_stores").select("id,customer_id,name,province,city").eq("status", "ACTIVE").eq("id", id).maybeSingle();
         if (selected.error) throw selected.error;
         return selected.data;
       })());
       const store = await selectedStores.get(id)!;
-      if (!store || (customer && customer !== store.customer_id) || destinationLookupKey({ ship_to: store.name, province: store.province ?? "", city: store.city ?? "" }) !== destinationLookupKey(location)) {
+      if (!store || (customer && customer !== store.customer_id) || !matchesLocation(store, location)) {
         throw new ApiError(`The selected store does not match ${source.ship_to} / ${location.province || "Missing province"} / ${location.city || "Missing city"}. Select the matching branch or create this location.`, 400);
       }
-      return { ...resolved, customer_id: store.customer_id };
+      return knownGeography(store, { ...resolved, customer_id: store.customer_id });
     }
     customer ??= await customerId(source.customer_name ?? "");
     if (customer) {
       const matches = await matchingStores(customer, location);
       if (matches.length > 1) throw new ApiError(`Multiple store records match ${source.ship_to} / ${location.province} / ${location.city}. Select the correct store identity.`, 400);
-      if (matches.length === 1) return { ...resolved, customer_id: customer, store_id: matches[0].id };
+      if (matches.length === 1) return knownGeography(matches[0], { ...resolved, customer_id: customer, store_id: matches[0].id });
     }
     // Use a new namespace: older IMP codes removed punctuation from identities.
     // Exact legacy locations were already reused by ID above.

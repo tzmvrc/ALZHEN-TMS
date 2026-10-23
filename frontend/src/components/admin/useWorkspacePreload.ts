@@ -19,7 +19,8 @@ export function useWorkspacePreload(token:string|null,active:string,ready=true){
   void(async()=>{
    await pause(2000);
    const jobs=[...WORKSPACE_SHEETS.map(sheet=>({key:sheet.key,run:async()=>{
-    await fetchReportPage(sheet.report,token,{...getInitialReportPageOptions(sheet.report),limit:sheet.key==="trips"?200:50});
+    const options=getInitialReportPageOptions(sheet.report);
+    await fetchReportPage(sheet.report,token,{...options,limit:sheet.key==="trips"?200:50,filters:sheet.key==="trips"?{...options.filters,source_lines:"true"}:options.filters});
     if(controller.signal.aborted)return;
     await refreshSharedDesign(token,sheet.key==="trips"?"trips":`report:${sheet.report}`);
     if(!controller.signal.aborted)await refreshSharedWidths(token,sheet.key==="trips"?"trips":`report:${sheet.report}`);

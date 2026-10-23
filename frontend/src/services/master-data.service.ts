@@ -3,7 +3,7 @@ import { ApiError, apiGet, apiGetCached, getCachedApiResponse, invalidateApiCach
 export type MasterDataKey = "customers" | "warehouses" | "trucks" | "stores" | "store-contacts" | "products" | "drivers" | "trucking-companies";
 export type MasterDataRow = Record<string, unknown> & { id: string };
 export type MasterDataPage = { location_verification_supported?:boolean; rows: MasterDataRow[]; pagination: { page: number; limit: number; total: number; totalPages: number } };
-export type LocationSearchResult = { display_name: string; latitude: number; longitude: number };
+export type LocationSearchResult = { display_name: string; latitude: number; longitude: number; name?: string; provinces?: string[]; cities?: string[]; country_code?: string; result_type?: string; provider?: "geoapify" | "nominatim" };
 export type SavedMapLocation = {
   id: string;
   kind: "warehouse" | "store";

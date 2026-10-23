@@ -5,15 +5,15 @@ import type { ColumnDesign, HeaderDesign } from "../../services/shared-table-des
 import type { ReportCellFormat } from "./ReportSpreadsheetUtils";
 
 /** Header selection is ephemeral. Only validated header appearance patches use shared persistence. */
-export function useSpreadsheetHeaderFormatting(scope: string, canEdit: boolean, columns: Record<string, ColumnDesign>, save: (key: string, patch: HeaderDesign) => void, saveAlias?: (key: string, alias: string | null) => void, saveInput?: (key: string, input: NonNullable<ColumnDesign["input"]>) => void) {
+export function useSpreadsheetHeaderFormatting(scope: string, canEdit: boolean, columns: Record<string, ColumnDesign>, save: (key: string, patch: HeaderDesign) => void, saveAlias?: (key: string, alias: string | null) => void, saveInput?: (key: string, input: NonNullable<ColumnDesign["input"]>) => void, fixedHeaders?: Readonly<Record<string, { backgroundColor: string; color: string }>>) {
   const surfaceRef = useSpreadsheetSurface(scope, columns);
   const [selection, setSelection] = useState<{ scope: string; key: string } | null>(null);
   const key = canEdit && selection?.scope === scope ? selection.key : null;
   const [configuring,setConfiguring]=useState<{key:string;title:string}|null>(null);
   const [rename, setRename] = useState<{scope:string;key:string;value:string;original:string}|null>(null);
   const renameRef=useRef(rename);renameRef.current=rename;
-  const finishRename=(commit:boolean)=>{const draft=renameRef.current;if(!draft)return;renameRef.current=null;setRename(null);if(commit&&draft.value.trim()&&draft.value.trim()!==draft.original)saveAlias?.(draft.key,draft.value.trim());};
-  const startRename = (key:string, fallback:string) => { if(canEdit && saveAlias) setRename({scope,key,value:columns[key]?.alias || fallback,original:columns[key]?.alias || fallback}); };
+  const finishRename=(commit:boolean)=>{const draft=renameRef.current;if(!draft)return;renameRef.current=null;setRename(null);if(commit&&!fixedHeaders?.[draft.key]&&draft.value.trim()&&draft.value.trim()!==draft.original)saveAlias?.(draft.key,draft.value.trim());};
+  const startRename = (key:string, fallback:string) => { if(canEdit && saveAlias && !fixedHeaders?.[key]) setRename({scope,key,value:columns[key]?.alias || fallback,original:columns[key]?.alias || fallback}); };
   const clear = () => setSelection(null);
   const props = (column: string) => ({
     "data-spreadsheet-column": column,
@@ -33,13 +33,14 @@ export function useSpreadsheetHeaderFormatting(scope: string, canEdit: boolean, 
     },
   });
   const format = key ? columns[key]?.header ?? {} : {};
+  const fixedHeader = key ? fixedHeaders?.[key] : undefined;
   return { key, props, clear, startRename,
     menuPosition:(event:MouseEvent<HTMLElement>)=>{event.preventDefault();event.stopPropagation();return {left:Math.max(8,Math.min(event.clientX,window.innerWidth-248)),top:Math.max(8,Math.min(event.clientY,window.innerHeight-368))};},
     configure: (key:string,title:string) => { if(canEdit) setConfiguring({key,title}); },
     configuration: configuring ? <SpreadsheetColumnConfiguration key={configuring.key} title={configuring.title} columnKey={configuring.key} value={columns[configuring.key]?.input} onClose={()=>setConfiguring(null)} onSave={input=>saveInput?.(configuring.key,input)} /> : null,
 
-    title: (key:string, fallback:string) => columns[key]?.alias || fallback,
-    restoreTitle: (key:string) => { if(canEdit) saveAlias?.(key,null); },
+    title: (key:string, fallback:string) => fixedHeaders?.[key] ? fallback : columns[key]?.alias || fallback,
+    restoreTitle: (key:string) => { if(canEdit && !fixedHeaders?.[key]) saveAlias?.(key,null); },
     editor: (key:string) => rename?.scope === scope && rename.key === key ? <input autoFocus onFocus={event=>event.currentTarget.select()} aria-label="Column display name" maxLength={100} value={rename.value} onChange={event=>{const next={...rename,value:event.target.value};renameRef.current=next;setRename(next);}} onClick={event=>event.stopPropagation()} onDoubleClick={event=>event.stopPropagation()} onKeyDown={event=>{event.stopPropagation();if(event.key==="Escape"){event.preventDefault();finishRename(false);}if(event.key==="Enter"){event.preventDefault();finishRename(true);}}} onBlur={()=>finishRename(true)} className="spreadsheet-header-editor absolute inset-0 z-[90] h-full w-full min-w-0 border-0 bg-inherit px-1 py-0 font-inherit text-inherit outline-none" style={{font:"inherit",color:"inherit",borderRadius:0,boxShadow:"none"}}/> : null,
 
     tableProps: { ref: surfaceRef,
@@ -56,10 +57,10 @@ export function useSpreadsheetHeaderFormatting(scope: string, canEdit: boolean, 
       }
       if ((event.target as Element).closest("tbody td,tbody th")) clear();
     }, onFocusCapture: (event: { target: EventTarget }) => { if ((event.target as Element).closest("tbody td,tbody th")) clear(); } },
-    toolbarProps: { headerOnly: Boolean(key), ...(key ? { selectedCellCount: 1, selectedTextColor: format.color ?? null, selectedBackgroundColor: format.backgroundColor ?? null, selectedFontSize: format.fontSize ?? columns[key]?.format?.fontSize ?? 12, onApply: (change: Partial<ReportCellFormat>) => {
+    toolbarProps: { headerOnly: Boolean(key), colorsLocked: Boolean(fixedHeader), ...(key ? { selectedCellCount: 1, selectedTextColor: fixedHeader?.color ?? format.color ?? null, selectedBackgroundColor: fixedHeader?.backgroundColor ?? format.backgroundColor ?? null, selectedFontSize: format.fontSize ?? columns[key]?.format?.fontSize ?? 12, onApply: (change: Partial<ReportCellFormat>) => {
       const patch: HeaderDesign = {};
-      if ("color" in change) patch.color = change.color || null;
-      if ("backgroundColor" in change) patch.backgroundColor = change.backgroundColor || null;
+      if (!fixedHeader && "color" in change) patch.color = change.color || null;
+      if (!fixedHeader && "backgroundColor" in change) patch.backgroundColor = change.backgroundColor || null;
       if ("fontSize" in change && (change.fontSize === null || Number.isInteger(change.fontSize) && Number(change.fontSize) >= 9 && Number(change.fontSize) <= 32)) patch.fontSize = change.fontSize;
       if (Object.keys(patch).length) save(key, patch);
     } } : {}) },

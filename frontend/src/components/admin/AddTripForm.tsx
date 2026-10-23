@@ -1,10 +1,18 @@
+import TripLiveSummary from "./shared/TripLiveSummary";
+import { verifiedStoreCoordinates } from "../../services/trip-location.service";
+import StoreAddressReview from "./StoreAddressReview";
+import type { LocationDecision } from "./ImportDestinationReview";
+import { saveMasterData } from "../../services/master-data.service";
+import { secondaryAction } from "./shared/styles";
+import { useStoreWorkspaceMemory, invalidProduct, type StoreNavigationItem } from "./shared/storeWorkspace";
+import { SectionCard, EmptyState, StoreMasterDetail, StoreProductsTable, StatusChip } from "./shared";
 import TripCargoPlanner from "./TripCargoPlanner";
 import { cargoSignature, calculatedCbm, emptyCargoPlan, validateCargo, type CargoLine, type CargoTruck } from "../../services/cargo-planning";
 // src/pages/Admin/views/AddTripForm.tsx
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import {
   ChevronLeft, ChevronRight, ChevronDown, Plus, Trash2, X, Check, RefreshCw, Search,
-  MapPin, Pencil, SlidersHorizontal, Package, Upload, Loader2, Truck
+  MapPin, Pencil, Package, Upload, Loader2, Truck
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import SearchableRelationshipEditor from "./SearchableRelationshipEditor";
@@ -70,7 +78,7 @@ type ItemDraft = {
 };
 type StopDraft = {
   key: number; storeId: string; pendingDestination?: string; customerId?: string; customer: string; city: string; province: string; address: string;
-  editLocation: boolean; collapsed: boolean; items: ItemDraft[]; importNotes: string;
+  location?: LocationDecision; locationSaved?: boolean; editLocation: boolean; collapsed: boolean; items: ItemDraft[]; importNotes: string;
 };
 type TruckAssignmentDraft = { key: number; truckId: string; driverId: string; availabilityConfirmed?: boolean };
 
@@ -237,15 +245,7 @@ function Tabs({ current, onJump, disabled }: { current: number; onJump: (i: numb
 }
 
 function Section({ title, description, children, className = "" }: { title: string; description?: string; children: ReactNode; className?: string }) {
-  return (
-    <section className={`overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm ${className}`}>
-      <div className="border-b border-slate-100 bg-slate-50/50 px-5 py-4">
-        <h4 className="text-sm font-semibold text-[#0b2341]">{title}</h4>
-        {description && <p className="mt-1 text-xs text-slate-500">{description}</p>}
-      </div>
-      <div className="p-5">{children}</div>
-    </section>
-  );
+  return <SectionCard title={title} description={description} className={className}>{children}</SectionCard>;
 }
 
 /* ───────────────────────────── main component ───────────────────────────── */
@@ -296,6 +296,8 @@ export default function AddTripForm({
   const bodyRef = useRef<HTMLDivElement>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [locationSaving, setLocationSaving] = useState<number | null>(null);
+  const storeNavigation = useStoreWorkspaceMemory();
   const [stopsView, setStopsView] = useState<"edit" | "preview">("edit");
 
   /* lookups */
@@ -404,10 +406,10 @@ export default function AddTripForm({
   }
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && !saving && onClose();
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && !saving && locationSaving === null && !bulkImportOpen && onClose();
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose, saving]);
+  }, [onClose, saving, locationSaving, bulkImportOpen]);
 
   const productOptions = useMemo<Option[]>(
     () => lookups.products.map((o) => {
@@ -449,16 +451,39 @@ export default function AddTripForm({
       ? { ...s, items: s.items.map((i) => (i.key === itemKey ? { ...i, ...patch } : i)) } : s));
 
   function pickStore(stopKey: number, storeId: string, option?: Option) {
+    if (locationSaving === stopKey) return;
     if (option) rememberOption("stores", option);
     const location = option?.values ?? lookups.stores.find((o) => o.id === storeId)?.values;
     const customer = lookups.customers.find((o) => o.id === location?.customer_id);
     updateStop(stopKey, {
-      storeId, pendingDestination: "", customerId: location?.customer_id,
+      storeId, location: undefined, locationSaved: false, pendingDestination: "", customerId: location?.customer_id,
       customer: customer?.values?.customer_name ?? stops.find(stop => stop.key === stopKey)?.customer ?? "",
       city: location?.city ?? "",
       province: location?.province ?? "",
       address: location?.address ?? "",
     });
+  }
+
+  function stopLocation(stop: StopDraft): LocationDecision {
+    const record = lookups.stores.find(option => option.id === stop.storeId)?.values;
+    const matchingRecord = ["address", "province", "city"].every(field => String(stop[field as "address" | "province" | "city"]).trim() === String(record?.[field] ?? "").trim());
+    return stop.location ?? { store_id: stop.storeId, address: stop.address, province: stop.province, city: stop.city,
+      latitude: record?.latitude ?? "", longitude: record?.longitude ?? "", verified: matchingRecord && verifiedStoreCoordinates(record),
+      store_verified: verifiedStoreCoordinates(record), pin_address_mismatch: !matchingRecord && Boolean(record?.latitude && record?.longitude), replace_verified: false };
+  }
+  async function saveStopLocation(stop: StopDraft) {
+    if (!accessToken || !stop.storeId || saving || locationSaving !== null) return;
+    const location = stopLocation(stop);
+    if (!location.verified || location.pin_address_mismatch) return;
+    setLocationSaving(stop.key); setError("");
+    try {
+      const saved = await saveMasterData(accessToken, "stores", { location_review: true, replace_verified: location.replace_verified, pin_address_mismatch: location.pin_address_mismatch ?? false,
+        address: location.address, province: location.province, city: location.city, latitude: location.latitude, longitude: location.longitude, location_verified: true }, stop.storeId);
+      setStops(current => current.map(item => item.key === stop.key && item.storeId === stop.storeId ? { ...item, location: { ...location, verified: true, store_verified: true, replace_verified: false }, locationSaved: true } : item));
+      const old = lookups.stores.find(option => option.id === stop.storeId);
+      if (old) rememberOption("stores", { ...old, values: { ...old.values, address: String(saved.address ?? location.address), province: String(saved.province ?? location.province), city: String(saved.city ?? location.city), latitude: String(saved.latitude ?? location.latitude), longitude: String(saved.longitude ?? location.longitude), location_verified: "true" } });
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Unable to save the store location. Your review remains in this trip draft."); }
+    finally { setLocationSaving(null); }
   }
 
   function pickProduct(stopKey: number, itemKey: number, productId: string, option?: Option) {
@@ -500,7 +525,7 @@ export default function AddTripForm({
   }
 
   function goTo(target: number) {
-    if (saving) return;
+    if (saving || locationSaving !== null) return;
     if (target <= step) { setError(""); setStep(target); bodyRef.current?.scrollTo({ top: 0 }); return; }
     let problem = target >= 2 ? validateTrip() : dispatchMode === "existing" && !existingDispatch ? "Choose the dispatch this trip belongs to." : etaDate && loadingDate && etaDate < loadingDate ? "Estimated delivery cannot be before loading." : "";
     if (!problem && target >= 1) problem = validateStops();
@@ -510,6 +535,7 @@ export default function AddTripForm({
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    if (locationSaving !== null) { setError("Wait for the store location save to finish before continuing."); return; }
     if (step < STEPS.length - 1) { goTo(step + 1); return; }
     const problem = validateTrip() || validateStops();
     if (problem) return setError(problem);
@@ -589,14 +615,14 @@ export default function AddTripForm({
     drivers: selectedTruckAssignments.map(assignment => labelOf(lookups.drivers, assignment.driverId)).filter(Boolean).join(", "),
     warehouse: labelOf(lookups.warehouses, warehouseId) || "", notes: remarks,
   };
-  const previewRows = populatedStops.flatMap<TripPreviewRow & { storeOnly?: boolean }>(stop => {
+  const previewRows = populatedStops.flatMap<TripPreviewRow & { storeOnly?: boolean; navigationStore?: string; navigationRow?: string; locationVerified?: boolean }>(stop => {
     const items = stop.items.filter(hasItemData);
-    const base: TripPreviewRow = { ...previewTrip, store: labelOf(lookups.stores, stop.storeId) || stop.pendingDestination || "Unassigned", customer: stop.customer, province: stop.province, city: stop.city };
-    return items.length ? items.map(item => ({ ...base, product: productLabel(item) || "", category: item.category, qty: item.qty, unitCbm: item.unitCbm, cbm: item.cbm, dr: item.dr, sapSo: item.sapSo, customerPo: item.customerPo, po: item.po, notes: [remarks, stop.importNotes, stop.address && `Ship-to address: ${stop.address}`, item.sp && `SP: ${item.sp}`, item.dn && `DN: ${item.dn}`, item.so && `SO: ${item.so}`, item.itemStatus && `Source status: ${item.itemStatus}`, item.warehouse && `Source warehouse: ${item.warehouse}`, item.importNotes].filter(Boolean).join(" · ") })) : [{ ...base, storeOnly: true, notes: [remarks, stop.importNotes, stop.address].filter(Boolean).join(" · ") }];
+    const base: TripPreviewRow & { navigationStore: string; locationVerified: boolean } = { navigationStore: `stop:${stop.key}`, locationVerified: stopLocation(stop).verified, ...previewTrip, store: labelOf(lookups.stores, stop.storeId) || stop.pendingDestination || "Unassigned", customer: stop.customer, province: stop.province, city: stop.city };
+    return items.length ? items.map(item => ({ ...base, navigationRow: `item:${item.key}`, product: productLabel(item) || "", category: item.category, qty: item.qty, unitCbm: item.unitCbm, cbm: item.cbm, dr: item.dr, sapSo: item.sapSo, customerPo: item.customerPo, po: item.po, notes: [remarks, stop.importNotes, stop.address && `Ship-to address: ${stop.address}`, item.sp && `SP: ${item.sp}`, item.dn && `DN: ${item.dn}`, item.so && `SO: ${item.so}`, item.itemStatus && `Source status: ${item.itemStatus}`, item.warehouse && `Source warehouse: ${item.warehouse}`, item.importNotes].filter(Boolean).join(" · ") })) : [{ ...base, storeOnly: true, notes: [remarks, stop.importNotes, stop.address].filter(Boolean).join(" · ") }];
   });
 
-  const storePreviewRows: StoreProductPreviewRow[] = previewRows.map((row, index) => ({
-    source_identity: `manual-${index}`, group: tripReference || "New trip", preview: row,
+  const storePreviewRows: StoreProductPreviewRow[] = previewRows.map(row => ({
+    source_identity: row.navigationRow ?? row.navigationStore ?? "manual", navigation_store_id: row.navigationStore, navigation_row_id: row.navigationRow ?? row.navigationStore, location_verified: row.locationVerified, group: tripReference || "New trip", preview: Object.fromEntries(Object.entries(row).filter(([key]) => !["navigationStore", "navigationRow", "locationVerified", "storeOnly"].includes(key))) as TripPreviewRow,
     store_only: row.storeOnly,
     values: { ship_to: row.store ?? null, customer_name: row.customer ?? null,
       province: row.province ?? null, city: row.city ?? null, customer_model: row.product ?? null,
@@ -604,14 +630,25 @@ export default function AddTripForm({
       unit_cbm: row.unitCbm ?? null, cbm: row.cbm ?? null, dr_number: row.dr ?? null },
   }));
 
+  const storeItems: StoreNavigationItem[] = stops.map(stop => {
+    const total = stopTotals(stop), products = stop.items.filter(hasItemData);
+    const verified = stopLocation(stop).verified;
+    return { id: `stop:${stop.key}`, title: labelOf(lookups.stores, stop.storeId) || stop.pendingDestination || "Select a destination store", customer: stop.customer, city: stop.city, province: stop.province,
+      products: products.length, qty: total.qty, cbm: total.cbm,
+      status: products.some(item => invalidProduct({ customer_model: productLabel(item), quantity: item.qty, cbm: item.cbm })) ? "attention" : !stop.storeId || !stop.city.trim() || !stop.province.trim() || !verified ? "location" : "ready",
+      members: [`stop:${stop.key}`, ...stop.items.map(item => `item:${item.key}`)],
+      searchText: [labelOf(lookups.stores, stop.storeId), stop.pendingDestination, stop.customer, stop.city, stop.province, ...stop.items.flatMap(item => [productLabel(item), item.dr])].join(" ") };
+  });
+
   /* ───────────────────────────── render ───────────────────────────── */
-  if (bulkImportOpen) return <BulkTripImport initialTarget={dispatchMode === "existing" && existingDispatch ? { mode: "dispatch", value: existingNo, allow_create: true } : undefined} onClose={() => setBulkImportOpen(false)} onComplete={onClose} onImported={() => onImported?.()} />;
+  const liveSummary = { dispatch: previewTrip.dispatch || "Generated on save", tripNumber: previewTrip.trip || "Generated on save", tripType: tripTypeLabel || "", status: sentence(status), loadingDate, etaDate, stops: populatedStops.length, lines: cargoLines, trucks: cargoTrucks };
+  if (bulkImportOpen) return <BulkTripImport initialTripDetails={{ trip_type_id: newTripType.trim() ? null : tripTypeId || null, trip_type_name: newTripType.trim() || labelOf(lookups["trip-types"], tripTypeId), status, loading_date: loadingDate || null, estimated_delivery_date: etaDate || null, remarks: remarks || null, origin_warehouse_id: warehouseId || null }} initialTarget={dispatchMode === "existing" && existingDispatch ? { mode: "dispatch", value: existingNo, allow_create: true } : undefined} onClose={() => setBulkImportOpen(false)} onComplete={onClose} onImported={() => onImported?.()} />;
   
   return (
     <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm sm:p-4 lg:p-6">
       <form onSubmit={submit} role="dialog" aria-modal="true" aria-labelledby="add-trip-title"
         aria-busy={saving}
-        className="flex h-[100dvh] min-w-0 w-full max-w-[1200px] flex-col overflow-hidden bg-slate-50 shadow-2xl ring-1 ring-slate-900/5 sm:h-[92dvh] sm:rounded-3xl">
+        className="flex h-[100dvh] min-w-0 w-full max-w-[1480px] flex-col overflow-hidden bg-slate-50 shadow-2xl ring-1 ring-slate-900/5 sm:h-[92dvh] sm:rounded-3xl">
 
         {/* header */}
         <header className="shrink-0 bg-white px-5 pt-5 sm:px-8">
@@ -626,7 +663,7 @@ export default function AddTripForm({
                 {tripTypeLabel && <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600">{tripTypeLabel}</span>}
               </p>
             </div>
-            <button type="button" onClick={onClose} disabled={saving} aria-label="Close"
+            <button type="button" onClick={onClose} disabled={saving || locationSaving !== null} aria-label="Close"
               className="rounded-full p-2.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 disabled:opacity-50">
               <X className="h-5 w-5" />
             </button>
@@ -637,7 +674,8 @@ export default function AddTripForm({
         </header>
 
         {/* body */}
-        <div ref={bodyRef} className="min-h-0 min-w-0 flex-1 overflow-y-auto px-5 py-6 sm:px-8">
+        <div className="grid min-h-0 flex-1 lg:grid-cols-[minmax(0,1fr)_18rem]">
+        <div ref={bodyRef} className="min-h-0 min-w-0 overflow-y-auto px-5 py-6 sm:px-8">
           <div className="mx-auto max-w-5xl space-y-6">
             
             {step === 2 && capacityState.full && <TripFormNotice tone="warning" title={capacityState.exceeded ? "Truck capacity exceeded" : "Truck capacity is full"} action={<button type="button" onClick={addCapacityTruck} className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-white/70 px-3 py-1.5 text-xs font-semibold hover:bg-white"><Plus className="h-3.5 w-3.5" />Add another truck</button>}>
@@ -650,7 +688,7 @@ export default function AddTripForm({
             {step === 0 && (
               <div className="space-y-6">
                 <section className="rounded-2xl border border-blue-100 bg-blue-50/50 p-6 sm:p-8">
-                  <div className="inline-flex rounded-full bg-slate-200/70 p-1 text-sm" role="tablist" aria-label="Dispatch">
+                  <div className="flex w-fit max-w-full flex-wrap gap-1 rounded-2xl bg-slate-200/70 p-1 text-sm" role="tablist" aria-label="Dispatch">
                     {([["new", "New dispatch"], ["existing", "Add to an existing dispatch"]] as const).map(([mode, label]) => (
                       <button key={mode} type="button" role="tab" aria-selected={dispatchMode === mode} onClick={() => switchDispatchMode(mode)}
                         className={`rounded-full px-5 py-2 font-medium transition ${dispatchMode === mode ? "bg-white text-[#0b2341] shadow-sm" : "text-slate-600 hover:text-[#0b2341]"}`}>
@@ -691,7 +729,7 @@ export default function AddTripForm({
                 </section>
 
                 <Section title="Trip Details" description="Generated separately from the dispatch reference.">
-                  <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+                  <div className="grid items-start gap-5 sm:grid-cols-2 xl:grid-cols-3">
                     <Field label="Trip no.">
                       <input readOnly aria-label="Generated trip number" value={tripReference} placeholder={dispatchLoading ? "Generating trip number…" : tripReferenceStatus === "setup_required" ? "Trip numbering not yet enabled" : "Generated when you save"} className={`${input} font-mono bg-slate-50 text-slate-500`} />
                     </Field>
@@ -727,7 +765,7 @@ export default function AddTripForm({
             {step === 1 && (
               <div className="space-y-6">
                 <div className="flex flex-wrap items-center justify-between gap-4">
-                  <div className="inline-flex rounded-full bg-slate-200/70 p-1 text-sm" role="tablist" aria-label="Stores and products view">
+                  <div className="flex w-fit max-w-full flex-wrap gap-1 rounded-2xl bg-slate-200/70 p-1 text-sm" role="tablist" aria-label="Stores and products view">
                     {([["edit", "Edit stops"], ["preview", `Table preview (${totals.lines})`]] as const).map(([view, label]) => (
                       <button key={view} type="button" role="tab" aria-selected={stopsView === view} onClick={() => setStopsView(view)}
                         className={`rounded-full px-5 py-2 font-medium transition ${stopsView === view ? "bg-white text-[#0b2341] shadow-sm" : "text-slate-600 hover:text-[#0b2341]"}`}>
@@ -735,7 +773,7 @@ export default function AddTripForm({
                       </button>
                     ))}
                   </div>
-                  <button type="button" onClick={() => setBulkImportOpen(true)} disabled={saving}
+                  <button type="button" onClick={() => setBulkImportOpen(true)} disabled={saving || locationSaving !== null}
                     className="inline-flex shrink-0 items-center gap-2 rounded-full border border-blue-200 bg-white px-5 py-2 text-sm font-medium text-[#2678b9] shadow-sm transition hover:bg-blue-50 disabled:opacity-50">
                     <Upload className="h-4 w-4" /> Import CSV / XLSX
                   </button>
@@ -743,7 +781,7 @@ export default function AddTripForm({
 
                 {stopsView === "preview" ? (
                   populatedStops.length > 0
-                    ? <ImportStoreProductsPreview rows={storePreviewRows} />
+                    ? <ImportStoreProductsPreview rows={storePreviewRows} navigation={storeNavigation} />
                     : (
                       <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-16 text-center shadow-sm">
                         <Package className="mx-auto h-10 w-10 text-slate-300 mb-3" />
@@ -754,7 +792,9 @@ export default function AddTripForm({
                     )
                 ) : (
                   <div className="space-y-6">
-                    {stops.map((stop, si) => {
+                    {<StoreMasterDetail items={storeItems} memory={storeNavigation}>{selectedStore => {
+                      const stop = stops.find(candidate => `stop:${candidate.key}` === selectedStore.id)!;
+                      const si = stops.indexOf(stop);
                       const t = stopTotals(stop);
                       const storeName = labelOf(lookups.stores, stop.storeId) || stop.pendingDestination || "";
                       const lineCount = stop.items.filter(hasItemData).length;
@@ -773,7 +813,7 @@ export default function AddTripForm({
                               </div>
                             </div>
                             {stops.length > 1 && (
-                              <button type="button" onClick={() => setStops((l) => l.filter((s) => s.key !== stop.key))} aria-label={`Remove stop ${si + 1}`}
+                              <button type="button" disabled={saving} onClick={() => setStops((l) => l.filter((s) => s.key !== stop.key))} aria-label={`Remove stop ${si + 1}`}
                                 className="rounded-lg p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition-colors">
                                 <Trash2 className="h-4 w-4" />
                               </button>
@@ -781,16 +821,25 @@ export default function AddTripForm({
                           </div>
 
                           {/* Store Details */}
-                          <div className="p-6 space-y-5">
+                          <fieldset disabled={saving || locationSaving === stop.key} className="p-6 space-y-5 min-w-0">
                             <div>
                               <label className="mb-1.5 block text-sm font-medium text-slate-700">Delivery Store</label>
                               {accessToken && (
                                 <div className={`${input} flex items-center px-2`}>
-                                  <SearchableRelationshipEditor presentation="form" token={accessToken} kind="stores" value={storeName} customerId={stop.customerId} createDefaults={{ address: stop.address, city: stop.city, province: stop.province }} autoFocus={false} disabled={saving} onSelect={option => pickStore(stop.key, option.id, option)} onCommitBlur={() => {}} onCancel={() => {}} />
+                                  <SearchableRelationshipEditor presentation="form" token={accessToken} kind="stores" value={storeName} customerId={stop.customerId} createDefaults={{ address: stop.address, city: stop.city, province: stop.province }} autoFocus={false} disabled={saving || locationSaving === stop.key} onSelect={option => pickStore(stop.key, option.id, option)} onCommitBlur={() => {}} onCancel={() => {}} />
                                 </div>
                               )}
                               {stop.pendingDestination && !stop.storeId && <p className="mt-1.5 text-xs text-amber-700">Imported destination: {stop.pendingDestination}. Pick a match, or choose Add in the search list.</p>}
                             </div>
+
+                            {accessToken && <div className="space-y-2">
+                              <StoreAddressReview compact token={accessToken} source={{ key: `manual:${stop.key}:${stop.storeId}`, shipTo: storeName || stop.pendingDestination || "Delivery store", customer: stop.customer, province: stop.province, city: stop.city }} decision={stopLocation(stop)} disabled={saving || locationSaving === stop.key} onChange={patch => {
+                                const location = { ...stopLocation(stop), ...patch };
+                                updateStop(stop.key, { location, locationSaved: stop.locationSaved && !(["address", "province", "city", "latitude", "longitude", "verified"] as const).some(field => patch[field] !== undefined && patch[field] !== stopLocation(stop)[field]), address: location.address, province: location.province, city: location.city });
+                              }} />
+                              <button type="button" className={secondaryAction} disabled={saving || locationSaving !== null || stop.locationSaved || !stop.storeId || !stopLocation(stop).verified || Boolean(stopLocation(stop).pin_address_mismatch)} onClick={() => void saveStopLocation(stop)}>{locationSaving === stop.key ? "Saving location..." : stop.locationSaved ? "Location saved to store" : "Save location to store"}</button>
+                              <p role="status" className="text-xs text-slate-500">{stop.locationSaved ? "This verified location is saved to the store record." : "Reviewing stays in this trip draft. Save location to store explicitly updates the selected store, even if you later close this trip."}</p>
+                            </div>}
 
                             <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm">
                               <MapPin className="h-4 w-4 shrink-0 text-slate-400" />
@@ -806,13 +855,13 @@ export default function AddTripForm({
                             {stop.editLocation && (
                               <div className="grid gap-4 sm:grid-cols-2">
                                 <Field label="Customer name"><input value={stop.customer} onChange={(e) => updateStop(stop.key, { customer: e.target.value })} className={input} /></Field>
-                                <Field label="Province"><input value={stop.province} onChange={(e) => updateStop(stop.key, { province: e.target.value })} className={input} /></Field>
-                                <Field label="City"><input value={stop.city} onChange={(e) => updateStop(stop.key, { city: e.target.value })} className={input} /></Field>
-                                <Field label="Ship-to address"><input value={stop.address} onChange={(e) => updateStop(stop.key, { address: e.target.value })} className={input} /></Field>
+                                <Field label="Province"><input value={stop.province} onChange={(e) => updateStop(stop.key, { province: e.target.value, locationSaved: false, location: { ...stopLocation(stop), province: e.target.value, store_verified: stopLocation(stop).verified || stopLocation(stop).store_verified, verified: false, pin_address_mismatch: true } })} className={input} /></Field>
+                                <Field label="City"><input value={stop.city} onChange={(e) => updateStop(stop.key, { city: e.target.value, locationSaved: false, location: { ...stopLocation(stop), city: e.target.value, store_verified: stopLocation(stop).verified || stopLocation(stop).store_verified, verified: false, pin_address_mismatch: true } })} className={input} /></Field>
+                                <Field label="Ship-to address"><input value={stop.address} onChange={(e) => updateStop(stop.key, { address: e.target.value, locationSaved: false, location: { ...stopLocation(stop), address: e.target.value, store_verified: stopLocation(stop).verified || stopLocation(stop).store_verified, verified: false, pin_address_mismatch: true } })} className={input} /></Field>
                               </div>
                             )}
                             {stop.importNotes && <Field label="Stop notes"><textarea value={stop.importNotes} onChange={(event) => updateStop(stop.key, { importNotes: event.target.value })} className={`${inputBase} p-3 text-xs`} /></Field>}
-                          </div>
+                          </fieldset>
 
                           {/* Products List */}
                           <div className="border-t border-slate-100 bg-slate-50/50 p-6">
@@ -821,66 +870,41 @@ export default function AddTripForm({
                               <span className="text-xs text-slate-500">{lineCount} line{lineCount === 1 ? "" : "s"}</span>
                             </div>
                             
-                            <div className="space-y-3">
-                              {stop.items.map((item, ii) => {
-                                const hasMore = [item.sp, item.dn, item.so, item.sapSo, item.customerPo, item.po, item.category, item.unitCbm, item.itemStatus, item.warehouse].some(v => v.trim());
-                                return (
-                                  <div key={item.key} className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-                                    <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 p-4 items-end">
-                                      <div className="sm:col-span-4 min-w-0">
-                                        <span className="mb-1.5 block text-xs text-slate-500">Product code</span>
-                                        {item.addingProduct ? (
+                            <StoreProductsTable rows={stop.items} storeId={`stop:${stop.key}`} memory={storeNavigation} disabled={saving}
+                              rowKey={item => `item:${item.key}`} searchText={item => [productLabel(item), item.dr, item.dn, item.so, item.sapSo, item.customerPo, item.po, item.category, item.importNotes].join(" ")}
+                              columns={[
+                                { key: "code", label: "Product code", render: item => <div className="min-w-48">{item.addingProduct ? (
                                           <div className="flex items-center gap-1.5">
                                             <div className="relative min-w-0 flex-1">
-                                              <input autoFocus value={item.newCode} onChange={(e) => updateItem(stop.key, item.key, { newCode: e.target.value })}
+                                              <input disabled={saving} autoFocus value={item.newCode} onChange={(e) => updateItem(stop.key, item.key, { newCode: e.target.value })}
                                                 className={`${inputSm} pr-12`} placeholder="Type the new product code" />
                                               <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rounded bg-[#2678b9]/10 px-1.5 py-0.5 text-[10px] font-semibold text-[#2678b9]">New</span>
                                             </div>
-                                            <button type="button" aria-label="Cancel new product code"
+                                            <button type="button" disabled={saving} aria-label="Cancel new product code"
                                               onClick={() => updateItem(stop.key, item.key, { addingProduct: false, newCode: "" })}
                                               className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"><X className="h-4 w-4" /></button>
                                           </div>
                                         ) : (
                                           accessToken ? <div className={`${inputSm} flex items-center px-2`}><SearchableRelationshipEditor presentation="form" token={accessToken} kind="products" value={labelOf(productOptions, item.productId) ?? ""} autoFocus={false} disabled={saving} onSelect={option => pickProduct(stop.key, item.key, option.id, option)} onCommitBlur={() => {}} onCancel={() => {}} /></div> : null
-                                        )}
-                                      </div>
-                                      <div className="sm:col-span-2">
-                                        <span className="mb-1.5 block text-xs text-slate-500">Qty</span>
-                                        <input type="number" inputMode="numeric" min="0" step="1" value={item.qty} aria-label="Quantity"
-                                          onChange={(e) => updateItem(stop.key, item.key, { qty: e.target.value })} className={inputSm} placeholder="0" />
-                                      </div>
-                                      <div className="sm:col-span-2">
-                                        <span className="mb-1.5 block text-xs text-slate-500">Total CBM</span>
-                                        <input type="number" inputMode="decimal" min="0" step="any" value={item.cbm} aria-label="Total CBM"
-                                          onChange={(e) => updateItem(stop.key, item.key, { cbm: e.target.value })} className={inputSm} placeholder="0" />
-                                      </div>
-                                      <div className="sm:col-span-2">
-                                        <span className="mb-1.5 block text-xs text-slate-500">DR no.</span>
-                                        <input value={item.dr} aria-label="DR number" onChange={(e) => updateItem(stop.key, item.key, { dr: e.target.value })} className={inputSm} placeholder="DR number" />
-                                      </div>
-                                      <div className="sm:col-span-2 flex items-center justify-end gap-1">
-                                        <button type="button" onClick={() => updateItem(stop.key, item.key, { open: !item.open })}
-                                          aria-label={item.open ? "Hide more details" : "Show more details"} aria-expanded={item.open} title="Order references and product details"
-                                          className={`relative inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-xs font-medium transition ${item.open ? "bg-[#2678b9]/10 text-[#2678b9]" : "text-slate-500 hover:bg-slate-100 hover:text-slate-700"}`}>
-                                          <SlidersHorizontal className="h-3.5 w-3.5" /> More
-                                          {hasMore && !item.open && <span aria-hidden="true" className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-[#2678b9]" />}
-                                        </button>
-                                        <button type="button" disabled={stop.items.length === 1} aria-label={`Remove product line ${ii + 1}`}
-                                          onClick={() => updateStop(stop.key, { items: stop.items.filter((i) => i.key !== item.key) })}
-                                          className="rounded-lg p-2 text-slate-300 hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-30 transition-colors">
-                                          <Trash2 className="h-4 w-4" />
-                                        </button>
-                                      </div>
-                                    </div>
-
-                                    {item.open && (
-                                      <div className="border-t border-slate-100 bg-slate-50 p-5 space-y-5">
+                                        )}</div> },
+                                { key: "qty", label: "Qty", render: item => <input disabled={saving} type="number" inputMode="numeric" min="0" step="1" value={item.qty} aria-label="Quantity" onChange={e => updateItem(stop.key, item.key, { qty: e.target.value })} className={inputSm} placeholder="0" /> },
+                                { key: "cbm", label: "Total CBM", render: item => <input disabled={saving} type="number" inputMode="decimal" min="0" step="any" value={item.cbm} aria-label="Total CBM" onChange={e => updateItem(stop.key, item.key, { cbm: e.target.value })} className={inputSm} placeholder="0" /> },
+                                { key: "dr", label: "DR", render: item => <input disabled={saving} value={item.dr} aria-label="DR number" onChange={e => updateItem(stop.key, item.key, { dr: e.target.value })} className={inputSm} placeholder="DR number" /> },
+                                { key: "status", label: "Status", render: item => <StatusChip label={!hasItemData(item) ? "Empty line" : invalidProduct({ customer_model: productLabel(item), quantity: item.qty, cbm: item.cbm }) ? "Needs attention" : "Not saved"} tone={hasItemData(item) && invalidProduct({ customer_model: productLabel(item), quantity: item.qty, cbm: item.cbm }) ? "warning" : "neutral"} /> },
+                              ]}
+                              isExpanded={item => item.open} onToggle={item => updateItem(stop.key, item.key, { open: !item.open })}
+                              moreLabel={item => item.open ? "Hide more details" : "Show more details"}
+                              hasMore={item => [item.sp, item.dn, item.so, item.sapSo, item.customerPo, item.po, item.category, item.unitCbm, item.itemStatus, item.warehouse].some(value => value.trim())}
+                              onAdd={() => updateStop(stop.key, { items: [...stop.items, newItem()] })}
+                              canRemove={() => stop.items.length > 1} onRemove={item => updateStop(stop.key, { items: stop.items.filter(candidate => candidate.key !== item.key) })}
+                              removeLabel={(_item, index) => `Remove product line ${index + 1}`}
+                              renderMore={item => <div className="border-t border-slate-100 bg-slate-50 p-5 space-y-5">
                                         <div>
                                           <p className="mb-3 text-xs font-semibold text-slate-700 uppercase tracking-wider">Order references</p>
                                           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                                             {([["SP number", "sp"], ["DN no.", "dn"], ["SO no.", "so"], ["SAP SO no.", "sapSo"], ["Customer PO", "customerPo"], ["PO no.", "po"]] as const).map(([label, field]) => (
                                               <Field key={field} label={label}>
-                                                <input value={item[field]} onChange={(e) => updateItem(stop.key, item.key, { [field]: e.target.value })} className={inputSm} />
+                                                <input disabled={saving} value={item[field]} onChange={(e) => updateItem(stop.key, item.key, { [field]: e.target.value })} className={inputSm} />
                                               </Field>
                                             ))}
                                           </div>
@@ -889,13 +913,13 @@ export default function AddTripForm({
                                           <p className="mb-3 text-xs font-semibold text-slate-700 uppercase tracking-wider">Product details</p>
                                           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                                             <Field label="Product category" hint={item.addingProduct ? "saved with new code" : undefined}>
-                                              <input value={item.category} onChange={(e) => updateItem(stop.key, item.key, { category: e.target.value })} className={inputSm} placeholder="AC, REF, WM…" />
+                                              <input disabled={saving} value={item.category} onChange={(e) => updateItem(stop.key, item.key, { category: e.target.value })} className={inputSm} placeholder="AC, REF, WM…" />
                                             </Field>
                                             <Field label="Unit CBM">
                                               <div className="flex gap-2">
-                                                <input type="number" min="0" step="any" value={item.unitCbm} onChange={(e) => updateItem(stop.key, item.key, { unitCbm: e.target.value })} className={inputSm} />
+                                                <input disabled={saving} type="number" min="0" step="any" value={item.unitCbm} onChange={(e) => updateItem(stop.key, item.key, { unitCbm: e.target.value })} className={inputSm} />
                                                 <button type="button" title="Total CBM = qty × unit CBM"
-                                                  disabled={Boolean(item.cbm.trim()) || !Number.isFinite(num(item.unitCbm)) || num(item.unitCbm) < 0 || !(num(item.qty) > 0)}
+                                                  disabled={saving || Boolean(item.cbm.trim()) || !Number.isFinite(num(item.unitCbm)) || num(item.unitCbm) < 0 || !(num(item.qty) > 0)}
                                                   onClick={() => updateItem(stop.key, item.key, { cbm: calculatedCbm(item.qty, item.unitCbm), importNotes: [item.importNotes, "Total CBM calculated from quantity and unit CBM."].filter(Boolean).join(" / ") })}
                                                   className="shrink-0 rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium text-[#2678b9] hover:border-[#2678b9]/40 disabled:text-slate-300 disabled:hover:border-slate-200 transition-colors">
                                                   Calculate
@@ -903,31 +927,22 @@ export default function AddTripForm({
                                               </div>
                                             </Field>
                                             <Field label="Item status">
-                                              <input value={item.itemStatus} onChange={(e) => updateItem(stop.key, item.key, { itemStatus: e.target.value })} className={inputSm} />
+                                              <input disabled={saving} value={item.itemStatus} onChange={(e) => updateItem(stop.key, item.key, { itemStatus: e.target.value })} className={inputSm} />
                                             </Field>
                                             <Field label="Source warehouse" hint="if different">
-                                              <input value={item.warehouse} onChange={(e) => updateItem(stop.key, item.key, { warehouse: e.target.value })} className={inputSm} />
+                                              <input disabled={saving} value={item.warehouse} onChange={(e) => updateItem(stop.key, item.key, { warehouse: e.target.value })} className={inputSm} />
                                             </Field>
                                           </div>
                                         </div>
-                                        {item.importNotes && <Field label="Notes"><textarea value={item.importNotes} onChange={(event) => updateItem(stop.key, item.key, { importNotes: event.target.value })} className={`${inputBase} min-h-16 p-2 text-xs`} /></Field>}
-                                      </div>
-                                    )}
-                                  </div>
-                                );
-                              })}
-                            </div>
+                                        {item.importNotes && <Field label="Notes"><textarea disabled={saving} value={item.importNotes} onChange={(event) => updateItem(stop.key, item.key, { importNotes: event.target.value })} className={`${inputBase} min-h-16 p-2 text-xs`} /></Field>}
+                                      </div>} />
 
-                            <button type="button" onClick={() => updateStop(stop.key, { items: [...stop.items, newItem()] })}
-                              className="mt-4 inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-[#2678b9] hover:bg-[#2678b9]/10 transition-colors">
-                              <Plus className="h-4 w-4" /> Add product line
-                            </button>
                           </div>
                         </section>
                       );
-                    })}
+                    }}</StoreMasterDetail>}
 
-                    <button type="button" onClick={() => setStops((l) => [...l, newStop()])}
+                    <button type="button" disabled={saving} onClick={() => { const stop = newStop(); storeNavigation.selected = `stop:${stop.key}`; storeNavigation.members = [`stop:${stop.key}`]; storeNavigation.search = ""; setStops(list => [...list, stop]); }}
                       className="flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-200 py-5 text-sm font-semibold text-slate-500 transition hover:border-[#2678b9]/50 hover:bg-blue-50 hover:text-[#2678b9]">
                       <Plus className="h-5 w-5" /> Add another delivery store
                     </button>
@@ -1028,14 +1043,10 @@ export default function AddTripForm({
                 <div className="lg:col-span-12 xl:col-span-7">
                   {accessToken && cargoLines.length > 0 && selectedTruckAssignments.length > 0 ? (
                     <div className="sticky top-6">
-                      <TripCargoPlanner token={accessToken} lines={cargoLines} plan={cargoPlan} onChange={setCargoPlan} fixedTrucks={cargoTrucks} disabled={saving} />
+                      <TripCargoPlanner token={accessToken} lines={cargoLines} plan={cargoPlan} onChange={setCargoPlan} fixedTrucks={cargoTrucks} truckTypes={Object.fromEntries(lookups.trucks.map(truck => [truck.id, truck.values?.truck_type || ""]))} onAddTruck={addCapacityTruck} disabled={saving} />
                     </div>
                   ) : (
-                    <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-12 text-center shadow-sm sticky top-6">
-                      <Truck className="mx-auto h-12 w-12 text-slate-200 mb-3" />
-                      <h3 className="text-base font-semibold text-slate-700">Waiting for trucks and products</h3>
-                      <p className="mt-2 text-sm text-slate-500 max-w-xs mx-auto">Assign at least one truck and ensure there are products loaded in the previous step to distribute cargo.</p>
-                    </div>
+                    <EmptyState title="Add a truck to start distributing cargo." description="Trucks and drivers can be assigned later. Add product lines in the previous step before distributing cargo." icon={<Truck className="h-6 w-6" />} />
                   )}
                 </div>
               </div>
@@ -1043,26 +1054,27 @@ export default function AddTripForm({
           </div>
         </div>
 
+        <aside aria-label="Live trip summary" className="hidden min-h-0 overflow-y-auto border-l border-slate-200 bg-slate-100/60 p-4 lg:block"><TripLiveSummary {...liveSummary} /></aside>
+        </div>
+
         {/* footer */}
         <footer className="shrink-0 border-t border-slate-200 bg-white px-5 py-4 sm:px-8">
-          <div className="mx-auto max-w-5xl">
+          <div className="mx-auto max-w-[1400px]">
+            <TripLiveSummary {...liveSummary} mobile />
             {error && (
               <div className="mb-4 max-h-32 overflow-y-auto"><TripFormNotice tone="error" title="Check the trip details" onDismiss={() => setError("")}>{error}</TripFormNotice></div>
             )}
             <div className="flex flex-wrap items-center justify-between gap-4">
-              <p className="flex items-center gap-2 text-sm font-medium text-slate-600 bg-slate-50 px-4 py-2 rounded-full">
-                <Package className="h-4 w-4 text-slate-400" />
-                <span>{populatedStops.length} stop{populatedStops.length === 1 ? "" : "s"} · {fmt(totals.qty, 0)} Qty · {fmt(totals.cbm)} CBM</span>
-              </p>
+              <p className="hidden text-xs text-slate-500 lg:block">Step {step + 1} of {STEPS.length} / {STEPS[step]}</p>
               <div className="ml-auto flex items-center gap-3">
                 {step === 0 ? (
-                  <button type="button" onClick={onClose} disabled={saving} className="rounded-full px-5 py-2.5 text-sm font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition">Cancel</button>
+                  <button type="button" onClick={onClose} disabled={saving || locationSaving !== null} className="rounded-full px-5 py-2.5 text-sm font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition">Cancel</button>
                 ) : (
                   <button type="button" onClick={() => goTo(Math.max(0, step - 1))} disabled={saving} className="inline-flex items-center gap-1 rounded-full px-5 py-2.5 text-sm font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition">
                     <ChevronLeft className="h-4 w-4" /> Back
                   </button>
                 )}
-                <button type="submit" disabled={saving} className="inline-flex items-center gap-2 rounded-full bg-[#0b2341] px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#1a365d] disabled:cursor-not-allowed disabled:opacity-50">
+                <button type="submit" disabled={saving || locationSaving !== null} className="inline-flex items-center gap-2 rounded-full bg-[#0b2341] px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#1a365d] disabled:cursor-not-allowed disabled:opacity-50">
                   {saving ? <><Loader2 className="h-4 w-4 animate-spin" />Saving trip…</> : isLast ? "Save trip" : <>Next <ChevronRight className="h-4 w-4" /></>}
                 </button>
               </div>

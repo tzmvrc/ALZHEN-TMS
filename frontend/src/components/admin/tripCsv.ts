@@ -1,23 +1,14 @@
-export const csvFields = {
-  dispatch: ["dispatch no", "dispatch number"], trip: ["trip no", "trip number"],
+import { IMPORT_COLUMN_DEFINITIONS, normalizeColumnName, type ImportCsvField } from "../../../../packages/trip-import/index.js";
+const legacyOnlyCsvFields = {
   loadingDate: ["loading date", "email date"], eta: ["estimated delivery date", "eta"],
-  tripType: ["trip type"], plate: ["plate no", "plate number"],
-  phTruck: ["ph truck name", "phtrruck", "phtruck", "truck name"],
-  orderItem: ["order item no", "order item number"], stocks: ["stocks", "stock quantity"],
-  approvalDate: ["so approval date"],
-  warehouse: ["wh code", "warehouse", "ship from"], store: ["ship to", "ship-to", "ship_to", "ship to name", "ship to code", "ship to / destination", "store", "store name", "store code", "destination", "destination name", "delivery destination", "delivered to"],
-  customer: ["customer name", "customer"], product: ["customer model", "product code", "model code", "sku"],
-  category: ["product category", "category"], qty: ["qty", "quantity"],
-  unitCbm: ["cbm", "unit cbm"], cbm: ["total cbm"], dr: ["dr", "dr number", "dr no"],
-  sapSo: ["sap so no", "sap so number"], customerPo: ["customer po"], po: ["po no", "internal po number"],
-  sp: ["sp", "sp number"], dn: ["dn", "dn no"], so: ["so no", "so number"],
-  province: ["province"], city: ["city"], address: ["ship to address", "address"],
-  notes: ["remarks", "comments"], itemStatus: ["delivery status", "item status"],
+  address: ["ship to address", "address"],
 } as const;
+const sharedCsvFields = Object.fromEntries(IMPORT_COLUMN_DEFINITIONS.map(column => [column.csvField, column.aliases])) as Record<ImportCsvField, readonly string[]>;
+export const csvFields = { ...legacyOnlyCsvFields, ...sharedCsvFields };
 export type CsvField = keyof typeof csvFields;
 export type CsvTripRow = { line: number; values: Record<CsvField, string>; extra: string };
 export type CsvTripGroup = { key: string; label: string; rows: CsvTripRow[] };
-const normalize = (value: string) => value.trim().toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+const normalize = normalizeColumnName;
 
 /** Quoted commas, escaped quotes, embedded newlines, CRLF and Excel's UTF-8 BOM. */
 export function parseCsv(text: string, onRow?: (line: number) => void): string[][] {

@@ -338,5 +338,6 @@ export const DRAFT_REPORT_FIELDS:Record<string,Record<string,readonly string[]>>
 };
 for (const report of ["trips", "combined", "dispatch", "trip-booking", "dispatch-monitoring"]) {
   const fields = DRAFT_REPORT_FIELDS[report] ??= {};
+  fields.trips = [...(fields.trips ?? []), "page_no", "request_received_at", "trip_type_id"];
   fields.trip_line_items = [...(fields.trip_line_items ?? []), "dr_number", "sap_so_number", "customer_po_number", "internal_po_number", "customer_model", "quantity", "cbm", "sp_reference", "ph_truck_reference", "dn_reference", "order_item_number", "so_number", "stock_quantity", "unit_cbm", "so_approval_date", "item_status", "source_warehouse", "source_product_category", "source_province", "source_city"];
 }

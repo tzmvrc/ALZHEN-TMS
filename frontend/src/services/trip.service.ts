@@ -1,6 +1,13 @@
 import { apiDelete, apiGet, apiGetCached, apiPatch, apiPost, invalidateApiCache, type ApiResponse } from "./api.service";
 import { invalidateReportPageCache } from "./report.service";
 
+export async function updateMasterListCell(token: string, trip: string, stop: string | undefined, line: string | undefined, field: string, value: unknown) {
+  const response = await apiPatch<ApiResponse<Record<string, unknown>>>(`/trips/${encodeURIComponent(trip)}/master-list-cell`, { stop_id: stop ?? null, line_item_id: line ?? null, field, value }, token);
+  if (!response.success || !response.data) throw new Error(response.message ?? "Unable to save Master List value.");
+  invalidateTripRelatedCache();
+  return response.data;
+}
+
 export function invalidateTripListCache() {
   // The query marker keeps this scoped to paginated trip lists, not trip
   // details, events, images, stops, or line-item responses.

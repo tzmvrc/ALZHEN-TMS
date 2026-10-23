@@ -1,26 +1,17 @@
-import { csvFields, parseCsv, type CsvField } from "./tripCsv";
-export const importFields = [
-  ["sp_reference", "SP", "sp"], ["ph_truck_reference", "PH TRUCK NAME", "phTruck"],
-  ["dn_reference", "DN", "dn"], ["dr_number", "DR", "dr"], ["order_item_number", "Order Item No.", "orderItem"],
-  ["customer_name", "Customer Name", "customer"], ["ship_to", "Ship To", "store"],
-  ["sap_so_number", "SAP SO No.", "sapSo"], ["so_number", "SO NO.", "so"],
-  ["customer_po_number", "Customer PO", "customerPo"], ["internal_po_number", "PO NO.", "po"],
-  ["product_category", "Product Category", "category"], ["province", "Province", "province"], ["city", "City", "city"],
-  ["customer_model", "Customer Model", "product"], ["quantity", "Qty", "qty"], ["stock_quantity", "stocks", "stocks"],
-  ["source_warehouse", "Warehouse", "warehouse"], ["unit_cbm", "CBM", "unitCbm"], ["cbm", "Total CBM", "cbm"],
-  ["so_approval_date", "SO Approval Date", "approvalDate"], ["item_status", "Item Status", "itemStatus"],
-] as const satisfies ReadonlyArray<readonly [string, string, CsvField]>;
-export type ImportField = typeof importFields[number][0];
-export type ImportFile = { id: string; name: string; headers: string[]; originalHeaders?: string[]; mapping: Record<ImportField, number>; rows: { line: number; cells: string[]; originalCells?: string[]; group: string }[] };
+import { parseCsv, type CsvField } from "./tripCsv";
+import { IMPORT_COLUMN_DEFINITIONS, detectColumnAssignments, columnCandidates, mappingConflicts, mappingFromAssignments, normalizeColumnName, type ImportField as SharedImportField } from "../../../../packages/trip-import/index.js";
+export const importFields = IMPORT_COLUMN_DEFINITIONS.map(column => [column.field, column.label, column.csvField] as const) as ReadonlyArray<readonly [SharedImportField,string,CsvField]>;
+export type ImportField = SharedImportField;
+export type ImportFile = { id: string; name: string; headers: string[]; originalHeaders?: string[]; mapping: Record<ImportField, number>; columnMapping?: Array<ImportField|null>; rows: { line: number; cells: string[]; originalCells?: string[]; group: string }[] };
 export function editImportRows(files: ImportFile[], changes: Array<{ fileId: string; line: number; field: ImportField; value: string }>): ImportFile[] {
   return files.map(file => {
     const edits = changes.filter(change => change.fileId === file.id);
     if (!edits.length) return file;
     const byRow = new Map<number, typeof edits>();
     for (const edit of edits) { const row = byRow.get(edit.line) ?? []; row.push(edit); byRow.set(edit.line, row); }
-    const headers = [...file.headers], mapping = { ...file.mapping };
-    for (const edit of edits) if (mapping[edit.field] < 0) { mapping[edit.field] = headers.length; headers.push(importFields.find(([field]) => field === edit.field)![1]); }
-    return { ...file, originalHeaders: file.originalHeaders ?? [...file.headers], headers, mapping, rows: file.rows.map(row => {
+    const headers = [...file.headers], mapping = { ...file.mapping }, columnMapping = sourceAssignments(file);
+    for (const edit of edits) if (mapping[edit.field] < 0) { mapping[edit.field] = headers.length; headers.push(importFields.find(([field]) => field === edit.field)![1]); columnMapping.push(edit.field); }
+    return { ...file, originalHeaders: file.originalHeaders ?? [...file.headers], headers, mapping, columnMapping, rows: file.rows.map(row => {
       const rowEdits = byRow.get(row.line);
       if (!rowEdits) return row;
       const cells = [...row.cells];
@@ -29,12 +20,35 @@ export function editImportRows(files: ImportFile[], changes: Array<{ fileId: str
     }) };
   });
 }
-const normalize = (value: string) => value.normalize("NFKC").trim().toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 export function detectImportMapping(headers: string[]) {
-  return Object.fromEntries(importFields.map(([key, , field]) => [key,
-    headers.findIndex(header => csvFields[field].some(alias => normalize(alias) === normalize(header))),
-  ])) as Record<ImportField, number>;
+  return mappingFromAssignments(headers, detectColumnAssignments(headers));
 }
+export function sourceAssignments(file: ImportFile): Array<ImportField|null> {
+  if (file.columnMapping?.length === file.headers.length) return [...file.columnMapping];
+  return file.headers.map((_, index) => importFields.find(([field]) => file.mapping[field] === index)?.[0] ?? null);
+}
+export function importMappingProblems(file: ImportFile): string[] {
+  const errors = mappingConflicts(file.headers, sourceAssignments(file));
+  if (!file.columnMapping) for (const [index, header] of file.headers.entries()) {
+    if (importFields.filter(([field]) => file.mapping[field] === index).length > 1) errors.push(`${header} maps to more than one destination. Select its intended field.`);
+  }
+  return errors;
+}
+export function setSourceMapping(file: ImportFile, index: number, destination: ImportField|null): ImportFile {
+  const columnMapping = sourceAssignments(file); columnMapping[index] = destination;
+  return { ...file, columnMapping, mapping: mappingFromAssignments(file.headers, columnMapping) };
+}
+export function importColumnReport(file: ImportFile) {
+  const assignments = sourceAssignments(file), candidates = columnCandidates(file.headers);
+  return file.headers.map((header, index) => {
+    const field = assignments[index];
+    const conflict = field != null && assignments.filter(other => other === field).length > 1
+      || !file.columnMapping && importFields.filter(([key]) => file.mapping[key] === index).length > 1;
+    const status = conflict ? "Conflicting Mapping" : field ? candidates[index].length === 1 && candidates[index][0] === field ? "Automatically Matched" : "Manually Matched" : candidates[index].length > 1 ? "Conflicting Mapping" : "Needs Manual Mapping";
+    return { index, header, field, status, sample: file.rows.find(row => row.cells[index]?.trim())?.cells[index] ?? "" };
+  });
+}
+export const importFormatKey = (file: ImportFile) => JSON.stringify(file.headers.map(normalizeColumnName));
 export function importMappingSummary(file: ImportFile) {
   const sourceHeaders = file.originalHeaders ?? file.headers;
   const mapped = new Set(Object.values(file.mapping));
@@ -48,9 +62,11 @@ export function importMappingSummary(file: ImportFile) {
 export function importFileFromGrid(name: string, grid: string[][], lines?: number[], id = name): ImportFile {
   const headers = grid[0];
   if (!headers?.length || grid.length < 2) throw new Error(`${name}: choose a table with headers and data rows.`);
-  return { id, name, headers, originalHeaders: [...headers], mapping: detectImportMapping(headers), rows: grid.slice(1).map((cells, index) => {
+  const detected = detectImportMapping(headers);
+  const referenceIndex = detected.ph_truck_reference;
+  return { id, name, headers, originalHeaders: [...headers], mapping: detectImportMapping(headers), columnMapping: detectColumnAssignments(headers), rows: grid.slice(1).map((cells, index) => {
     if (cells.length > headers.length) throw new Error(`${name}, row ${lines?.[index + 1] ?? index + 2}: more values than headers. Check quoted commas.`);
-    return { line: lines?.[index + 1] ?? index + 2, cells, originalCells: [...cells], group: name };
+    return { line: lines?.[index + 1] ?? index + 2, cells, originalCells: [...cells], group: referenceIndex >= 0 && cells[referenceIndex]?.trim() ? `${name} / ${cells[referenceIndex].trim()}` : name };
   }).filter(row => row.cells.some(value => value.trim())) };
 }
 export async function readImportFile(file: File): Promise<ImportFile[]> {
@@ -72,8 +88,10 @@ export async function readImportFile(file: File): Promise<ImportFile[]> {
         if (value instanceof Date) return value.toISOString().slice(0, 19).replace("T", " ");
         const scalar = value && typeof value === "object" && "result" in value ? value.result : value;
         if (typeof scalar === "number") {
-          const places = cell.numFmt?.match(/0\.(0+)/)?.[1].length;
-          return places ? scalar.toFixed(places) : String(scalar);
+          // A display format must not round away stored decimal precision.
+          // Simple identifier zero masks can retain leading zeroes from XLSX.
+          const zeroMask = /^0+$/.test(cell.numFmt ?? "") ? cell.numFmt : "";
+          return zeroMask && Number.isSafeInteger(scalar) && scalar >= 0 ? String(scalar).padStart(zeroMask.length, "0") : String(scalar);
         }
         return cell.text;
       });
@@ -85,10 +103,10 @@ export async function readImportFile(file: File): Promise<ImportFile[]> {
   return files;
 }
 export function importPayload(files: ImportFile[]) {
-  return files.map(file => ({ name: file.name, rows: file.rows.map(row => ({ line: row.line, group: row.group,
+  return files.map(file => ({ name: file.name, headers: file.headers, column_mapping: sourceAssignments(file), mapping_errors: importMappingProblems(file), rows: file.rows.map(row => ({ line: row.line, group: row.group,
     original_values: Object.fromEntries((file.originalHeaders ?? file.headers).map((header,index)=>[`${header || "Column"} [${index+1}]`,(row.originalCells??row.cells)[index]??""])),
 
-    unmapped: Object.fromEntries(file.headers.flatMap((header, index) => !Object.values(file.mapping).includes(index) && row.cells[index]?.trim() ? [[header || `Column ${index + 1}`, row.cells[index]]] : [])),
+    unmapped: Object.fromEntries(file.headers.flatMap((header, index) => !Object.values(file.mapping).includes(index) && row.cells[index]?.trim() ? [[`${header || "Column"} [${index + 1}]`, row.cells[index]]] : [])),
     values: Object.fromEntries(importFields.map(([key]) => [key, file.mapping[key] < 0 ? null : row.cells[file.mapping[key]]?.trim() || null])),
   })) }));
 }

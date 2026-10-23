@@ -2,10 +2,12 @@ import type { LocationSearchResult } from "./location-search.service.js";
 
 export type Destination = { ship_to: string; province: string; city: string; customer_name?: string };
 export type LocationLookup = {
-  status: "found" | "multiple" | "missing_province" | "missing_city" | "not_found" | "review_required" | "lookup_failed";
+  status: "found" | "multiple" | "missing_province" | "missing_city" | "not_found" | "review_required" | "lookup_failed" | "not_configured" | "rate_limited" | "network_error";
   message: string;
   candidates: LocationSearchResult[];
   source: "store" | "geoapify" | "nominatim" | "none";
+  error_code?: string;
+  retryable?: boolean;
 };
 export const locationIdentity = (value: string) => value.normalize("NFKC").toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
 const geography = (value: string) => locationIdentity(value.replace(/\b(?:province|city|of)\b/gi, ""));
@@ -20,7 +22,7 @@ export function locationMessage(source: Destination, status: LocationLookup["sta
   if (status === "found") return `Exact location found for Ship To ${name}${suffix}, at ${address}. Please verify.`;
   if (status === "multiple") return `Multiple locations found for Ship To ${name}${suffix}. Please select the correct location.`;
   if (status === "review_required") return `Location candidate found for Ship To ${name}${suffix}. The exact store address is not confirmed. Please select and verify the correct location.`;
-  if (status === "lookup_failed") return `Cannot find exact location for Ship To ${name}${suffix} - Location lookup is unavailable. The destination can be saved with blank coordinates.`;
+  if (["lookup_failed", "not_configured", "rate_limited", "network_error"].includes(status)) return `Cannot find exact location for Ship To ${name}${suffix} - Location lookup is unavailable. The destination can be saved with blank coordinates.`;
   return `Cannot find exact location for Ship To ${name}${suffix}. Please review the address; coordinates will remain blank.`;
 }
 export function classifyLocations(source: Destination, candidates: LocationSearchResult[], origin: LocationLookup["source"]): LocationLookup {

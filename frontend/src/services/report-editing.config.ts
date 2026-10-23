@@ -3,6 +3,7 @@ import type { RelationshipKind } from "./lookup.service";
 import type { ReportKey } from "./report.service";
 
 export type ReportEditTarget =
+  | "masterList"
   | "trip"
   | "stop"
   | "lineItem"
@@ -566,11 +567,25 @@ const REPORT_EDITING: Record<
   },
 };
 
+const masterListEditing: Record<string, ReportEditDefinition> = {
+  added_by_name: { ...profileField("Added by", "created_by", "added_by_name"), sourceEntity: "masterList" },
+  delivery_completed_date: { ...stopField("Delivery completed date", "finish_unloading_time"), editor: "datetime" },
+};
+for (const [key, editor] of Object.entries({
+  page_no: "text", incident_date: "date", ir_status: "text", ir_submitted_date: "date", backload_reason: "text",
+  backload_number_of_boxes: "number", backload_comments: "text", offload_number_of_boxes: "number",
+  offload_reason: "text", pod_status: "text", pod_remarks: "text", invoice_number: "text",
+} as const)) masterListEditing[key] = { label: key, sourceEntity: "masterList", sourceField: key, editor, recordIdField: "trip_id" };
+
 export function getReportEditDefinition(
   reportKey: ReportKey,
   columnKey: string,
   row?: Record<string, unknown>,
 ): ReportEditDefinition | null {
+  if (reportKey === "dispatch-monitoring" && row?._master_list) {
+    if (masterListEditing[columnKey]) return masterListEditing[columnKey];
+    if (!["trip_number", "dispatch_number"].includes(columnKey) && commonTrip[columnKey]) return commonTrip[columnKey];
+  }
   if (["combined", "dispatch", "trip-booking", "dispatch-monitoring"].includes(reportKey) && [
     "sp_reference", "ph_truck_reference", "dn_reference", "order_item_number", "so_number",
     "stock_quantity", "unit_cbm", "so_approval_date", "item_status", "source_warehouse",

@@ -19,6 +19,8 @@ import { resolveLegacyPodCellValue } from "./transmittal-tracker.logic.js";
 import { tripReferenceAvailable } from "./trip-reference.schema.js";
 import { tripImportAvailable,tripAllocationReportAvailable } from "./trip-import.schema.js";
 import { TRIP_SOURCE_COLUMNS, TRIP_CARGO_COLUMNS, SOURCE_LINE_COLUMNS, SOURCE_REPORTS, sourceOrderedColumns } from "../config/trip-source-columns.js";
+import { MASTER_LIST_COLUMNS } from "../config/master-list-columns.js";
+import { masterListAvailable } from "./master-list.service.js";
 
 const REPORT_ROUTE_MAP = {
   combined: "v_tms_combined",
@@ -217,6 +219,7 @@ async function attachOperationalRecordIds(
   fallbackMissingDispatchNumber = false,
   suppliedTrips?: Record<string,unknown>[],
   includeDeleteVersions=false,
+  includeProductPhotos=true,
 ) {
   // Copy internal IDs with underscore prefix to standard field names for frontend compatibility
   for (const row of rows) {
@@ -320,7 +323,7 @@ async function attachOperationalRecordIds(
         .filter((id): id is string => typeof id === "string"),
     ),
   ];
-  if (productIds.length > 0) {
+  if (includeProductPhotos && productIds.length > 0) {
     const { data: products, error } = await supabaseAdmin
       .from("products")
       .select("id, photo_path")
@@ -679,28 +682,32 @@ export async function getReportData(
   const key = reportKey.trim();
   if (!REPORT_KEYS.includes(key)) throw new ApiError("Report not found", 404, "REPORT_NOT_FOUND");
   const requestedSourceLines = key === "dispatch-monitoring" && getQueryString(query.source_lines) === "true";
-  const sourceLines = requestedSourceLines && await tripImportAvailable();
+  const csvMaster = requestedSourceLines && await masterListAvailable();
+  // The CSV projection already depends on the source schema being installed.
+  const sourceLines = requestedSourceLines && (csvMaster || await tripImportAvailable());
   // The existing booking view already exposes physical cargo IDs. Use it before
   // source-schema activation so manually added products remain visible after refresh.
   const legacySourceLines = requestedSourceLines && !sourceLines;
   const baseDefinition = getReportDefinition(legacySourceLines ? "trip-booking" : key);
-  const hasSource = (sourceLines || SOURCE_REPORTS.includes(key)) && await tripImportAvailable();
-  const hasCargoColumns=hasSource&&await tripAllocationReportAvailable();
+  const hasSource = sourceLines || SOURCE_REPORTS.includes(key) && await tripImportAvailable();
+  const hasCargoColumns=!requestedSourceLines&&hasSource&&await tripAllocationReportAvailable();
   const sourceColumns = [...TRIP_SOURCE_COLUMNS, ...(sourceLines ? SOURCE_LINE_COLUMNS : []),...(hasCargoColumns?TRIP_CARGO_COLUMNS:[])];
-  const definition = hasSource ? {
+  const sourceDefinition = hasSource ? {
     ...baseDefinition, columns: [...baseDefinition.columns, ...sourceColumns],
     sortableColumns: [...baseDefinition.sortableColumns, ...sourceColumns.map(column => column.key)],
     filters: [...baseDefinition.filters, ...sourceColumns.map(column => ({ key: column.key, field: column.key, operator: "eq" as const }))],
   } : baseDefinition;
   // These views expose the physical parent as an internal field; the public
   // trip_id alias is attached only after querying, so it cannot be filtered in SQL.
+  const definition = csvMaster ? { ...sourceDefinition, columns: MASTER_LIST_COLUMNS,
+    sortableColumns: [...new Set([...sourceDefinition.sortableColumns, ...MASTER_LIST_COLUMNS.map(column => column.key)])] } : sourceDefinition;
   const tripIdField = legacySourceLines || ["trip-booking", "dispatch"].includes(key) ? "_trip_id" : "trip_id";
   validateArrayQuery(query.trip_id, "trip_id");
   const tripId = normalizeText(getQueryString(query.trip_id));
   if (tripId && !isValidUuid(tripId)) {
     throw new ApiError("Invalid trip id", 400, "INVALID_TRIP_ID");
   }
-  const viewNames = sourceLines ? ["v_trip_source_master"] : resolveViewNames(definition);
+  const viewNames = csvMaster ? ["v_trip_master_csv"] : sourceLines ? ["v_trip_source_master"] : resolveViewNames(definition);
   if (!viewNames.length) throw new ApiError("Report view configuration is missing", 500, "REPORT_CONFIG_ERROR");
 
   const rawPage = Number(getQueryString(query.page) ?? 1);
@@ -791,6 +798,7 @@ export async function getReportData(
     if (!error) {
       const rows = (data ?? []) as Record<string, unknown>[];
       for (const row of rows) {
+        if (requestedSourceLines) row._master_list = true;
         if(key==="store-calling"){row.ship_to??=row.store_name;row.status??=row.contact_status;row.assigned_to??=row.assigned_to_id;}
         if (Object.hasOwn(row, "transmittal_ref")) {
           const reference = resolveLegacyPodCellValue(row.transmittal_ref);
@@ -801,13 +809,16 @@ export async function getReportData(
       let parentTrips:Record<string,unknown>[]|undefined;
       if(["combined","dispatch","dispatch-monitoring","trip-booking"].includes(key)){
         const ids=[...new Set(rows.map(row=>row.trip_id??row._trip_id).filter((id):id is string=>typeof id==="string"&&isValidUuid(id)))];
-        if(ids.length){let result=await supabaseAdmin.from("trips").select("id,dispatch_number,transaction_number,trip_reference,warehouse_id,departure_from_warehouse_at").in("id",ids);
-          if(result.error&&["42703","PGRST204"].includes(result.error.code)&&/trip_reference/i.test(result.error.message))result=await supabaseAdmin.from("trips").select("id,dispatch_number,transaction_number,warehouse_id,departure_from_warehouse_at").in("id",ids) as typeof result;
+        const tripFields = requestedSourceLines && !legacySourceLines
+          ? "id,dispatch_number,transaction_number,trip_reference"
+          : "id,dispatch_number,transaction_number,trip_reference,warehouse_id,departure_from_warehouse_at";
+        if(ids.length){let result=await supabaseAdmin.from("trips").select(tripFields).in("id",ids);
+          if(result.error&&["42703","PGRST204"].includes(result.error.code)&&/trip_reference/i.test(result.error.message))result=await supabaseAdmin.from("trips").select(tripFields.replace(",trip_reference", "")).in("id",ids) as typeof result;
           if(result.error)throw new ApiError("Unable to load report trip relationships.",503);parentTrips=result.data??[];
         }else parentTrips=[];
       }
       const enriched = ["combined", "dispatch", "dispatch-monitoring", "trip-booking", "store-calling"].includes(key)
-        ? await attachOperationalRecordIds(rows, key === "dispatch-monitoring", parentTrips, getQueryString(query.record_delete_versions)==="true")
+        ? await attachOperationalRecordIds(rows, key === "dispatch-monitoring", parentTrips, getQueryString(query.record_delete_versions)==="true", !requestedSourceLines)
         : rows;
       if(getQueryString(query.selection_only)==="true"){
         const identityFields=new Set(["id","trip_id","trip_stop_id","trip_line_item_id","assignment_id","billing_id","incident_id","backload_id","offload_id","store_call_id","_trip_id","_trip_stop_id","_trip_line_item_id","_assignment_id","_billing_id","_incident_id","_backload_id","_offload_id","_store_call_id"]);
@@ -818,8 +829,8 @@ export async function getReportData(
         legacySourceLines ? attachLegacyStopData(enriched,parentTrips) : Promise.resolve(),
         hasSource ? attachSourceDecimals(enriched) : Promise.resolve(),
         attachGeneratedTripNumbers(enriched,parentTrips),
-        ["combined", "dispatch", "dispatch-monitoring"].includes(key) ? attachLoadingMilestones(enriched) : Promise.resolve(),
-        ["combined", "dispatch", "dispatch-monitoring", "trip-booking", "store-calling"].includes(key) ? getTripRoutes(tripIds,parentTrips?.map(trip=>({id:String(trip.id),warehouse_id:typeof trip.warehouse_id==="string"?trip.warehouse_id:null}))).then(routes => {
+        !requestedSourceLines && ["combined", "dispatch", "dispatch-monitoring"].includes(key) ? attachLoadingMilestones(enriched) : Promise.resolve(),
+        !requestedSourceLines && ["combined", "dispatch", "dispatch-monitoring", "trip-booking", "store-calling"].includes(key) ? getTripRoutes(tripIds,parentTrips?.map(trip=>({id:String(trip.id),warehouse_id:typeof trip.warehouse_id==="string"?trip.warehouse_id:null}))).then(routes => {
           for (const row of enriched) row.route = typeof row.trip_id === "string" ? routes.get(row.trip_id) ?? null : null;
         }).catch(() => { for (const row of enriched) row.route = null; console.warn("Report route enrichment unavailable", {reportKey:key}); }) : Promise.resolve(),
       ]);
@@ -848,6 +859,7 @@ export async function getReportColumns(reportKey: string, sourceLines = false) {
   const key = reportKey.trim();
   if (!REPORT_KEYS.includes(key)) throw new ApiError("Report not found", 404, "REPORT_NOT_FOUND");
   const master = sourceLines && key === "dispatch-monitoring";
+  if (master) return { report: key, columns: MASTER_LIST_COLUMNS };
   const source = (master || SOURCE_REPORTS.includes(key)) && await tripImportAvailable();
   const columns = [...REPORT_DEFINITIONS[key].columns, ...(source || master ? [...TRIP_SOURCE_COLUMNS, ...(master ? SOURCE_LINE_COLUMNS : []),...(source&&await tripAllocationReportAvailable()?TRIP_CARGO_COLUMNS:[])] : [])]
     .map(column => ({ ...column, type: column.key === "trip_number" ? "text" as const : column.type }));

@@ -1,5 +1,5 @@
 import {matchesSpreadsheetSearch} from "../../services/spreadsheet-display";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useId, useRef, useState } from "react";
 import { useAuth } from "../../context/AuthContext";
 import RelationshipCreateDialog, {creatableRelationship, normalizeRelationship} from "./RelationshipCreateDialog";
 import { createPortal } from "react-dom";
@@ -51,13 +51,14 @@ export default function SearchableRelationshipEditor({
   const createRef=useRef(false);
   const listId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [options, setOptions] = useState<RelationshipOption[]>(()=>optionLoader?[]:getCachedRelationshipOptions(token,kind,"",{storeId,customerId})??[]);
   const [activeIndex, setActiveIndex] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [position, setPosition] = useState({ left: 0, top: 0, width: 240, zIndex:100 });
+  const [position, setPosition] = useState({ left: 0, top: 0, width: 240, zIndex:100, maxHeight: 224 });
 
   useEffect(() => {
     if (!isOpen) return;
@@ -97,27 +98,37 @@ export default function SearchableRelationshipEditor({
     };
   }, [customerId, isOpen, kind, query, storeId, token, value,optionLoader]);
 
-  useEffect(() => {
-    if (!isOpen) return;
+  useLayoutEffect(() => {
+    if (!isOpen || creating) return;
     const updatePosition = () => {
       const rect = inputRef.current?.getBoundingClientRect();
       if (!rect) return;
       let layer=90;for(let ancestor:HTMLElement|null=inputRef.current;ancestor;ancestor=ancestor.parentElement){const z=Number.parseInt(getComputedStyle(ancestor).zIndex,10);if(Number.isFinite(z))layer=Math.max(layer,z);}
       const width = Math.min(Math.max(rect.width, 220), Math.max(0, window.innerWidth - 16));
+      const below = Math.max(0, window.innerHeight - rect.bottom - 12);
+      const above = Math.max(0, rect.top - 12);
+      const desired = Math.min(224, popoverRef.current?.scrollHeight || 224);
+      const flip = below < desired && above > below;
+      const maxHeight = Math.min(224, flip ? above : below);
+      const height = Math.min(desired, maxHeight);
       setPosition({
         left: Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)),
-        top: Math.max(8, Math.min(rect.bottom + 4, window.innerHeight - 220)),
+        top: flip ? Math.max(8, rect.top - 4 - height) : rect.bottom + 4,
+        maxHeight,
         width,zIndex:layer+10,
       });
     };
     updatePosition();
+    const observer = new ResizeObserver(updatePosition);
+    if (popoverRef.current) observer.observe(popoverRef.current);
     window.addEventListener("resize", updatePosition);
     window.addEventListener("scroll", updatePosition, true);
     return () => {
+      observer.disconnect();
       window.removeEventListener("resize", updatePosition);
       window.removeEventListener("scroll", updatePosition, true);
     };
-  }, [isOpen]);
+  }, [isOpen, creating]);
 
   function selectOption(option: RelationshipOption | undefined, commit = false) {
     if (disabled) return;
@@ -159,10 +170,11 @@ export default function SearchableRelationshipEditor({
   const isCurrent=(option:RelationshipOption)=>Boolean(value)&&(option.label===value||option.secondary===value||Object.values(option.values??{}).includes(value));
   const popover = isOpen ? (
     <div
+      ref={popoverRef}
       id={listId}
       role="listbox"
       aria-label="Matching records"
-      className="fixed z-[100] max-h-56 overflow-y-auto rounded-xl border border-amber-200 bg-white py-1 shadow-xl"
+      className="fixed z-[100] max-h-56 overflow-y-auto rounded-xl border border-blue-100 bg-white py-1 shadow-xl"
       style={position}>
       {value && <p className="border-b border-slate-100 px-3 py-2 text-[11px] text-slate-500">Current: <span className="font-semibold text-slate-700">{value}</span></p>}
       {loading && !options.length ? (
@@ -186,7 +198,7 @@ export default function SearchableRelationshipEditor({
             onMouseDown={(event) => event.preventDefault()}
             onMouseEnter={() => setActiveIndex(index)}
             onClick={() => selectOption(option)}
-            className={`flex w-full items-center justify-between gap-2 px-3 py-2 text-left transition-colors ${index === activeIndex ? "bg-amber-50" : "hover:bg-amber-50/60"}`}>
+            className={`flex w-full items-center justify-between gap-2 px-3 py-2 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2678b9] ${index === activeIndex ? "bg-blue-50" : "hover:bg-blue-50/60"}`}>
             <span className="min-w-0 flex-1">
             <span className="block truncate text-xs font-medium text-slate-800">
               {option.label}{unavailableIds?.includes(option.id) && " (already selected)"}
@@ -201,7 +213,7 @@ export default function SearchableRelationshipEditor({
           </button>
         ))
       )}
-      {canCreate&&<button id={`${listId}-${options.length}`} type="button" role="option" aria-selected={activeIndex===options.length} onMouseDown={event=>event.preventDefault()} onMouseEnter={()=>setActiveIndex(options.length)} onClick={beginCreate} className="flex w-full items-center gap-1 border-t px-3 py-2 text-left text-xs text-blue-700"><Plus className="h-3 w-3"/>Add "{query.trim()}"</button>}
+      {canCreate&&<button id={`${listId}-${options.length}`} type="button" role="option" aria-selected={activeIndex===options.length} onMouseDown={event=>event.preventDefault()} onMouseEnter={()=>setActiveIndex(options.length)} onClick={beginCreate} className="flex w-full items-center gap-1 border-t border-slate-100 px-3 py-2 text-left text-xs text-[#2678b9] hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2678b9]"><Plus className="h-3 w-3"/>Add "{query.trim()}"</button>}
     </div>
   ) : null;
 
@@ -243,7 +255,7 @@ export default function SearchableRelationshipEditor({
           onCommitBlur();
         }}
         onKeyDown={handleKeyDown}
-        className={presentation === "form" ? "w-full min-w-0 max-w-full border-0 bg-transparent text-sm text-slate-800 shadow-none outline-none placeholder:text-slate-400 disabled:opacity-60" : "spreadsheet-cell-editor w-full min-w-0 max-w-full rounded-none border-0 bg-transparent px-0 py-0 text-sm font-medium text-slate-800 shadow-sm outline-none transition hover:border-amber-400 focus:border-amber-500 focus:ring-2 focus:ring-amber-100 disabled:cursor-wait disabled:opacity-60"}
+        className={presentation === "form" ? "w-full min-w-0 max-w-full border-0 bg-transparent text-sm text-slate-800 shadow-none outline-none focus:ring-2 focus:ring-[#2678b9]/30 placeholder:text-slate-400 disabled:opacity-60" : "spreadsheet-cell-editor w-full min-w-0 max-w-full rounded-none border-0 bg-transparent px-0 py-0 text-sm font-medium text-slate-800 shadow-sm outline-none transition hover:border-[#2678b9] focus:border-[#2678b9] focus:ring-2 focus:ring-blue-100 disabled:cursor-wait disabled:opacity-60"}
       />
 
       </div>

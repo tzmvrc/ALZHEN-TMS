@@ -112,6 +112,7 @@ import { REPORT_REALTIME_TABLES, subscribeToAdminRealtime } from "../../services
 import { searchRelationshipOptions } from "../../services/lookup.service";
 import {
   updateTripAssignmentRecord,
+  updateMasterListCell,
   updateTripBillingRecord,
   updateStoreCallRecord,
   updateTripLineItemRecord,
@@ -181,7 +182,8 @@ function appendReportWorksheet(workbook: ExcelJS.Workbook, reportKey: ReportKey,
     !column.key.startsWith("_") &&
     !["trip_id", "trip_stop_id", "trip_line_item_id"].includes(column.key),
   );
-  const name = REPORTS[reportKey].title.replace(/[:\\/?*\x5B\x5D]/g, " ").slice(0, 31);
+  const sheetTitle = reportKey === "dispatch-monitoring" && columns.some(column => column.key === "added_by_name") ? "Master List" : REPORTS[reportKey].title;
+  const name = sheetTitle.replace(/[:\\/?*\x5B\x5D]/g, " ").slice(0, 31);
   const worksheet = workbook.addWorksheet(name || "Report");
   worksheet.columns = visibleColumns.map((column) => ({
     header: column.title,
@@ -202,7 +204,12 @@ function appendReportWorksheet(workbook: ExcelJS.Workbook, reportKey: ReportKey,
   header.font = { name: "Aptos", size: 10, bold: true, color: { argb: "FFFFFFFF" } };
   header.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF0B2341" } };
   header.alignment = { vertical: "middle", wrapText: true };
-  header.eachCell((cell) => {
+  header.eachCell((cell, columnNumber) => {
+    const sourceHeader = visibleColumns[columnNumber - 1]?.sourceHeader;
+    if (sourceHeader) {
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: `FF${sourceHeader.background.slice(1)}` } };
+      cell.font = { ...cell.font, color: { argb: `FF${sourceHeader.color.slice(1)}` } };
+    }
     cell.border = { bottom: { style: "medium", color: { argb: "FFFFD43B" } } };
   });
   for (let rowNumber = 2; rowNumber <= worksheet.rowCount; rowNumber += 1) {
@@ -310,6 +317,8 @@ function summarizeReportEditRow(row: ReportRow, reportKey: ReportKey, field: str
 
 function reportEditEndpoint(target: EditableCellTarget): string {
   switch (target.sourceEntity) {
+    case "masterList":
+      return `/trips/${encodeURIComponent(target.tripId ?? "")}/master-list-cell`;
     case "loadingReport":
       return `/reports/operations/loading/${encodeURIComponent(target.tripId ?? "")}/reports/${encodeURIComponent(target.loadingReportId ?? "")}`;
     case "stop":
@@ -461,9 +470,9 @@ type EditableCellTarget = ReportEditDefinition & {
   loadingReportId?: string;
 };
 
-const collaborationSources:Record<ReportEditDefinition["sourceEntity"],string>={trip:"trips",stop:"trip_stops",lineItem:"trip_line_items",assignment:"trip_truck_assignments",billing:"billings",storeCall:"store_calls",loadingReport:"loading_reports"};
+const collaborationSources:Record<ReportEditDefinition["sourceEntity"],string>={masterList:"trips",trip:"trips",stop:"trip_stops",lineItem:"trip_line_items",assignment:"trip_truck_assignments",billing:"billings",storeCall:"store_calls",loadingReport:"loading_reports"};
 function liveDraftCell(table:string,target:EditableCellTarget|null,trackerColumn?:string){
- if(!target || target.newProductDraft)return null;
+ if(!target || target.newProductDraft || target.sourceEntity === "masterList")return null;
  if(target.sourceField==="transmittal_ref")return trackerColumn&&target.tripId&&target.stopId?{table,source:"flex_columns",recordId:trackerColumn,field:"value",tripId:target.tripId,stopId:target.stopId}:null;
  const id={trip:target.tripId,stop:target.stopId,lineItem:target.lineItemId,assignment:target.assignmentId,billing:target.billingId,storeCall:target.storeCallId,loadingReport:target.loadingReportId}[target.sourceEntity];
  return id?{table,source:collaborationSources[target.sourceEntity],recordId:id,tripId:target.tripId,stopId:["stop","lineItem","storeCall"].includes(target.sourceEntity)?target.stopId:undefined,field:target.sourceField}:null;
@@ -472,7 +481,7 @@ function collaborationCell(table:string,target:EditableCellTarget|null,status:"s
  if (target?.newProductDraft) return null;
  // Loading reports refresh through secure change signals; they have no approved
  // per-record collaboration version. Do not invent a versioned socket identity.
- if(!target||target.sourceEntity==="loadingReport"||target.sourceField==="transmittal_ref")return null;
+ if(!target||target.sourceEntity==="masterList"||target.sourceEntity==="loadingReport"||target.sourceField==="transmittal_ref")return null;
  const recordId={trip:target.tripId,stop:target.stopId,lineItem:target.lineItemId,assignment:target.assignmentId,billing:target.billingId,storeCall:target.storeCallId,loadingReport:target.loadingReportId}[target.sourceEntity];
  return recordId?{table,source:collaborationSources[target.sourceEntity],recordId,tripId:target.tripId,stopId:["stop","lineItem","storeCall"].includes(target.sourceEntity)?target.stopId:undefined,field:target.sourceField,status}:null;
 }
@@ -559,6 +568,11 @@ function getEditableCellTarget(
   const recordId = row[definition.recordIdField];
   if (typeof recordId !== "string" || !recordId) return null;
   const targetIds: Partial<EditableCellTarget> = {};
+  if (definition.sourceEntity === "masterList") {
+    targetIds.tripId = recordId;
+    targetIds.stopId = typeof row.trip_stop_id === "string" ? row.trip_stop_id : undefined;
+    targetIds.lineItemId = typeof row.trip_line_item_id === "string" ? row.trip_line_item_id : undefined;
+  }
   if (definition.sourceEntity === "loadingReport") {
     if (typeof row.trip_id !== "string" || !row.trip_id) return null;
     targetIds.tripId = row.trip_id;
@@ -601,6 +615,8 @@ function matchesEditedRecord(
   target: SavedRowReconciliation["target"],
 ): boolean {
   switch (target.sourceEntity) {
+    case "masterList":
+      return row.trip_id === target.tripId && (row.trip_stop_id ?? undefined) === target.stopId && (row.trip_line_item_id ?? undefined) === target.lineItemId;
     case "loadingReport":
       return row.loading_report_id === target.loadingReportId && row.trip_id === target.tripId;
     case "trip":
@@ -1165,7 +1181,9 @@ export default function ReportDataView({
   const bufferedTextDraft = useRef<EditingCell | null>(null);
   const rowHeights = useSpreadsheetRowHeights(`${profile?.id ?? "guest"}:${transactionView ? "trips" : reportKey}`, ["ADMIN", "STAFF"].includes(profile?.role ?? ""));
   const sharedDesign=useSharedTableDesign(transactionView?"trips":`report:${reportKey}`,accessToken,["ADMIN","STAFF"].includes(profile?.role??""),Boolean(editingCell||editModalOpen||columnResize||draggedColumnKey||fillGesture));
-  const headerFormatting = useSpreadsheetHeaderFormatting(transactionView ? "trips" : `report:${reportKey}`, sharedDesign.canEdit, sharedDesign.columns, (key, header) => { void sharedDesign.save(key, { header }, getColumnWidth(key)); }, (key, alias) => { void sharedDesign.save(key, { alias }, getColumnWidth(key)); }, (key, input) => { void sharedDesign.save(key, { input }, getColumnWidth(key)); });
+  const fixedHeaders = useMemo(() => allTripRecords ? Object.fromEntries(columns.flatMap(column => column.sourceHeader ? [[column.key, { backgroundColor: column.sourceHeader.background, color: column.sourceHeader.color }]] : [])) : undefined, [allTripRecords, columns]);
+  const sourceHeaderGroups = useMemo(() => allTripRecords ? [...new Map(columns.flatMap(column => column.sourceHeader ? [[column.sourceHeader.group, column.sourceHeader] as const] : [])).values()] : [], [allTripRecords, columns]);
+  const headerFormatting = useSpreadsheetHeaderFormatting(transactionView ? "trips" : `report:${reportKey}`, sharedDesign.canEdit, sharedDesign.columns, (key, header) => { void sharedDesign.save(key, { header }, getColumnWidth(key)); }, (key, alias) => { void sharedDesign.save(key, { alias }, getColumnWidth(key)); }, (key, input) => { void sharedDesign.save(key, { input }, getColumnWidth(key)); }, fixedHeaders);
   const tableViewportRef = useRef<HTMLDivElement>(null);
   const autoFit = useSheetAutoFit(tableViewportRef, columns, rows);
   const columnLayout=useMemo<ReportColumnLayout>(()=>{
@@ -1247,31 +1265,34 @@ export default function ReportDataView({
   const displayedRows = useMemo(() => insertProductDrafts(rows, productDrafts, row => getReportRowKey(reportKey, row)), [rows, productDrafts, reportKey]);
   const displayedRowsRef = useRef<ReportRow[]>(displayedRows);
   displayedRowsRef.current = displayedRows;
+  const columnsByKey = useMemo(() => new Map(columns.map(column => [column.key, column])), [columns]);
   const layoutColumnKeys = useMemo(() => {
+    // Preserve stored formatting and visibility while following the CSV order.
+    if (allTripRecords && reportKey === "dispatch-monitoring") return columns.map(column => column.key);
     const availableKeys = new Set(columns.map((column) => column.key));
     const orderedKeys = [
       ...columnLayout.order.filter((key) => availableKeys.has(key)),
       ...columns.map((column) => column.key).filter((key) => !columnLayout.order.includes(key)),
     ];
     return orderedKeys;
-  }, [columnLayout.order, columns]);
+  }, [columnLayout.order, columns, allTripRecords, reportKey]);
   const hiddenColumnKeys = useMemo(
-    () => new Set(columnLayout.hidden.filter((key) => columns.some((column) => column.key === key))),
-    [columnLayout.hidden, columns],
+    () => new Set(columnLayout.hidden.filter((key) => columnsByKey.has(key))),
+    [columnLayout.hidden, columnsByKey],
   );
   const gridColumns = useMemo(
     () => layoutColumnKeys.filter((key) => !hiddenColumnKeys.has(key)).flatMap((key) => {
-      const column = columns.find((item) => item.key === key && !(transactionView && key === "warehouse_code"));
+      const column = transactionView && !allTripRecords && key === "warehouse_code" ? undefined : columnsByKey.get(key);
       return column ? [column] : [];
     }),
-    [columns, hiddenColumnKeys, layoutColumnKeys, transactionView],
+    [columnsByKey, hiddenColumnKeys, layoutColumnKeys, transactionView, allTripRecords],
   );
   const hiddenColumns = useMemo(
     () => layoutColumnKeys.filter((key) => hiddenColumnKeys.has(key)).flatMap((key) => {
-      const column = columns.find((item) => item.key === key);
+      const column = columnsByKey.get(key);
       return column ? [column] : [];
     }),
-    [columns, hiddenColumnKeys, layoutColumnKeys],
+    [columnsByKey, hiddenColumnKeys, layoutColumnKeys],
   );
   const visibleSelectionKeys = useMemo(
     () => displayedRows.flatMap((row) => {
@@ -1351,6 +1372,7 @@ export default function ReportDataView({
   const savedRowReconciliations = useRef<SavedRowReconciliation[]>([]);
   const targetedRefreshes=useRef(new Map<string,Promise<void>>());
   const targetedDirty=useRef(new Set<string>());
+  const savedTripRefreshes=useRef(new Map<string,string>());
   function refreshOneTrip(tripId:string){
     if(!allTripRecords||!accessToken||!tripId||activeReportEdit.current||loadedSnapshotKeyRef.current!==snapshotKey)return false;
     const targetKey=`${snapshotKey}:${tripId}`;
@@ -1523,9 +1545,15 @@ export default function ReportDataView({
   const scheduleRealtimeRefreshRef = useRef(scheduleRealtimeRefresh);
   scheduleRealtimeRefreshRef.current = scheduleRealtimeRefresh;
   useEffect(() => {
-    if (!activeReportEdit.current && realtimeRefreshDirty.current) {
+    if (activeReportEdit.current) return;
+    if (realtimeRefreshDirty.current) {
+      savedTripRefreshes.current.clear();
       realtimeRefreshDirty.current = false;
       scheduleRealtimeRefreshRef.current();
+    } else {
+      const tripIds = [...savedTripRefreshes.current].filter(([, owner]) => owner === snapshotKeyRef.current).map(([tripId]) => tripId);
+      savedTripRefreshes.current.clear();
+      for (const tripId of tripIds) if (!refreshOneTripRef.current(tripId)) scheduleRealtimeRefreshRef.current();
     }
   }, [editingCell, editModalOpen, formulas.draftPending, formulas.busy, physicalDeletion, rowDeletion]);
 
@@ -1626,7 +1654,7 @@ export default function ReportDataView({
       setRows([]);
       setPagination(null);
     }
-    if(!displayCache)void fetchReportColumns(reportKey,accessToken).then(next=>{if(active)setColumns(next);}).catch(()=>{
+    if(!displayCache)void fetchReportColumns(reportKey,accessToken,false,allTripRecords).then(next=>{if(active)setColumns(next);}).catch(()=>{
       // The deduplicated page request below owns the visible failure/retry outcome.
     });
 
@@ -2380,7 +2408,7 @@ export default function ReportDataView({
     const rowIndex = rows.indexOf(row);
     const seen = new Set<string>();
     const fields = columns.flatMap((column) => {
-      if (transactionView && column.key === "warehouse_code") return [];
+      if (transactionView && !allTripRecords && column.key === "warehouse_code") return [];
       const cell = createEditingCell(row, rowIndex, column.key);
       if (!cell) return [];
       const identity = [
@@ -2655,6 +2683,7 @@ export default function ReportDataView({
       message: "Saving...",
     });
     cellSaveInFlight.current = true;
+    const collectionWasFresh = allTripRecords && Boolean(getReportCollection(reportKey, accessToken, pageOptions));
 
     try {
       let savedRecord: Record<string, unknown>;
@@ -2722,7 +2751,9 @@ export default function ReportDataView({
           .filter(([key]) => !key.startsWith("_") || key === definition.sourceField)
           .map(([key, value]) => [key, diagnosticCellValue(key, value)])),
       });
-      if (definition.sourceEntity === "loadingReport" && targetCell.tripId && targetCell.loadingReportId) {
+      if (definition.sourceEntity === "masterList" && targetCell.tripId) {
+        savedRecord = await updateMasterListCell(accessToken, targetCell.tripId, targetCell.stopId, targetCell.lineItemId, definition.sourceField, nextValue);
+      } else if (definition.sourceEntity === "loadingReport" && targetCell.tripId && targetCell.loadingReportId) {
         savedRecord = await updateLoadingReport(accessToken, targetCell.tripId, targetCell.loadingReportId, updatePayload);
       } else if (definition.sourceEntity === "storeCall" && targetCell.storeCallId) {
         savedRecord = await updateStoreCallRecord(accessToken, targetCell.storeCallId, {
@@ -2785,6 +2816,7 @@ export default function ReportDataView({
       }
 
       const confirmedValue = confirmReportCellWrite(savedRecord, diagnosticTarget, definition.sourceField, {value: nextValue, editor: definition.editor});
+      if (definition.sourceEntity === "masterList" && targetCell.tripId) savedTripRefreshes.current.set(targetCell.tripId, snapshotKey);
       const savedIdentity=collaborationCell(transactionView?"trips":reportKey,diagnosticTarget);
       if(savedIdentity)rememberConfirmedRecord(savedIdentity.source,savedIdentity.recordId,savedRecord);
       if(savedIdentity&&!rememberConfirmedVersion(savedIdentity.source,savedIdentity.recordId,savedRecord.collaboration_version)){
@@ -2949,9 +2981,16 @@ export default function ReportDataView({
         || Object.values(appliedFilters).some((value) => value.trim())
         || activeSortBy === targetCell.field;
       if (shouldReloadReportPage) {
+        savedTripRefreshes.current.clear();
         invalidateReportData(reportKey);
       } else {
         invalidateApiCache(REPORTS[reportKey].endpoint);
+        // The visible collection was current before this scalar write, and the
+        // confirmed patch above is complete. Keep that snapshot usable on return
+        // to this tab; other projections retain their normal invalidation.
+        if (collectionWasFresh && !isRelationship && definition.sourceEntity !== "masterList" && !realtimeRefreshDirty.current) {
+          updateReportCollection(reportKey, accessToken, pageOptions, current => current);
+        }
       }
       if (shouldReloadReportPage) {
         setRetryVersion((version) => version + 1);
@@ -3179,7 +3218,7 @@ export default function ReportDataView({
         {/* Collaboration outcomes use deduplicated toasts; drafts and recovery stay in the hook. */}
         <div data-report-toolbar-actions className="flex w-full min-w-0 flex-wrap items-center justify-end gap-2 lg:flex-[1_1_36rem] lg:flex-nowrap">
           {sharedWidths.feedback}{sharedDesign.feedback}
-          <ColumnFinder tableKey={transactionView?"trips":reportKey} key={reportKey} rowSearch={{value:search,placeholder:"Search rows or columns...",onSearch:value=>{setSearch(value);setAppliedSearch(value);setPage(1);}}} columns={columns.filter((column) => !(transactionView && column.key === "warehouse_code")).map((column) => ({ ...column, title:headerFormatting.title(column.key,column.title), hidden: hiddenColumnKeys.has(column.key), index: renderedGridColumns.findIndex((item) => item.key === column.key) }))} viewport={tableViewportRef} getHeader={(key) => headerCellRefs.current.get(key)} onReveal={restoreReportColumn} />
+          <ColumnFinder tableKey={transactionView?"trips":reportKey} key={reportKey} rowSearch={{value:search,placeholder:"Search rows or columns...",onSearch:value=>{setSearch(value);setAppliedSearch(value);setPage(1);}}} columns={columns.filter((column) => !(transactionView && !allTripRecords && column.key === "warehouse_code")).map((column) => ({ ...column, title:headerFormatting.title(column.key,column.title), hidden: hiddenColumnKeys.has(column.key), index: renderedGridColumns.findIndex((item) => item.key === column.key) }))} viewport={tableViewportRef} getHeader={(key) => headerCellRefs.current.get(key)} onReveal={restoreReportColumn} />
           {showReportPicker && (
             <label className="sr-only" htmlFor="report-select">
               Select report
@@ -3408,6 +3447,7 @@ export default function ReportDataView({
 
         <>
           {columns.some(column => column.fieldCategory) && <div aria-label="Column responsibilities" className="flex flex-wrap items-center gap-4 border-b border-slate-100 bg-white px-3 py-1 text-[10px] text-slate-500">{Object.entries(FIELD_CATEGORIES).map(([key, item]) => <button type="button" key={key} className="inline-flex items-center gap-1.5 rounded px-1 py-1 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-blue-500" onClick={() => { const column = renderedGridColumns.find(column => column.fieldCategory === key); const header = column && headerCellRefs.current.get(column.key); if (header && tableViewportRef.current) scrollToTableColumn(tableViewportRef.current, header); }}><span className="h-2 w-2 rounded-sm" style={{backgroundColor:item.background,border:'1px solid '+item.color}} />{item.label}</button>)}</div>}
+          {sourceHeaderGroups.length > 0 && <div aria-label="Original Excel header color groups" className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-slate-100 bg-white px-3 py-1 text-[10px] text-slate-600">{sourceHeaderGroups.map(group => <button type="button" key={group.group} className="inline-flex items-center gap-1.5 rounded px-1 py-1 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-blue-500" onClick={() => { const column = renderedGridColumns.find(column => column.sourceHeader?.group === group.group); const header = column && headerCellRefs.current.get(column.key); if (header && tableViewportRef.current) scrollToTableColumn(tableViewportRef.current, header); }}><span aria-hidden="true" className="h-2.5 w-2.5 rounded-sm border border-slate-300" style={{ backgroundColor: group.background }} />{group.label}</button>)}</div>}
           {headerFormatting.configuration}{!showVisualCards && <ReportCellFormattingToolbar selectedFontSize={selectedFormats[0]?.fontSize ?? 12} formulaBar={formulas.bar} advanced selectionIsItalic={selectedFormats.length>0&&selectedFormats.every(f=>f.italic)} selectionIsUnderlined={selectedFormats.length>0&&selectedFormats.every(f=>f.underline)} selectedCellCount={sharedDesign.canEdit&&columns.length?selectedFormatCellKeys.size:0} selectionIsBold={selectionIsBold} selectedTextColor={selectedTextColor} selectedBackgroundColor={selectedBackgroundColor} onApply={applyCellFormat} {...headerFormatting.toolbarProps} />}
           <div ref={tableViewportRef} onPointerDownCapture={event=>{if(event.button===2&&(event.target as Element).closest("tbody td"))event.preventDefault();rangeDrag.onPointerDownCapture(event);}} onClickCapture={rangeDrag.onClickCapture} onPaste={(event) => void handleReportPaste(event)} onCopy={handleReportCopy} className={`${!showVisualCards ? `${REPORT_GRID_VIEWPORT_CLASS} ${SPREADSHEET_ATTACHED_VIEWPORT_CLASS}` : "relative min-h-48 w-full min-w-0 max-w-full overflow-x-auto overscroll-x-contain"} w-full`}>
             {activeError && <div role="alert" className="border-b border-rose-100 px-3 py-2 text-xs text-rose-700">Unable to load records. Your current data and drafts are preserved. Use Retry loading.</div>}
@@ -3444,6 +3484,7 @@ export default function ReportDataView({
                         ? leftPinnedColumnKeys.at(-1) === column.key
                         : pinSide === "right" && rightPinnedColumnKeys[0] === column.key;
                       const columnColor = columnLayout.colors?.[column.key];
+                      const sourceHeader = allTripRecords ? column.sourceHeader : undefined;
                       const SortIcon = !isActiveSort
                         ? ArrowUpDown
                         : sortOrder === "asc"
@@ -3458,13 +3499,14 @@ export default function ReportDataView({
                           else headerCellRefs.current.delete(column.key);
                         }}
                         data-field-category={column.fieldCategory}
+                        data-source-header-group={sourceHeader?.group}
                         data-category-default={!columnColor && !sharedDesign.columns[column.key]?.header?.backgroundColor && !sharedDesign.columns[column.key]?.format?.backgroundColor ? "true" : undefined}
-                        title={column.fieldCategory ? FIELD_CATEGORIES[column.fieldCategory].label : undefined}
+                        title={sourceHeader?.label ?? (column.fieldCategory ? FIELD_CATEGORIES[column.fieldCategory].label : undefined)}
                         scope="col"
                         draggable={false}
                         onDragOver={(event) => { if (draggedColumnKey) event.preventDefault(); }}
                         onDrop={(event) => { event.preventDefault(); if (draggedColumnKey) reorderReportColumn(draggedColumnKey, column.key); setDraggedColumnKey(null); }}
-                        style={{ width: columnWidth, minWidth: columnWidth, maxWidth: columnWidth, position: "sticky", top: 0, ...(columnColor ? { "--report-column-color": columnColor } as CSSProperties : {}), ...categoryHeaderStyle(column.fieldCategory), ...reportHeaderAppearance(sharedDesign.columns[column.key], columnColor), ...(isPinned ? { ...(pinSide === "left" ? { left: leftPinOffsets[column.key] ?? SPREADSHEET_GUTTER_WIDTH } : { right: rightPinOffsets[column.key] ?? 0 }), zIndex: 60 } : { zIndex: 40 }) }}
+                        style={{ width: columnWidth, minWidth: columnWidth, maxWidth: columnWidth, position: "sticky", top: 0, ...(columnColor ? { "--report-column-color": columnColor } as CSSProperties : {}), ...categoryHeaderStyle(column.fieldCategory), ...reportHeaderAppearance(sharedDesign.columns[column.key], columnColor), ...(sourceHeader ? { backgroundColor: sourceHeader.background, color: sourceHeader.color } : {}), ...(isPinned ? { ...(pinSide === "left" ? { left: leftPinOffsets[column.key] ?? SPREADSHEET_GUTTER_WIDTH } : { right: rightPinOffsets[column.key] ?? 0 }), zIndex: 60 } : { zIndex: 40 }) }}
                         className={`${REPORT_GRID_HEADER_CELL_CLASS} ${columnColor ? "bg-[var(--report-column-color)]" : "bg-white"} ${isPinned ? `${isOuterPinnedEdge ? pinSide === "left" ? "shadow-[4px_0_8px_-6px_rgba(11,35,65,0.35)]" : "shadow-[-4px_0_8px_-6px_rgba(11,35,65,0.35)]" : ""}` : ""} ${
                           column.type === "number" ||
                           ["quantity", "cbm", "subcon_rate_manual"].includes(
@@ -3477,7 +3519,7 @@ export default function ReportDataView({
                         <div className="spreadsheet-header-content flex min-w-0 items-center justify-between gap-2">
                           <button
                             type="button"
-                            draggable={sharedDesign.canEdit && sharedDesign.loaded}
+                            draggable={!allTripRecords && sharedDesign.canEdit && sharedDesign.loaded}
                             data-spreadsheet-header-title title={`Drag to reorder ${headerFormatting.title(column.key,column.title)}`}
                             aria-label={`Drag to reorder ${column.title}`}
                             onDragStart={(event) => { event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/plain", column.key); setDraggedColumnKey(column.key); }}
@@ -3849,7 +3891,7 @@ export default function ReportDataView({
         return <ReportColumnActionsMenu
           title={menuColumn.title}
           position={openColumnMenu}
-          onClose={() => setOpenColumnMenu(null)} onRename={() => headerFormatting.startRename(openColumnMenu.key, menuColumn.title)} onRestoreTitle={() => headerFormatting.restoreTitle(openColumnMenu.key)} onConfigureInput={() => dropdownField ? openDropdownManager(dropdownField) : headerFormatting.configure(openColumnMenu.key, columns.find(column=>column.key===openColumnMenu.key)?.title??openColumnMenu.key)}
+          onClose={() => setOpenColumnMenu(null)} onRename={allTripRecords && menuColumn.sourceHeader ? undefined : () => headerFormatting.startRename(openColumnMenu.key, menuColumn.title)} onRestoreTitle={allTripRecords && menuColumn.sourceHeader ? undefined : () => headerFormatting.restoreTitle(openColumnMenu.key)} onConfigureInput={() => dropdownField ? openDropdownManager(dropdownField) : headerFormatting.configure(openColumnMenu.key, columns.find(column=>column.key===openColumnMenu.key)?.title??openColumnMenu.key)}
           sortActions={sortableFields.includes(menuColumn.key) ? [
             { label: "Sort ascending", active: activeSortBy === menuColumn.key && sortOrder === "asc", onClick: () => { setSortBy(menuColumn.key); setSortOrder("asc"); setPage(1); } },
             { label: "Sort descending", active: activeSortBy === menuColumn.key && sortOrder === "desc", onClick: () => { setSortBy(menuColumn.key); setSortOrder("desc"); setPage(1); } },

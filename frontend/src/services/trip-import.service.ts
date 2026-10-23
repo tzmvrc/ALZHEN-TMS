@@ -4,19 +4,25 @@ import type { LocationDecision } from "../components/admin/ImportDestinationRevi
 import { apiGet, apiPost, invalidateApiCache, type ApiResponse } from "./api.service";
 import { invalidateReportPageCache } from "./report.service";
 import type { importPayload } from "../components/admin/tripImportFiles";
+import type { TripDetails } from "../../../packages/trip-import/trip-details.js";
+export type { TripDetails } from "../../../packages/trip-import/trip-details.js";
 export type ImportRow = {
+  master_values?: Record<string, string | null>;
   filename: string; line: number; group: string; values: Record<string, string | null>; errors: string[]; warnings: string[];
   source_identity: string; document_hash: string; fingerprint: string; signature: string;
   duplicate: boolean; potential_duplicate: boolean;
   original_values?: Record<string,string>;
   unmapped?: Record<string, string>;
 };
-export type ImportPreview = { rows: ImportRow[]; detected: number; valid: number; invalid: number; duplicates: number; potential_duplicates: number; setup_required?: boolean; duplicate_check_status?: "complete" | "unavailable"; setup_message?: string | null };
-export type ImportTarget = { mode: "new" | "dispatch" | "trip"; value: string; allow_create: boolean; warehouse_ids?: Record<string,string>; origin_warehouse_id?: string };
-export type ImportOutcome = { source_identity: string; status: "imported" | "skipped" | "failed"; error?: string; line_item_id?: string; trip_id?: string; trip_created?: boolean; original_batch_id?: string };
+export type ImportWarehouseMatch = { status: "matched" | "missing" | "conflict"; id?: string; label?: string; candidates: Array<{ id: string; code: string; name: string }> };
+export type ImportSourceHistory = { status: "live" | "missing" | "failed"; batch_id: string; line_item_id: string | null; trip_id?: string; source_row: number; model: string | null; imported_at: string | null };
+export type ImportRowResolution = { product_id?: string; product_label?: string; product_match_confirmed?: boolean; restore_missing_source?: boolean; restore_history_version?: string | null };
+export type ImportPreview = { rows: ImportRow[]; detected: number; valid: number; invalid: number; duplicates: number; potential_duplicates: number; history?: Record<string, ImportSourceHistory>; warehouse_matches?: Record<string, ImportWarehouseMatch>; setup_required?: boolean; duplicate_check_status?: "complete" | "unavailable"; setup_message?: string | null };
+export type ImportTarget = { mode: "new" | "dispatch" | "trip"; value: string; allow_create: boolean; warehouse_ids?: Record<string,string>; origin_warehouse_id?: string; trip_details?: TripDetails };
+export type ImportOutcome = { source_identity: string; status: "imported" | "skipped" | "failed"; error?: string; line_item_id?: string; trip_id?: string; trip_created?: boolean; trip_reference?: string; original_batch_id?: string };
 export type ImportBatchSummary = { id: string; state: "Pending" | "Partially Imported" | "Awaiting Allocation" | "Completed" | "Failed"; revision: number; imported: number; failed: number; awaiting_allocation: number; location_retry_required?: boolean; last_error: string | null; updated_at: string };
-export type ImportRecoveryDraft = { files: import("../components/admin/tripImportFiles").ImportFile[]; preview: ImportPreview | null; targets: Record<string,ImportTarget>; plans: Record<string,CargoPlan>; locations: Record<string,LocationDecision>; initialTarget?: ImportTarget; confirmed: boolean; verified: boolean; verifiedCbm: boolean; verifiedUnmapped: boolean; started: boolean; locationFollowupPending?: boolean; detailsDirty?: boolean };
-export type ImportBatchRecovery = ImportBatchSummary & { draft: ImportRecoveryDraft; outcomes: ImportOutcome[]; cargo_saved: Record<string,boolean> };
+export type ImportRecoveryDraft = { trip_details?: TripDetails; files: import("../components/admin/tripImportFiles").ImportFile[]; preview: ImportPreview | null; targets: Record<string,ImportTarget>; plans: Record<string,CargoPlan>; locations: Record<string,LocationDecision>; rowResolutions?: Record<string, ImportRowResolution>; initialTarget?: ImportTarget; confirmed: boolean; verified: boolean; verifiedCbm: boolean; verifiedUnmapped: boolean; started: boolean; locationFollowupPending?: boolean; detailsDirty?: boolean };
+export type ImportBatchRecovery = ImportBatchSummary & { draft: ImportRecoveryDraft; outcomes: ImportOutcome[]; history?: Record<string,ImportSourceHistory>; cargo_saved: Record<string,boolean> };
 /** A retry updates only missing company details on the existing assignments. */
 export async function saveImportAssignmentCompanies(token: string, tripId: string, plan: CargoPlan) {
   const trucks = plan.trucks.filter(truck => truck.companyId);
@@ -41,8 +47,8 @@ export async function previewImport(token: string, files: ReturnType<typeof impo
   if (!response.success || !response.data) throw new Error(response.message ?? "Unable to prepare import preview.");
   return response.data;
 }
-export async function commitImport(token: string, batch_id: string, group: string, target: ImportTarget, rows: ImportRow[], verified_matches: boolean, verified_cbm: boolean, verified_unmapped = false, location_resolutions: Record<string,LocationDecision> = {}) {
-  const response = await apiPost<ApiResponse<{ batch_id: string; rows: ImportOutcome[] }>>("/trips/import/commit", { batch_id, group, target, rows, verified_matches, verified_cbm, verified_unmapped, location_resolutions }, token);
+export async function commitImport(token: string, batch_id: string, group: string, target: ImportTarget, rows: ImportRow[], verified_matches: boolean, verified_cbm: boolean, verified_unmapped = false, location_resolutions: Record<string,Partial<LocationDecision> & ImportRowResolution> = {}) {
+  const response = await apiPost<ApiResponse<{ batch_id: string; rows: ImportOutcome[]; history?: Record<string,ImportSourceHistory> }>>("/trips/import/commit", { batch_id, group, target, rows, verified_matches, verified_cbm, verified_unmapped, location_resolutions }, token);
   if (!response.success || !response.data) throw new Error(response.message ?? "Unable to confirm import. Retry the same batch.");
   invalidateApiCache("/reports"); invalidateApiCache("/trips"); invalidateReportPageCache();
   return response.data;

@@ -1,13 +1,24 @@
 import { createHash } from "node:crypto";
 import { supabaseAdmin as db } from "../config/supabase.js";
 import { ApiError } from "../utils/api-response.js";
-import { searchLocations, type LocationSearchResult } from "./location-search.service.js";
+import { searchLocations, LocationSearchError, type LocationSearchResult } from "./location-search.service.js";
+import { deliveryLocationQuery, rankDeliveryLocations } from "../../../packages/trip-import/location-query.js";
 import { classifyLocations, destinationLookupKey, storeIdentityText, locationMessage, type Destination, type LocationLookup } from "./trip-location.logic.js";
 import { importStoreResolver } from "./trip-store-identity.service.js";
 
 const exactLike = (value: string) => value.replace(/[\\%_]/g, "\\$&");
 const lookupCache = new Map<string, { expires: number; result: LocationLookup }>();
 const lookups = new Map<string, Promise<LocationLookup>>();
+let lookupRevision = 0;
+/** A reviewed store update must not leave its former pin in the suggestion cache. */
+export function invalidateDeliveryLocationLookup(shipTo: string) {
+  lookupRevision++;
+  for (const key of new Set([...lookupCache.keys(), ...lookups.keys()])) {
+    const [, destination] = JSON.parse(key) as [string, string, string];
+    const [name] = JSON.parse(destination) as string[];
+    if (storeIdentityText(name) === storeIdentityText(shipTo)) { lookupCache.delete(key); lookups.delete(key); }
+  }
+}
 function uuidFor(value: string) {
   const hash = createHash("sha256").update(value).digest("hex");
   return `${hash.slice(0, 8)}-${hash.slice(8, 12)}-5${hash.slice(13, 16)}-a${hash.slice(17, 20)}-${hash.slice(20, 32)}`;
@@ -27,7 +38,8 @@ async function readSavedLocations(source: Destination): Promise<LocationSearchRe
   if (source.customer_name) {
     const customers = await db.from("customers").select("id").ilike("name", exactLike(source.customer_name)).limit(2);
     if (customers.error) throw customers.error;
-    if (customers.data?.length === 1) query = query.eq("customer_id", customers.data[0].id);
+    if (customers.data?.length !== 1) return [];
+    query = query.eq("customer_id", customers.data[0].id);
   }
   const result = await query.limit(100);
   if (result.error) throw result.error;
@@ -39,39 +51,44 @@ async function readSavedLocations(source: Destination): Promise<LocationSearchRe
     return [{ display_name: row.address, latitude, longitude, name: row.name, provinces: [row.province], cities: [row.city], country_code: "ph", result_type: "store" }];
   });
 }
-export async function resolveTripDestination(source: Destination): Promise<LocationLookup> {
+export async function resolveTripDestination(source: Destination, typedQuery = ""): Promise<LocationLookup> {
   if (!source.province.trim()) return classifyLocations(source, [], "none");
   if (!source.city.trim()) return classifyLocations(source, [], "none");
-  const key = JSON.stringify([source.customer_name ?? "", destinationLookupKey(source)]);
+  const key = JSON.stringify([source.customer_name ?? "", destinationLookupKey(source), typedQuery.trim().toLowerCase()]);
   const saved = lookupCache.get(key);
   if (saved && saved.expires > Date.now()) return saved.result;
   const active = lookups.get(key); if (active) return active;
+  const revision = lookupRevision;
   const request = (async (): Promise<LocationLookup> => {
     try {
-      const existing = await readSavedLocations(source);
+      const existing = typedQuery.trim() ? [] : await readSavedLocations(source);
       if (existing.length) return classifyLocations(source, existing, "store");
-      const candidates = await searchLocations([source.ship_to, source.province, source.city, "Philippines"].join(", "));
-      return classifyLocations(source, candidates, candidates[0]?.provider ?? "none");
-    } catch {
-      return { status: "lookup_failed", message: locationMessage(source, "lookup_failed"), candidates: [], source: "none" };
+      const candidates = await searchLocations(deliveryLocationQuery(typedQuery || source.ship_to, source.city, source.province));
+      return classifyLocations(source, rankDeliveryLocations(candidates, source.province, source.city), candidates[0]?.provider ?? "none");
+    } catch (error) {
+      const code = error instanceof LocationSearchError ? error.code : typeof error === "object" && error && "code" in error ? String(error.code) : "LOCATION_LOOKUP_FAILED";
+      const status = ["GEOCODING_NOT_CONFIGURED", "GEOCODING_INVALID_KEY"].includes(code) ? "not_configured" : ["GEOCODING_RATE_LIMITED", "GEOCODING_BUDGET_EXCEEDED"].includes(code) ? "rate_limited" : code === "GEOCODING_NETWORK_ERROR" ? "network_error" : "lookup_failed";
+      console.error("Delivery location lookup failed", { code, provider: process.env.GEOCODING_PROVIDER ?? "geoapify" });
+      return { status, message: error instanceof LocationSearchError ? error.message : locationMessage(source, status), error_code: code, retryable: status !== "not_configured", candidates: [], source: "none" };
     }
   })();
   lookups.set(key, request);
   try {
     const result = await request;
-    lookupCache.set(key, { result, expires: Date.now() + (result.status === "lookup_failed" ? 60000 : 600000) });
+    if (revision === lookupRevision && !["lookup_failed", "not_configured", "rate_limited", "network_error"].includes(result.status)) lookupCache.set(key, { result, expires: Date.now() + 600000 });
     if (lookupCache.size > 2000) lookupCache.delete(lookupCache.keys().next().value!);
     return result;
-  } finally { lookups.delete(key); }
+  } finally { if (lookups.get(key) === request) lookups.delete(key); }
 }
 
-type SourceRow = { source_identity: string; values: Record<string, string | null> };
+type SourceRow = { source_identity: string; values: Record<string, string | null>; filename?: string; line?: number };
 type Outcome = { source_identity: string; status: string; line_item_id?: string; original_batch_id?: string };
 type Decision = Record<string, unknown>;
 export async function prepareImportDestinationDecisions(rows: SourceRow[], provided: Record<string, Decision>): Promise<Record<string, Decision>> {
   const prepared: Record<string, Decision> = {};
   const resolveStore = importStoreResolver();
   const chosenIdentities = new Map<string, string>();
+  const destinationLookups = new Map<string, Promise<LocationLookup>>();
   for (const row of rows) {
     const source = parseDestination({ ship_to: row.values.ship_to, province: row.values.province, city: row.values.city, customer_name: row.values.customer_name });
     const choice = provided[row.source_identity] ?? {};
@@ -79,12 +96,13 @@ export async function prepareImportDestinationDecisions(rows: SourceRow[], provi
     const chosen = JSON.stringify([choice.customer_id ?? "", choice.store_id ?? "", storeIdentityText(String(choice.province || source.province)), storeIdentityText(String(choice.city || source.city))]);
     if (chosenIdentities.has(key) && chosenIdentities.get(key) !== chosen) throw new ApiError("Products for the same Ship To / Province / City must use the same store identity. Review the destination choices.", 400);
     chosenIdentities.set(key, chosen);
-    const lookup = await resolveTripDestination(source);
-    const decision = await resolveStore(source, provided[row.source_identity] ?? {});
-    if (lookup.status === "found" && decision.verified !== true && !String(decision.latitude ?? "").trim() && !String(decision.longitude ?? "").trim()) {
-      const candidate = lookup.candidates[0];
-      Object.assign(decision, { address: candidate.display_name, province: source.province, city: source.city, latitude: String(candidate.latitude), longitude: String(candidate.longitude), verified: false });
-    }
+    if (!destinationLookups.has(key)) destinationLookups.set(key, resolveTripDestination({ ...source, province: source.province || String(choice.province ?? ""), city: source.city || String(choice.city ?? "") }));
+    const lookup = await destinationLookups.get(key)!;
+    let decision: Decision;
+    try { decision = await resolveStore(source, provided[row.source_identity] ?? {}); }
+    catch (error) { throw new ApiError(`${row.filename ?? "Source file"}, CSV row ${row.line ?? "unknown"}, ${row.values.customer_model ?? "product"}: expected Qty ${row.values.quantity}, CBM ${row.values.cbm}. Customer/store resolution failed: ${error instanceof Error ? error.message : "Review this destination identity."}`, 400, "IMPORT_DESTINATION_REVIEW_REQUIRED"); }
+    // Suggestions are informational until a user explicitly selects a candidate.
+    if (decision.pin_address_mismatch === true && decision.verified === true) throw new ApiError("Review the address against the moved map pin before verifying this destination.", 400, "LOCATION_PIN_ADDRESS_MISMATCH");
     decision.lookup = lookup;
     prepared[row.source_identity] = decision;
   }
@@ -95,17 +113,21 @@ export async function prepareImportDestinationDecisions(rows: SourceRow[], provi
 export async function persistImportDestinationLocations(actor: string, batch: string, rows: SourceRow[], outcomes: Outcome[], decisions: Record<string, Decision>) {
   const owned = outcomes.filter(row => row.line_item_id && (row.status === "imported" || row.status === "skipped" && row.original_batch_id === batch));
   if (!owned.length) return;
-  const lines = await db.from("trip_line_items").select("id,trip_id,trip_stop_id").in("id", owned.map(row => row.line_item_id!));
+  const lines = await db.from("trip_line_items").select("id,trip_id,trip_stop_id").in("id", [...new Set(owned.map(row => row.line_item_id!))]);
   if (lines.error) throw lines.error;
   const stops = await db.from("trip_stops").select("id,store_id").in("id", [...new Set((lines.data ?? []).map(row => row.trip_stop_id).filter(Boolean))]);
   if (stops.error) throw stops.error;
   const admins = await db.from("profiles").select("id").eq("role", "ADMIN");
   if (admins.error) throw admins.error;
+  const rowsByIdentity = new Map(rows.map(row => [row.source_identity, row]));
+  const linesById = new Map((lines.data ?? []).map(line => [line.id, line]));
+  const stopsById = new Map((stops.data ?? []).map(stop => [stop.id, stop]));
+  const pendingNotifications: Array<Record<string, unknown>> = [];
   const seen = new Set<string>();
   for (const outcome of owned) {
-    const row = rows.find(source => source.source_identity === outcome.source_identity);
-    const line = lines.data?.find(item => item.id === outcome.line_item_id);
-    const stop = stops.data?.find(item => item.id === line?.trip_stop_id);
+    const row = rowsByIdentity.get(outcome.source_identity);
+    const line = linesById.get(outcome.line_item_id!);
+    const stop = line ? stopsById.get(line.trip_stop_id) : undefined;
     if (!row || !line || !stop?.store_id) continue;
     const source = parseDestination({ ship_to: row.values.ship_to, province: row.values.province, city: row.values.city, customer_name: row.values.customer_name });
     const decision = decisions[outcome.source_identity];
@@ -116,7 +138,7 @@ export async function persistImportDestinationLocations(actor: string, batch: st
     seen.add(identity);
     const latitude = decision.latitude == null || String(decision.latitude).trim() === "" ? NaN : Number(decision.latitude);
     const longitude = decision.longitude == null || String(decision.longitude).trim() === "" ? NaN : Number(decision.longitude);
-    if (decision.verified !== true && decision.address && Number.isFinite(latitude) && Math.abs(latitude) <= 90 && Number.isFinite(longitude) && Math.abs(longitude) <= 180) {
+    if (decision.verified !== true && decision.pin_address_mismatch !== true && decision.address && Number.isFinite(latitude) && Math.abs(latitude) <= 90 && Number.isFinite(longitude) && Math.abs(longitude) <= 180) {
       // Fill only an empty, unverified point. A concurrent verified location wins.
       const saved = await db.from("customer_stores").update({ address: String(decision.address), latitude, longitude, location_verified: false })
         .eq("id", stop.store_id).eq("location_verified", false).is("latitude", null).is("longitude", null);
@@ -126,9 +148,10 @@ export async function persistImportDestinationLocations(actor: string, batch: st
     const notifications = (admins.data ?? []).map(admin => ({ recipient_profile_id: admin.id, actor_profile_id: actor,
       notification_type: "report_mention", reference_type: "trip", reference_id: line.trip_id, trip_id: line.trip_id,
       event_key: event, message: lookup.message, metadata: { event_kind: "trip_location_review", report_key: "trip-booking", store_id: stop.store_id, ship_to: source.ship_to, province: source.province, city: source.city, location_status: lookup.status } }));
-    if (notifications.length) {
-      const notified = await db.from("admin_notifications").upsert(notifications, { onConflict: "recipient_profile_id,event_key", ignoreDuplicates: true });
-      if (notified.error) throw notified.error;
-    }
+    pendingNotifications.push(...notifications);
+  }
+  for (let offset = 0; offset < pendingNotifications.length; offset += 500) {
+    const notified = await db.from("admin_notifications").upsert(pendingNotifications.slice(offset, offset + 500), { onConflict: "recipient_profile_id,event_key", ignoreDuplicates: true });
+    if (notified.error) throw notified.error;
   }
 }

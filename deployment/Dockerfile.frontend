@@ -3,6 +3,7 @@ WORKDIR /app
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 COPY frontend/ ./
+COPY packages/trip-import /packages/trip-import
 # Public build-time inputs only. Never add service-role, Gemini or Directions keys.
 ARG VITE_SUPABASE_URL
 ARG VITE_SUPABASE_ANON_KEY

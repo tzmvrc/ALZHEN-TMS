@@ -4,6 +4,7 @@ import { isValidUuid } from "../utils/validation.js";
 import { validateTripBundle } from "./trip-bundle.logic.js";
 import { buildTripLineItemPayload } from "./trip.service.js";
 import { assertActiveDropdownOption } from "./dropdown-option.service.js";
+import { readImportSourceHistory } from "./trip-import-history.service.js";
 
 export function workflowFailure(error: { code?: string; message?: string }): never {
   if (["PGRST202", "PGRST204", "PGRST205", "42703", "42P01", "42883"].includes(error.code ?? "")) throw new ApiError("This operation needs the trip_workflow_completion and trip_import_recovery database updates. This operation did not commit; earlier completed import chunks are preserved.", 503, "TRIP_WORKFLOW_SETUP_REQUIRED");
@@ -29,6 +30,13 @@ export async function createAtomicTripBundle(input: Record<string, unknown>, act
 }
 export async function finalizeImportCargo(input: Record<string, unknown>, actor: string) {
   if (typeof input.batch_id !== "string" || !isValidUuid(input.batch_id) || typeof input.group !== "string" || !input.group.trim() || !input.plan || typeof input.plan !== "object" || Array.isArray(input.plan)) throw new ApiError("Choose an import group and confirm its cargo proposal.", 400);
+  const batch = await supabaseAdmin.from("trip_import_batches").select("workflow_draft").eq("id", input.batch_id).eq("created_by", actor).maybeSingle();
+  if (batch.error) workflowFailure(batch.error);
+  if (!batch.data) throw new ApiError("Import batch unavailable for this account.", 404);
+  const sourceRows = (batch.data.workflow_draft?.preview?.rows ?? []).filter((row: { group: string; errors?: string[] }) => row.group === input.group && !row.errors?.length) as Array<{source_identity:string;filename:string;line:number;values:Record<string,string>}>;
+  const history = await readImportSourceHistory(sourceRows.map(row => row.source_identity));
+  const incomplete = sourceRows.find(row => history[row.source_identity]?.status !== "live");
+  if (incomplete) throw new ApiError(`${incomplete.filename}, CSV row ${incomplete.line}, ${incomplete.values.customer_model}: expected Qty ${incomplete.values.quantity}, CBM ${incomplete.values.cbm}. Its product is not saved. Finish failed rows and missing-history recovery before confirming truck allocations.`, 409, "IMPORT_SOURCE_INCOMPLETE");
   const result = await supabaseAdmin.rpc("finalize_trip_import_cargo_v1", { p_actor: actor, p_batch: input.batch_id, p_group: input.group, p_plan: input.plan });
   if (result.error) workflowFailure(result.error);
   const saved=await supabaseAdmin.from("trip_import_batches").update({last_error:null,updated_at:new Date().toISOString()}).eq("id",input.batch_id).eq("created_by",actor);

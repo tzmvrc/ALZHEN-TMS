@@ -1,12 +1,18 @@
-import { useEffect, useState } from "react";
-import { fetchTruckAvailability, fetchDriverAvailability, type TruckAvailability, type DriverAvailability } from "../../services/lookup.service";
+import { CapacityBar, EmptyState, TruckCard, StatusChip, StatChip, SectionCard } from "./shared";
+import { fieldControl, secondaryAction } from "./shared/styles";
+import { useEffect, useRef, useState } from "react";
+import { fetchTruckAvailability, fetchDriverAvailability, getCachedRelationshipOptions, type TruckAvailability, type DriverAvailability } from "../../services/lookup.service";
 import SearchableRelationshipEditor from "./SearchableRelationshipEditor";
+import CargoAllocationBoard from "./CargoAllocationBoard";
 import { setDefaultTripDriver } from "../../services/trip-import.service";
-import { cargoCapacity, cargoSignature, suggestCargo, validateCargo, type CargoLine, type CargoPlan, type CargoTruck } from "../../services/cargo-planning";
+import { cargoCapacity, cargoSignature, cargoTotal, suggestCargo, validateCargo, type CargoLine, type CargoPlan, type CargoTruck } from "../../services/cargo-planning";
 
-export default function TripCargoPlanner({ token, lines, plan, onChange, fixedTrucks, existingTripId, disabled = false }: { token: string; lines: CargoLine[]; plan: CargoPlan; onChange: (plan: CargoPlan) => void; fixedTrucks?: CargoTruck[]; existingTripId?: string; disabled?: boolean }) {
+const exactTotal = (values: string[]) => { try { return cargoTotal(values); } catch { return "Check values"; } };
+
+export default function TripCargoPlanner({ token, lines, plan, onChange, fixedTrucks, existingTripId, scheduleManaged = false, onEditSchedule, truckTypes, onAddTruck, disabled = false }: { token: string; lines: CargoLine[]; plan: CargoPlan; onChange: (plan: CargoPlan) => void; fixedTrucks?: CargoTruck[]; existingTripId?: string; scheduleManaged?: boolean; onEditSchedule?: () => void; disabled?: boolean; truckTypes?: Record<string, string>; onAddTruck?: () => void }) {
   const [error, setError] = useState("");
-  const [movingDr, setMovingDr] = useState("");
+  const addTruck = useRef<HTMLDivElement>(null);
+  const [chosenTypes, setChosenTypes] = useState<Record<string, string>>({});
   const [defaultSaving, setDefaultSaving] = useState(false), [defaultNotice, setDefaultNotice] = useState("");
   const [schedules, setSchedules] = useState<{ trucks: TruckAvailability[]; drivers: DriverAvailability[] }>({ trucks: [], drivers: [] });
   const [checkingSchedule, setCheckingSchedule] = useState(false), [scheduleError, setScheduleError] = useState("");
@@ -41,6 +47,7 @@ export default function TripCargoPlanner({ token, lines, plan, onChange, fixedTr
 
   const update = (patch: Partial<CargoPlan>) => onChange({ ...plan, trucks, ...patch, confirmed: false });
 
+  const sourceGroups = [...new Set(lines.map(line => line.phTruckReference).filter((reference): reference is string => Boolean(reference)))];
   const handleSuggest = () => {
     try {
       update({ placements: suggestCargo(lines, trucks), signature });
@@ -50,410 +57,68 @@ export default function TripCargoPlanner({ token, lines, plan, onChange, fixedTr
     }
   };
 
-  return (
-    <section aria-label="Truck and cargo assignment" className="space-y-4 rounded-xl border border-slate-200 bg-white p-4">
-
-      {/* ── Header ───────────────────────────────────────────────── */}
-      <header>
-        <h3 className="text-sm font-semibold text-[#0b2341]">Truck, driver &amp; cargo assignment</h3>
-        <p className="mt-1 text-xs text-slate-500">
-          Add every truck on the trip, pick a driver per truck, then distribute cargo. DR groups stay together when capacity allows. Unassigned cargo may remain on a planned trip.
-        </p>
-      </header>
-
-      {/* ── Section 1: Schedule ──────────────────────────────────── */}
-      {!fixedTrucks && (
-        <fieldset className="space-y-2 rounded-lg border border-slate-100 bg-slate-50/40 p-3">
-          <legend className="px-1 text-xs font-semibold text-slate-700">Schedule</legend>
-
-          <div className="grid gap-2 sm:grid-cols-2">
-            {(["loading_date", "estimated_delivery_date"] as const).map(field => (
-              <label key={field} className="text-xs">
-                {field === "loading_date" ? "Loading date" : "Estimated delivery date"}
-                <input
-                  type="date"
-                  disabled={disabled}
-                  value={schedule[field]}
-                  onChange={event => update({ schedule: { ...schedule, [field]: event.target.value, unreserved_confirmed: false } })}
-                  className="mt-1 block w-full rounded border border-slate-200 bg-white p-2"
-                />
-              </label>
-            ))}
-          </div>
-
-          <p className="text-xs text-slate-500">
-            Overlapping active truck and driver schedules are checked again by the database when saving.
-          </p>
-
-          {(!schedule.loading_date || !schedule.estimated_delivery_date) && (
-            <label className="flex gap-2 rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
-              <input
-                type="checkbox"
-                disabled={disabled}
-                checked={schedule.unreserved_confirmed}
-                onChange={event => update({ schedule: { ...schedule, unreserved_confirmed: event.target.checked } })}
-              />
-              Keep this planned assignment unreserved until its loading and delivery dates are completed.
-            </label>
-          )}
-
-          {!manual && (
-            <p role="status" className={`text-xs ${scheduleError || conflict ? "text-rose-700" : "text-slate-500"}`}>
-              {checkingSchedule
-                ? "Checking truck and driver schedules..."
-                : scheduleError ||
-                  (conflict
-                    ? "A selected truck or driver has an overlapping active trip. Change the selection or dates."
-                    : "Known schedule conflicts are excluded from the selectors.")}
-            </p>
-          )}
-        </fieldset>
-      )}
-
-      {/* ── Section 2: Trucks & drivers ──────────────────────────── */}
-      <fieldset className="space-y-2">
-        <legend className="px-1 text-xs font-semibold text-slate-700">Trucks &amp; drivers</legend>
-
-        {!fixedTrucks && !disabled && (
-          <div>
-            <p className="mb-1.5 text-xs font-medium text-slate-600">Add a truck</p>
-            <div className="rounded-lg border border-slate-200 bg-white p-2.5">
-              <SearchableRelationshipEditor
-                presentation="form"
-                token={token}
-                kind="trucks"
-                unavailableIds={[...trucks.map(truck => truck.id), ...conflictingTrucks]}
-                value=""
-                autoFocus={false}
-                onSelect={option => {
-                  if (trucks.some(t => t.id === option.id)) {
-                    setError("That truck is already selected for this trip.");
-                    return;
-                  }
-                  const defaultDriver = option.values?.default_driver_id ?? "";
-                  const driverId = trucks.some(t => t.driverId === defaultDriver) || conflictingDrivers.includes(defaultDriver) ? "" : defaultDriver;
-                  update({
-                    trucks: [...trucks, {
-                      id: option.id,
-                      label: option.label,
-                      capacity: option.values?.capacity_cbm ?? "",
-                      driverId,
-                      driverLabel: driverId ? option.values?.default_driver_name ?? "" : "",
-                      companyId: option.values?.trucking_company_id || "",
-                      companyLabel: option.values?.trucking_company_name || "",
-                    }],
-                  });
-                }}
-                onCommitBlur={() => {}}
-                onCancel={() => {}}
-              />
-            </div>
-          </div>
-        )}
-
-        {trucks.length === 0 && (
-          <p className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-center text-xs text-slate-500">
-            No trucks added yet. Add at least one truck to distribute cargo.
-          </p>
-        )}
-
-        <div className="space-y-2">
-          {trucks.map(truck => {
-            const usage = cargoCapacity(truck.capacity, plan.placements.filter(p => p.truck_id === truck.id));
-            const tone = usage.exceeded
-              ? "border-rose-200 bg-rose-50"
-              : usage.full
-                ? "border-amber-200 bg-amber-50"
-                : "border-slate-100 bg-slate-50";
-            return (
-              <article key={truck.id} className={`grid items-start gap-3 rounded-lg border p-3 lg:grid-cols-[1.3fr_1fr_1fr_auto] ${tone}`}>
-                {/* Truck identity + capacity */}
-                <div className="min-w-0 text-xs">
-                  <strong className="block truncate text-slate-800">{truck.label}</strong>
-                  <p className="mt-0.5 text-slate-600">
-                    Max {truck.capacity || "not configured"} · Assigned {usage.assigned} CBM · Remaining {usage.remaining}
-                  </p>
-                  {(usage.exceeded || usage.full) && (
-                    <p role="status" className={`mt-1 text-xs ${usage.exceeded ? "text-rose-700" : "text-amber-800"}`}>
-                      {usage.exceeded ? "Capacity exceeded. Move cargo or add another truck." : "Truck is full. Add another truck for additional cargo."}
-                    </p>
-                  )}
-                </div>
-
-                {/* Driver */}
-                {!fixedTrucks ? (
-                  <div className="min-w-0">
-                    <p className="mb-1.5 text-xs font-medium text-slate-600">Driver</p>
-                    <div className="rounded-lg border border-slate-200 bg-white p-2">
-                      <SearchableRelationshipEditor
-                        presentation="form"
-                        token={token}
-                        kind="drivers"
-                        unavailableIds={[
-                          ...trucks.filter(other => other.id !== truck.id).map(other => other.driverId).filter(Boolean),
-                          ...conflictingDrivers,
-                        ]}
-                        value={truck.driverLabel}
-                        disabled={disabled}
-                        autoFocus={false}
-                        onSelect={option => {
-                          if (trucks.some(t => t.id !== truck.id && t.driverId === option.id)) {
-                            setError("That driver is already assigned to another truck in this trip.");
-                            return;
-                          }
-                          update({ trucks: trucks.map(t => t.id === truck.id ? { ...t, driverId: option.id, driverLabel: option.label } : t) });
-                        }}
-                        onCommitBlur={() => {}}
-                        onCancel={() => {}}
-                      />
-                    </div>
-                  </div>
-                ) : (
-                  <div className="min-w-0">
-                    <p className="mb-1.5 text-xs font-medium text-slate-600">Driver</p>
-                    <span className="text-xs text-slate-500">{truck.driverLabel || "Driver unassigned"}</span>
-                  </div>
-                )}
-
-                {/* Trucking company */}
-                {!fixedTrucks ? (
-                  <div className="min-w-0">
-                    <p className="mb-1.5 text-xs font-medium text-slate-600">Trucking company</p>
-                    <div className="rounded-lg border border-slate-200 bg-white p-2">
-                      <SearchableRelationshipEditor
-                        presentation="form"
-                        token={token}
-                        kind="trucking-companies"
-                        value={truck.companyLabel ?? ""}
-                        disabled={disabled}
-                        autoFocus={false}
-                        onSelect={option => update({ trucks: trucks.map(item => item.id === truck.id ? { ...item, companyId: option.id, companyLabel: option.label } : item) })}
-                        onCommitBlur={() => {}}
-                        onCancel={() => {}}
-                      />
-                    </div>
-                  </div>
-                ) : (
-                  <div className="min-w-0">
-                    <p className="mb-1.5 text-xs font-medium text-slate-600">Trucking company</p>
-                    <span className="text-xs text-slate-500">{truck.companyLabel || "Company unassigned"}</span>
-                  </div>
-                )}
-
-                {/* Truck actions */}
-                <div className="flex flex-col items-start gap-1 lg:items-end">
-                  {truck.driverId && (
-                    <button
-                      type="button"
-                      disabled={disabled || defaultSaving}
-                      onClick={async () => {
-                        setDefaultSaving(true); setDefaultNotice("");
-                        try {
-                          await setDefaultTripDriver(token, truck.id, truck.driverId);
-                          setDefaultNotice(`Default driver saved for ${truck.label}.`);
-                        } catch (cause) {
-                          setError(cause instanceof Error ? cause.message : "Unable to save default driver.");
-                        } finally {
-                          setDefaultSaving(false);
-                        }
-                      }}
-                      className="text-xs text-blue-700 hover:underline disabled:opacity-60"
-                    >
-                      Set this driver as truck default
-                    </button>
-                  )}
-                  {!fixedTrucks && (
-                    <button
-                      type="button"
-                      disabled={disabled}
-                      onClick={() => update({
-                        trucks: trucks.filter(t => t.id !== truck.id),
-                        placements: plan.placements.filter(p => p.truck_id !== truck.id),
-                      })}
-                      className="text-xs text-rose-700 hover:underline disabled:opacity-60"
-                    >
-                      Remove truck
-                    </button>
-                  )}
-                </div>
-              </article>
-            );
-          })}
-        </div>
-
-        {defaultNotice && <p role="status" className="text-xs text-emerald-700">{defaultNotice}</p>}
-      </fieldset>
-
-      {/* ── Section 3: Cargo distribution ────────────────────────── */}
-      <fieldset className="space-y-2">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <legend className="px-1 text-xs font-semibold text-slate-700">Cargo distribution</legend>
-          <button
-            type="button"
-            disabled={disabled || !lines.length || !trucks.length}
-            onClick={handleSuggest}
-            className="rounded-full border border-slate-200 px-3 py-1.5 text-xs font-medium hover:bg-slate-50 disabled:opacity-60"
-          >
-            {plan.placements.length ? "Recalculate proposal" : "Suggest DR distribution"}
-          </button>
-        </div>
-
-        {plan.placements.length === 0 && (
-          <p className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-center text-xs text-slate-500">
-            {!trucks.length
-              ? "Add a truck above to start distributing cargo."
-              : !lines.length
-                ? "No product lines to distribute."
-                : "No distribution yet. Click “Suggest DR distribution” to build a proposal, or continue with cargo unassigned."}
-          </p>
-        )}
-
-        {plan.placements.length > 0 && (
-          <>
-            {/* Move an entire DR group */}
-            <details className="rounded-lg border border-slate-100 bg-slate-50/40 px-3 py-2 text-xs">
-              <summary className="cursor-pointer text-blue-700">Move an entire DR group</summary>
-              <div className="mt-2 flex flex-wrap gap-2">
-                <select
-                  aria-label="DR group to move"
-                  disabled={disabled}
-                  value={movingDr}
-                  onChange={e => setMovingDr(e.target.value)}
-                  className="rounded border border-slate-200 bg-white p-2"
-                >
-                  <option value="">Choose DR</option>
-                  {[...new Set(lines.map(line => line.dr).filter(Boolean))].map(dr => (
-                    <option key={dr} value={dr}>{dr}</option>
-                  ))}
-                </select>
-                <select
-                  aria-label="Truck for DR group"
-                  value=""
-                  disabled={disabled || !movingDr}
-                  className="rounded border border-slate-200 bg-white p-2"
-                  onChange={e => {
-                    const grouped = lines.filter(line => line.dr === movingDr);
-                    const keys = new Set(grouped.map(line => line.key));
-                    update({
-                      placements: [
-                        ...plan.placements.filter(placement => !keys.has(placement.line_key)),
-                        ...grouped.map(line => ({ line_key: line.key, truck_id: e.target.value, quantity: line.quantity, allocated_cbm: line.cbm })),
-                      ],
-                    });
-                  }}
-                >
-                  <option value="">Choose destination truck</option>
-                  {trucks.map(truck => <option key={truck.id} value={truck.id}>{truck.label}</option>)}
-                </select>
-              </div>
-            </details>
-
-            {/* Placements table */}
-            <div className="max-h-72 overflow-auto rounded-lg border border-slate-200">
-              <table className="min-w-full text-left text-xs">
-                <thead className="sticky top-0 z-10 bg-slate-100">
-                  <tr>
-                    {["DR / destination / product", "Truck", "Quantity", "Total CBM", ""].map((title, i) => (
-                      <th key={i} className="px-2 py-2 font-medium text-slate-600">{title}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {plan.placements.map((placement, index) => {
-                    const line = lines.find(l => l.key === placement.line_key);
-                    return (
-                      <tr key={index} className="border-b border-slate-100">
-                        <td className="px-2 py-2">
-                          {line?.dr || "No DR"} · {line?.stop} · {line?.label}
-                        </td>
-                        <td className="px-2 py-2">
-                          <select
-                            disabled={disabled}
-                            value={placement.truck_id}
-                            onChange={e => update({ placements: plan.placements.map((p, i) => i === index ? { ...p, truck_id: e.target.value } : p) })}
-                            className="max-w-44 rounded border border-slate-200 p-1"
-                          >
-                            {trucks.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
-                          </select>
-                        </td>
-                        {(["quantity", "allocated_cbm"] as const).map(key => (
-                          <td key={key} className="px-2 py-2">
-                            <input
-                              aria-label={`${key} allocation ${index + 1}`}
-                              disabled={disabled}
-                              value={placement[key]}
-                              onChange={e => update({ placements: plan.placements.map((p, i) => i === index ? { ...p, [key]: e.target.value } : p) })}
-                              className="w-24 rounded border border-slate-200 p-1 tabular-nums"
-                            />
-                          </td>
-                        ))}
-                        <td className="px-2 py-2">
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              disabled={disabled}
-                              onClick={() => update({
-                                placements: [
-                                  ...plan.placements,
-                                  { ...placement, truck_id: trucks.find(truck => truck.id !== placement.truck_id)?.id ?? placement.truck_id, quantity: "0", allocated_cbm: "0" },
-                                ],
-                              })}
-                              className="text-blue-700 hover:underline disabled:opacity-60"
-                            >
-                              Split
-                            </button>
-                            <button
-                              type="button"
-                              disabled={disabled}
-                              onClick={() => update({ placements: plan.placements.filter((_, i) => i !== index) })}
-                              className="text-rose-700 hover:underline disabled:opacity-60"
-                            >
-                              Remove
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-
-            {(stale || problem) && (
-              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                <p>{stale ? "Cargo or trucks changed. Recalculate and review the proposal." : problem}</p>
-                {stale && (
-                  <button
-                    type="button"
-                    disabled={disabled || Boolean(problem)}
-                    onClick={() => update({ signature })}
-                    className="mt-1.5 rounded-full border border-amber-300 bg-white px-3 py-1 text-xs font-medium text-amber-900 hover:bg-amber-100 disabled:opacity-60"
-                  >
-                    Keep current allocations and review
-                  </button>
-                )}
-              </div>
-            )}
-
-            {scheduleProblem && (
-              <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">{scheduleProblem}</p>
-            )}
-
-            <label className="flex items-start gap-2 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-xs">
-              <input
-                type="checkbox"
-                disabled={disabled || stale || Boolean(problem) || Boolean(scheduleProblem) || checkingSchedule || Boolean(scheduleError) || conflict}
-                checked={plan.confirmed && !stale && !problem && !scheduleProblem && !conflict}
-                onChange={e => onChange({ ...plan, trucks, confirmed: e.target.checked })}
-                className="mt-0.5"
-              />
-              <span>I reviewed this distribution. Preserve these quantities, trucks and destinations when saving.</span>
-            </label>
-          </>
-        )}
-      </fieldset>
-
-      {error && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{error}</p>}
+  const confirmBlocked = disabled || stale || Boolean(problem) || Boolean(scheduleProblem) || checkingSchedule || Boolean(scheduleError) || conflict;
+  const reviewed = plan.confirmed && !stale && !problem && !scheduleProblem && !conflict;
+  const proposalState = !plan.placements.length ? "Not proposed" : stale ? "Stale" : reviewed ? "Confirmed" : "Proposed (needs review)";
+  const fleetCapacity = trucks.every(truck => Boolean(truck.capacity.trim())) ? exactTotal(trucks.map(truck => truck.capacity)) : "";
+  const capacity = fleetCapacity === "Check values" ? "" : fleetCapacity;
+  const sourceTotal = exactTotal(lines.map(line => line.cbm));
+  const fleetUsage = cargoCapacity(capacity, lines.map(line => ({ line_key: line.key, truck_id: "source", quantity: line.quantity, allocated_cbm: line.cbm })));
+  const addAnother = () => { if (manual) onAddTruck?.(); else { addTruck.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }); addTruck.current?.querySelector<HTMLInputElement>("input")?.focus(); } };
+  return <section aria-label="Truck and cargo assignment" className="min-w-0 space-y-5">
+    <header><h3 className="text-sm font-semibold text-[#0b2341]">Truck, driver &amp; cargo assignment</h3><p className="mt-1 text-xs text-slate-500">Select physical trucks and review every source product. DR cards keep related lines together; use Move to menus or drag cards between columns.</p></header>
+    <SectionCard title="Fleet capacity" actions={(!manual || onAddTruck) && <button type="button" className={secondaryAction} disabled={disabled} onClick={addAnother}>Add another truck</button>}>
+      <CapacityBar assigned={sourceTotal} capacity={capacity} usage={fleetUsage} label="Source cargo / fleet capacity" />
+      <div className="mt-3 flex flex-wrap gap-2"><StatChip label="Source lines" value={lines.length} /><StatChip label="Allocated CBM" value={exactTotal(plan.placements.map(item => item.allocated_cbm))} /><StatChip label="Trucks" value={trucks.length} /></div>
+    </SectionCard>
+    {!fixedTrucks && <fieldset className="space-y-3 rounded-xl border border-slate-200 bg-white p-4"><legend className="px-1 text-xs font-semibold text-slate-700">Schedule</legend>
+      {scheduleManaged ? <div className="flex flex-wrap items-center justify-between gap-2"><p className="text-xs tabular-nums text-slate-600">Loading: {schedule.loading_date || "Not set"} / Delivery: {schedule.estimated_delivery_date || "Not set"}</p>{onEditSchedule && <button type="button" disabled={disabled} onClick={onEditSchedule} className={secondaryAction}>Edit trip dates</button>}</div> : <div className="grid gap-3 sm:grid-cols-2">{(["loading_date", "estimated_delivery_date"] as const).map(field => <label key={field} className="text-xs text-slate-600">{field === "loading_date" ? "Loading date" : "Estimated delivery date"}<input type="date" disabled={disabled} value={schedule[field]} onChange={event => update({ schedule: { ...schedule, [field]: event.target.value, unreserved_confirmed: false } })} className={`${fieldControl} mt-1`} /></label>)}</div>}
+      <p className="text-xs text-slate-500">Overlapping active truck and driver schedules are checked again by the database when saving.</p>
+      {(!schedule.loading_date || !schedule.estimated_delivery_date) && <label className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800"><input type="checkbox" disabled={disabled} checked={schedule.unreserved_confirmed} onChange={event => update({ schedule: { ...schedule, unreserved_confirmed: event.target.checked } })} />Keep this planned assignment unreserved until its loading and delivery dates are completed.</label>}
+      <p role="status" className={`text-xs ${scheduleError || conflict ? "text-rose-700" : "text-slate-500"}`}>{checkingSchedule ? "Checking truck and driver schedules..." : scheduleError || (conflict ? "A selected truck or driver has an overlapping active trip. Change the selection or dates." : "Known schedule conflicts are excluded from the selectors.")}</p>
+    </fieldset>}
+    {!fixedTrucks && !disabled && <div ref={addTruck}><p className="mb-2 text-xs font-semibold text-slate-600">Add a truck</p><div className="rounded-xl border border-slate-200 bg-white p-3"><SearchableRelationshipEditor presentation="form" token={token} kind="trucks" unavailableIds={[...trucks.map(truck => truck.id), ...conflictingTrucks]} value="" autoFocus={false} onSelect={option => {
+      if (trucks.some(truck => truck.id === option.id)) { setError("That truck is already selected for this trip."); return; }
+      const defaultDriver = option.values?.default_driver_id ?? "";
+      const driverId = trucks.some(truck => truck.driverId === defaultDriver) || conflictingDrivers.includes(defaultDriver) ? "" : defaultDriver;
+      setChosenTypes(current => ({ ...current, [option.id]: option.values?.truck_type || "" }));
+      update({ trucks: [...trucks, { id: option.id, label: option.label, capacity: option.values?.capacity_cbm ?? "", driverId, driverLabel: driverId ? option.values?.default_driver_name ?? "" : "", companyId: option.values?.trucking_company_id || "", companyLabel: option.values?.trucking_company_name || "" }] });
+    }} onCommitBlur={() => {}} onCancel={() => {}} /></div></div>}
+    {!trucks.length && <EmptyState title="Add a truck to start distributing cargo." description="Trucks and drivers can be assigned later." />}
+    <div className="grid min-w-0 gap-4 xl:grid-cols-2">{trucks.map(truck => {
+      const usage = cargoCapacity(truck.capacity, plan.placements.filter(item => item.truck_id === truck.id));
+      const available = schedules.trucks.find(item => item.id === truck.id);
+      const type = truckTypes?.[truck.id] || chosenTypes[truck.id] || available?.truck_type || getCachedRelationshipOptions(token, "trucks")?.find(item => item.id === truck.id)?.values?.truck_type || "Truck type unavailable";
+      return <TruckCard key={truck.id} title={truck.label} description={type} assigned={usage.assigned} capacity={truck.capacity} usage={usage}
+        availability={<StatusChip label={manual ? "Schedule managed in assignments" : checkingSchedule ? "Checking availability" : scheduleError ? "Availability unavailable" : available?.availability === "AVAILABLE" ? "Available" : available?.availability === "CONFLICT" ? "Schedule conflict" : "Availability needs review"} tone={!manual && available?.availability === "CONFLICT" ? "danger" : !manual && available?.availability === "AVAILABLE" && !scheduleError ? "success" : "warning"} />}
+        actions={!fixedTrucks && <button type="button" disabled={disabled} className={secondaryAction} onClick={() => update({ trucks: trucks.filter(item => item.id !== truck.id), placements: plan.placements.filter(item => item.truck_id !== truck.id) })}>Remove truck</button>}>
+        <div className="grid min-w-0 gap-3 sm:grid-cols-2"><div className="min-w-0"><p className="mb-2 text-xs font-medium text-slate-600">Driver</p>{!fixedTrucks ? <SearchableRelationshipEditor presentation="form" token={token} kind="drivers" unavailableIds={[...trucks.filter(other => other.id !== truck.id).map(other => other.driverId).filter(Boolean), ...conflictingDrivers]} value={truck.driverLabel} disabled={disabled} autoFocus={false} onSelect={option => {
+          if (trucks.some(item => item.id !== truck.id && item.driverId === option.id)) { setError("That driver is already assigned to another truck in this trip."); return; }
+          update({ trucks: trucks.map(item => item.id === truck.id ? { ...item, driverId: option.id, driverLabel: option.label } : item) });
+        }} onCommitBlur={() => {}} onCancel={() => {}} /> : <p className="text-xs text-slate-500">{truck.driverLabel || "Driver unassigned"}</p>}</div>
+        <div className="min-w-0"><p className="mb-2 text-xs font-medium text-slate-600">Trucking company</p>{!fixedTrucks ? <SearchableRelationshipEditor presentation="form" token={token} kind="trucking-companies" value={truck.companyLabel ?? ""} disabled={disabled} autoFocus={false} onSelect={option => update({ trucks: trucks.map(item => item.id === truck.id ? { ...item, companyId: option.id, companyLabel: option.label } : item) })} onCommitBlur={() => {}} onCancel={() => {}} /> : <p className="text-xs text-slate-500">{truck.companyLabel || "Company unassigned"}</p>}</div></div>
+        {truck.driverId && <button type="button" className={`${secondaryAction} mt-3`} disabled={disabled || defaultSaving} onClick={async () => {
+          setDefaultSaving(true); setDefaultNotice("");
+          try { await setDefaultTripDriver(token, truck.id, truck.driverId); setDefaultNotice(`Default driver saved for ${truck.label}.`); }
+          catch (cause) { setError(cause instanceof Error ? cause.message : "Unable to save default driver."); }
+          finally { setDefaultSaving(false); }
+        }}>Set as truck default driver</button>}
+        {(usage.exceeded || usage.full) && <p role="status" className={`mt-3 text-xs ${usage.exceeded ? "text-rose-700" : "text-amber-800"}`}>{usage.exceeded ? "Capacity exceeded. Move cargo or add another truck." : "Truck is full. Add another truck for additional cargo."}</p>}
+      </TruckCard>;
+    })}</div>
+    {defaultNotice && <p role="status" className="text-xs text-emerald-700">{defaultNotice}</p>}
+    {sourceGroups.length > 0 && <section aria-label="Original PH truck groups" className="space-y-2"><h4 className="text-xs font-semibold text-slate-600">Original PH truck groups</h4><div className="flex gap-3 overflow-x-auto pb-2">{sourceGroups.map(reference => {
+      const grouped = lines.filter(line => line.phTruckReference === reference), keys = new Set(grouped.map(line => line.key)), allocated = plan.placements.filter(item => keys.has(item.line_key));
+      return <div key={reference} className="min-w-64 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs"><strong className="break-words text-[#0b2341]">{reference}</strong><p className="mt-1 tabular-nums">{grouped.length} source lines / Expected {exactTotal(grouped.map(line => line.cbm))} / Allocated {exactTotal(allocated.map(item => item.allocated_cbm))} CBM</p><p className="mt-1 text-slate-500">Physical trucks: {[...new Set(allocated.map(item => trucks.find(truck => truck.id === item.truck_id)?.label ?? "Removed truck"))].join(", ") || "Unassigned"}</p></div>;
+    })}</div></section>}
+    <section aria-label="Cargo proposal review" className={`space-y-3 rounded-xl border p-4 ${reviewed ? "border-emerald-200 bg-emerald-50/60" : "border-amber-200 bg-amber-50/60"}`}>
+      <div className="flex flex-wrap items-center justify-between gap-3"><StatusChip label={proposalState} tone={reviewed ? "success" : stale && plan.placements.length ? "danger" : "warning"} /><div className="flex flex-wrap gap-2"><button type="button" disabled={disabled || !lines.length || !trucks.length} className={secondaryAction} onClick={handleSuggest}>{plan.placements.length ? "Recalculate proposal" : "Suggest DR distribution"}</button><button type="button" className={`${secondaryAction} !bg-[#0b2341] !text-white`} disabled={confirmBlocked || !plan.placements.length} onClick={() => onChange({ ...plan, trucks, confirmed: true })}>Confirm</button></div></div>
+      {stale && plan.placements.length > 0 && <><p className="text-xs text-amber-800">Cargo or trucks changed. Recalculate and review the proposal.</p><button type="button" className={secondaryAction} disabled={disabled || Boolean(problem)} onClick={() => update({ signature })}>Keep current allocations and review</button></>}
+      {problem && (trucks.length > 0 || plan.placements.length > 0) && <p role="status" className="break-words text-xs text-amber-900">{problem}</p>}
+      {scheduleProblem && <p role="status" className="text-xs text-amber-900">{scheduleProblem}</p>}
+      {plan.placements.length > 0 && <label className="flex items-start gap-2 text-xs text-slate-700"><input type="checkbox" disabled={confirmBlocked} checked={Boolean(reviewed)} onChange={event => onChange({ ...plan, trucks, confirmed: event.target.checked })} />I reviewed this distribution. Preserve these quantities, trucks and destinations when saving.</label>}
     </section>
-  );
+    <CargoAllocationBoard lines={lines} trucks={trucks} placements={plan.placements} disabled={disabled} update={update} onError={setError} />
+    {error && <p role="alert" className="break-words rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">{error}</p>}
+  </section>;
 }

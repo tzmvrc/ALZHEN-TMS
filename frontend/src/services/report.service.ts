@@ -20,6 +20,13 @@ export const REPORTS = {
 
 export type ReportKey = keyof typeof REPORTS;
 export type ReportColumn = {
+  sourceHeader?: {
+    group: string;
+    label: string;
+    sourceColor: string;
+    background: string;
+    color: string;
+  };
   fieldCategory?: "EXCEL" | "ADMIN" | "DRIVER";
   key: string;
   title: string;
@@ -67,6 +74,10 @@ const reportPageCache = new Map<string, { reportKey: ReportKey; token: string; e
 const reportPageRequests = new Map<string, Promise<ReportPageBundle>>();
 const reportPageErrors = new Map<string, string>();
 const reportPageVersions = new Map<ReportKey, number>();
+// Column definitions do not change when a record is edited. Keep their cache
+// separate from row/API invalidation, scoped to the session and sheet projection.
+const reportColumnCache = new Map<string, { expiresAt: number; columns: ReportColumn[] }>();
+const reportColumnRequests = new Map<string, Promise<ReportColumn[]>>();
 let reportPageCacheGeneration = 0;
 let reportPageSessionGeneration = 0;
 
@@ -126,6 +137,8 @@ export function getStaleReportPage(
 }
 
 export function clearReportPageCache() {
+  reportColumnCache.clear();
+  reportColumnRequests.clear();
   deletedReportRecords.clear();
   invalidateOperationalFormulaReads();
   reportPageSessionGeneration += 1;
@@ -316,10 +329,24 @@ export async function fetchReportColumns(
   sourceLines = false,
 ): Promise<ReportColumn[]> {
   const endpoint = `/reports/${reportKey}/columns${sourceLines ? "?source_lines=true" : ""}`;
-  const response = fresh
-    ? await apiGet<ApiResponse<{ report: string; columns: ReportColumn[] }>>(endpoint, token)
-    : await apiGetCached<ApiResponse<{ report: string; columns: ReportColumn[] }>>(endpoint, token, REPORT_PAGE_CACHE_TTL_MS);
-  return unwrap(response, "Unable to load report columns.").columns;
+  const key = JSON.stringify([token, endpoint]);
+  const cached = reportColumnCache.get(key);
+  if (!fresh && cached && cached.expiresAt > Date.now()) return cached.columns;
+  const pending = reportColumnRequests.get(key);
+  if (pending) return pending;
+  const session = reportPageSessionGeneration;
+  const request = (async () => {
+    const response = fresh
+      ? await apiGet<ApiResponse<{ report: string; columns: ReportColumn[] }>>(endpoint, token)
+      : await apiGetCached<ApiResponse<{ report: string; columns: ReportColumn[] }>>(endpoint, token, REPORT_PAGE_CACHE_TTL_MS);
+    if (session !== reportPageSessionGeneration) throw new Error("The session changed while loading report columns.");
+    const columns = unwrap(response, "Unable to load report columns.").columns;
+    reportColumnCache.set(key, { columns, expiresAt: Date.now() + REPORT_PAGE_CACHE_TTL_MS });
+    return columns;
+  })();
+  reportColumnRequests.set(key, request);
+  try { return await request; }
+  finally { if (reportColumnRequests.get(key) === request) reportColumnRequests.delete(key); }
 }
 
 export async function fetchReportRows(
@@ -381,7 +408,7 @@ export async function fetchReportPage(
   const sessionGeneration = reportPageSessionGeneration;
   reportPageErrors.delete(key);
   const request = Promise.all([
-    fetchReportColumns(reportKey, token, refresh, options.filters.source_lines === "true"),
+    fetchReportColumns(reportKey, token, false, options.filters.source_lines === "true"),
     fetchReportRows(reportKey, token, { ...options, fresh: refresh }),
   ]).then(([columns, result]) => {
     if (sessionGeneration !== reportPageSessionGeneration) throw new Error("The session changed while loading reports.");
