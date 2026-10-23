@@ -63,7 +63,7 @@ export default function ReportsWorkspace(props: Props) {
     </RetainedFeature>)}
     <RetainedFeature active={active === "transmittal"}><div role="tabpanel" id="trip-sheet-transmittal" aria-labelledby="trip-tab-transmittal"><WorkspaceTracker onDataReady={markReady} /></div></RetainedFeature>
     </SpreadsheetBottomControlsContext.Provider>
-    <SpreadsheetBottomToolbar singleRow workspace={workspaceRef} sheet={active} hiddenColumnsControl={footerHiddenColumns?.sheet===active?footerHiddenColumns.control:null}>
+    <SpreadsheetBottomToolbar workspace={workspaceRef} sheet={active} hiddenColumnsControl={footerHiddenColumns?.sheet===active?footerHiddenColumns.control:null}>
     <nav data-sheet-tabs role="tablist" aria-label="Trip workspace sheets" className="flex min-w-0 flex-1 flex-nowrap items-stretch overflow-x-auto overflow-y-hidden whitespace-nowrap">
       {SHEET_TABS.map(sheet => <button key={sheet.key} id={`trip-tab-${sheet.key}`} role="tab" aria-selected={active === sheet.key} aria-controls={`trip-sheet-${sheet.key}`} type="button" onClick={() => choose(sheet.key)} onKeyDown={event => {
         if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;

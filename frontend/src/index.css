@@ -634,7 +634,32 @@ input[type="checkbox"] { width: 14px; height: 14px; min-width: 14px; min-height:
 [data-trips-workspace] .spreadsheet-viewport::-webkit-scrollbar { width: 12px; height: 0; }
 [data-trips-workspace] .spreadsheet-viewport::-webkit-scrollbar-thumb { background: #a9b6c7; border: 2px solid #f1f5f9; border-radius: 8px; }
 [data-trips-workspace] .spreadsheet-viewport::-webkit-scrollbar-track { background: #f1f5f9; }
-.sheet-horizontal-scrollbar { scrollbar-width: auto; }
+/* One shared footer row, with a modest increase over the original 192px control.
+   Spare width stays with the tabs instead of stretching the scrollbar. */
+.spreadsheet-footer { container: sheet-footer / inline-size; overflow: hidden; }
+.spreadsheet-footer-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content max-content minmax(0, min(460px, 35%));
+  width: 100%; min-width: 0; max-width: 100%; align-items: stretch;
+}
+.spreadsheet-footer-tabs { display: flex; min-width: 0; overflow: hidden; }
+.spreadsheet-footer-tabs > [role="tablist"] {
+  display: flex; flex-wrap: nowrap; min-width: 0; overflow-x: auto; overflow-y: hidden;
+  white-space: nowrap; scrollbar-width: none;
+}
+.spreadsheet-footer-tabs > [role="tablist"]::-webkit-scrollbar { display: none; }
+.spreadsheet-footer-tabs [role="tab"] { flex: none; white-space: nowrap; }
+.spreadsheet-footer-hidden:empty { padding-inline: 0; }
+.sheet-horizontal-scrollbar-control { min-width: 0; max-width: 100%; margin-inline: 6px; overflow: hidden; flex-wrap: nowrap; }
+.sheet-horizontal-scrollbar { scrollbar-width: auto; scroll-behavior: auto; }
 .sheet-horizontal-scrollbar::-webkit-scrollbar { height: 14px; }
 .sheet-horizontal-scrollbar::-webkit-scrollbar-thumb { background: #a9b6c7; border: 3px solid #f1f5f9; border-radius: 8px; }
 .sheet-horizontal-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; }
+@container sheet-footer (max-width: 640px) {
+  .spreadsheet-footer-layout { grid-template-columns: minmax(0, 1fr) max-content max-content minmax(0, 30%); }
+  .spreadsheet-footer-hidden { padding-inline: 4px; }
+  .sheet-horizontal-scrollbar-control > button { display: none; }
+}
+@container sheet-footer (max-width: 360px) {
+  .spreadsheet-footer-layout { grid-template-columns: minmax(0, 1fr) max-content max-content minmax(0, 24%); }
+}

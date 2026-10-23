@@ -32,16 +32,31 @@ export function SpreadsheetHiddenColumns({sheet, ...props}: ComponentProps<typeo
   return workspace ? null : <HiddenColumnsControl key={sheet} {...props} portalMenu />;
 }
 
-export function SpreadsheetBottomToolbar({workspace, sheet, onHiddenColumnsTarget, children, singleRow = false, hiddenColumnsControl}: {
+export function SpreadsheetBottomToolbar({workspace, sheet, onHiddenColumnsTarget, children, hiddenColumnsControl}: {
   workspace: RefObject<HTMLElement | null>; sheet: string;
-  onHiddenColumnsTarget?: (target: HTMLDivElement | null) => void; children: ReactNode; singleRow?: boolean; hiddenColumnsControl?: ReactNode;
+  onHiddenColumnsTarget?: (target: HTMLDivElement | null) => void; children: ReactNode; hiddenColumnsControl?: ReactNode;
 }) {
-  return <div data-sheet-tabs className={`relative z-10 flex min-w-0 shrink-0 items-stretch border-t border-slate-200 bg-slate-100 ${singleRow ? "w-full max-w-full flex-nowrap" : "flex-wrap"}`}>
-    <div className={singleRow ? "flex min-w-0 flex-1 overflow-hidden" : "flex min-w-0 flex-[1_1_16rem] overflow-hidden"}>{children}</div>
-    <div className={`flex items-stretch ${singleRow ? "min-w-0 flex-none flex-nowrap whitespace-nowrap" : "ml-auto min-w-0 max-w-full flex-wrap"}`}>
-      <div ref={onHiddenColumnsTarget} className="flex shrink-0 items-center px-3 py-1">{hiddenColumnsControl}</div>
-      <button type="button" title="Fit columns to loaded content" onClick={() => workspace.current?.querySelector(`#trip-sheet-${sheet} .spreadsheet-viewport`)?.dispatchEvent(new Event("sheet:auto-fit"))} className="shrink-0 border-l border-slate-200 px-2 text-[11px] text-slate-600 hover:bg-white focus-visible:outline-2 focus-visible:outline-blue-500">Auto Fit</button>
-      <SheetHorizontalScrollbar arrows workspace={workspace} sheet={sheet} width={singleRow ? 192 : undefined} />
+  const tabs = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const nav = tabs.current?.querySelector<HTMLElement>('[role="tablist"]');
+    if (!nav) return;
+    const reveal = () => {
+      const active = nav.querySelector<HTMLElement>('[aria-selected="true"]');
+      if (!active || !nav.clientWidth) return;
+      const bounds = nav.getBoundingClientRect(), selected = active.getBoundingClientRect();
+      if (selected.left < bounds.left) nav.scrollLeft += selected.left - bounds.left;
+      else if (selected.right > bounds.right) nav.scrollLeft += selected.right - bounds.right;
+    };
+    const resize = new ResizeObserver(reveal);
+    resize.observe(nav); reveal();
+    return () => resize.disconnect();
+  }, [sheet]);
+  return <div data-sheet-tabs className="spreadsheet-footer relative z-10 w-full min-w-0 max-w-full shrink-0 border-t border-slate-200 bg-slate-100">
+    <div className="spreadsheet-footer-layout">
+      <div ref={tabs} className="spreadsheet-footer-tabs">{children}</div>
+      <div ref={onHiddenColumnsTarget} className="spreadsheet-footer-hidden flex min-w-0 items-center px-3 py-1">{hiddenColumnsControl}</div>
+      <button type="button" title="Fit columns to loaded content" onClick={() => workspace.current?.querySelector(`#trip-sheet-${sheet} .spreadsheet-viewport`)?.dispatchEvent(new Event("sheet:auto-fit"))} className="whitespace-nowrap border-l border-slate-200 px-2 text-[11px] text-slate-600 hover:bg-white focus-visible:outline-2 focus-visible:outline-blue-500">Auto Fit</button>
+      <SheetHorizontalScrollbar arrows workspace={workspace} sheet={sheet} />
     </div>
   </div>;
 }
