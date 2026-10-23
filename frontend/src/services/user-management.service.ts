@@ -2,6 +2,7 @@ import { apiGetCached, apiPatch, apiPost,invalidateApiCache,getCachedApiResponse
 import {fetchTruckers,getCachedTruckers,type TruckerListItem} from "./trucker.service";
 
 export type ManagedUser = {
+  account_status?:string;deactivated_at?:string|null;
   id: string; first_name: string | null; last_name: string | null; role: "ADMIN" | "STAFF" | "TRUCKER";
   contact_number?:string|null; is_admin: boolean; email: string | null; profile_picture_path: string | null; profile_picture_url?: string | null;
   driver: { id: string; contact_number: string | null; license_number: string | null; trucking_company_id: string | null; status: string | null; notes: string | null } | null;

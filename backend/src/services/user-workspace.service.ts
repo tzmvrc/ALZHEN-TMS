@@ -1,3 +1,4 @@
+import {assertPicturePermission,commitAccountPicture} from "./account-picture.service.js";
 import {supabaseAdmin} from "../config/supabase.js";
 import {ApiError} from "../utils/api-response.js";
 import {buildIlikeOrFilter} from "../utils/postgrest-search.js";
@@ -11,9 +12,9 @@ function rpcError(error:any){if(!error)return;console.error("User workspace oper
 export async function profileRecord(actor:Actor,id:string){
  assertView(actor,id);const {data,error}=await db.from('profiles').select('id,first_name,last_name,role,is_admin,contact_number,created_at,updated_at,deactivated_at,profile_picture_path,drivers(id,contact_number,license_number,trucking_company_id,status,notes,assigned_truck_id,trucking_companies(id,name),trucks!drivers_assigned_truck_id_fkey(id,truck_type,plate_number))').eq('id',id).maybeSingle();
  if(error||!data)throw new ApiError("Profile is unavailable.",404);
- const auth=await db.from('v_managed_users_directory').select('email').eq('id',id).maybeSingle();const driver=Array.isArray(data.drivers)?data.drivers[0]:data.drivers;let picture=null;
+ const [auth,authUser]=await Promise.all([db.from('v_managed_users_directory').select('email').eq('id',id).maybeSingle(),supabaseAdmin.auth.admin.getUserById(id).catch(()=>({data:{user:null},error:null}))]);const driver=Array.isArray(data.drivers)?data.drivers[0]:data.drivers;let picture=null;
  if(data.profile_picture_path){if(/^https?:\/\//.test(data.profile_picture_path))picture=data.profile_picture_path;else{const signed=await supabaseAdmin.storage.from('profile-pictures').createSignedUrl(data.profile_picture_path,3600);picture=signed.data?.signedUrl??null;}}
- return {...data,driver:driver??null,drivers:undefined,email:auth.data?.email??null,profile_picture_url:picture,account_status:data.deactivated_at?'DEACTIVATED':'ACTIVE'};
+ return {...data,driver:driver??null,drivers:undefined,email:authUser.data?.user?.email??auth.data?.email??null,last_login_at:authUser.data?.user?.last_sign_in_at??null,profile_picture_url:picture,account_status:data.deactivated_at?'DEACTIVATED':'ACTIVE'};
 }
 export async function userSheet(actor:Actor,query:Record<string,unknown>){
  if(!['ADMIN','STAFF'].includes(actor.role))throw new ApiError('Access denied.',403);
@@ -65,4 +66,11 @@ export async function userActivity(actor:Actor,id:string,query:Record<string,unk
  return {rows:(data??[]).map(({search_text:_search,...row}:any)=>({...row,old_data:safeActivity(row.old_data),new_data:safeActivity(row.new_data)})),pagination:{page,limit,total:count??0,totalPages:Math.max(1,Math.ceil((count??0)/limit))}};
 }
 export async function activityStats(actor:Actor,id:string,days:unknown){assertView(actor,id);const {data,error}=await db.rpc('user_activity_stats_v1',{p_actor:actor.id,p_subject:id,p_days:Math.min(90,Math.max(1,Number(days)||30))});rpcError(error);return data;}
-export async function userPicture(actor:Actor,id:string,bytes:Buffer,mime:string){assertView(actor,id);return uploadProfilePicture(id,bytes,mime,actor.id);}
+export async function userPicture(actor:Actor,id:string,bytes:Buffer,mime:string){userId(id);return uploadProfilePicture(id,bytes,mime,actor.id);}
+
+export async function pictureRecord(actor:Actor,id:string){
+ const {subject}=await assertPicturePermission(actor.id,id);let url:string|null=null;
+ if(subject.profile_picture_path){if(/^https?:\/\//i.test(subject.profile_picture_path))url=subject.profile_picture_path;else{const signed=await supabaseAdmin.storage.from('profile-pictures').createSignedUrl(subject.profile_picture_path,3600);url=signed.data?.signedUrl??null;}}
+ return {id:subject.id,role:subject.role,name:[subject.first_name,subject.last_name].filter(Boolean).join(' '),profile_picture_url:url,has_picture:Boolean(subject.profile_picture_path)};
+}
+export async function removeUserPicture(actor:Actor,id:string){const result=await commitAccountPicture(actor.id,userId(id),null);return {profile_picture_url:null,...result};}

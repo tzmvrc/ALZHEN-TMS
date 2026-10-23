@@ -1,3 +1,5 @@
+import {accountOverview} from "../services/account-overview.service.js";
+import {changeAccountPassword} from "../services/account-security.service.js";
 import {ApiError} from "../utils/api-response.js";
 import {UserServiceError} from "../services/user.service.js";
 import {Router} from "express";
@@ -9,6 +11,8 @@ import * as users from "../services/user-workspace.service.js";
 const router=Router();
 const actor=(req:Request)=>({id:req.profile!.id,role:String(req.profile!.role)});
 const handle=(fn:(req:Request)=>Promise<unknown>)=>async(req:Request,res:Response,next:NextFunction)=>{try{res.json({success:true,data:await fn(req)});}catch(error){next(error instanceof UserServiceError?new ApiError(error.message,error.statusCode):error);}};
+router.get('/me/session',authMiddleware,handle(async req=>({role:req.profile!.role,expires_at:req.appSession?.expiresAt??null,last_login_at:req.user?.last_sign_in_at??null})));
+router.post('/me/password',authMiddleware,handle(req=>{const current=req.body?.current_password,next=req.body?.new_password;if(req.body){delete req.body.current_password;delete req.body.new_password;}return changeAccountPassword(actor(req).id,current,next,{token:req.headers.authorization?.replace(/^Bearer\s+/i,"").trim()??"",sessionId:req.appSession?.sessionId??null,role:actor(req).role});}));
 router.get('/directory',authMiddleware,requireRole('ADMIN','STAFF'),handle(req=>users.userSheet(actor(req),req.query)));
 router.post('/delete-records',authMiddleware,requireRole('ADMIN'),handle(req=>users.deactivateUsers(actor(req),req.body?.ids)));
 router.get('/drivers/:driverId/available-trucks',authMiddleware,requireRole('ADMIN','STAFF'),handle(req=>users.availableDriverTrucks(actor(req),String(req.params.driverId),req.query)));
@@ -16,6 +20,9 @@ router.put('/drivers/:driverId/current-truck',authMiddleware,requireRole('ADMIN'
 router.get('/:id/profile',authMiddleware,handle(req=>users.profileRecord(actor(req),String(req.params.id))));
 router.patch('/:id/profile',authMiddleware,handle(req=>users.patchProfile(actor(req),String(req.params.id),req.body??{})));
 router.get('/:id/activity',authMiddleware,handle(req=>users.userActivity(actor(req),String(req.params.id),req.query)));
+router.get('/:id/overview',authMiddleware,handle(req=>accountOverview(actor(req),String(req.params.id),req.query.days)));
 router.get('/:id/activity-stats',authMiddleware,handle(req=>users.activityStats(actor(req),String(req.params.id),req.query.days)));
+router.get('/:id/picture',authMiddleware,handle(req=>users.pictureRecord(actor(req),String(req.params.id))));
+router.delete('/:id/picture',authMiddleware,handle(req=>users.removeUserPicture(actor(req),String(req.params.id))));
 router.post('/:id/picture',authMiddleware,express.raw({type:['image/jpeg','image/png','image/webp'],limit:'5mb'}),handle(req=>{if(!Buffer.isBuffer(req.body))throw new ApiError('Choose an image file.',400);return users.userPicture(actor(req),String(req.params.id),req.body,String(req.headers['content-type']??''));}));
 export default router;

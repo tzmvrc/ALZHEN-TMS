@@ -1,3 +1,5 @@
+import {Link} from "react-router-dom";
+import {Settings,UserRound} from "lucide-react";
 import ReportTripDialog from "../../components/admin/ReportTripDialog";
 import LocationSharing from "../../components/admin/LocationSharing";
 import {pdfIntakeAvailable,prepareDriverPdf} from "../../services/pdf-intake.service";
@@ -1145,6 +1147,8 @@ export default function DriverPortal() {
             <div className={`relative ${bellTrigger} ${bellPanel}`}>
               <TruckerNotifications />
             </div>
+            <Link to="/trucker/profile" aria-label="My profile" title="My profile" aria-disabled={busy} tabIndex={busy?-1:0} className={`${iconButton} !h-9 !w-9 ${busy?"pointer-events-none opacity-40":""}`}><UserRound className="h-4 w-4"/></Link>
+            <Link to="/trucker/settings" aria-label="Account settings" title="Account settings" aria-disabled={busy} tabIndex={busy?-1:0} className={`${iconButton} !h-9 !w-9 ${busy?"pointer-events-none opacity-40":""}`}><Settings className="h-4 w-4"/></Link>
             <button type="button" onClick={() => setShowLogoutConfirm(true)} aria-label="Log out" title="Log out" className={`${iconButton} hover:!text-rose-600`}>
               <LogOut aria-hidden="true" className="h-[18px] w-[18px] stroke-[1.6]" />
             </button>

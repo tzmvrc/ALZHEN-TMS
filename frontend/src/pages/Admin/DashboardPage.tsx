@@ -29,6 +29,7 @@ const UserProfilePage = lazy(() => import("./views/UserProfilePage"));
 const OverviewView = lazy(() => import("./views/OverviewView"));
 import LiveTripAlerts from "../../components/admin/LiveTripAlerts";
 const ResourceView = lazy(() => import("./views/ResourceView"));
+const BillingView = lazy(() => import("./views/BillingView"));
 const ClientWebsiteWorkspace = lazy(() => import("./clientwebsite"));
 import { defaultDashboardData } from "./data/defaultDashboardData";
 import NotificationsView from "./views/NotificationsView";
@@ -127,8 +128,9 @@ export default function DashboardPage({
     requestedSheet ? "trips" : normalizeMainSection(data.nav.activeId),
   );
   const route=useParams<{tripId:string;userId:string}>(),navigate=useNavigate(),[routeQuery]=useSearchParams();
-  const activeId=location.pathname==="/profile"||route.userId?`profile:${route.userId??profile?.id??""}`:route.tripId?`trip-detail:${route.tripId}:dispatches${routeQuery.get("stop")?`:stop:${routeQuery.get("stop")}`:""}`:localActiveId;
+  const activeId=location.pathname==="/settings"?"settings":location.pathname==="/profile"||route.userId?`profile:${route.userId??profile?.id??""}`:route.tripId?`trip-detail:${route.tripId}:dispatches${routeQuery.get("stop")?`:stop:${routeQuery.get("stop")}`:""}`:localActiveId;
   const setActiveId=useCallback((next:string)=>{
+    if(next==="settings"){navigate("/settings");return;}
     if(next==="profile"||next.startsWith("profile:")){navigate(next==="profile"?"/profile":`/users/${encodeURIComponent(next.slice(8))}`);return;}
     if(next.startsWith("trip-detail:")){const [,trip,,scope,stop]=next.split(":");navigate(`/trips/${encodeURIComponent(trip)}${scope==="stop"&&stop?`?stop=${encodeURIComponent(stop)}`:""}`);}
     else {setLocalActiveId(next);if(route.tripId||location.pathname!=="/")navigate("/");}
@@ -147,9 +149,6 @@ export default function DashboardPage({
     // Trips owns one paced sheet queue; do not start a second report queue here.
     if(activeId==="truckers")void preloadAdminPageData(accessToken,profile.role,"users");
   },[accessToken,profile,activeId,reportView]);
-  const [billingView, setBillingView] = useState<
-    "rates-fuel" | "invoices" | "payables" | "cash-tracker"
-  >("invoices");
   const [searchQuery] = useState("");
   const [notificationCount, setNotificationCount] = useState(0);
   const [notificationItems, setNotificationItems] = useState<AdminNotification[]>([]);
@@ -654,6 +653,7 @@ export default function DashboardPage({
               />
             </div></RetainedFeature>
             <RetainedFeature key={`trips:${profile?.id}:${profile?.role}`} active={!isClientWebsite&&activeId==="trips"}><ResourceView id="dispatches" workspaceReport={reportView} data={filteredData} onNavigate={handleNavigate} notificationTarget={notificationTarget} onReportScopeChange={setReportView}/></RetainedFeature>
+            <RetainedFeature key={`billing:${profile?.id}:${profile?.role}`} active={!isClientWebsite&&activeId==="billing"}><BillingView/></RetainedFeature>
             <div key={`${workspace}:${activeId}:${clientTab}`} className="page-enter" hidden={showOverview}>
               {isClientWebsite ? (
                 <ClientWebsiteWorkspace
@@ -707,16 +707,7 @@ export default function DashboardPage({
               ) : activeId === "reports" ? (
                 null
               ) : activeId === "billing" ? (
-                <ResourceView
-                  id={billingView}
-                  data={filteredData}
-                  onNavigate={handleNavigate}
-                  billingScope={billingView}
-                  onBillingScopeChange={(next) => {
-                    setBillingView(next);
-                    setActiveId("billing");
-                  }}
-                />
+                null
               ) : activeId === "settings" ? (
                 <ResourceView
                   id="settings"

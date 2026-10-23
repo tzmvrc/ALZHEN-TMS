@@ -7,6 +7,7 @@ import LoginPage from "./pages/Admin/LoginPage";
 import DriverLoginPage from "./pages/Driver/LoginPage";
 const DashboardPage = lazy(() => import("./pages/Admin/DashboardPage"));
 const DriverPortal = lazy(() => import("./pages/Driver/DriverPortal"));
+const DriverAccountPage = lazy(() => import("./pages/Driver/DriverAccountPage"));
 import NotFoundPage from "./pages/NotFoundPage";
 
 function App() {
@@ -65,6 +66,7 @@ function App() {
         }
       />
 
+      <Route path="/settings" element={<AdminRoute><DashboardPage /></AdminRoute>} />
       <Route path="/profile" element={<AdminRoute><DashboardPage /></AdminRoute>} />
       <Route path="/users/:userId" element={<AdminRoute><DashboardPage /></AdminRoute>} />
       <Route path="/trips" element={<AdminRoute><DashboardPage /></AdminRoute>} />
@@ -112,10 +114,12 @@ function App() {
         path="/trucker/profile"
         element={
           <ProtectedRoute loginPath="/trucker/login">
-            <DriverPortal />
+            <DriverAccountPage view="profile" />
           </ProtectedRoute>
         }
       />
+
+      <Route path="/trucker/settings" element={<ProtectedRoute loginPath="/trucker/login"><DriverAccountPage view="settings" /></ProtectedRoute>} />
 
       <Route path="*" element={<NotFoundPage />} />
     </Routes></Suspense>

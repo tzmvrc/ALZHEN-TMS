@@ -1,3 +1,4 @@
+import {ApiError} from "../utils/api-response.js";
 import { Request, Response } from "express";
 import {
   UserServiceError,
@@ -8,6 +9,7 @@ import {
 } from "../services/user.service.js";
 
 function sendFailure(res: Response, error: unknown) {
+  if(error instanceof ApiError)return res.status(error.statusCode).json({success:false,message:error.message});
   if (error instanceof UserServiceError) return res.status(error.statusCode).json({ success: false, message: error.message });
   console.error("User management request failed:", error);
   return res.status(502).json({ success: false, message: "Unable to complete user management request." });

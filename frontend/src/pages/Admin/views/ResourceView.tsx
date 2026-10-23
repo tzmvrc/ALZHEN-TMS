@@ -6,7 +6,7 @@ const IncidentPanel=lazy(()=>import("../../../components/admin/DashboardPrimitiv
 const SectionHeader=lazy(()=>import("../../../components/admin/DashboardPrimitives").then(module=>({default:module.SectionHeader})));
 const PageIntro=lazy(()=>import("../../../components/admin/DashboardPrimitives").then(module=>({default:module.PageIntro})));
 const ChecklistPanel=lazy(()=>import("../../../components/admin/DashboardPrimitives").then(module=>({default:module.ChecklistPanel})));
-const SettingsPanel=lazy(()=>import("../../../components/admin/DashboardPrimitives").then(module=>({default:module.SettingsPanel})));
+const SettingsPanel=lazy(()=>import("../../Account/SettingsPage"));
 const PodWorkflowPanel=lazy(()=>import("../../../components/admin/DashboardPrimitives").then(module=>({default:module.PodWorkflowPanel})));
 import { tableUi } from "../../../components/admin/dashboardStyles";
 import ReportDataView from "../../../components/admin/ReportDataView";
@@ -324,6 +324,7 @@ export default function ResourceView({
     !isTripDetail &&
     ![
       "requests",
+      "settings",
       "dispatches",
       "deliveries",
       "monitoring",
@@ -341,7 +342,7 @@ export default function ResourceView({
       "invoices",
     ].includes(id);
   /* Table pages get a compact PageHeading instead of the larger PageIntro block. */
-  const showPageIntro = !TABLE_PAGE_IDS.has(id) && !isTripDetail && id !== "requests";
+  const showPageIntro = !TABLE_PAGE_IDS.has(id) && !isTripDetail && id !== "requests" && id !== "settings";
 
   const showLocalTrip = !isTripDetail && localTripId !== null;
 

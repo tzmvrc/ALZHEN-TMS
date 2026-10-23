@@ -1,7 +1,7 @@
 import {collectSelectionPages} from "./spreadsheet-selection";
-import {apiGetCached,apiGet,apiPatch,apiPut,apiPost,getAppSessionHeaders,handleSessionExpiredResponse,getCachedApiResponse,invalidateApiCache,type ApiResponse} from './api.service';
+import {apiGetCached,apiGet,apiPatch,apiPut,apiPost,apiDelete,getAppSessionHeaders,handleSessionExpiredResponse,getCachedApiResponse,invalidateApiCache,type ApiResponse} from './api.service';
 import type {MasterDataPage,MasterDataRow} from './master-data.service';
-export type UserProfile=MasterDataRow&{first_name:string;last_name:string;email:string|null;role:string;is_admin:boolean;contact_number:string|null;created_at:string;account_status:string;profile_picture_url:string|null;driver:{id:string;status:string;contact_number:string|null;license_number:string|null;trucking_company_id:string|null;notes:string|null;assigned_truck_id:string|null;trucks?:{id:string;plate_number:string;truck_type:string}|null}|null};
+export type UserProfile=MasterDataRow&{first_name:string;last_name:string;email:string|null;role:string;is_admin:boolean;contact_number:string|null;created_at:string;last_login_at?:string|null;profile_picture_path?:string|null;account_status:string;profile_picture_url:string|null;driver:{id:string;status:string;contact_number:string|null;license_number:string|null;trucking_company_id:string|null;notes:string|null;assigned_truck_id:string|null;trucking_companies?:{id:string;name:string}|null;trucks?:{id:string;plate_number:string;truck_type:string}|null}|null};
 export type UserActivity={id:string;user_id:string;action:string;module:string;entity_id:string|null;created_at:string;old_data:Record<string,unknown>|null;new_data:Record<string,unknown>|null};
 export type ActivityPage={rows:UserActivity[];pagination:{page:number;total:number;totalPages:number}};
 export type ActivityStats={period_days:number;daily:Array<{day:string;actions:number}>;breakdown:Array<{module:string;actions:number}>;coverage:string};
@@ -23,8 +23,16 @@ export const fetchUserActivityStats=(token:string,id:string,days=30)=>unwrap(api
 export async function uploadUserPicture(token:string,id:string,file:File){
  if(!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size>5*1024*1024)throw Error('Choose a JPEG, PNG or WebP image up to 5 MB.');
  const response=await fetch(`${import.meta.env.VITE_API_URL??'http://localhost:5000/api'}/users/${id}/picture`,{method:'POST',headers:{Authorization:`Bearer ${token}`,...getAppSessionHeaders(),'Content-Type':file.type},body:file});
- const result=await response.json().catch(()=>null);if(!response.ok)await handleSessionExpiredResponse(response.status,result,true);if(!response.ok||!result?.success||!result.data)throw Error(result?.message??'Profile image could not be saved.');invalidateUserWorkspace();return result.data as {path:string;signed_url:string|null};
+ const result=await response.json().catch(()=>null);if(!response.ok)await handleSessionExpiredResponse(response.status,result,true);if(!response.ok||!result?.success||!result.data)throw Error(result?.message??'Profile image could not be saved.');invalidateUserWorkspace();return result.data as {path:string;signed_url:string|null;audit_warning?:boolean;cleanup_pending?:boolean};
 }
 
 export const selectUserSheet=(token:string,category:string,search:string,sort:string,direction:string,current:()=>boolean=()=>true)=>collectSelectionPages<MasterDataRow>(
  page=>unwrap(apiGet<ApiResponse<MasterDataPage>>(`${directory(category,search,page,sort,direction)}&selection_only=true`,token)),row=>row.id,current);
+
+export type AccountOverview={kind:'office'|'trucker';delivery_activity?:Array<{id:string;trip_id:string;reference:string;status:string;created_at:string}>;activity_unavailable?:boolean;metrics:Array<{key:string;label:string;value:number|null}>;daily:Array<{day:string;count:number}>;trips:Array<{id:string;reference:string;status:string;loading_date:string|null;completed:boolean;assigned_at:string|null;stops:number}>;coverage:string};
+export type PictureRecord={id:string;role:string;name:string;profile_picture_url:string|null;has_picture:boolean};
+export const fetchAccountOverview=(token:string,id:string,days:number)=>unwrap(apiGet<ApiResponse<AccountOverview>>(`/users/${id}/overview?days=${days}`,token));
+export const fetchPictureRecord=(token:string,id:string)=>unwrap(apiGet<ApiResponse<PictureRecord>>(`/users/${id}/picture`,token));
+export async function removeUserPicture(token:string,id:string){const result=await unwrap(apiDelete<ApiResponse<{profile_picture_url:null;audit_warning?:boolean;cleanup_pending?:boolean}>>(`/users/${id}/picture`,token));invalidateUserWorkspace();return result;}
+export const fetchAccountSession=(token:string)=>unwrap(apiGet<ApiResponse<{role:string;expires_at:string|null;last_login_at:string|null}>>('/users/me/session',token));
+export const changeAccountPassword=(token:string,current_password:string,new_password:string)=>unwrap(apiPost<ApiResponse<{changed:boolean;sign_in_again:boolean}>>('/users/me/password',{current_password,new_password},token));

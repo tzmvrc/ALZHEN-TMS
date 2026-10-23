@@ -10,7 +10,8 @@ export function startUserMaintenanceWorker(){
    else{
     const path=job.payload?.path;if(typeof path!=='string'||!path.startsWith(job.profile_id+'/')||path.includes('..'))throw Error('Unverified ownership');
     const references=await db.from('profiles').select('id',{count:'exact',head:true}).eq('profile_picture_path',path);if(references.error)throw references.error;
-    if(!references.count){const result=await supabaseAdmin.storage.from('profile-pictures').remove([path]);if(result.error)throw result.error;}
+    if(references.count)throw Error('Picture is still referenced; keep its cleanup reservation for later.');
+    const result=await supabaseAdmin.storage.from('profile-pictures').remove([path]);if(result.error)throw result.error;
    }
    const complete=await db.from('user_maintenance_jobs').update({state:'DONE',last_error:null,lease_until:null,updated_at:new Date().toISOString()}).eq('id',job.id).eq('attempts',job.attempts);if(complete.error)console.error('User maintenance completion needs reconciliation');
   }catch{await db.from('user_maintenance_jobs').update({state:'PENDING',lease_until:null,last_error:'Operation needs retry',next_attempt_at:new Date(Date.now()+Math.min(60*60_000,10000*2**Math.min(job.attempts,8))).toISOString()}).eq('id',job.id).eq('attempts',job.attempts);}

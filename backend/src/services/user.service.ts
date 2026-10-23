@@ -1,3 +1,4 @@
+import {assertPicturePermission,commitAccountPicture} from "./account-picture.service.js";
 import { supabaseAdmin } from "../config/supabase.js";
 import { randomUUID } from "node:crypto";
 import { imageMime } from "../models/clientwebsite.validation.js";
@@ -337,6 +338,7 @@ export async function updateManagedUser(id: string, input: Record<string, unknow
 }
 
 export async function uploadProfilePicture(id: string, body: Buffer, mime: string, actorId: string = id) {
+  await assertPicturePermission(actorId,id);
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) throw new UserServiceError("Invalid user id.", 400);
   if (!body.length || body.length > 5 * 1024 * 1024) throw new UserServiceError("Choose an image up to 5 MB.", 400);
   if (!new Set(["image/jpeg", "image/png", "image/webp"]).has(mime)) throw new UserServiceError("Use a JPEG, PNG, or WebP image.", 400);
@@ -347,8 +349,8 @@ export async function uploadProfilePicture(id: string, body: Buffer, mime: strin
   if(staged.error)throw new UserServiceError("Image cleanup could not be prepared. No upload was started.",503);
   const { error: uploadError } = await supabaseAdmin.storage.from("profile-pictures").upload(path, body, { contentType: mime, upsert: false });
   if (uploadError) throw new UserServiceError("Profile picture upload failed. Check the existing private profile-pictures bucket.", 502);
-  const {error:updateError}=await (supabaseAdmin as any).rpc("user_profile_picture_v1",{p_actor:actorId,p_subject:id,p_path:path});
-  if(updateError)throw new UserServiceError("The image could not be attached. Your previous picture is unchanged; uploaded-file cleanup is queued.",502);
-  const { data } = await supabaseAdmin.storage.from("profile-pictures").createSignedUrl(path, 60 * 60);
-  return { path, signed_url: data?.signedUrl ?? null };
+  const outcome=await commitAccountPicture(actorId,id,path);
+  let signed_url:string|null=null;
+  try{const signed=await supabaseAdmin.storage.from("profile-pictures").createSignedUrl(path,60*60);signed_url=signed.data?.signedUrl??null;}catch{/* Picture is committed; a preview outage must not report a failed save. */}
+  return {path,signed_url,...outcome};
 }

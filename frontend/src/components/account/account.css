@@ -1,0 +1,14 @@
+.account-workspace{--account-bg:#fff;--account-soft:#f8fafc;--account-border:#e2e8f0;--account-text:#0b2341;--account-muted:#64748b;color:var(--account-text);font-size:13px}
+.account-workspace[data-account-theme="dark"]{--account-bg:#172334;--account-soft:#111c2b;--account-border:#344155;--account-text:#e7edf6;--account-muted:#a5b3c5;color-scheme:dark}
+.account-panel{background:var(--account-bg);border:1px solid var(--account-border);border-radius:10px;padding:20px}
+.account-workspace[data-account-density="compact"] .account-panel{padding:12px}
+.account-muted{color:var(--account-muted)}
+.account-input{display:block;width:100%;min-height:38px;border:1px solid var(--account-border);border-radius:6px;background:var(--account-bg);color:var(--account-text);padding:7px 10px;font-size:13px;outline:none}
+.account-input:focus{border-color:#2678b9;box-shadow:0 0 0 1px #2678b9}.account-input:disabled{opacity:.6}
+.account-button{display:inline-flex;min-height:36px;align-items:center;justify-content:center;gap:7px;border:1px solid var(--account-border);border-radius:6px;padding:7px 12px;background:var(--account-bg);color:var(--account-text);font-size:12px;font-weight:600;cursor:pointer}
+.account-button:hover{background:var(--account-soft)}.account-button:focus-visible{outline:2px solid #2678b9;outline-offset:2px}.account-button:disabled{cursor:not-allowed;opacity:.45}
+.account-button-primary{background:#ffd43b!important;color:#0b2341!important;border-color:#ffd43b}
+.account-nav-button{display:flex;width:100%;align-items:center;gap:9px;white-space:nowrap;border-radius:6px;padding:9px 12px;text-align:left;color:var(--account-muted);font-size:13px}
+.account-nav-button:hover{background:var(--account-bg)}.account-nav-button[aria-current="page"]{background:#2678b9;color:white}
+.account-avatar{display:flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden;border-radius:50%;background:var(--account-soft);border:1px solid var(--account-border)}
+.account-workspace th{background:var(--account-soft);color:var(--account-muted)}.account-workspace td,.account-workspace th{border-color:var(--account-border)}
