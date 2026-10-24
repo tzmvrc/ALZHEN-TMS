@@ -1,8 +1,9 @@
-import { useMemo } from "react";
-import { customerStoreKey, storeLocationLabel } from "../../services/store-location";
+import StoreEditor from "./shared/StoreEditor";
+import { useMemo, type ReactNode } from "react";
+import { customerStoreKey } from "../../services/store-location";
 import type { TripPreviewRow } from "./TripTablePreview";
 import type { LocationDecision } from "./ImportDestinationReview";
-import { StoreMasterDetail, StoreProductsTable, SectionCard, StatusChip } from "./shared";
+import { StoreMasterDetail, StoreProductsTable, StatusChip } from "./shared";
 import { cbmDisplay } from "../../services/cbm-display";
 import { invalidProduct, navigationNumber, useStoreWorkspaceMemory, type StoreNavigationItem, type StoreWorkspaceMemory } from "./shared/storeWorkspace";
 
@@ -14,7 +15,7 @@ export type StoreProductPreviewRow = {
 };
 
 /** Keep individual source products intact; only their destination is grouped. */
-export default function ImportStoreProductsPreview({ rows, navigation, locations }: { rows: StoreProductPreviewRow[]; navigation?: StoreWorkspaceMemory; locations?: Record<string, LocationDecision> }) {
+export default function ImportStoreProductsPreview({ rows, navigation, locations, toolbar, helper, onAdd, disabled }: { rows: StoreProductPreviewRow[]; navigation?: StoreWorkspaceMemory; locations?: Record<string, LocationDecision>; toolbar?: ReactNode; helper?: ReactNode; onAdd?: () => void; disabled?: boolean }) {
   const local = useStoreWorkspaceMemory(), memory = navigation ?? local;
   const rowId = (row: StoreProductPreviewRow) => row.navigation_row_id ?? (row.file_id != null && row.line != null ? `${row.file_id}:${row.line}` : row.source_identity);
   const stores = useMemo(() => {
@@ -37,8 +38,8 @@ export default function ImportStoreProductsPreview({ rows, navigation, locations
   });
   if (!stores.length) return null;
   return <section aria-label="Stores and their products" className="space-y-4">
-    <div><h3 className="text-sm font-semibold text-[#0b2341]">Stores &amp; products by delivery location</h3><p className="mt-1 text-xs text-slate-500">Select a store to review its original product lines and trip groups. Use the input forms to make changes.</p></div>
-    <StoreMasterDetail items={items} memory={memory}>{item => {
+
+    <StoreMasterDetail items={items} memory={memory} toolbar={toolbar} helper={helper} onAdd={onAdd} disabled={disabled}>{item => {
       const store = stores.find(candidate => (candidate.source.navigation_store_id ?? rowId(candidate.source)) === item.id)!;
   const products: TripPreviewRow[] = store.products.map(row => ({
     store: row.values.ship_to ?? "", customer: row.values.customer_name ?? "",
@@ -52,7 +53,7 @@ export default function ImportStoreProductsPreview({ rows, navigation, locations
     source: row.filename ? `${row.filename}${row.line == null ? "" : `, row ${row.line}`}` : "Manual entry",
     ...row.preview,
   }));
-      return <SectionCard title={`Products for ${storeLocationLabel(store.values)}`} description={`${store.values.customer_name ?? ""} \u00b7 ${[...store.groups].join(", ")}`}>
+      return <StoreEditor number={stores.indexOf(store) + 1} name={store.values.ship_to || ""} summary={`${store.products.length} product${store.products.length === 1 ? "" : "s"} · ${item.qty} qty · ${item.cbm} CBM`} products={
         <StoreProductsTable rows={store.products} storeId={item.id} memory={memory} rowKey={rowId} searchText={row => [Object.values(row.values).join(" "), row.group, row.filename, row.line, ...Object.values(row.preview ?? {})].join(" ")}
           columns={[
             { key: "code", label: "Product code", render: row => row.preview?.product ?? row.values.customer_model ?? "\u2014" },
@@ -64,8 +65,7 @@ export default function ImportStoreProductsPreview({ rows, navigation, locations
           renderMore={row => {
             const product = products[store.products.indexOf(row)];
             return <div className="space-y-3"><dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{Object.entries({ ...row.values, ...product }).map(([key, value]) => <div key={key}><dt className="text-xs font-medium text-slate-500">{key.replace(/_/g, " ")}</dt><dd className="mt-1 break-words text-xs text-slate-800 tabular-nums">{value || "\u2014"}</dd></div>)}</dl>{Boolean(row.errors?.length) && <p className="text-xs text-rose-700">{row.errors?.join(" / ")}</p>}</div>;
-          }} />
-      </SectionCard>;
+          }} />} />;
     }}</StoreMasterDetail>
   </section>;
 }

@@ -204,7 +204,27 @@ async function request<T>(
 
     if (response.status >= 500) {
       const code=payload?.code??payload?.error?.code;
-      if(endpoint.startsWith("/trips")&&["TRIP_WORKFLOW_SETUP_REQUIRED","TRIP_IMPORT_SETUP_REQUIRED","TRIP_LOCATION_FOLLOWUP_REQUIRED"].includes(code??"")&&payload?.message)throw new ApiError(payload.message,response.status,code);
+      // These are deliberate, actionable workflow errors, not raw server failures.
+      // In particular, a missing details RPC must not become a generic retry message.
+      const tripWorkflowErrors = [
+        "TRIP_WORKFLOW_SETUP_REQUIRED",
+        "TRIP_IMPORT_SETUP_REQUIRED",
+        "IMPORT_TRIP_DETAILS_SETUP_REQUIRED",
+        "TRIP_DELIVERY_LOCATION_SETUP_REQUIRED",
+        "TRIP_DELIVERY_LOCATION_UNAVAILABLE",
+        "IMPORT_RECOVERY_SETUP_REQUIRED",
+        "MASTER_LIST_SETUP_REQUIRED",
+        "TRIP_LOCATION_FOLLOWUP_REQUIRED",
+      ];
+      if (endpoint.startsWith("/trips") && tripWorkflowErrors.includes(code ?? "") && payload?.message) {
+        throw new ApiError(payload.message, response.status, code);
+      }
+      if (endpoint.startsWith("/reports/") && code === "REPORT_READ_TIMEOUT" && payload?.message) {
+        throw new ApiError(payload.message, response.status, code);
+      }
+      if(endpoint==="/auth/login"&&["AUTH_SERVICE_UNAVAILABLE","SESSION_STORE_UNAVAILABLE"].includes(code??"")&&payload?.message){
+        throw new ApiError(payload.message,response.status,code);
+      }
       if (
         endpoint === "/truckers/me/trips" &&
           (payload?.code === "TRUCKER_ASSIGNED_TRIPS_FAILED" ||

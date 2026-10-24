@@ -1,23 +1,20 @@
-import { ChevronDown } from "lucide-react";
-import { cargoTotal, type CargoLine, type CargoTruck } from "../../../services/cargo-planning";
-import SectionCard from "./SectionCard";
-import CapacityBar from "./CapacityBar";
-import StatChip from "./StatChip";
-import StatusChip from "./StatusChip";
-import { focusRing } from "./styles";
+import { cargoCapacity, cargoTotal } from "../../../services/cargo-planning";
+import type { CargoLine, CargoTruck } from "../../../services/cargo-planning";
 
+// Existing callers use this exact-decimal formatter for display only.
 export function displayCargoTotal(values: string[]) {
   try { return cargoTotal(values); } catch { return "Check values"; }
 }
-type Props = { dispatch: string; tripNumber: string; tripType: string; status: string; loadingDate: string; etaDate: string; stops: number; lines: CargoLine[]; trucks: CargoTruck[]; mobile?: boolean };
-export default function TripLiveSummary({ dispatch, tripNumber, tripType, status, loadingDate, etaDate, stops, lines, trucks, mobile = false }: Props) {
-  const cbm = displayCargoTotal(lines.map(line => line.cbm));
-  const capacity = trucks.every(truck => truck.capacity) ? displayCargoTotal(trucks.map(truck => truck.capacity)) : "";
-  const content = <SectionCard title="Live trip summary" description="Updates as you plan your trip.">
-    <StatusChip label={status} tone="info" />
-    <dl className="mt-4 space-y-3 text-xs">{[["Dispatch", dispatch], ["Trip no.", tripNumber], ["Type", tripType || "Not selected"], ["Loading", loadingDate || "Not scheduled"], ["Estimated delivery", etaDate || "Not scheduled"]].map(([label, value]) => <div key={label} className="grid grid-cols-[6rem_minmax(0,1fr)] gap-2"><dt className="text-slate-500">{label}</dt><dd className="break-words font-medium tabular-nums text-[#0b2341]">{value}</dd></div>)}</dl>
-    <div className="my-4 flex flex-wrap gap-2"><StatChip label="Stops" value={stops} /><StatChip label="Qty" value={displayCargoTotal(lines.map(line => line.quantity))} /><StatChip label="Trucks" value={trucks.length} /></div>
-    <CapacityBar label="Trip cargo / capacity" assigned={cbm} capacity={trucks.length ? capacity : ""} />
-  </SectionCard>;
-  return mobile ? <details className="mb-3 lg:hidden"><summary className={`flex cursor-pointer list-none items-center justify-between gap-2 rounded-xl bg-slate-50 p-3 text-xs font-medium text-[#0b2341] ${focusRing}`}><span className="min-w-0 truncate">{dispatch}</span><span className="shrink-0 tabular-nums">{stops} stops · {cbm} CBM · {trucks.length} trucks</span><ChevronDown aria-hidden="true" className="h-4 w-4 shrink-0" /><span className="sr-only">Expand live trip summary</span></summary><div className="mt-2 max-h-[30dvh] overflow-y-auto">{content}</div></details> : content;
+
+export function TripSummaryBar({ stops, qty, cbm, trucks, capacity = "", label = "This trip" }: { stops: number; qty: string; cbm: string; trucks: number; capacity?: string; label?: string }) {
+  const usage = cargoCapacity(capacity, [{ line_key: "summary", truck_id: "summary", quantity: "0", allocated_cbm: cbm }]);
+  const known = Number(capacity) > 0 && usage.remaining !== "unknown" && usage.assigned !== "Check values";
+  return <div className="trip-summary-bar" aria-label="Trip summary">
+    <strong>{label}</strong><dl>{[["Stops", stops], ["Qty", qty], ["CBM", cbm], ["Trucks", trucks]].map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
+    <div className="trip-summary-capacity"><span>{known ? `${cbm} / ${capacity} CBM` : "Capacity not set"}</span><meter aria-label="Fleet capacity" min={0} max={known ? Number(capacity) : 1} value={known ? Math.min(Number(cbm), Number(capacity)) : 0} />{known && <span>{usage.exceeded ? "Over capacity" : usage.full ? "Full" : "Available"}</span>}</div>
+  </div>;
+}
+type Props = { dispatch: string; tripNumber: string; tripType: string; status: string; loadingDate: string; etaDate: string; stops: number; lines: CargoLine[]; trucks: CargoTruck[]; mobile?: boolean; capacity?: string };
+export default function TripLiveSummary({ stops, lines, trucks, capacity }: Props) {
+  return <TripSummaryBar stops={stops} qty={displayCargoTotal(lines.map(line => line.quantity))} cbm={displayCargoTotal(lines.map(line => line.cbm))} trucks={trucks.length} capacity={capacity ?? displayCargoTotal(trucks.filter(truck => /^\d+(?:\.\d+)?$/.test(truck.capacity) && Number(truck.capacity) > 0).map(truck => truck.capacity))} />;
 }

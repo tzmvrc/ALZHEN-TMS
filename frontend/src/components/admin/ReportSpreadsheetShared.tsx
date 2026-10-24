@@ -6,12 +6,13 @@ import { ArrowDown, ArrowUp, ALargeSmall, Bold,Italic,Underline, EyeOff, LoaderC
 import { addDropdownOption, editDropdownOption, fetchDropdownOptions, type DropdownField, type DropdownOption } from "../../services/dropdown-option.service";
 import { REPORT_COLUMN_COLORS, type ReportCellFormat } from "./ReportSpreadsheetUtils";
 
-export function ReportRowActionButton({ action, disabled, onClick, label: customLabel }: { action: "edit" | "delete" | "restore"; disabled?: boolean; onClick: () => void; label?: string }) {
+export function ReportRowActionButton({ action, disabled, onClick, label: customLabel, showLabel=false }: { action: "edit" | "delete" | "restore"; disabled?: boolean; onClick: () => void; label?: string; showLabel?:boolean }) {
   const label = customLabel ?? (action === "edit" ? "Edit selected row" : action === "restore" ? "Restore selected row" : "Delete selected reports");
   const Icon = action === "edit" ? Pencil : action === "restore" ? RotateCcw : Trash2;
   return <button type="button" aria-label={label} title={label} disabled={disabled} onClick={onClick}
-    className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border bg-white cursor-pointer transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9] disabled:cursor-not-allowed disabled:opacity-50 ${action === "delete" ? "border-rose-200 text-rose-700 hover:bg-rose-50" : "border-[#b7d5ed] text-[#155b8d] hover:bg-[#edf6fd]"}`}>
+    className={`inline-flex h-8 ${showLabel?"gap-2 rounded-md px-3 text-xs font-medium":"w-8 rounded-full"} shrink-0 items-center justify-center border bg-white cursor-pointer transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9] disabled:cursor-not-allowed disabled:opacity-50 ${action === "delete" ? "border-rose-200 text-rose-700 hover:bg-rose-50" : "border-[#b7d5ed] text-[#155b8d] hover:bg-[#edf6fd]"}`}>
     <Icon aria-hidden="true" className="h-4 w-4" />
+    {showLabel&&<span>{label}</span>}
   </button>;
 }
 

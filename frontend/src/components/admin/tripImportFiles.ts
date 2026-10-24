@@ -62,12 +62,27 @@ export function importMappingSummary(file: ImportFile) {
 export function importFileFromGrid(name: string, grid: string[][], lines?: number[], id = name): ImportFile {
   const headers = grid[0];
   if (!headers?.length || grid.length < 2) throw new Error(`${name}: choose a table with headers and data rows.`);
-  const detected = detectImportMapping(headers);
-  const referenceIndex = detected.ph_truck_reference;
   return { id, name, headers, originalHeaders: [...headers], mapping: detectImportMapping(headers), columnMapping: detectColumnAssignments(headers), rows: grid.slice(1).map((cells, index) => {
     if (cells.length > headers.length) throw new Error(`${name}, row ${lines?.[index + 1] ?? index + 2}: more values than headers. Check quoted commas.`);
-    return { line: lines?.[index + 1] ?? index + 2, cells, originalCells: [...cells], group: referenceIndex >= 0 && cells[referenceIndex]?.trim() ? `${name} / ${cells[referenceIndex].trim()}` : name };
+    // PH truck names are source references, not physical-truck or trip boundaries.
+    // One planning group lets the capacity allocator share trucks across all stops.
+    return { line: lines?.[index + 1] ?? index + 2, cells, originalCells: [...cells], group: name };
   }).filter(row => row.cells.some(value => value.trim())) };
+}
+/** Recognize older automatic PH grouping without changing deliberately edited groups. */
+export function hasPhReferenceGroups(file: ImportFile) {
+  const index = file.mapping.ph_truck_reference;
+  return index >= 0 && new Set(file.rows.map(row => row.group)).size > 1
+    && file.rows.every(row => row.group === (row.cells[index]?.trim() ? `${file.name} / ${row.cells[index].trim()}` : file.name));
+}
+
+/** Regroup source rows only: cells, identities and original file order stay intact. */
+export function regroupImportFile(file: ImportFile, field: "file" | "ph_truck_reference" | "dispatch_number"): ImportFile {
+  return { ...file, rows: file.rows.map(row => {
+    const value = field === "file" ? "" : row.cells[file.mapping[field]]?.trim() ?? "";
+    const trip = field === "dispatch_number" ? row.cells[file.mapping.trip_number]?.trim() ?? "" : "";
+    return { ...row, group: value ? `${file.name} / ${value}${trip ? ` / Trip ${trip}` : ""}` : file.name };
+  }) };
 }
 export async function readImportFile(file: File): Promise<ImportFile[]> {
   if (/\.csv$/i.test(file.name)) {

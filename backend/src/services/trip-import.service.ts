@@ -1,3 +1,5 @@
+import { importLocationForRpc, deliveryAddress } from "./trip-delivery-address.logic.js";
+import { requireTripDeliveryAddresses } from "./trip-delivery-address.service.js";
 import { workflowFailure } from "./trip-workflow.service.js";
 import { validateImportTripDetails } from "./import-trip-details.logic.js";
 import { assertActiveDropdownOption } from "./dropdown-option.service.js";
@@ -132,6 +134,7 @@ export async function commitTripImport(input: { batch_id: string; rows: ImportRo
   if (!locations || typeof locations !== "object" || Array.isArray(locations) || Object.keys(locations).some(identity=>!input.rows.some(row=>row.source_identity===identity))) throw new ApiError("Invalid destination review scope.",400);
   for (const location of Object.values(locations)) {
     if (!location || typeof location !== "object" || Array.isArray(location)) throw new ApiError("Invalid destination review.",400);
+    if (location.update_store_location != null && typeof location.update_store_location !== "boolean") throw new ApiError("Choose whether to update the saved store location.", 400);
     if (location.pin_address_mismatch != null && typeof location.pin_address_mismatch !== "boolean") throw new ApiError("Confirm the address and pin match explicitly.", 400);
     if (location.pin_address_mismatch === true && location.verified === true) throw new ApiError("Review the address against the moved map pin before verifying.", 400, "LOCATION_PIN_ADDRESS_MISMATCH");
     for (const field of ["province", "city", "address"]) if (location[field] != null && (typeof location[field] !== "string" || String(location[field]).length > (field === "address" ? 2000 : 200))) throw new ApiError("Use text for the reviewed address, province and city within the supported field length.", 400);
@@ -139,6 +142,9 @@ export async function commitTripImport(input: { batch_id: string; rows: ImportRo
     for (const key of ["restore_missing_source", "product_match_confirmed"]) if (location[key] != null && typeof location[key] !== "boolean") throw new ApiError("Confirm source recovery and product matching explicitly.", 400);
     if(location.verified===true){for(const key of ["latitude","longitude"]){const value=location[key];if(value===null||value===undefined||String(value).trim()===""||!Number.isFinite(Number(value))||Math.abs(Number(value))>(key==="latitude"?90:180))throw new ApiError("Review a valid destination coordinate pair.",400);}}
   }
+  let hasTripAddresses;
+  try { hasTripAddresses = Object.values(locations).map(location => location.update_store_location !== undefined ? deliveryAddress(location) : null).some(Boolean); } catch (cause) { throw new ApiError(cause instanceof Error ? cause.message : "Review the delivery address.", 400); }
+  if (hasTripAddresses) await requireTripDeliveryAddresses();
   const hasMasterValues = input.rows.some(row => Object.keys(row.master_values ?? {}).length > 0);
   if (hasMasterValues && !await masterListAvailable()) throw new ApiError("Master List import requires the proposed Master List database update. No rows were imported.", 503, "MASTER_LIST_SETUP_REQUIRED");
   await checkImportWarehouseTargets(input.rows, input.target);
@@ -153,7 +159,7 @@ export async function commitTripImport(input: { batch_id: string; rows: ImportRo
   const rpc = hasTripDetails ? hasMasterValues ? "import_trip_master_rows_with_details_v1" : "import_trip_source_rows_with_details_v1" : advancedRecovery ? "import_trip_source_rows_v3" : hasMasterValues ? "import_trip_master_rows_v1" : "import_trip_source_rows_v2";
   const { data, error } = await supabaseAdmin.rpc(rpc, {
     p_batch: input.batch_id, p_creator: creator, p_group: input.group.trim(), p_target: input.target,
-    p_rows: input.rows, p_verified: input.verified_matches === true, p_locations: preparedLocations,
+    p_rows: input.rows, p_verified: input.verified_matches === true, p_locations: Object.fromEntries(Object.entries(preparedLocations).map(([key, decision]) => [key, importLocationForRpc(decision)])),
   });
   if (error && hasTripDetails && ["PGRST202", "42883"].includes(error.code)) throw new ApiError("Saving imported trip details requires approval and application of 2026_10_23_proposed_import_trip_details.sql. No rows in this chunk were saved; your draft and earlier saved rows are preserved.", 503, "IMPORT_TRIP_DETAILS_SETUP_REQUIRED");
   if (error && advancedRecovery && error.code === "PGRST202") throw new ApiError("Source recovery and explicit product matches need approval and application of 2026_10_22_proposed_csv_import_recovery.sql. No rows in this chunk were saved; the existing batch is preserved.", 503, "IMPORT_RECOVERY_SETUP_REQUIRED");

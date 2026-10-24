@@ -126,7 +126,7 @@ export default function DashboardPage({
   const location=useLocation();
   const requestedSheet=workspaceReportFromLocation(location.pathname,location.search);
   const [localActiveId, setLocalActiveId] = useState(() =>
-    requestedSheet ? "trips" : normalizeMainSection(data.nav.activeId),
+    requestedSheet ? "trips" : new URLSearchParams(location.search).get("database") === "trucks" ? "database" : normalizeMainSection(data.nav.activeId),
   );
   const route=useParams<{tripId:string;userId:string}>(),navigate=useNavigate(),[routeQuery]=useSearchParams();
   const activeId=location.pathname==="/settings"?"settings":location.pathname==="/profile"||route.userId?`profile:${route.userId??profile?.id??""}`:route.tripId?`trip-detail:${route.tripId}:dispatches${routeQuery.get("stop")?`:stop:${routeQuery.get("stop")}`:""}`:localActiveId;

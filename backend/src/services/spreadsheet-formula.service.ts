@@ -24,7 +24,7 @@ async function dependencyFormulas(table:string,requested:string[]){
   for(const id of batch)visited.add(id);
   for(const ids of postgrestBatches(batch)){
    for(let offset=0;;offset+=1000){const result=await supabaseAdmin.from("spreadsheet_cell_formulas").select("*").eq("table_key",table).in("row_identity",ids).order("id").range(offset,offset+999);
-    if(result.error)throw new ApiError("Formula storage could not be read. Retry without discarding your draft.",503,"FORMULA_STORAGE_UNAVAILABLE");
+    if(result.error){console.warn("Formula read failed",{code:result.error.code,rows:ids.length});throw new ApiError("Unable to load calculated cells. Formula editing is unavailable until refreshed.",503,"FORMULA_READ_UNAVAILABLE");}
     for(const row of result.data??[]){rows.push(row);if(!row.is_deleted)for(const ref of Object.values(row.reference_bindings??{}) as Array<{rowId:string}>)if(!visited.has(ref.rowId))pending.push(ref.rowId);}
     if(rows.length>5000)throw new ApiError("Formula dependency graph is too large.",400);
     if((result.data?.length??0)<1000)break;

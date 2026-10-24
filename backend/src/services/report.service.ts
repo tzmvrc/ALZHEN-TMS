@@ -20,6 +20,7 @@ import { tripImportAvailable,tripAllocationReportAvailable } from "./trip-import
 import { TRIP_SOURCE_COLUMNS, TRIP_CARGO_COLUMNS, SOURCE_LINE_COLUMNS, SOURCE_REPORTS, sourceOrderedColumns } from "../config/trip-source-columns.js";
 import { MASTER_LIST_COLUMNS } from "../config/master-list-columns.js";
 import { masterListAvailable } from "./master-list.service.js";
+import { MASTER_LIST_READ_COLUMNS } from "../config/master-list-read-columns.js";
 
 const REPORT_ROUTE_MAP = {
   combined: "v_tms_combined",
@@ -733,9 +734,15 @@ export async function getReportData(
   if(key==="store-calling"&&tripId){scopedCalls=[];for(let offset=0;;offset+=1000){const result=await supabaseAdmin.from("store_calls").select("id").eq("trip_id",tripId).order("id").range(offset,offset+999);if(result.error)throw new ApiError("Unable to read trip store calls.",503);scopedCalls.push(...(result.data??[]).map(row=>row.id));if((result.data?.length??0)<1000)break;}if(!scopedCalls.length)return {rows:[],pagination:buildPaginationMeta(page,limit,0)};}
   let lastError: Error | null = null;
   for (const viewName of viewNames) {
-    const projection=REPORT_PROJECTIONS[viewName]?.join(",")??"*";
-    let builder = supabaseAdmin.from(viewName).select(requestedSourceLines&&!legacySourceLines?`${projection},_source_quantity_text:quantity::text,_source_cbm_text:cbm::text,_source_unit_cbm_text:unit_cbm::text,_source_stock_quantity_text:stock_quantity::text`:projection, { count: "exact" });
+    const projection=csvMaster
+      ? [...new Set([...(REPORT_PROJECTIONS[viewName]??[]),...MASTER_LIST_READ_COLUMNS.split(",")])].join(",")
+      : REPORT_PROJECTIONS[viewName]?.join(",")??"*";
+    const rowProjection=requestedSourceLines&&!legacySourceLines?`${projection},_source_quantity_text:quantity::text,_source_cbm_text:cbm::text,_source_unit_cbm_text:unit_cbm::text,_source_stock_quantity_text:stock_quantity::text`:projection;
     const mapField=(field:string)=>key==="trip-exceptions"?({backload_reason:"backload_reasons",offload_reason:"offload_reasons"} as Record<string,string>)[field]??field:key!=="store-calling"?field:viewName==="vw_store_calling_tracker"?({status:"contact_status",assigned_to:"assigned_to_id"} as Record<string,string>)[field]??field:field==="ship_to"?"store_name":field;
+    const readQuery=(head=false)=>{
+    // Combining a wide nested view and its exact count duplicates its expanded
+    // plan in PostgREST. Read rows first; only full pages need a separate count.
+    let builder = supabaseAdmin.from(viewName).select(head ? "trip_id" : rowProjection, head ? {count:"exact",head:true} : csvMaster ? {} : {count:"exact"});
     if (tripId && key!=="store-calling") builder = builder.eq(tripIdField, tripId);
     if(scopedCalls)builder=builder.in("store_call_id",scopedCalls);
     if(scope?.tripIds)builder=builder.in(tripIdField,scope.tripIds);
@@ -770,6 +777,7 @@ export async function getReportData(
     const serverSearch=["combined","dispatch-monitoring","dispatch","trip-booking","store-calling"].includes(key);
     builder = serverSearch&&search?builder.ilike("_search_text",`%${search.replace(/[\\%_]/g,"\\$&")}%`):applySearch(builder, search, searchColumns.map(column=>({...column,key:mapField(column.key)})), matchingTripIds, tripIdField,
       matchingAssignees.length?[`${mapField("assigned_to")}.in.(${matchingAssignees.join(",")})`]:[]);
+    if(head)return builder;
     builder = builder.order(mapField(sortBy==="trip_number"&&["combined","dispatch","dispatch-monitoring","trip-booking"].includes(key)?"_parent_trip_reference":sortBy), { ascending: sortOrder === "asc" });
     // Stable boundaries when many Master List rows share the selected sort value.
     // These physical columns are part of the existing dispatch-monitoring view.
@@ -787,9 +795,17 @@ export async function getReportData(
     const available=REPORT_PROJECTIONS[viewName]??[];
     for(const field of ["pod_drive_file_id","pod_record_id","_trip_id","trip_id","_trip_stop_id","trip_stop_id","_trip_line_item_id","trip_line_item_id","_assignment_id","assignment_id","_billing_id","_incident_id","_backload_id","_offload_id","store_call_id"]){if(available.includes(field)&&!existingOrders.has(field))builder=builder.order(field,{ascending:true,nullsFirst:false});}
 
-    builder = builder.range(from, from + limit - 1);
-    const { data, error, count } = await builder;
+    return builder.range(from, from + limit - 1);
+    };
+    const result = await readQuery();
+    const data=result.data;
+    let {error,count}=result;
+    if(csvMaster&&!error){
+      if((data?.length??0)<limit&&(page===1||(data?.length??0)>0))count=from+(data?.length??0);
+      else {const total=await readQuery(true);error=total.error;count=total.count;}
+    }
     if (!error) {
+      // The projection is assembled from validated column definitions at runtime.
       const rows = (data ?? []) as unknown as Record<string, unknown>[];
       for (const row of rows) {
         if (requestedSourceLines) row._master_list = true;
@@ -837,6 +853,10 @@ export async function getReportData(
         rows: enriched,
         pagination: buildPaginationMeta(page, limit, count ?? rows.length),
       };
+    }
+    if (error.code === "57014" || /statement timeout|AbortError|operation was aborted/i.test(error.message ?? "")) {
+      console.warn("Report read timed out", { reportKey: key, viewName, code: error.code });
+      throw new ApiError("The report query took too long. Your records are unchanged. Retry loading in a moment.", 503, "REPORT_READ_TIMEOUT");
     }
     lastError = new Error(error.message ?? "Report query failed");
     if (!shouldRetryLegacyView(lastError.message, key)) break;

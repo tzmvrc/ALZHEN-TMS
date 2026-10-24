@@ -3,10 +3,8 @@ import test from "node:test";
 import { cancelAdminPreload, preloadAdminPageData } from "../src/services/admin-preload.service.ts";
 import { clearApiCache } from "../src/services/api.service.ts";
 import { REPORTS, clearReportPageCache, fetchReportPage, getCachedReportPage, getInitialReportPageOptions } from "../src/services/report.service.ts";
-import { fetchOperationsOverview, getCachedOperations } from "../src/services/operations-report.service.ts";
-import { fetchTransmittalTracker, getCachedTransmittalTracker } from "../src/services/transmittal-tracker.service.ts";
 
-test("login does not preload unrelated tabs; Reports warms shared caches with concurrent request deduplication", async () => {
+test("login does not preload unrelated tabs; Reports warms only the requested report and shared references", async () => {
   const original = globalThis.fetch;
   cancelAdminPreload(); clearApiCache(); clearReportPageCache();
   const urls: string[] = [];let activeRequests=0,maxConcurrentRequests=0;const warmupStart=performance.now();
@@ -24,24 +22,20 @@ test("login does not preload unrelated tabs; Reports warms shared caches with co
     await Promise.all(Array.from({length:10},()=>fetchReportPage("combined","admin-test",getInitialReportPageOptions("combined"))));
     await preloadAdminPageData("admin-test","ADMIN","reports");
     const keys = Object.keys(REPORTS) as Array<keyof typeof REPORTS>;
-    for (let attempt = 0; attempt < 100 && (keys.some((key) => !getCachedReportPage(key, "admin-test", getInitialReportPageOptions(key))) || !getCachedOperations("admin-test") || !getCachedTransmittalTracker("admin-test")); attempt++) {
-      await new Promise((resolve) => setTimeout(resolve, 5));
-    }
     for (const key of keys) {
-      assert.ok(getCachedReportPage(key, "admin-test", getInitialReportPageOptions(key)), `${key} was prefetched`);
+      const cached=getCachedReportPage(key, "admin-test", getInitialReportPageOptions(key));
+      if(key==="combined")assert.ok(cached,"requested report was prefetched");
+      else assert.equal(cached,null,`${key} stays lazy until its workspace requests it`);
       const dataRequests = urls.filter((url) => new URL(url).pathname === `/api/reports/${key}` && !url.includes("active_transactions"));
-      assert.equal(dataRequests.length, 1, `${key} initial data requested once`);
+      assert.equal(dataRequests.length, key==="combined"?1:0, `${key} only reads when requested`);
     }
     assert.ok(!urls.some(url=>url.includes("/trips?")||url.includes("/master-data/")),"Reports does not preload Home or management data");
-    assert.ok(getCachedOperations("admin-test")); assert.ok(getCachedTransmittalTracker("admin-test"));
-    assert.equal(urls.filter((url) => url.includes("/operations/overview?preload=true")).length, 1);
-    assert.equal(urls.filter((url) => url.includes("/transmittal-tracker?search=&preload=true")).length, 1);
-    assert.equal(urls.length,16,"five standard report datasets plus shared references, Operations and Tracker only");
+    assert.ok(!urls.some(url=>/\/operations\/|\/transmittal-tracker/.test(url)),"unopened workspaces are not preloaded");
+    assert.equal(urls.length,6,"one report's columns and rows, plus four shared reference reads");
     const warmupMs=Math.round(performance.now()-warmupStart);const beforeNavigation = urls.length;
-    for (const key of keys) await fetchReportPage(key, "admin-test", getInitialReportPageOptions(key));
-    await fetchOperationsOverview("admin-test"); await fetchTransmittalTracker("admin-test");
+    await fetchReportPage("combined", "admin-test", getInitialReportPageOptions("combined"));
 
-    assert.equal(urls.length, beforeNavigation, "opening all seven prefetched report datasets adds zero requests");
+    assert.equal(urls.length, beforeNavigation, "opening the warmed report adds zero requests");
     assert.ok(maxConcurrentRequests<=4,"two queued tasks have at most two report requests each");
     console.log(JSON.stringify({mockedPreload:true,baselineLoginPreloads:23,loginPreloads:0,reportsWarmupRequests:beforeNavigation,maxConcurrentRequests,warmupMs,navigationAdditionalRequests:urls.length-beforeNavigation}));
     cancelAdminPreload(); clearApiCache(); clearReportPageCache(); urls.length = 0;

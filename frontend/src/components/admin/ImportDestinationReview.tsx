@@ -8,7 +8,7 @@ import { SectionCard } from "./shared";
 import { fieldControl } from "./shared/styles";
 
 export type DestinationSource = { key: string; customer: string; shipTo: string; province: string; city: string };
-export type LocationDecision = { customer_id?: string; store_id?: string; store_label?: string; store_verified?: boolean; address: string; province: string; city: string; latitude: string; longitude: string; verified: boolean; replace_verified: boolean; lookup?: TripLocationLookup; pin_address_mismatch?: boolean };
+export type LocationDecision = { customer_id?: string; store_id?: string; store_label?: string; store_verified?: boolean; address: string; province: string; city: string; latitude: string; longitude: string; verified: boolean; replace_verified: boolean; lookup?: TripLocationLookup; pin_address_mismatch?: boolean; update_store_location?: boolean };
 
 export const destinationKey = customerStoreKey;
 export function recoverDestinationDecisions(saved: Record<string, LocationDecision> = {}) {
@@ -34,7 +34,7 @@ export default function ImportDestinationReview({ token, destinations, decisions
   const latest = useRef(decisions); latest.current = decisions;
   const source = destinations.find(item => item.key === selected) ?? destinations[0];
   if (!source) return null;
-  const decision: LocationDecision = decisions[source.key] ?? { address: "", province: source.province, city: source.city, latitude: "", longitude: "", verified: false, replace_verified: false };
+  const decision: LocationDecision = decisions[source.key] ?? { address: "", province: source.province, city: source.city, latitude: "", longitude: "", verified: false, replace_verified: false, update_store_location: false };
   const update = (patch: Partial<LocationDecision>) => onChange({ ...latest.current, [source.key]: { ...(latest.current[source.key] ?? decision), ...patch } });
   return <SectionCard title="Destination & Location Review" description={`${destinations.filter(item => decisions[item.key]?.verified).length} of ${destinations.length} destinations confirmed`}>
     <div className="space-y-4">

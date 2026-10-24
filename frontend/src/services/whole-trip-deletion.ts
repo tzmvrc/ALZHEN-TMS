@@ -9,6 +9,7 @@ export type WholeTripImpact = {
   attachment_review?: Array<{ update_id: string; trip_id: string; image_id: string | null; trip_stop_id: string | null; status: "VERIFIED" | "BLOCKED"; reason: string }>;
 };
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export const WHOLE_TRIP_DELETE_LIMIT = 20;
 /** Selection is page-scoped; a missing/stale row fails closed. Never infer from DR/dispatch. */
 function parentTripIds(rows: readonly ({ trip_id?: unknown } | undefined)[]): string[] | null {
   if (!rows.length || rows.some(row => !row || typeof row.trip_id !== "string" || !uuid.test(row.trip_id))) return null;
@@ -20,7 +21,7 @@ export function selectedParentTripCount(rows: readonly ({ trip_id?: unknown } | 
 }
 export function selectedParentTripIds(rows: readonly ({ trip_id?: unknown } | undefined)[]): string[] | null {
   const ids=parentTripIds(rows);
-  return ids && ids.length <= 20 ? ids : null;
+  return ids && ids.length <= WHOLE_TRIP_DELETE_LIMIT ? ids : null;
 }
 export async function fetchWholeTripImpact(token: string, tripIds: string[]): Promise<WholeTripImpact> {
   const response = await apiPost<ApiResponse<WholeTripImpact>>("/trips/whole-delete/impact", { trip_ids: tripIds }, token);
@@ -37,7 +38,7 @@ type DeletionResult={cleanup_pending:boolean;deleted_trips?:number};
 const pendingDeletions=new Map<string,Promise<DeletionResult>>();
 export async function deleteWholeTrips(token: string, tripIds: string[], _currentPassword?: string) {
   const ids=[...new Set(tripIds)].sort(),key=JSON.stringify([apiCacheGeneration(),token,ids]);
-  if(!ids.length||ids.length>20)throw Error("Select one to twenty unique trips.");
+  if(!ids.length||ids.length>WHOLE_TRIP_DELETE_LIMIT)throw Error("Select one to twenty unique trips.");
   const pending=pendingDeletions.get(key);if(pending)return pending;
   const request=(async()=>{
     const response = await apiPost<ApiResponse<DeletionResult>>("/trips/whole-delete", { trip_ids: ids }, token);

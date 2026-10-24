@@ -1,13 +1,14 @@
-import { useId, useLayoutEffect, useRef, useState, type DragEvent } from "react";
-import { ChevronDown, GripVertical } from "lucide-react";
-import { CargoBoard, StatusChip } from "./shared";
+import { allocationGroupKey, type AllocationWarning } from "../../services/propose-allocation";
+import { useId, useLayoutEffect, useRef, useState, type DragEvent, type ReactNode } from "react";
+import { ChevronDown, GripVertical, LockKeyhole } from "lucide-react";
+import { CargoBoard, CapacityBar, StatusChip } from "./shared";
 import { fieldControl, secondaryAction } from "./shared/styles";
 import { cargoCapacity, cargoTotal, cargoLineContext, cargoCbmForQuantity, splitCargoPlacement, type CargoLine, type CargoPlacement, type CargoPlan, type CargoTruck } from "../../services/cargo-planning";
 
 const MIME = "application/x-alzhen-cargo";
 const UNASSIGNED = "unassigned";
 const pairKey = (placement: CargoPlacement) => JSON.stringify([placement.line_key, placement.truck_id]);
-const groupKey = (line: CargoLine) => JSON.stringify(line.dr.trim() ? ["dr", line.dr] : ["line", line.key]);
+const groupKey = allocationGroupKey;
 const sum = (values: string[]) => { try { return cargoTotal(values); } catch { return "Check values"; } };
 const nonnegative = (value: string) => /^\d+(?:\.\d+)?$/.test(value);
 const zero = (value: string) => /^0+(?:\.0+)?$/.test(value);
@@ -15,12 +16,17 @@ type Entry = { key: string; line?: CargoLine; placement: CargoPlacement; copies:
 type DragPayload = { board: string; kind: "line" | "group"; key: string; from: string };
 
 /** Every successful edit returns through the planner's update(), never directly through onChange. */
-export default function CargoAllocationBoard({ lines, trucks, placements, disabled, update, onError }: {
+export default function CargoAllocationBoard({ lines, trucks, placements, disabled, update, onError, lockedGroups = [], onUnlock, warnings = [], truckTypes, onTruckSettings, onRemoveTruck }: {
   lines: CargoLine[]; trucks: CargoTruck[]; placements: CargoPlacement[]; disabled: boolean;
   update: (patch: Partial<CargoPlan>) => void; onError: (message: string) => void;
+  lockedGroups?: string[]; onUnlock?: (group: string) => void; warnings?: AllocationWarning[];
+  truckTypes?: Record<string, string>; onTruckSettings?: (id: string) => void; onRemoveTruck?: (id: string) => void;
 }) {
   const board = useId(), [expanded, setExpanded] = useState<Record<string, boolean>>({}), [errors, setErrors] = useState<Record<string, string>>({});
   const pendingFocus = useRef<string | null>(null), [notice, setNotice] = useState("");
+  const [visibleCounts, setVisibleCounts] = useState<Record<string, number>>({});
+  const [selectedBucket, setSelectedBucket] = useState(UNASSIGNED);
+  const selectedId = selectedBucket === UNASSIGNED || trucks.some(truck => truck.id === selectedBucket) ? selectedBucket : UNASSIGNED;
   useLayoutEffect(() => {
     if (!pendingFocus.current) return;
     const column = document.getElementById(`${board}-column-${pendingFocus.current}`);
@@ -56,6 +62,7 @@ export default function CargoAllocationBoard({ lines, trucks, placements, disabl
     const removed = new Set(entries.filter(entry => !entry.unassigned).map(entry => entry.key));
     const next = placements.filter(placement => !removed.has(pairKey(placement)));
     pendingFocus.current = destination;
+    setSelectedBucket(destination);
     setNotice(`Moved ${entries.length} product allocations to ${trucks.find(truck => truck.id === destination)?.label || "Unassigned"}.`);
     commit(destination === UNASSIGNED ? next : [...next, ...entries.map(entry => ({ ...entry.placement, truck_id: destination }))]);
   }
@@ -63,6 +70,7 @@ export default function CargoAllocationBoard({ lines, trucks, placements, disabl
     if (disabled || !trucks.some(truck => truck.id === destination)) return;
     const grouped = lines.filter(line => groupKey(line) === group), keys = new Set(grouped.map(line => line.key));
     pendingFocus.current = destination;
+    setSelectedBucket(destination);
     setNotice(`Moved the entire DR group to ${trucks.find(truck => truck.id === destination)?.label}. Original source totals are preserved.`);
     commit([...placements.filter(placement => !keys.has(placement.line_key)), ...grouped.map(line => ({ line_key: line.key, truck_id: destination, quantity: line.quantity, allocated_cbm: line.cbm }))]);
   }
@@ -113,27 +121,42 @@ export default function CargoAllocationBoard({ lines, trucks, placements, disabl
       {errors[key] && <p role="alert" className="break-words text-xs text-rose-700">{errors[key]}</p>}
     </article>;
   }
+  const editors: ReactNode[] = [];
   const columns = [{ id: UNASSIGNED, label: "Unassigned" }, ...trucks.map(truck => ({ id: truck.id, label: truck.label }))].map(column => {
     const entries = entriesFor(column.id), groups = new Map<string, Entry[]>();
     for (const entry of entries) { const key = entry.line ? groupKey(entry.line) : entry.key; groups.set(key, [...(groups.get(key) ?? []), entry]); }
     const truck = trucks.find(item => item.id === column.id);
     const usage = truck ? cargoCapacity(truck.capacity, placements.filter(item => item.truck_id === truck.id)) : undefined;
-    return { id: column.id, domId: `${board}-column-${column.id}`, title: column.label, count: entries.length,
+    const groupEntries = [...groups], visibleCount = visibleCounts[column.id] ?? 10;
+    for (const [key, grouped] of groupEntries) {
+      const identity = JSON.stringify([column.id, key]), line = grouped[0].line;
+      if (!expanded[identity] || column.id !== selectedId) continue;
+      editors.push(<section key={identity} id={`${board}-editor-${column.id}-${key}`} className="trip-dr-editor border-t border-slate-200 py-4" aria-label={`DR details ${line?.dr || line?.label || key}`}>
+        <div className="mb-3 flex items-center justify-between gap-3"><h4>{column.label} · {line?.dr ? `DR ${line.dr}` : line?.label || "Source needs review"}</h4><button type="button" className={secondaryAction} onClick={() => setExpanded(current => ({ ...current, [identity]: false }))}>Close DR details</button></div>
+        {line && <details className="mb-3 text-xs"><summary className="text-[#2678b9]">Move entire DR group</summary><p className="my-2 text-slate-500">Moves every original line, including splits and unassigned remainder, at its original quantity/CBM.</p><select aria-label={`Truck for entire DR group ${line.dr || line.key}`} className={fieldControl} value="" disabled={disabled} onChange={event => moveEntireDr(key, event.target.value)}><option value="">Choose physical truck</option>{trucks.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select></details>}
+        <div className="grid min-w-0 gap-3">{grouped.map(product)}</div>{errors[key] && <p role="alert" className="mt-2 text-xs text-rose-700">{errors[key]}</p>}
+      </section>);
+    }
+    return { id: column.id, domId: `${board}-column-${column.id}`, title: column.label, count: entries.length, drCount: groups.size,
+      description: truck ? `${truckTypes?.[truck.id] || "Truck"} · ${truck.driverLabel || "Assign driver later"}` : "Remaining source cargo",
+      actions: truck && (onTruckSettings || onRemoveTruck) ? <>{onTruckSettings && <button type="button" disabled={disabled} aria-label={`Driver and company for ${truck.label}`} onClick={() => onTruckSettings(truck.id)}>Driver / company</button>}{onRemoveTruck && <button type="button" disabled={disabled} aria-label={`Remove ${truck.label}`} onClick={() => onRemoveTruck(truck.id)}>Remove</button>}</> : undefined,
       onDragOver: (event: DragEvent<HTMLElement>) => { if (!disabled && event.dataTransfer.types.includes(MIME)) { event.preventDefault(); event.dataTransfer.dropEffect = "move"; } },
       onDrop: (event: DragEvent<HTMLElement>) => drop(event, column.id),
-      summary: usage ? <p>Qty {sum(placements.filter(item => item.truck_id === column.id).map(item => item.quantity))} / Assigned {usage.assigned} / Max {truck?.capacity || "Unknown"} CBM / Remaining {usage.remaining}</p> : <><p>{sum(remaining.map(entry => entry.placement.allocated_cbm))} CBM remaining</p>{entries.length > 0 && trucks.length > 0 && <p role="status" className="mt-2 font-semibold text-amber-800">Allocate all cargo before confirming</p>}</>,
-      children: <>{[...groups].map(([key, grouped]) => {
+      summary: usage ? <CapacityBar compact label={`${column.label} capacity`} assigned={usage.assigned} capacity={truck?.capacity || ""} usage={usage} /> : <p>{sum(remaining.map(entry => entry.placement.allocated_cbm))} CBM remaining{entries.length > 0 && trucks.length > 0 && <span className="mt-1 block text-amber-800">Allocate all cargo before confirming</span>}</p>,
+      children: <>{groupEntries.slice(0, visibleCount).map(([key, grouped]) => {
         const identity = JSON.stringify([column.id, key]), line = grouped[0].line, open = expanded[identity] ?? false;
-        return <section key={key} draggable={!disabled && grouped.every(entry => entry.movable)} onDragStart={event => startDrag(event, { kind: "group", key, from: column.id })} className="space-y-3 rounded-xl border border-slate-200 bg-slate-100/80 p-3">
-          <button type="button" className={`${secondaryAction} w-full justify-between`} aria-expanded={open} onClick={() => setExpanded(current => ({ ...current, [identity]: !open }))}><span className="inline-flex min-w-0 items-center gap-2 text-left"><GripVertical aria-hidden="true" size={14} /><span className="break-words">{line?.dr ? `DR ${line.dr}` : line?.label || "Source needs review"} / {grouped.length} lines</span></span><ChevronDown aria-hidden="true" size={14} className={open ? "rotate-180" : ""} /></button>
-          <p className="text-xs tabular-nums">Qty {sum(grouped.flatMap(entry => entry.copies.length ? entry.copies.map(item => item.quantity) : [entry.placement.quantity]))} / {sum(grouped.flatMap(entry => entry.copies.length ? entry.copies.map(item => item.allocated_cbm) : [entry.placement.allocated_cbm]))} CBM</p>
-          <label className="block text-[11px] text-slate-600">Move these allocations to...<select className={`${fieldControl} mt-1`} aria-label={`Move DR allocations ${line?.dr || line?.key || key} from ${column.label}`} value="" disabled={disabled} onChange={event => move(grouped, event.target.value, key)}><option value="">Choose destination</option>{destinations(column.id).map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
-          {line && <details className="text-[11px] text-slate-600"><summary className="cursor-pointer font-medium text-[#2678b9]">Move entire DR group</summary><p className="my-2">Moves every original line of this DR, including its splits and unassigned remainder, at its original quantity/CBM.</p><select aria-label={`Truck for entire DR group ${line.dr || line.key}`} className={fieldControl} value="" disabled={disabled} onChange={event => moveEntireDr(key, event.target.value)}><option value="">Choose physical truck</option>{trucks.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select></details>}
+        return <article key={key} draggable={!disabled && grouped.every(entry => entry.movable)} onDragStart={event => startDrag(event, { kind: "group", key, from: column.id })} className="trip-dr-card">
+          <div className="cargo-dr-row"><button type="button" className="trip-dr-title" aria-expanded={open} onClick={() => setExpanded(current => ({ ...current, [identity]: !open }))}><GripVertical aria-hidden="true" size={14} /><span title={line?.dr || line?.label}>{line?.dr ? `DR ${line.dr}` : line?.label || "Source needs review"}</span><small>{grouped.length} lines · Qty {sum(grouped.flatMap(entry => entry.copies.length ? entry.copies.map(item => item.quantity) : [entry.placement.quantity]))} · {sum(grouped.flatMap(entry => entry.copies.length ? entry.copies.map(item => item.allocated_cbm) : [entry.placement.allocated_cbm]))} CBM</small><ChevronDown aria-hidden="true" size={14} /></button>
+          <label><span className="sr-only">Move to</span><select className={fieldControl} aria-label={`Move DR allocations ${line?.dr || line?.key || key} from ${column.label}`} value="" disabled={disabled} onChange={event => move(grouped, event.target.value, key)}><option value="">Move to…</option>{destinations(column.id).map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label></div>
+          {lockedGroups.includes(key) && <button type="button" className="cargo-unlock" disabled={disabled} onClick={() => onUnlock?.(key)}><LockKeyhole aria-hidden="true" size={12} />Unlock</button>}
+          {new Set(placements.filter(item => lines.some(source => groupKey(source) === key && source.key === item.line_key)).map(item => item.truck_id)).size > 1 && <p className="text-[11px] text-amber-800">DR split across trucks</p>}
+          {warnings.filter(warning => warning.group === key && warning.code !== "split").slice(0,1).map(warning => <p key={warning.code} className="text-[11px] text-amber-800">{warning.message}</p>)}
+          {open && <button type="button" className="cargo-dr-edit text-xs text-[#2678b9]" onClick={() => document.getElementById(`${board}-editor-${column.id}-${key}`)?.scrollIntoView({ block: "nearest" })}>Edit lines / Move entire DR</button>}
           {errors[key] && <p role="alert" className="text-xs text-rose-700">{errors[key]}</p>}
-          {open && grouped.map(product)}
-        </section>;
-      })}{!entries.length && <p className="rounded-lg border border-dashed border-slate-300 p-4 text-center text-xs text-slate-500">{column.id === UNASSIGNED ? "All source cargo is allocated." : "Drop cargo here or use a Move to menu."}</p>}</>,
+        </article>;
+      })}{!entries.length && <p className="py-3 text-xs text-slate-500">{column.id === UNASSIGNED ? "All source cargo is allocated." : "Drop cargo here or use Move to."}</p>}
+      {groupEntries.length > visibleCount && <button type="button" className="cargo-show-more" onClick={() => setVisibleCounts(current => ({ ...current, [column.id]: visibleCount + 4 }))}>Show more ({groupEntries.length - visibleCount})</button>}</>,
     };
   });
-  return <><p role="status" aria-live="polite" className="sr-only">{notice}</p><CargoBoard columns={columns} /></>;
+  return <><p role="status" aria-live="polite" className="sr-only">{notice}</p><CargoBoard columns={columns} selectedId={selectedId} onSelect={setSelectedBucket} />{editors}</>;
 }

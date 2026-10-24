@@ -1,3 +1,4 @@
+import type { ReviewAnnotations } from "./review-annotations";
 import type { CargoPlan } from "./cargo-planning";
 import { fetchTripAssignments, updateTripAssignmentRecord } from "./trip.service";
 import type { LocationDecision } from "../components/admin/ImportDestinationReview";
@@ -21,7 +22,7 @@ export type ImportPreview = { rows: ImportRow[]; detected: number; valid: number
 export type ImportTarget = { mode: "new" | "dispatch" | "trip"; value: string; allow_create: boolean; warehouse_ids?: Record<string,string>; origin_warehouse_id?: string; trip_details?: TripDetails };
 export type ImportOutcome = { source_identity: string; status: "imported" | "skipped" | "failed"; error?: string; line_item_id?: string; trip_id?: string; trip_created?: boolean; trip_reference?: string; original_batch_id?: string };
 export type ImportBatchSummary = { id: string; state: "Pending" | "Partially Imported" | "Awaiting Allocation" | "Completed" | "Failed"; revision: number; imported: number; failed: number; awaiting_allocation: number; location_retry_required?: boolean; last_error: string | null; updated_at: string };
-export type ImportRecoveryDraft = { trip_details?: TripDetails; files: import("../components/admin/tripImportFiles").ImportFile[]; preview: ImportPreview | null; targets: Record<string,ImportTarget>; plans: Record<string,CargoPlan>; locations: Record<string,LocationDecision>; rowResolutions?: Record<string, ImportRowResolution>; initialTarget?: ImportTarget; confirmed: boolean; verified: boolean; verifiedCbm: boolean; verifiedUnmapped: boolean; started: boolean; locationFollowupPending?: boolean; detailsDirty?: boolean };
+export type ImportRecoveryDraft = { review_annotations?: ReviewAnnotations; trip_details?: TripDetails; files: import("../components/admin/tripImportFiles").ImportFile[]; preview: ImportPreview | null; targets: Record<string,ImportTarget>; plans: Record<string,CargoPlan>; locations: Record<string,LocationDecision>; rowResolutions?: Record<string, ImportRowResolution>; initialTarget?: ImportTarget; confirmed: boolean; verified: boolean; verifiedCbm: boolean; verifiedUnmapped: boolean; started: boolean; locationFollowupPending?: boolean; detailsDirty?: boolean };
 export type ImportBatchRecovery = ImportBatchSummary & { draft: ImportRecoveryDraft; outcomes: ImportOutcome[]; history?: Record<string,ImportSourceHistory>; cargo_saved: Record<string,boolean> };
 /** A retry updates only missing company details on the existing assignments. */
 export async function saveImportAssignmentCompanies(token: string, tripId: string, plan: CargoPlan) {

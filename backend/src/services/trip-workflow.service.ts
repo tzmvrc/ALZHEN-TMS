@@ -1,3 +1,5 @@
+import { deliveryAddress } from "./trip-delivery-address.logic.js";
+import { requireTripDeliveryAddresses, saveTripDeliveryAddress } from "./trip-delivery-address.service.js";
 import { supabaseAdmin } from "../config/supabase.js";
 import { ApiError } from "../utils/api-response.js";
 import { isValidUuid } from "../utils/validation.js";
@@ -15,6 +17,9 @@ export async function createAtomicTripBundle(input: Record<string, unknown>, act
   if (typeof input.request_id !== "string" || !isValidUuid(input.request_id) || !["new", "existing"].includes(String(input.dispatch_mode))) throw new ApiError("A stable creation request and dispatch mode are required.", 400);
   const validated = validateTripBundle(input);
   await assertActiveDropdownOption("trip_status", validated.trip.status ?? "PLANNED");
+  let reviews;
+  try { reviews = validated.stops.map(stop => deliveryAddress(stop.location_review)); } catch (cause) { throw new ApiError(cause instanceof Error ? cause.message : "Review the delivery address.", 400); }
+  if (reviews.some(Boolean)) await requireTripDeliveryAddresses();
   const keys = new Set<string>();
   const stops = validated.stops.map(stop => ({ ...stop, line_items: stop.line_items.map(line => {
     const key = String(line.client_key ?? "");
@@ -26,6 +31,15 @@ export async function createAtomicTripBundle(input: Record<string, unknown>, act
   const result = await supabaseAdmin.rpc("create_trip_bundle_v2", { p_actor: actor, p_request: input.request_id, p_payload: payload });
   if (result.error) workflowFailure(result.error);
   if (!result.data || !isValidUuid(result.data.id)) throw new ApiError("Save acknowledgement unavailable. Retry the same request without changing its contents.", 503);
+  if (reviews.some(Boolean)) {
+    const saved = await supabaseAdmin.from("trip_stops").select("id,stop_sequence").eq("trip_id", result.data.id);
+    if (saved.error) throw new ApiError("The trip was saved, but delivery addresses need another save. Retry the same draft.", 503, "TRIP_LOCATION_FOLLOWUP_REQUIRED");
+    for (const [index, review] of reviews.entries()) if (review) {
+      const stop = saved.data?.find(stop => stop.stop_sequence === (validated.stops[index].stop_sequence ?? index + 1));
+      if (!stop) throw new ApiError("A saved delivery stop could not be confirmed. Retry the same draft.", 503, "TRIP_LOCATION_FOLLOWUP_REQUIRED");
+      await saveTripDeliveryAddress(stop.id, review);
+    }
+  }
   return result.data;
 }
 export async function finalizeImportCargo(input: Record<string, unknown>, actor: string) {

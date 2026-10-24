@@ -1,0 +1,12 @@
+import { useState } from "react";
+import type { ImportRow, ImportSourceHistory, ImportRowResolution } from "../../services/trip-import.service";
+import PreviousImportDetailsTable from "./PreviousImportDetailsTable";
+
+export default function PreviousImportSummary({ token, rows, history, resolutions, skipped, disabled, onChange, onSkip }: { token: string; rows: ImportRow[]; history: Record<string, ImportSourceHistory>; resolutions: Record<string, ImportRowResolution>; skipped: Set<string>; disabled: boolean; onChange: (id: string, patch: Partial<ImportRowResolution>) => void; onSkip: (id: string) => void }) {
+  const [details, setDetails] = useState(false);
+  const missing = rows.filter(row => history[row.source_identity]?.status === "missing"), eligible = missing.filter(row => !skipped.has(row.source_identity));
+  const pending = eligible.filter(row => !resolutions[row.source_identity]?.restore_missing_source || resolutions[row.source_identity]?.restore_history_version !== history[row.source_identity].imported_at);
+  const duplicates = rows.filter(row => history[row.source_identity]?.status === "live" || row.duplicate && !history[row.source_identity]).length;
+  if (!missing.length) return null;
+  return <section className="previous-import-summary" aria-label="Previously imported products"><h3>Previously imported products</h3><p>This file was imported before, but these products are no longer in the master list. Approve to recreate them with the same quantities and CBM.</p><div><strong>{eligible.length} products from a previous import will be recreated · {duplicates} duplicates</strong><button type="button" disabled={disabled || !pending.length} onClick={() => pending.forEach(row => onChange(row.source_identity, { restore_missing_source: true, restore_history_version: history[row.source_identity].imported_at }))}>{pending.length ? `Approve all ${pending.length}` : "Approved ✓"}</button><button type="button" aria-expanded={details} onClick={() => setDetails(value => !value)}>{details ? "Hide details" : "Review details"}</button></div>{pending.length > 0 && <small>Unapproved products stay flagged. This server still requires approval before recreating them.</small>}{details && <PreviousImportDetailsTable token={token} rows={missing} history={history} resolutions={resolutions} skipped={skipped} disabled={disabled} onChange={onChange} onSkip={onSkip} />}</section>;
+}

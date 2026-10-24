@@ -113,6 +113,8 @@ export function spreadsheetFeedbackMessage(message: string, variant: "success" |
     if (/^Invalid formula: #(REF!|DIV\/0!|VALUE!|CYCLE!|ERROR!)$/.test(message)) return message;
     if (/^Choose an active (configured dropdown|status|dropdown) value\.$/.test(message)) return message;
     if (message === "Table design could not be saved or refreshed. Unsaved changes can be retried with Retry table design.") return message;
+    if (["Unable to load calculated cells. Formula editing is unavailable until refreshed.", "Unable to refresh calculated cells."].includes(message)) return `${message} Use Refresh formulas to retry.`;
+    if (message === "The report query took too long. Your records are unchanged. Retry loading in a moment.") return "The report is taking too long to load. Your changes are preserved. Use Retry loading.";
     if (/^(Quantity|Total CBM) must be a non-negative number\.$/.test(message)) return message;
     if (message === "Select a driver explicitly before changing this truck.") return message;
     if (message === "Choose the original image with its original filename.") return message;

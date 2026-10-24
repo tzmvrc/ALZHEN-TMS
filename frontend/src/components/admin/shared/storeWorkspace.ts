@@ -26,3 +26,9 @@ export function invalidProduct(values: Record<string, string | null>) {
 export function productView(memory: StoreWorkspaceMemory, id: string): ProductViewState {
   return memory.products[id] ?? (memory.products[id] = { search: "", page: 0, size: 50, expanded: {}, top: 0, left: 0 });
 }
+
+/** Imperative, per-dialog UI memory boundary; never part of trip or import data. */
+export function updateWorkspace(memory: StoreWorkspaceMemory, patch: Partial<StoreWorkspaceMemory>) { Object.assign(memory, patch); }
+export function updateProductView(view: ProductViewState, patch: Partial<ProductViewState>) { Object.assign(view, patch); }
+export function carryProductView(memory: StoreWorkspaceMemory, from: string, to: string) { if (memory.products[from]) memory.products[to] = memory.products[from]; }
+export function toggleProductView(view: ProductViewState, key: string) { view.expanded[key] = !view.expanded[key]; }

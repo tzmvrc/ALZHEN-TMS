@@ -4,12 +4,27 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { prepareImport, SOURCE_FIELDS, sourceTimestamp, cbmMatches } from "../src/services/trip-import.logic.js";
 import { parseCsv } from "../../frontend/src/components/admin/tripCsv.js";
-import { detectImportMapping, importFileFromGrid, importPayload } from "../../frontend/src/components/admin/tripImportFiles.js";
+import { detectImportMapping, importFileFromGrid, importPayload, regroupImportFile } from "../../frontend/src/components/admin/tripImportFiles.js";
 import { getReportEditDefinition } from "../../frontend/src/services/report-editing.config.js";
 import { getReportRowIdentity } from "../../frontend/src/services/report-row-identity.js";
 
 function rows(text: string, name = "request.csv") { return prepareImport(importPayload([importFileFromGrid(name, parseCsv(text))])); }
 const header = "Customer Name,Ship To,DR,Customer Model,Qty,CBM,Total CBM,Order Item No.";
+
+test("combining PH groups keeps signed source identities, original products and exact totals", () => {
+  const file = importFileFromGrid("requests.csv", parseCsv("Customer Name,Ship To,DR,Customer Model,Qty,Total CBM,PH TRUCK NAME\nCustomer,Store A,DR1,MODEL-A,1,0.123456789123456789,PH1\nCustomer,Store B,DR2,MODEL-B,2,1.25,PH2"));
+  const separate = prepareImport(importPayload([regroupImportFile(file, "ph_truck_reference")]));
+  const combined = prepareImport(importPayload([file]));
+  assert.equal(new Set(combined.map(row => row.group)).size, 1);
+  assert.equal(new Set(separate.map(row => row.group)).size, 2);
+  for (let i = 0; i < combined.length; i++) {
+    assert.equal(combined[i].source_identity, separate[i].source_identity);
+    assert.equal(combined[i].document_hash, separate[i].document_hash);
+    assert.equal(combined[i].fingerprint, separate[i].fingerprint);
+    assert.deepEqual(combined[i].values, separate[i].values);
+    assert.deepEqual(combined[i].original_values, separate[i].original_values);
+  }
+});
 test("keeps separate products sharing DR, repeated identical rows, identifiers and original decimal precision", () => {
   const result = rows(`${header}\nCustomer,Store,00123,MODEL-A,2,0.123456789123,0.246913578246,4.1\nCustomer,Store,00123,MODEL-B,1,0.1,0.1,4.2\nCustomer,Store,00123,MODEL-B,1,0.1,0.1,4.2`);
   assert.equal(result.length, 3); assert.ok(result.every(row => !row.errors.length));

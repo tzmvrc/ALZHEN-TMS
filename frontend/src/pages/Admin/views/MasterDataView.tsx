@@ -15,7 +15,7 @@ const singular:Record<string,string>={warehouses:"warehouse",trucks:"truck","tru
 export default function MasterDataView(){
  const {accessToken,profile}=useAuth(),workspace=useRef<HTMLDivElement|null>(null),saveSequence=useRef(0);
  const [hiddenColumnsTarget,setHiddenColumnsTarget]=useState<HTMLDivElement|null>(null);
- const [section,setSection]=useState<MasterDataKey>("warehouses"),[visited,setVisited]=useState(()=>new Set<MasterDataKey>(["warehouses"]));
+ const [section,setSection]=useState<MasterDataKey>(()=>new URLSearchParams(window.location.search).get("database")==="trucks"?"trucks":"warehouses"),[visited,setVisited]=useState(()=>new Set<MasterDataKey>([new URLSearchParams(window.location.search).get("database")==="trucks"?"trucks":"warehouses"]));
  const [searches,setSearches]=useState<Record<string,string>>({}),[metadata,setMetadata]=useState<Record<string,boolean>>({});
  const [recordDialog,setRecordDialog]=useState<{resource:MasterDataKey;row:MasterDataRow|null;key:number}|null>(null);
  const [confirmed,setConfirmed]=useState<{resource:MasterDataKey;row:MasterDataRow;sequence:number}|null>(null);

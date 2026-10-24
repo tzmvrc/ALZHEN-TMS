@@ -53,6 +53,7 @@ export default function SearchableRelationshipEditor({
   const inputRef = useRef<HTMLInputElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
   const [isOpen, setIsOpen] = useState(false);
+  const [portalRoot, setPortalRoot] = useState<HTMLElement | null>(null);
   const [query, setQuery] = useState("");
   const [options, setOptions] = useState<RelationshipOption[]>(()=>optionLoader?[]:getCachedRelationshipOptions(token,kind,"",{storeId,customerId})??[]);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -232,7 +233,8 @@ export default function SearchableRelationshipEditor({
         aria-activedescendant={isOpen && (options.length||canCreate) ? `${listId}-${activeIndex}` : undefined}
         value={isOpen?query:value}
         placeholder={value || (presentation === "form" ? `Search ${kind === "stores" ? "store or destination" : kind === "products" ? "product code or model" : kind.replaceAll("-", " ")}` : "Search records")}
-        onFocus={() => {
+        onFocus={event => {
+          setPortalRoot(event.currentTarget.closest("dialog[open]"));
           if (!disabled) {
             // Keep the saved value in the real input value while editing. The
             // previous placeholder-only treatment looked like existing data
@@ -259,7 +261,7 @@ export default function SearchableRelationshipEditor({
       />
 
       </div>
-      {popover && !creating && createPortal(popover, document.body)}
+      {popover && !creating && createPortal(popover, portalRoot ?? document.body)}
       {creating&&creatableRelationship(kind)&&<RelationshipCreateDialog token={token} kind={kind} initialValue={query.trim()} customerId={customerId} defaults={createDefaults} zIndex={position.zIndex+20} onCancel={()=>{setCreating(false);createRef.current=false;inputRef.current?.focus();}} onCreated={option=>{setCreating(false);createRef.current=false;setOptions(current=>[option,...current.filter(row=>row.id!==option.id)]);selectOption(option,true);}}/>}
     </>
   );

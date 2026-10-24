@@ -84,6 +84,7 @@ import {
   getCachedReportPage,
   getStaleReportPage,
   invalidateReportData,
+  retryReportRead,
   getSortableFields,
   REPORTS,
   setCachedReportPage,
@@ -429,7 +430,8 @@ const ReportSelectionToolbar = memo(function ReportSelectionToolbar({
 }) {
   useSyncExternalStore(reportSelection.subscribe, reportSelection.revision, reportSelection.revision);
   const keys = reportSelection.getKeys(reportKey);
-  if (!canManage || !keys.length || !rows.some(candidate => keys.includes(getReportRowKey(reportKey, candidate) ?? ""))) return null;
+  if (!canManage) return null;
+  if (!keys.length || !rows.some(candidate => keys.includes(getReportRowKey(reportKey, candidate) ?? ""))) return null;
   const row = rows.find((candidate) => getReportRowKey(reportKey, candidate) === keys[0]);
   const hasEditableFields = Boolean(row && columns.some((column) => getEditableCellTarget(row, column.key, reportKey)));
   const canEdit = !disabled && keys.length === 1 && Boolean(row) && hasEditableFields;
@@ -444,7 +446,7 @@ const ReportSelectionToolbar = memo(function ReportSelectionToolbar({
   return <>{canEdit&&<ReportRowActionButton action="edit" onClick={onEdit} />}
     {physicalTargets&&onDeletePhysical&&<ReportRowActionButton action="delete" disabled={disabled} label={reportKey==="store-calling"?"Delete selected store calls only":"Delete selected empty stops only"} onClick={()=>onDeletePhysical(physicalTargets)}/>}
     {targets&&onDeleteRows&&<ReportRowActionButton action="delete" disabled={disabled} label="Delete selected line items only" onClick={()=>onDeleteRows(targets)}/>}
-    {onDeleteTrips&&tripIds&&<ReportRowActionButton action="delete" disabled={disabled} label={tripIds.length>1?"Delete Selected Trips":"Delete Entire Trip"} onClick={()=>onDeleteTrips(physicalRows)}/>}
+    {onDeleteTrips&&tripIds?.length===1&&<ReportRowActionButton action="delete" disabled={disabled} label="Delete Entire Trip" onClick={()=>onDeleteTrips(physicalRows)}/>}
   </>;
 
 });
@@ -1380,6 +1382,7 @@ export default function ReportDataView({
     const targetKey=`${snapshotKey}:${tripId}`;
     if(targetedRefreshes.current.has(targetKey)){targetedDirty.current.add(targetKey);return true;}
     const requestedSnapshot=snapshotKey,token=accessToken;
+    let readFailed=false;
     const request=fetchReportTripRows(reportKey,token,pageOptions,tripId).then(next=>{
       if(snapshotKeyRef.current!==requestedSnapshot)return;
       if(activeReportEdit.current){realtimeRefreshDirty.current=true;return;}
@@ -1388,7 +1391,7 @@ export default function ReportDataView({
         return updated.sort((a,b)=>{const left=a[activeSortBy],right=b[activeSortBy];if(left==null&&right==null)return 0;if(left==null)return 1;if(right==null)return -1;const compared=typeof left==="number"&&typeof right==="number"?left-right:String(left).localeCompare(String(right),undefined,{numeric:true});return sortOrder==="asc"?compared:-compared;});
       };
       setRows(merge);updateReportCollection(reportKey,token,pageOptions,merge);
-    }).catch(()=>{if(snapshotKeyRef.current===requestedSnapshot)scheduleRealtimeRefreshRef.current();}).finally(()=>{targetedRefreshes.current.delete(targetKey);if(targetedDirty.current.delete(targetKey)&&snapshotKeyRef.current===requestedSnapshot)refreshOneTripRef.current(tripId);});
+    }).catch(()=>{readFailed=true;}).finally(()=>{targetedRefreshes.current.delete(targetKey);if(targetedDirty.current.delete(targetKey)&&!readFailed&&snapshotKeyRef.current===requestedSnapshot)refreshOneTripRef.current(tripId);});
     targetedRefreshes.current.set(targetKey,request);return true;
   }
   const refreshOneTripRef=useRef(refreshOneTrip);refreshOneTripRef.current=refreshOneTrip;
@@ -1665,6 +1668,7 @@ export default function ReportDataView({
       (inFlightReportQueries.current.get(snapshotKey) ?? 0) + 1,
     );
     const requestSaveVersion = successfulSaveVersion.current;
+    let readFailed = false;
     if (realtimeRefreshQueuedFor.current === snapshotKey) {
       realtimeRefreshQueuedFor.current = null;
     }
@@ -1748,6 +1752,8 @@ export default function ReportDataView({
             reconciliation.version > requestSaveVersion,
         );
       } catch (cause) {
+        readFailed = true;
+        if (!active) return;
         reportEditDiagnostic("report fetch failed", {
           reportEndpoint: REPORTS[reportKey].endpoint,
           reportKey,
@@ -1755,7 +1761,6 @@ export default function ReportDataView({
           errorType: cause instanceof ApiError ? "api" : cause instanceof Error ? cause.name : "unknown",
           status: cause instanceof ApiError ? cause.status : undefined,
         });
-        if (!active) return;
         if (cause instanceof ApiError && cause.status === 401) {
           await refreshSession();
           return;
@@ -1775,6 +1780,9 @@ export default function ReportDataView({
         if (remaining > 0) inFlightReportQueries.current.set(snapshotKey, remaining);
         else inFlightReportQueries.current.delete(snapshotKey);
         if (active) setLoadedQueryKey(queryKey);
+        // A failed read must wait for Retry or a later external event; do not
+        // immediately replay dirty signals accumulated during that failed read.
+        if (active && readFailed) realtimeRefreshDirty.current = false;
         const latestSnapshot = snapshotKeyRef.current;
         if (
           realtimeRefreshDirty.current &&
@@ -3241,7 +3249,7 @@ export default function ReportDataView({
             </div>
           )}
 
-          {activeError && <button type="button" onClick={() => setRetryVersion(value => value + 1)} className="h-9 rounded border border-slate-200 px-3 text-xs text-slate-600">Retry loading</button>}
+          {activeError && <button type="button" onClick={() => { if (accessToken) retryReportRead(reportKey, accessToken); setRetryVersion(value => value + 1); }} className="h-9 rounded border border-slate-200 px-3 text-xs text-slate-600">Retry loading</button>}
           <ReportSelectionToolbar
             selection={reportSelection}
             reportKey={reportKey}
@@ -3447,7 +3455,7 @@ export default function ReportDataView({
           {sourceHeaderGroups.length > 0 && <div aria-label="Original Excel header color groups" className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-slate-100 bg-white px-3 py-1 text-[10px] text-slate-600">{sourceHeaderGroups.map(group => <button type="button" key={group.group} className="inline-flex items-center gap-1.5 rounded px-1 py-1 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-blue-500" onClick={() => { const column = renderedGridColumns.find(column => column.sourceHeader?.group === group.group); const header = column && headerCellRefs.current.get(column.key); if (header && tableViewportRef.current) scrollToTableColumn(tableViewportRef.current, header); }}><span aria-hidden="true" className="h-2.5 w-2.5 rounded-sm border border-slate-300" style={{ backgroundColor: group.background }} />{group.label}</button>)}</div>}
           {headerFormatting.configuration}{!showVisualCards && <ReportCellFormattingToolbar selectedFontSize={selectedFormats[0]?.fontSize ?? 12} formulaBar={formulas.bar} advanced selectionIsItalic={selectedFormats.length>0&&selectedFormats.every(f=>f.italic)} selectionIsUnderlined={selectedFormats.length>0&&selectedFormats.every(f=>f.underline)} selectedCellCount={sharedDesign.canEdit&&columns.length?selectedFormatCellKeys.size:0} selectionIsBold={selectionIsBold} selectedTextColor={selectedTextColor} selectedBackgroundColor={selectedBackgroundColor} onApply={applyCellFormat} {...headerFormatting.toolbarProps} />}
           <div ref={tableViewportRef} onPointerDownCapture={event=>{if(event.button===2&&(event.target as Element).closest("tbody td"))event.preventDefault();rangeDrag.onPointerDownCapture(event);}} onClickCapture={rangeDrag.onClickCapture} onPaste={(event) => void handleReportPaste(event)} onCopy={handleReportCopy} className={`${!showVisualCards ? `${REPORT_GRID_VIEWPORT_CLASS} ${SPREADSHEET_ATTACHED_VIEWPORT_CLASS}` : "relative min-h-48 w-full min-w-0 max-w-full overflow-x-auto overscroll-x-contain"} w-full`}>
-            {activeError && <div role="alert" className="border-b border-rose-100 px-3 py-2 text-xs text-rose-700">Unable to load records. Your current data and drafts are preserved. Use Retry loading.</div>}
+            {activeError && <div role="alert" className="border-b border-rose-100 px-3 py-2 text-xs text-rose-700">{activeError} Your current data and drafts are preserved. Use Retry loading.</div>}
             {showVisualCards ? (
               displayedRows.length === 0 ? (
                 null

@@ -88,8 +88,11 @@ test("an invalidated old response cannot overwrite a newer saved report page or 
   let release!: () => void;
   const gate = new Promise<void>((resolve) => { release = resolve; });
   let requests = 0;
+  let rowRequests = 0;
   globalThis.fetch = async (url) => {
-    const version = ++requests <= 2 ? 1 : 2;
+    requests++;
+    if (String(url).includes("/columns")) return response(String(url));
+    const version = ++rowRequests;
     if (version === 1) await gate;
     return response(String(url), version);
   };
@@ -102,6 +105,7 @@ test("an invalidated old response cannot overwrite a newer saved report page or 
     assert.strictEqual(await old, newer);
     assert.equal(newer.rows[0].id, "row-2");
     assert.strictEqual(getCachedReportPage("combined", "user-a", options), newer);
-    assert.equal(requests, 4, "two queries per generation, no third refresh");
+    assert.equal(rowRequests, 2, "one row read per generation, no third refresh");
+    assert.equal(requests, 4, "column metadata also revalidates when its API request was invalidated");
   } finally { release(); globalThis.fetch = original; clearApiCache(); clearReportPageCache(); }
 });

@@ -1,7 +1,7 @@
 import {collectSelectionPages} from "./spreadsheet-selection";
 import { invalidateOperationalFormulaReads } from "./operational-formula.service";
 import { getReportRowIdentity } from "./report-row-identity";
-import { apiGet, apiGetCached, invalidateApiCache, type ApiResponse } from "./api.service";
+import { ApiError, apiGet, apiGetCached, invalidateApiCache, type ApiResponse } from "./api.service";
 import type { DropdownField } from "./dropdown-option.service";
 
 export const REPORTS = {
@@ -73,6 +73,8 @@ export const REPORT_PAGE_STALE_TTL_MS = 5 * 60_000;
 const reportPageCache = new Map<string, { reportKey: ReportKey; token: string; expiresAt: number; staleUntil: number; value: ReportPageBundle }>();
 const reportPageRequests = new Map<string, Promise<ReportPageBundle>>();
 const reportPageErrors = new Map<string, string>();
+const reportReadFailures = new Map<string, { cause: unknown; retryAfter: number }>();
+const REPORT_FAILURE_COOLDOWN_MS = 10_000;
 const reportPageVersions = new Map<ReportKey, number>();
 // Column definitions do not change when a record is edited. Keep their cache
 // separate from row/API invalidation, scoped to the session and sheet projection.
@@ -150,6 +152,7 @@ export function clearReportPageCache() {
   reportPageCache.clear();
   reportPageRequests.clear();
   reportPageErrors.clear();
+  reportReadFailures.clear();
   reportPageVersions.clear();
 }
 
@@ -204,6 +207,20 @@ export function updateCachedReportPages(
 export function invalidateReportData(reportKey: ReportKey) {
   invalidateApiCache(REPORTS[reportKey].endpoint);
   invalidateReportPageCache(reportKey);
+}
+
+/** A deliberate Retry bypasses failure backoff; realtime invalidation does not. */
+export function retryReportRead(reportKey: ReportKey, token: string) {
+  for (const key of reportReadFailures.keys()) {
+    const [owner, report] = JSON.parse(key);
+    if (owner === token && report === reportKey) reportReadFailures.delete(key);
+  }
+  invalidateReportData(reportKey);
+}
+
+function checkReportReadBackoff(report: ReportKey, token: string, options: ReportPageOptions) {
+  const failure = reportReadFailures.get(reportPageCacheKey(report, token, options));
+  if (failure && failure.retryAfter > Date.now()) throw failure.cause;
 }
 
 const sortFields: Record<ReportKey, string[]> = {
@@ -404,6 +421,8 @@ export async function fetchReportPage(
   if (cached && !refresh) return cached;
   const pending = reportPageRequests.get(key);
   if (pending) return pending;
+  const failure = reportReadFailures.get(key);
+  if (!refresh && failure && failure.retryAfter > Date.now()) throw failure.cause;
 
   const requestGeneration = reportPageCacheGeneration;
   const reportVersion = reportPageVersions.get(reportKey) ?? 0;
@@ -417,9 +436,11 @@ export async function fetchReportPage(
     if (requestGeneration !== reportPageCacheGeneration || reportVersion !== (reportPageVersions.get(reportKey) ?? 0)) {
       const newer=getCachedReportPage(reportKey,token,options);if(newer)return newer;
       if(rebaseAttempt>=1)throw new Error("Report data changed while loading. Your current rows are preserved; retry loading.");
+      if (reportPageRequests.get(key) === request) reportPageRequests.delete(key);
       return fetchReportPage(reportKey,token,options,true,rebaseAttempt+1);
     }
     const bundle = { columns, rows: result.rows, pagination: result.pagination };
+    reportReadFailures.delete(key);
     if (requestGeneration === reportPageCacheGeneration) {
       const now = Date.now();
       reportPageCache.set(key, {
@@ -434,6 +455,9 @@ export async function fetchReportPage(
   }).catch((cause: unknown) => {
     if (sessionGeneration === reportPageSessionGeneration && reportPageRequests.get(key) === request) {
       reportPageErrors.set(key, cause instanceof Error ? cause.message : "Unable to load report.");
+      if ((cause instanceof ApiError && (cause.status >= 500 || cause.status === 408 || cause.status === 429)) || cause instanceof TypeError) {
+        reportReadFailures.set(key, { cause, retryAfter: Date.now() + REPORT_FAILURE_COOLDOWN_MS });
+      }
     }
     throw cause;
   }).finally(() => {
@@ -489,7 +513,9 @@ export async function fetchReportCollection(report:ReportKey,token:string,option
   const previous=getReportCollection(report,token,options,true);
   const readOptions=options;
   const loadedPages=refresh?(previous?.collection?.page??1):1;
-  const first=await fetchReportPage(report,token,{...readOptions,page:1,limit:options.limit},refresh);
+  const firstOptions={...readOptions,page:1,limit:options.limit};
+  checkReportReadBackoff(report,token,firstOptions);
+  const first=await fetchReportPage(report,token,firstOptions,refresh);
   const columns=first.columns,physical=new Map<string,ReportRow>();let page=1;let result:ReportPageBundle;
   do{
    if(entry.cancelled)throw new DOMException("Report request cancelled.","AbortError");
@@ -547,8 +573,10 @@ const tripReportRequests=new Map<string,Promise<ReportRow[]>>();
 export async function fetchReportTripRows(report:ReportKey,token:string,options:ReportPageOptions,tripId:string){
  const key=JSON.stringify([token,report,options,tripId]);const pending=tripReportRequests.get(key);if(pending)return pending;
  const session=reportPageSessionGeneration;
+ const readOptions={...options,page:1,limit:200,filters:{...options.filters,trip_id:tripId}};
+ checkReportReadBackoff(report,token,readOptions);
  const promise=(async()=>{let page=1;const rows:ReportRow[]=[];
-  do{const result=await fetchReportRows(report,token,{...options,page,limit:200,filters:{...options.filters,trip_id:tripId},fresh:true});
+  do{const result=await fetchReportPage(report,token,{...readOptions,page},true);
    if(session!==reportPageSessionGeneration)throw Error("The session changed.");rows.push(...result.rows);
    if(page>=result.pagination.totalPages||!result.rows.length)return rows.filter(row=>!isDeletedReportRecord(row));page++;
   }while(true);

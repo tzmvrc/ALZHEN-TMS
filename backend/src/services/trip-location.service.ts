@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { saveTripDeliveryAddress } from "./trip-delivery-address.service.js";
 import { supabaseAdmin as db } from "../config/supabase.js";
 import { ApiError } from "../utils/api-response.js";
 import { searchLocations, LocationSearchError, type LocationSearchResult } from "./location-search.service.js";
@@ -18,10 +18,6 @@ export function invalidateDeliveryLocationLookup(shipTo: string) {
     const [name] = JSON.parse(destination) as string[];
     if (storeIdentityText(name) === storeIdentityText(shipTo)) { lookupCache.delete(key); lookups.delete(key); }
   }
-}
-function uuidFor(value: string) {
-  const hash = createHash("sha256").update(value).digest("hex");
-  return `${hash.slice(0, 8)}-${hash.slice(8, 12)}-5${hash.slice(13, 16)}-a${hash.slice(17, 20)}-${hash.slice(20, 32)}`;
 }
 export function parseDestination(input: Record<string, unknown>): Destination {
   const result = Object.fromEntries(["ship_to", "province", "city", "customer_name"].map(key => {
@@ -88,7 +84,6 @@ export async function prepareImportDestinationDecisions(rows: SourceRow[], provi
   const prepared: Record<string, Decision> = {};
   const resolveStore = importStoreResolver();
   const chosenIdentities = new Map<string, string>();
-  const destinationLookups = new Map<string, Promise<LocationLookup>>();
   for (const row of rows) {
     const source = parseDestination({ ship_to: row.values.ship_to, province: row.values.province, city: row.values.city, customer_name: row.values.customer_name });
     const choice = provided[row.source_identity] ?? {};
@@ -96,62 +91,39 @@ export async function prepareImportDestinationDecisions(rows: SourceRow[], provi
     const chosen = JSON.stringify([choice.customer_id ?? "", choice.store_id ?? "", storeIdentityText(String(choice.province || source.province)), storeIdentityText(String(choice.city || source.city))]);
     if (chosenIdentities.has(key) && chosenIdentities.get(key) !== chosen) throw new ApiError("Products for the same Ship To / Province / City must use the same store identity. Review the destination choices.", 400);
     chosenIdentities.set(key, chosen);
-    if (!destinationLookups.has(key)) destinationLookups.set(key, resolveTripDestination({ ...source, province: source.province || String(choice.province ?? ""), city: source.city || String(choice.city ?? "") }));
-    const lookup = await destinationLookups.get(key)!;
     let decision: Decision;
     try { decision = await resolveStore(source, provided[row.source_identity] ?? {}); }
     catch (error) { throw new ApiError(`${row.filename ?? "Source file"}, CSV row ${row.line ?? "unknown"}, ${row.values.customer_model ?? "product"}: expected Qty ${row.values.quantity}, CBM ${row.values.cbm}. Customer/store resolution failed: ${error instanceof Error ? error.message : "Review this destination identity."}`, 400, "IMPORT_DESTINATION_REVIEW_REQUIRED"); }
     // Suggestions are informational until a user explicitly selects a candidate.
     if (decision.pin_address_mismatch === true && decision.verified === true) throw new ApiError("Review the address against the moved map pin before verifying this destination.", 400, "LOCATION_PIN_ADDRESS_MISMATCH");
-    decision.lookup = lookup;
+    // Find address is an explicit action. Saving only resolves the store identity;
+    // optional map searches must never delay or determine the result of a save.
     prepared[row.source_identity] = decision;
   }
   return prepared;
 }
 
 /** Follow-up writes never erase operational rows or previously reviewed points. */
-export async function persistImportDestinationLocations(actor: string, batch: string, rows: SourceRow[], outcomes: Outcome[], decisions: Record<string, Decision>) {
-  const owned = outcomes.filter(row => row.line_item_id && (row.status === "imported" || row.status === "skipped" && row.original_batch_id === batch));
+export async function persistImportDestinationLocations(_actor: string, batch: string, rows: SourceRow[], outcomes: Outcome[], decisions: Record<string, Decision>) {
+  const owned = outcomes.filter(row => decisions[row.source_identity]?.verified === true && row.line_item_id && (row.status === "imported" || row.status === "skipped" && row.original_batch_id === batch));
   if (!owned.length) return;
   const lines = await db.from("trip_line_items").select("id,trip_id,trip_stop_id").in("id", [...new Set(owned.map(row => row.line_item_id!))]);
   if (lines.error) throw lines.error;
   const stops = await db.from("trip_stops").select("id,store_id").in("id", [...new Set((lines.data ?? []).map(row => row.trip_stop_id).filter(Boolean))]);
   if (stops.error) throw stops.error;
-  const admins = await db.from("profiles").select("id").eq("role", "ADMIN");
-  if (admins.error) throw admins.error;
   const rowsByIdentity = new Map(rows.map(row => [row.source_identity, row]));
   const linesById = new Map((lines.data ?? []).map(line => [line.id, line]));
   const stopsById = new Map((stops.data ?? []).map(stop => [stop.id, stop]));
-  const pendingNotifications: Array<Record<string, unknown>> = [];
   const seen = new Set<string>();
   for (const outcome of owned) {
     const row = rowsByIdentity.get(outcome.source_identity);
     const line = linesById.get(outcome.line_item_id!);
     const stop = line ? stopsById.get(line.trip_stop_id) : undefined;
     if (!row || !line || !stop?.store_id) continue;
-    const source = parseDestination({ ship_to: row.values.ship_to, province: row.values.province, city: row.values.city, customer_name: row.values.customer_name });
     const decision = decisions[outcome.source_identity];
-    if (!decision?.lookup) throw new Error("The imported destination is missing its location review.");
-    const lookup = decision.lookup as LocationLookup;
-    const identity = `${line.trip_id}:${stop.store_id}:${destinationLookupKey(source)}`;
+    const identity = JSON.stringify([stop.id,decision.address,decision.province,decision.city,decision.latitude,decision.longitude]);
     if (seen.has(identity)) continue;
     seen.add(identity);
-    const latitude = decision.latitude == null || String(decision.latitude).trim() === "" ? NaN : Number(decision.latitude);
-    const longitude = decision.longitude == null || String(decision.longitude).trim() === "" ? NaN : Number(decision.longitude);
-    if (decision.verified !== true && decision.pin_address_mismatch !== true && decision.address && Number.isFinite(latitude) && Math.abs(latitude) <= 90 && Number.isFinite(longitude) && Math.abs(longitude) <= 180) {
-      // Fill only an empty, unverified point. A concurrent verified location wins.
-      const saved = await db.from("customer_stores").update({ address: String(decision.address), latitude, longitude, location_verified: false })
-        .eq("id", stop.store_id).eq("location_verified", false).is("latitude", null).is("longitude", null);
-      if (saved.error) throw saved.error;
-    }
-    const event = uuidFor(`${batch}:${identity}:${lookup.status}:${lookup.message}`);
-    const notifications = (admins.data ?? []).map(admin => ({ recipient_profile_id: admin.id, actor_profile_id: actor,
-      notification_type: "report_mention", reference_type: "trip", reference_id: line.trip_id, trip_id: line.trip_id,
-      event_key: event, message: lookup.message, metadata: { event_kind: "trip_location_review", report_key: "trip-booking", store_id: stop.store_id, ship_to: source.ship_to, province: source.province, city: source.city, location_status: lookup.status } }));
-    pendingNotifications.push(...notifications);
-  }
-  for (let offset = 0; offset < pendingNotifications.length; offset += 500) {
-    const notified = await db.from("admin_notifications").upsert(pendingNotifications.slice(offset, offset + 500), { onConflict: "recipient_profile_id,event_key", ignoreDuplicates: true });
-    if (notified.error) throw notified.error;
+    if (decision.update_store_location !== undefined) await saveTripDeliveryAddress(stop.id, decision);
   }
 }

@@ -15,15 +15,21 @@ function isSnapshot(value:unknown):value is FormulaSnapshot {
 }
 type FormulaRead={table:string;expiresAt:number;promise:Promise<FormulaSnapshot>};
 const formulaReads=new Map<string,FormulaRead>();
+const formulaReadFailures=new Map<string,{cause:unknown;retryAfter:number}>();
+let formulaReadGeneration=0;
 let activeReads=0;const readQueue:Array<()=>void>=[];
 function scheduleRead<T>(read:()=>Promise<T>):Promise<T>{return new Promise((resolve,reject)=>{
  const run=()=>{activeReads++;void read().then(resolve,reject).finally(()=>{activeReads--;readQueue.shift()?.();});};
  if(activeReads<3)run();else readQueue.push(run);
 });}
-export function invalidateOperationalFormulaReads(table?:string){for(const [key,entry] of formulaReads)if(!table||entry.table===table)formulaReads.delete(key);}
+export function invalidateOperationalFormulaReads(table?:string){if(!table){formulaReadGeneration++;formulaReadFailures.clear();}for(const [key,entry] of formulaReads)if(!table||entry.table===table)formulaReads.delete(key);}
+export function retryOperationalFormulaReads(token:string,table:string){formulaReadFailures.delete(JSON.stringify([token,table]));invalidateOperationalFormulaReads(table);}
 export async function readOperationalFormulas(token:string,table_key:string,rows:string[]){
  for(const [key,entry] of formulaReads)if(entry.expiresAt<Date.now())formulaReads.delete(key);
  for(const key of formulaReads.keys()){if(formulaReads.size<=12000)break;formulaReads.delete(key);}
+ const failureKey=JSON.stringify([token,table_key]),failure=formulaReadFailures.get(failureKey);
+ if(rows.length&&failure&&failure.retryAfter>Date.now())throw failure.cause;
+ const generation=formulaReadGeneration;
  const formulas=new Map<string,FormulaOverlay>(),sources=new Map<string,FormulaSnapshot["sources"][number]>();
  const unique=[...new Set(rows)],requests=new Set<Promise<FormulaSnapshot>>(),missing:string[]=[];
  const key=(row:string)=>`${token}\u0000${table_key}\u0000${row}`;
@@ -35,7 +41,7 @@ export async function readOperationalFormulas(token:string,table_key:string,rows
     if(!response.success||!isSnapshot(response.data))throw new Error("Unable to load calculated cells.");return response.data;
   });
   const entry={table:table_key,expiresAt:Date.now()+30000,promise};batch.forEach(row=>formulaReads.set(key(row),entry));requests.add(promise);
-  void promise.catch(()=>{batch.forEach(row=>{if(formulaReads.get(key(row))===entry)formulaReads.delete(key(row));});});
+  void promise.catch(cause=>{if(generation===formulaReadGeneration)formulaReadFailures.set(failureKey,{cause,retryAfter:Date.now()+10000});batch.forEach(row=>{if(formulaReads.get(key(row))===entry)formulaReads.delete(key(row));});});
  }
  for(const snapshot of await Promise.all(requests)){snapshot.formulas.forEach(value=>{if((formulas.get(value.id)?.version??0)<=value.version)formulas.set(value.id,value);});snapshot.sources.forEach(value=>sources.set(value.id,value));}
  return {formulas:[...formulas.values()],sources:[...sources.values()]};

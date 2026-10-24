@@ -41,7 +41,7 @@ async function processJob(job:CleanupJob){
 /** Database leases prevent duplicate work across requests and backend processes. */
 export async function runMasterImageCleanup(operation?:string,onClaim?:(count:number)=>void){
  const claimed=await supabaseAdmin.rpc("claim_master_image_cleanup_v1",{p_operation:operation??null}).abortSignal(AbortSignal.timeout(10_000)).retry(false);
- if(claimed.error)throw new ApiError("Image cleanup queue is unavailable; committed jobs remain queued.",503);
+ if(claimed.error)throw new ApiError("Image cleanup queue is unavailable; committed jobs remain queued.",503,claimed.error.code||"UPSTREAM_UNAVAILABLE");
  const jobs=(claimed.data??[]) as CleanupJob[];
  onClaim?.(jobs.length);
  let complete=false;

@@ -12,13 +12,15 @@ type Props = {
   disabled: boolean;
   onEdit: (file: string, line: number, field: ImportField, value: string) => void;
   onGroup: (file: string, line: number, group: string) => void;
+  viewMode?: "source" | "mapped";
   mappedFileRequest?: { fileId: string; id: number };
 };
 
 /** Paginate rows, never columns: every original header remains inspectable. */
-export default function TripImportPreview({ files, preview, outcomes, disabled, onEdit, onGroup, mappedFileRequest }: Props) {
+export default function TripImportPreview({ files, preview, outcomes, disabled, onEdit, onGroup, mappedFileRequest, viewMode }: Props) {
   const [fileId, setFileId] = useState("");
-  const [view, setView] = useState<"source" | "mapped">("source");
+  const [localView, setView] = useState<"source" | "mapped">("source");
+  const view = viewMode ?? localView;
   const [page, setPage] = useState(1);
   const panelRef = useRef<HTMLElement>(null);
   useEffect(() => {
@@ -42,19 +44,21 @@ export default function TripImportPreview({ files, preview, outcomes, disabled, 
   const headers = view === "source" ? sourceHeaders : ["Trip group", "Row status", ...importFields.map(([, label]) => label)];
   const cell = "border-b border-r border-slate-100 px-3 py-2.5 align-top";
   return <section ref={panelRef} aria-label="CSV preview" className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white">
+    {!viewMode && <>
     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 p-4">
       <div><h3 className="text-sm font-semibold text-[#0b2341]">CSV preview</h3><p className="mt-1 text-xs text-slate-500">All columns are included. Scroll across for more columns and use the pages for more rows.</p></div>
       <div className="flex rounded-lg bg-slate-100 p-1" aria-label="Preview display">
         {(["source", "mapped"] as const).map(mode => <button key={mode} type="button" aria-pressed={view === mode} onClick={() => setView(mode)} className={`rounded-md px-3 py-1.5 text-xs font-medium ${view === mode ? "bg-white text-[#0b2341] shadow-sm" : "text-slate-500"}`}>{mode === "source" ? "Original CSV" : "Mapped fields"}</button>)}
       </div>
     </div>
+    </>}
     <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-xs text-slate-500">
       {files.length > 1 ? <label className="min-w-0">File or worksheet <select aria-label="Preview file or worksheet" value={file.id} onChange={event => { setFileId(event.target.value); setPage(1); }} className="ml-2 max-w-64 rounded-lg border border-slate-200 p-2 text-slate-700">{files.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label> : <span className="min-w-0 truncate font-medium text-slate-700" title={file.name}>{file.name}</span>}
       <span>{file.rows.length} rows / {view === "source" ? sourceHeaders.length : importFields.length} columns</span>
     </div>
-    <div role="region" aria-label="CSV data table" tabIndex={0} className="max-h-[400px] overflow-auto border-y border-slate-100">
+    <div role="region" aria-label="CSV data table" tabIndex={0} className="trip-horizontal-table border-y border-slate-100">
       <table className="w-max min-w-full border-collapse text-left text-xs">
-        <thead className="sticky top-0 z-10 bg-slate-50 text-slate-600"><tr><th className={cell}>Row</th>{headers.map((header, index) => <th key={index} className={`${cell} whitespace-nowrap font-medium`}>{header || `Column ${index + 1}`}</th>)}</tr></thead>
+        <thead className="bg-slate-50 text-slate-600"><tr><th className={cell}>Row</th>{headers.map((header, index) => <th key={index} className={`${cell} whitespace-nowrap font-medium`}>{header || `Column ${index + 1}`}</th>)}</tr></thead>
         <tbody>{file.rows.slice(offset, offset + 50).map((source, index) => {
           const checked = checkedRows.get(source.line), outcome = checked && outcomes[checked.source_identity];
           const message = outcome?.error || outcome?.status || checked?.errors.join(" ") || (checked?.duplicate ? "Duplicate: skipped on save" : checked?.warnings.join(" ")) || (checked ? "Ready" : "Not checked yet");

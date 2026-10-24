@@ -2,6 +2,9 @@ import { supabaseAdmin, supabaseAuth } from "../config/supabase.js";
 
 import { getProfileByUserId } from "../models/profile.model.js";
 import { createTruckerSession, registerAdminStaffSession, removeCurrentAdminStaffSession, removeCurrentTruckerSession } from "./app-session.service.js";
+import {ApiError} from "../utils/api-response.js";
+
+function signInUnavailable(){return new ApiError("Sign-in is temporarily unavailable because the database or authentication service is not responding. Please try again shortly.",503,"AUTH_SERVICE_UNAVAILABLE");}
 
 export async function loginUser(email: string, password: string) {
   const trimmedEmail = email.trim();
@@ -15,16 +18,20 @@ export async function loginUser(email: string, password: string) {
     throw new Error("Please enter a valid email address.");
   }
 
-  const { data, error } = await supabaseAuth.auth.signInWithPassword({
-    email: trimmedEmail,
-    password: trimmedPassword,
-  });
+  let result;
+  try { result = await supabaseAuth.auth.signInWithPassword({email:trimmedEmail,password:trimmedPassword}); }
+  catch { throw signInUnavailable(); }
+  const {data,error}=result;
 
   if (error) {
     const message = error.message?.toLowerCase() ?? "";
+    if(!error.status||error.status>=500||["AuthRetryableFetchError","AuthUnknownError"].includes(error.name)){
+      console.error("Sign-in provider unavailable",{status:error.status,code:error.code});
+      throw signInUnavailable();
+    }
 
     if (
-      /invalid login|invalid credentials|email or password|auth/.test(message)
+      error.code==="invalid_credentials" || /invalid login|invalid credentials|email or password/.test(message)
     ) {
       throw new Error("Invalid email or password.");
     }
@@ -34,7 +41,7 @@ export async function loginUser(email: string, password: string) {
   }
 
   if (!data.session || !data.user) {
-    throw new Error("Something went wrong. Please try again later.");
+    throw signInUnavailable();
   }
 
   return {
@@ -85,7 +92,12 @@ export async function logoutUser() {
 
 export async function loginAppUser(email: string, password: string) {
   const result = await loginUser(email, password);
-  const profile = await getCurrentUserProfile(result.user.id);
+  let profile;
+  try { profile = await getCurrentUserProfile(result.user.id); }
+  catch(error){
+    if(error instanceof TypeError || (error&&typeof error==="object"&&"code" in error) || (error instanceof Error&&/timeout|aborted|fetch failed/i.test(error.message)))throw signInUnavailable();
+    throw error;
+  }
   if ((profile as any).deactivated_at) throw new Error("This account is not authorized to use the application.");
   const role = String(profile.role).trim().toUpperCase();
   if (role === "TRUCKER") {

@@ -5,6 +5,7 @@ import {
   logoutAppSession,
 } from "../services/auth.service.js";
 import { AppSessionError } from "../services/app-session.service.js";
+import {ApiError} from "../utils/api-response.js";
 
 export async function login(req: Request, res: Response) {
   try {
@@ -48,6 +49,8 @@ export async function login(req: Request, res: Response) {
     if (error instanceof AppSessionError) {
       return res.status(error.status).json({ success: false, code: error.code, message: error.message });
     }
+
+    if(error instanceof ApiError)return res.status(error.statusCode).json({success:false,code:error.code,message:error.message});
 
     console.error("Login controller error:", error);
 

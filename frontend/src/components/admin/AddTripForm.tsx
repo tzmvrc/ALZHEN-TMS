@@ -1,18 +1,25 @@
+import TruckPicker from "./TruckPicker";
+import StoreEditor from "./shared/StoreEditor";
+import DeliveryStoreField from "./shared/DeliveryStoreField";
+import ProductsSection from "./shared/ProductsSection";
+import { createAllocationSession } from "./useAutoAllocation";
+import { TripModalHeader, TripModalSteps, tripModalBackdrop, tripModalShell, tripPrimaryAction, tripSecondaryAction, tripFooter } from "./shared/TripModalUI";
+import { useTripModal } from "./shared/useTripModal";
 import TripLiveSummary from "./shared/TripLiveSummary";
 import { verifiedStoreCoordinates } from "../../services/trip-location.service";
 import StoreAddressReview from "./StoreAddressReview";
 import type { LocationDecision } from "./ImportDestinationReview";
 import { saveMasterData } from "../../services/master-data.service";
-import { secondaryAction } from "./shared/styles";
+import { focusRing } from "./shared/styles";
 import { useStoreWorkspaceMemory, invalidProduct, type StoreNavigationItem } from "./shared/storeWorkspace";
-import { SectionCard, EmptyState, StoreMasterDetail, StoreProductsTable, StatusChip } from "./shared";
+import { SectionCard, StoreMasterDetail, StatusChip } from "./shared";
 import TripCargoPlanner from "./TripCargoPlanner";
 import { cargoSignature, calculatedCbm, emptyCargoPlan, validateCargo, type CargoLine, type CargoTruck } from "../../services/cargo-planning";
 // src/pages/Admin/views/AddTripForm.tsx
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import {
   ChevronLeft, ChevronRight, ChevronDown, Plus, Trash2, X, Check, RefreshCw, Search,
-  MapPin, Pencil, Package, Upload, Loader2, Truck
+  Table2, Upload, Loader2, Truck
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import SearchableRelationshipEditor from "./SearchableRelationshipEditor";
@@ -48,6 +55,7 @@ export type NewTripPayload = {
   }>;
   stops: Array<{
     stop_sequence: number;
+    location_review?: LocationDecision;
     destination?: Record<string, string>;
     store_id: string | null;
     customer_id: string | null;
@@ -88,8 +96,8 @@ const STEPS = ["Trip details", "Stores & products", "Assignments & Cargo"] as co
 
 const inputBase =
   "min-w-0 w-full rounded-xl border border-slate-200 bg-white text-sm text-slate-800 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-[#2678b9] focus:ring-2 focus:ring-[#2678b9]/15 disabled:bg-slate-50 disabled:text-slate-500";
-const input = `${inputBase} h-10 px-3`;
-const inputSm = `${inputBase} h-9 px-2.5`;
+const input = `${inputBase} min-h-11 px-3.5 py-2.5`;
+const inputSm = `${inputBase} min-h-10 px-3 py-2`;
 
 let uid = 0;
 const newItem = (): ItemDraft => ({
@@ -132,9 +140,9 @@ function Field({ label, required, hint, children, className = "" }: {
 }) {
   return (
     <label className={`block min-w-0 ${className}`}>
-      <span className="mb-1.5 block text-xs font-medium text-slate-600">
+      <span className="mb-2 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-xs font-semibold text-slate-700">
         {label}{required && <span className="ml-0.5 text-rose-500">*</span>}
-        {hint && <span className="ml-1.5 font-normal text-slate-400">{hint}</span>}
+        {hint && <span className="font-normal text-slate-500">{hint}</span>}
       </span>
       {children}
     </label>
@@ -154,6 +162,7 @@ function Dropdown({
     if (openRequested) setOpen(true);
   }
   const [query, setQuery] = useState("");
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const selected = options.find((o) => o.id === value);
   const q = query.trim().toLowerCase();
   const visible = q ? options.filter((o) => `${o.label} ${o.secondary ?? ""}`.toLowerCase().includes(q)) : options;
@@ -162,17 +171,26 @@ function Dropdown({
   useEffect(() => {
     if (!open) return;
     const onDoc = (e: MouseEvent) => { if (!(e.target as HTMLElement).closest("[data-dropdown-root]")) setOpen(false); };
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopPropagation(); setOpen(false); } };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopPropagation(); setOpen(false); triggerRef.current?.focus(); } };
     document.addEventListener("mousedown", onDoc);
     document.addEventListener("keydown", onKey, true);
     return () => { document.removeEventListener("mousedown", onDoc); document.removeEventListener("keydown", onKey, true); };
   }, [open]);
 
   return (
-    <div className="relative" data-dropdown-root>
+    <div className="relative min-w-0" data-dropdown-root onKeyDown={event => {
+      if (!open || !["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key) || event.target instanceof HTMLInputElement) return;
+      const options = [...event.currentTarget.querySelectorAll<HTMLButtonElement>("[data-dropdown-option]:not(:disabled)")];
+      if (!options.length) return;
+      event.preventDefault();
+      const index = options.indexOf(document.activeElement as HTMLButtonElement);
+      const next = event.key === "Home" ? 0 : event.key === "End" ? options.length - 1 : (index + (event.key === "ArrowUp" ? -1 : 1) + options.length) % options.length;
+      options[next]?.focus();
+    }}>
       <button
-        type="button" disabled={isDisabled} onClick={() => { setQuery(""); setOpen((o) => !o); }}
-        className={`${compact ? inputSm : input} flex items-center justify-between gap-2 text-left hover:border-slate-300 ${isDisabled ? "cursor-not-allowed" : ""}`}
+        ref={triggerRef}
+        type="button" aria-expanded={open} aria-label={placeholder} disabled={isDisabled} onClick={() => { setQuery(""); setOpen((o) => !o); }}
+        className={`${compact ? inputSm : input} flex items-center justify-between gap-2 text-left hover:border-slate-300 ${focusRing} ${isDisabled ? "cursor-not-allowed" : ""}`}
       >
         <span className={`truncate ${selected ? "text-slate-800" : "text-slate-400"}`}>
           {loading ? "Loading…" : selected ? selected.label : placeholder}
@@ -182,12 +200,12 @@ function Dropdown({
       </button>
 
       {open && (
-        <div className="absolute z-30 mt-1.5 max-h-72 w-full min-w-[14rem] overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-xl ring-1 ring-slate-900/5">
+        <div className="absolute z-30 mt-1.5 max-h-72 w-full min-w-0 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-xl ring-1 ring-slate-900/5">
           <div className="sticky top-0 border-b border-slate-100 bg-white p-2">
             <div className="relative">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-300" />
               <input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); const first = visible.find(option => !option.disabled); if (first) { onChange(first.id); setOpen(false); } } else if (event.key === "ArrowDown") { event.preventDefault(); (event.currentTarget.closest("[data-dropdown-root]")?.querySelector("[data-dropdown-option]:not(:disabled)") as HTMLButtonElement | null)?.focus(); } }} placeholder="Search"
-                className="h-8 w-full rounded-md border border-slate-200 pl-8 pr-2 text-xs outline-none focus:border-[#2678b9]" />
+                aria-label={`Search ${placeholder.toLowerCase()}`} className="min-h-10 w-full rounded-lg border border-slate-200 bg-slate-50 pl-8 pr-3 text-sm outline-none focus:border-[#2678b9] focus:ring-2 focus:ring-blue-100" />
             </div>
           </div>
           <div className="py-1">
@@ -201,8 +219,8 @@ function Dropdown({
             {visible.map((o) => {
               const active = o.id === value;
               return (
-                <button key={o.id} data-dropdown-option disabled={o.disabled} type="button" onClick={() => { onChange(o.id); setOpen(false); }}
-                  className={`flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm disabled:cursor-not-allowed disabled:opacity-40 ${active ? "bg-[#2678b9]/10 font-medium text-[#1d5f94]" : "text-slate-700 hover:bg-slate-50"}`}>
+                <button key={o.id} data-dropdown-option disabled={o.disabled} type="button" onClick={() => { onChange(o.id); setOpen(false); triggerRef.current?.focus(); }}
+                  className={`flex w-full items-center justify-between gap-2 px-3 py-3 text-left text-sm disabled:cursor-not-allowed disabled:opacity-40 ${active ? "bg-[#2678b9]/10 font-medium text-[#1d5f94]" : "text-slate-700 hover:bg-slate-50"}`}>
                   <span className="min-w-0 truncate">
                     {o.label}
                     {o.secondary && <span className="ml-2 text-xs font-normal text-slate-400">{o.secondary}</span>}
@@ -226,22 +244,7 @@ function Dropdown({
 }
 
 function Tabs({ current, onJump, disabled }: { current: number; onJump: (i: number) => void; disabled?: boolean }) {
-  return (
-    <nav className="flex min-w-0 gap-2 overflow-x-auto pb-3 pt-2 sm:gap-4" aria-label="Steps">
-      {STEPS.map((label, i) => {
-        const active = i === current, done = i < current;
-        return (
-          <button key={label} type="button" disabled={disabled} onClick={() => onJump(i)} aria-current={active ? "step" : undefined}
-            className={`flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full px-4 py-2 text-sm transition disabled:opacity-50 ${active ? "bg-[#0b2341] font-semibold text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>
-            <span className={`flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-semibold ${active ? "bg-white/20 text-white" : done ? "bg-[#2678b9] text-white" : "bg-white text-slate-400"}`}>
-              {done ? <Check className="h-3 w-3" /> : i + 1}
-            </span>
-            {label}
-          </button>
-        );
-      })}
-    </nav>
-  );
+  return <TripModalSteps labels={STEPS} current={current} onJump={onJump} isDisabled={() => Boolean(disabled)} label="New trip steps" />;
 }
 
 function Section({ title, description, children, className = "" }: { title: string; description?: string; children: ReactNode; className?: string }) {
@@ -251,7 +254,7 @@ function Section({ title, description, children, className = "" }: { title: stri
 /* ───────────────────────────── main component ───────────────────────────── */
 
 export default function AddTripForm({
-  onClose, onSubmit, onImported,
+  onClose: onDismiss, onSubmit, onImported,
 }: { onClose: () => void; onSubmit: (payload: NewTripPayload) => Promise<void>; onImported?: () => void }) {
   const { accessToken } = useAuth();
   const [bulkImportOpen, setBulkImportOpen] = useState(false);
@@ -279,6 +282,8 @@ export default function AddTripForm({
   const [warehouseId, setWarehouseId] = useState("");
   const [creationRequestId] = useState(() => crypto.randomUUID());
   const [cargoPlan, setCargoPlan] = useState(emptyCargoPlan);
+  const allocationSession = useRef(createAllocationSession());
+  const [capacityPreview, setCapacityPreview] = useState<string>();
   const [truckAssignments, setTruckAssignments] = useState<TruckAssignmentDraft[]>(() => [newTruckAssignment()]);
   const [truckPickerKey, setTruckPickerKey] = useState<number | null>(null);
   const availabilitySchedule = useRef({ loadingDate, etaDate });
@@ -405,12 +410,6 @@ export default function AddTripForm({
     setDispatchMode(mode); setDispatchError(""); setError("");
   }
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && !saving && locationSaving === null && !bulkImportOpen && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose, saving, locationSaving, bulkImportOpen]);
-
   const productOptions = useMemo<Option[]>(
     () => lookups.products.map((o) => {
       const code = productCode(o);
@@ -471,9 +470,9 @@ export default function AddTripForm({
       latitude: record?.latitude ?? "", longitude: record?.longitude ?? "", verified: matchingRecord && verifiedStoreCoordinates(record),
       store_verified: verifiedStoreCoordinates(record), pin_address_mismatch: !matchingRecord && Boolean(record?.latitude && record?.longitude), replace_verified: false };
   }
-  async function saveStopLocation(stop: StopDraft) {
+  async function saveStopLocation(stop: StopDraft, reviewed?: LocationDecision) {
     if (!accessToken || !stop.storeId || saving || locationSaving !== null) return;
-    const location = stopLocation(stop);
+    const location = reviewed ?? stopLocation(stop);
     if (!location.verified || location.pin_address_mismatch) return;
     setLocationSaving(stop.key); setError("");
     try {
@@ -497,38 +496,23 @@ export default function AddTripForm({
 
   /* validation */
   function validateTrip(): string {
-    if (selectedTruckAssignments.some(assignment => assignment.driverId) && (driverScheduleLoading || driverScheduleError)) return driverScheduleError || "Wait for the driver schedule check.";
     if (selectedTruckAssignments.some(assignment => driverAvailability.some(driver => driver.id === assignment.driverId && driver.availability === "CONFLICT"))) return "A selected driver has an overlapping active trip. Choose another driver or change the dates.";
     if (new Set(selectedTruckAssignments.map(a => a.driverId).filter(Boolean)).size !== selectedTruckAssignments.filter(a => a.driverId).length) return "A driver cannot drive two active trucks in the same trip.";
-    if (cargoPlan.placements.length) { if (!cargoPlan.confirmed || cargoPlan.signature !== cargoSignature(cargoLines, cargoTrucks)) return "Review and confirm the current cargo distribution."; const problem = validateCargo(cargoLines, cargoTrucks, cargoPlan.placements); if (problem) return problem; }
     if (dispatchMode === "existing" && !existingDispatch) return "Choose the dispatch this trip belongs to.";
     if (etaDate && loadingDate && etaDate < loadingDate) return "Estimated delivery can't be before the loading date.";
-    if (selectedTruckAssignments.length && (availabilityLoading || availabilityError)) return "Wait for the truck availability check, or retry it.";
-    for (const assignment of selectedTruckAssignments) { const state = availability.find(truck => truck.id === assignment.truckId); if (!state || state.availability === "CONFLICT") return "A selected truck is unavailable for these dates. Choose another truck."; if (state.availability === "REVIEW" && !assignment.availabilityConfirmed) return "Confirm the schedule for trucks marked availability requires confirmation."; }
+    for (const assignment of selectedTruckAssignments) { const state = availability.find(truck => truck.id === assignment.truckId); if (state?.availability === "CONFLICT") return "A selected truck is unavailable for these dates. Choose another truck."; }
     const assignedTruckIds = selectedTruckAssignments.map((assignment) => assignment.truckId);
     if (new Set(assignedTruckIds).size !== assignedTruckIds.length) return "Choose a different truck for each assignment.";
     if (truckAssignments.some((assignment) => assignment.driverId && !assignment.truckId)) return "Choose a truck before assigning a driver.";
     return "";
   }
 
-  function validateStops(): string {
-    for (const [i, stop] of stops.entries()) {
-      const n = i + 1;
-      if (stop.pendingDestination && !stop.storeId && !stop.customerId) return `Stop ${n}: select or add destination "${stop.pendingDestination}" before creating the trip.`;
-      for (const item of stop.items) {
-        if (item.qty.trim() && (!Number.isSafeInteger(num(item.qty)) || num(item.qty) < 0)) return `Stop ${n}: quantity must be a non-negative whole number.`;
-        if (item.unitCbm.trim() && (!Number.isFinite(num(item.unitCbm)) || num(item.unitCbm) < 0)) return `Stop ${n}: unit CBM must be a non-negative number.`;
-        if (item.cbm.trim() !== "" && (!Number.isFinite(num(item.cbm)) || num(item.cbm) < 0)) return `Stop ${n}: CBM must be a valid number.`;
-      }
-    }
-    return "";
-  }
+  const storableItem = (item: ItemDraft) => [item.qty, item.unitCbm, item.cbm].every(value => !value.trim() || /^\d+(?:\.\d+)?$/.test(value.trim().replaceAll(",", "")) && Number.isFinite(num(value)) && num(value) >= 0);
 
   function goTo(target: number) {
     if (saving || locationSaving !== null) return;
     if (target <= step) { setError(""); setStep(target); bodyRef.current?.scrollTo({ top: 0 }); return; }
-    let problem = target >= 2 ? validateTrip() : dispatchMode === "existing" && !existingDispatch ? "Choose the dispatch this trip belongs to." : etaDate && loadingDate && etaDate < loadingDate ? "Estimated delivery cannot be before loading." : "";
-    if (!problem && target >= 1) problem = validateStops();
+    const problem = target >= 2 ? validateTrip() : dispatchMode === "existing" && !existingDispatch ? "Choose the dispatch this trip belongs to." : etaDate && loadingDate && etaDate < loadingDate ? "Estimated delivery cannot be before loading." : "";
     setError(problem);
     if (!problem) { setStep(target); bodyRef.current?.scrollTo({ top: 0 }); }
   }
@@ -537,15 +521,14 @@ export default function AddTripForm({
     event.preventDefault();
     if (locationSaving !== null) { setError("Wait for the store location save to finish before continuing."); return; }
     if (step < STEPS.length - 1) { goTo(step + 1); return; }
-    const problem = validateTrip() || validateStops();
+    const problem = validateTrip();
     if (problem) return setError(problem);
     setError(""); setSaving(true);
     try {
-      if (accessToken && selectedTruckAssignments.length) { const latest = await fetchTruckAvailability(accessToken, loadingDate, etaDate); for (const assignment of selectedTruckAssignments) { const truck = latest.find(row => row.id === assignment.truckId); const previous = availability.find(row => row.id === assignment.truckId); if (!truck || truck.availability === "CONFLICT") throw Error("A selected truck now has a schedule conflict. Choose another truck."); if (truck.availability === "REVIEW" && (!assignment.availabilityConfirmed || previous?.availability !== "REVIEW")) throw Error("A selected truck requires schedule confirmation before creating the trip."); } }
       await onSubmit({
         request_id: creationRequestId,
         dispatch_mode: dispatchMode,
-        cargo_plan: cargoPlan.placements.length ? { ...cargoPlan, trucks: cargoTrucks } : undefined,
+        cargo_plan: cargoPlan.placements.length && loadingDate && etaDate && (cargoTrucks.length === 1 || cargoTrucks.every(truck => truck.driverId)) && !validateCargo(cargoLines, cargoTrucks, cargoPlan.placements) ? { ...cargoPlan, trucks: cargoTrucks, signature: cargoSignature(cargoLines, cargoTrucks), confirmed: true } : undefined,
         trip: {
           dispatch_number: dispatchRef.trim() || null,
           trip_number: tripNumber,
@@ -566,11 +549,12 @@ export default function AddTripForm({
         })),
         stops: stops.filter(hasStopData).map((stop, index) => ({
           stop_sequence: index + 1,
+          location_review: stopLocation(stop).verified && stopLocation(stop).update_store_location !== undefined ? { ...stopLocation(stop), update_store_location: false } : undefined,
           destination: !stop.storeId && stop.pendingDestination ? { name: stop.pendingDestination, customer_id: stop.customerId || "", customer_name: stop.customer, province: stop.province, city: stop.city, address: stop.address } : undefined,
           store_id: stop.storeId || null,
           customer_id: lookups.stores.find((o) => o.id === stop.storeId)?.values?.customer_id || stop.customerId || null,
           remarks: [stop.customer && `Customer: ${stop.customer}`, stop.province && `Province: ${stop.province}`, stop.city && `City: ${stop.city}`, stop.address && `Ship-to address: ${stop.address}`, stop.importNotes].filter(Boolean).join(" · ") || null,
-          line_items: stop.items.filter(hasItemData).map((item) => {
+          line_items: stop.items.filter(item => hasItemData(item) && storableItem(item)).map((item) => {
             const typed = item.newCode.trim();
             const productId = item.productId || matchExisting(typed)?.id || "";
             return {
@@ -641,43 +625,36 @@ export default function AddTripForm({
   });
 
   /* ───────────────────────────── render ───────────────────────────── */
-  const liveSummary = { dispatch: previewTrip.dispatch || "Generated on save", tripNumber: previewTrip.trip || "Generated on save", tripType: tripTypeLabel || "", status: sentence(status), loadingDate, etaDate, stops: populatedStops.length, lines: cargoLines, trucks: cargoTrucks };
+  const addStop = () => { const stop = newStop(); storeNavigation.selected = `stop:${stop.key}`; storeNavigation.members = [`stop:${stop.key}`]; storeNavigation.search = ""; setStops(list => [...list, stop]); };
+  const storeToolbar = <>
+                  <button type="button" aria-pressed={stopsView === "preview"} title={stopsView === "preview" ? "Edit stops" : "Table preview"} onClick={() => setStopsView(stopsView === "preview" ? "edit" : "preview")} className="stops-view-toggle"><Table2 size={14} /><span>{stopsView === "preview" ? "Edit stops" : "Table preview"}</span></button>
+                  <button type="button" onClick={() => setBulkImportOpen(true)} disabled={saving || locationSaving !== null}
+                    className="stops-import-button" title="Import CSV / XLSX">
+                    <Upload className="h-4 w-4" /><span>Import CSV / XLSX</span>
+                  </button>
+  </>;
+  const excludedManualRows = stops.flatMap((stop, index) => stop.items.filter(item => hasItemData(item) && !storableItem(item)).map(item => `Stop ${index + 1}: ${productLabel(item) || item.dr || "Product line"} — invalid quantity or CBM`));
+  const manualFlags = Number(!tripTypeId && !newTripType.trim()) + Number(!loadingDate || !etaDate) + Number(!selectedTruckAssignments.length) + populatedStops.filter(stop => !stopLocation(stop).verified).length + Number(cargoTrucks.length > 0 && Boolean(validateCargo(cargoLines, cargoTrucks, cargoPlan.placements)));
+  const liveSummary = { capacity: capacityPreview, dispatch: previewTrip.dispatch || "Generated on save", tripNumber: previewTrip.trip || "Generated on save", tripType: tripTypeLabel || "", status: sentence(status), loadingDate, etaDate, stops: populatedStops.length, lines: cargoLines, trucks: cargoTrucks };
+  const { ref: dialogRef, close: onClose } = useTripModal<HTMLFormElement>({ onClose: onDismiss, active: !bulkImportOpen, onEscape: () => { if (!saving && locationSaving === null) onClose(); } });
   if (bulkImportOpen) return <BulkTripImport initialTripDetails={{ trip_type_id: newTripType.trim() ? null : tripTypeId || null, trip_type_name: newTripType.trim() || labelOf(lookups["trip-types"], tripTypeId), status, loading_date: loadingDate || null, estimated_delivery_date: etaDate || null, remarks: remarks || null, origin_warehouse_id: warehouseId || null }} initialTarget={dispatchMode === "existing" && existingDispatch ? { mode: "dispatch", value: existingNo, allow_create: true } : undefined} onClose={() => setBulkImportOpen(false)} onComplete={onClose} onImported={() => onImported?.()} />;
   
   return (
-    <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm sm:p-4 lg:p-6">
-      <form onSubmit={submit} role="dialog" aria-modal="true" aria-labelledby="add-trip-title"
+    <div className={`${tripModalBackdrop} z-[2000]`}>
+      <form noValidate ref={dialogRef} tabIndex={-1} onSubmit={submit} role="dialog" aria-modal="true" aria-labelledby="add-trip-title" aria-describedby="add-trip-title-description"
         aria-busy={saving}
-        className="flex h-[100dvh] min-w-0 w-full max-w-[1480px] flex-col overflow-hidden bg-slate-50 shadow-2xl ring-1 ring-slate-900/5 sm:h-[92dvh] sm:rounded-3xl">
+        className={tripModalShell}>
 
-        {/* header */}
-        <header className="shrink-0 bg-white px-5 pt-5 sm:px-8">
-          <div className="flex items-start justify-between gap-4">
-            <div className="min-w-0">
-              <h3 id="add-trip-title" className="text-xl font-bold tracking-tight text-[#0b2341]">New trip</h3>
-              <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-slate-500">
-                <span className="max-w-full truncate font-mono text-[13px] font-medium text-[#2678b9]">
-                  {dispatchBusy ? "Loading…" : dispatchRef || "No dispatch yet"}
-                </span>
-                <span className="text-xs text-slate-500">{tripReference || (tripReferenceStatus === "setup_required" ? "Trip numbering not yet enabled" : "Trip no. generated on save")}</span>
-                {tripTypeLabel && <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600">{tripTypeLabel}</span>}
-              </p>
-            </div>
-            <button type="button" onClick={onClose} disabled={saving || locationSaving !== null} aria-label="Close"
-              className="rounded-full p-2.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 disabled:opacity-50">
-              <X className="h-5 w-5" />
-            </button>
-          </div>
-          <div className="mt-5 border-b border-slate-100 pb-1">
-            <Tabs current={step} onJump={goTo} disabled={saving} />
-          </div>
-        </header>
+        {/* Shared header and navigation keep both planning flows consistent. */}
+        <TripModalHeader id="add-trip-title" title="Add trip" description="A clear plan. Every stop, product and assignment in one place." icon={<Truck className="h-6 w-6" />} disabled={saving || locationSaving !== null} onClose={onClose} closeLabel="Close">
+          {step > 0 && <div className="flex min-w-0 flex-wrap gap-2 font-mono"><span className="truncate" title={dispatchRef}>{dispatchRef || "Dispatch on save"}</span><span className="truncate" title={tripReference}>{tripReference || "Trip on save"}</span></div>}
+        </TripModalHeader>
+        <Tabs current={step} onJump={goTo} disabled={saving} />
 
         {/* body */}
-        <div className="grid min-h-0 flex-1 lg:grid-cols-[minmax(0,1fr)_18rem]">
-        <div ref={bodyRef} className="min-h-0 min-w-0 overflow-y-auto px-5 py-6 sm:px-8">
+        <div ref={bodyRef} className="trip-flow-body">
           <div className="mx-auto max-w-5xl space-y-6">
-            
+            {error && <div id="manual-trip-errors"><TripFormNotice tone="error" title="Check the trip details" onDismiss={() => setError("")}>{error}</TripFormNotice></div>}
             {step === 2 && capacityState.full && <TripFormNotice tone="warning" title={capacityState.exceeded ? "Truck capacity exceeded" : "Truck capacity is full"} action={<button type="button" onClick={addCapacityTruck} className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-white/70 px-3 py-1.5 text-xs font-semibold hover:bg-white"><Plus className="h-3.5 w-3.5" />Add another truck</button>}>
               <p>{fmt(totals.cbm)} CBM of cargo / {fmt(assignedCapacity)} CBM capacity.</p><p>{capacityState.exceeded ? `Add a truck for the remaining ${fmt(capacityState.overflow)} CBM before loading.` : "Add another truck if you need to load more cargo."} You can still save this as a planned trip.</p>
             </TripFormNotice>}
@@ -686,50 +663,19 @@ export default function AddTripForm({
 
             {/* ── step 1: trip ── */}
             {step === 0 && (
-              <div className="space-y-6">
-                <section className="rounded-2xl border border-blue-100 bg-blue-50/50 p-6 sm:p-8">
-                  <div className="flex w-fit max-w-full flex-wrap gap-1 rounded-2xl bg-slate-200/70 p-1 text-sm" role="tablist" aria-label="Dispatch">
-                    {([["new", "New dispatch"], ["existing", "Add to an existing dispatch"]] as const).map(([mode, label]) => (
-                      <button key={mode} type="button" role="tab" aria-selected={dispatchMode === mode} onClick={() => switchDispatchMode(mode)}
-                        className={`rounded-full px-5 py-2 font-medium transition ${dispatchMode === mode ? "bg-white text-[#0b2341] shadow-sm" : "text-slate-600 hover:text-[#0b2341]"}`}>
-                        {label}
-                      </button>
-                    ))}
+              <div className="trip-step-content">
+                <section aria-label="Dispatch setup" className="trip-section">
+                  <h3>Dispatch</h3>
+                  <div className="trip-dispatch-row">
+                    <div className="flex gap-1 rounded-lg bg-slate-100 p-1" role="group" aria-label="Dispatch">{([["new", "New"], ["existing", "Existing"]] as const).map(([mode, label]) => <button key={mode} type="button" aria-pressed={dispatchMode === mode} onClick={() => switchDispatchMode(mode)} className={`rounded-md px-4 py-1 text-xs ${dispatchMode === mode ? "bg-white font-semibold text-[#0b2341]" : "text-slate-500"}`}>{label}</button>)}</div>
+                    {dispatchMode === "new" ? <div className="trip-dispatch-reference"><code>{dispatchBusy ? "Generating…" : dispatchRef || "Generated on save"}</code><button type="button" aria-label="Get a new number" title="Get a new number" onClick={() => setDispatchRetry(n => n + 1)} disabled={dispatchLoading} className={tripSecondaryAction}><RefreshCw aria-hidden="true" size={14} className={dispatchLoading ? "animate-spin" : ""} /></button></div> : <div className="min-w-0 flex-1"><Dropdown value={existingNo} onChange={pickExistingDispatch} options={dispatchOptionList} placeholder="Search dispatch number" loading={dispatchesLoading} /></div>}
                   </div>
-
-                  <div className="mt-6 flex flex-wrap items-end justify-between gap-4">
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-slate-500">Dispatch reference</p>
-                      <p className="mt-1 truncate font-mono text-3xl font-bold tracking-tight text-[#0b2341]">
-                        {dispatchBusy ? "Loading…" : dispatchRef || "—"}
-                      </p>
-                      <p className="mt-2 text-sm text-slate-500">
-                        {dispatchMode === "new"
-                          ? `Reference generated from ${loadingDate ? "the loading date" : "today's date"}.`
-                          : existingDispatch
-                            ? `Adding a trip to this dispatch · ${existingDispatch.trip_count} existing trip${existingDispatch.trip_count === 1 ? "" : "s"}.`
-                            : "Select an existing dispatch to add another trip."}
-                      </p>
-                      {dispatchError && <div className="mt-4"><TripFormNotice tone="warning" title={dispatchMode === "existing" ? "Dispatch list unavailable" : "Dispatch reference unavailable"} action={<button type="button" onClick={() => setDispatchRetry(value => value + 1)} className="rounded-full border border-amber-300 bg-white/70 px-4 py-1.5 text-xs font-semibold hover:bg-white">Try again</button>}>{dispatchError}{dispatchMode === "new" && " A reference will be generated when you save."}</TripFormNotice></div>}
-                    </div>
-                    {dispatchMode === "new" && (
-                      <button type="button" onClick={() => setDispatchRetry((n) => n + 1)} disabled={dispatchLoading}
-                        className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-white px-5 py-2.5 text-sm font-medium text-[#0b2341] shadow-sm transition hover:bg-blue-50 disabled:opacity-50">
-                        <RefreshCw className={`h-4 w-4 ${dispatchLoading ? "animate-spin" : ""}`} /> Get a new number
-                      </button>
-                    )}
-                  </div>
-
-                  {dispatchMode === "existing" && (
-                    <div className="mt-5 max-w-md text-slate-800">
-                      <Dropdown value={existingNo} onChange={pickExistingDispatch} options={dispatchOptionList}
-                        placeholder="Search dispatch number" loading={dispatchesLoading} />
-                    </div>
-                  )}
+                  {dispatchMode === "existing" && existingDispatch && <p className="mt-2 text-xs text-slate-500">{existingDispatch.trip_count} existing trips · This adds one trip to the selected dispatch.</p>}
+                  {dispatchError && <div className="mt-3"><TripFormNotice tone="warning" title="Dispatch reference unavailable" action={<button type="button" onClick={() => setDispatchRetry(value => value + 1)} className={tripSecondaryAction}>Try again</button>}>{dispatchError}{dispatchMode === "new" && " A reference will be generated when you save."}</TripFormNotice></div>}
                 </section>
 
-                <Section title="Trip Details" description="Generated separately from the dispatch reference.">
-                  <div className="grid items-start gap-5 sm:grid-cols-2 xl:grid-cols-3">
+                <section aria-label="Schedule" className="trip-section"><div className="mb-3 flex items-center gap-2"><h3>Schedule</h3><span className="rounded bg-slate-100 px-2 py-0.5 text-[11px] text-slate-500">Optional fields</span></div>
+                  <div className="trip-schedule-grid">
                     <Field label="Trip no.">
                       <input readOnly aria-label="Generated trip number" value={tripReference} placeholder={dispatchLoading ? "Generating trip number…" : tripReferenceStatus === "setup_required" ? "Trip numbering not yet enabled" : "Generated when you save"} className={`${input} font-mono bg-slate-50 text-slate-500`} />
                     </Field>
@@ -750,109 +696,45 @@ export default function AddTripForm({
                       <Dropdown value={status} onChange={(v) => setStatus(v || "PLANNED")}
                         options={STATUSES.map((s) => ({ id: s, label: sentence(s) }))} placeholder="Choose status" />
                     </Field>
-                    <Field label="Loading date" hint="optional">
+                    <Field label="Loading date" >
                       <input type="date" value={loadingDate} onChange={(e) => setLoadingDate(e.target.value)} className={input} />
                     </Field>
-                    <Field label="Estimated delivery" hint="optional">
-                      <input type="date" min={loadingDate || undefined} value={etaDate} onChange={(e) => setEtaDate(e.target.value)} className={input} />
+                    <Field label="Estimated delivery" >
+                      <input type="date" min={loadingDate || undefined} value={etaDate} aria-invalid={Boolean(etaDate && loadingDate && etaDate < loadingDate)} aria-describedby={etaDate && loadingDate && etaDate < loadingDate ? "trip-delivery-error" : undefined} onChange={(e) => setEtaDate(e.target.value)} className={input} />
+                      {etaDate && loadingDate && etaDate < loadingDate && <span id="trip-delivery-error" role="alert" className="mt-2 block text-xs leading-5 text-rose-700">Choose a delivery date on or after the loading date.</span>}
                     </Field>
                   </div>
-                </Section>
+                </section>
               </div>
             )}
 
             {/* ── step 2: stores & products ── */}
             {step === 1 && (
               <div className="space-y-6">
-                <div className="flex flex-wrap items-center justify-between gap-4">
-                  <div className="flex w-fit max-w-full flex-wrap gap-1 rounded-2xl bg-slate-200/70 p-1 text-sm" role="tablist" aria-label="Stores and products view">
-                    {([["edit", "Edit stops"], ["preview", `Table preview (${totals.lines})`]] as const).map(([view, label]) => (
-                      <button key={view} type="button" role="tab" aria-selected={stopsView === view} onClick={() => setStopsView(view)}
-                        className={`rounded-full px-5 py-2 font-medium transition ${stopsView === view ? "bg-white text-[#0b2341] shadow-sm" : "text-slate-600 hover:text-[#0b2341]"}`}>
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                  <button type="button" onClick={() => setBulkImportOpen(true)} disabled={saving || locationSaving !== null}
-                    className="inline-flex shrink-0 items-center gap-2 rounded-full border border-blue-200 bg-white px-5 py-2 text-sm font-medium text-[#2678b9] shadow-sm transition hover:bg-blue-50 disabled:opacity-50">
-                    <Upload className="h-4 w-4" /> Import CSV / XLSX
-                  </button>
-                </div>
-
                 {stopsView === "preview" ? (
                   populatedStops.length > 0
-                    ? <ImportStoreProductsPreview rows={storePreviewRows} navigation={storeNavigation} />
+                    ? <ImportStoreProductsPreview rows={storePreviewRows} navigation={storeNavigation} toolbar={storeToolbar} onAdd={addStop} disabled={saving} />
                     : (
-                      <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-16 text-center shadow-sm">
-                        <Package className="mx-auto h-10 w-10 text-slate-300 mb-3" />
-                        <p className="text-base font-medium text-slate-700">Nothing to preview yet</p>
-                        <p className="mt-1 text-sm text-slate-500">Add a store and its products, or import a file.</p>
-                        <button type="button" onClick={() => setStopsView("edit")} className="mt-5 rounded-full bg-[#0b2341] px-5 py-2 text-sm font-medium text-white hover:bg-[#1a365d]">Go to Edit stops</button>
-                      </div>
+                      <StoreMasterDetail items={storeItems} memory={storeNavigation} toolbar={storeToolbar} onAdd={addStop} disabled={saving}>{() => <p className="py-8 text-sm text-slate-500">No products yet. Choose Edit stops to add products.</p>}</StoreMasterDetail>
                     )
                 ) : (
                   <div className="space-y-6">
-                    {<StoreMasterDetail items={storeItems} memory={storeNavigation}>{selectedStore => {
+                    {<StoreMasterDetail items={storeItems} memory={storeNavigation} toolbar={storeToolbar} onAdd={addStop} disabled={saving}>{selectedStore => {
                       const stop = stops.find(candidate => `stop:${candidate.key}` === selectedStore.id)!;
                       const si = stops.indexOf(stop);
                       const t = stopTotals(stop);
                       const storeName = labelOf(lookups.stores, stop.storeId) || stop.pendingDestination || "";
                       const lineCount = stop.items.filter(hasItemData).length;
                       
-                      return (
-                        <section key={stop.key} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                          {/* Stop Header */}
-                          <div className="flex items-center justify-between gap-4 border-b border-slate-100 bg-slate-50/50 px-6 py-4">
-                            <div className="flex items-center gap-3 min-w-0">
-                              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#0b2341] text-sm font-semibold text-white">{si + 1}</span>
-                              <div className="min-w-0">
-                                <p className={`truncate text-base font-semibold ${storeName ? "text-slate-800" : "text-slate-400"}`}>
-                                  {storeName || "Select a destination store"}
-                                </p>
-                                <p className="text-xs text-slate-500">{lineCount} product{lineCount === 1 ? "" : "s"} · {fmt(t.qty, 0)} Qty · {fmt(t.cbm)} CBM</p>
-                              </div>
-                            </div>
-                            {stops.length > 1 && (
-                              <button type="button" disabled={saving} onClick={() => setStops((l) => l.filter((s) => s.key !== stop.key))} aria-label={`Remove stop ${si + 1}`}
-                                className="rounded-lg p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition-colors">
-                                <Trash2 className="h-4 w-4" />
-                              </button>
-                            )}
-                          </div>
-
-                          {/* Store Details */}
-                          <fieldset disabled={saving || locationSaving === stop.key} className="p-6 space-y-5 min-w-0">
-                            <div>
-                              <label className="mb-1.5 block text-sm font-medium text-slate-700">Delivery Store</label>
-                              {accessToken && (
-                                <div className={`${input} flex items-center px-2`}>
-                                  <SearchableRelationshipEditor presentation="form" token={accessToken} kind="stores" value={storeName} customerId={stop.customerId} createDefaults={{ address: stop.address, city: stop.city, province: stop.province }} autoFocus={false} disabled={saving || locationSaving === stop.key} onSelect={option => pickStore(stop.key, option.id, option)} onCommitBlur={() => {}} onCancel={() => {}} />
-                                </div>
-                              )}
-                              {stop.pendingDestination && !stop.storeId && <p className="mt-1.5 text-xs text-amber-700">Imported destination: {stop.pendingDestination}. Pick a match, or choose Add in the search list.</p>}
-                            </div>
-
-                            {accessToken && <div className="space-y-2">
-                              <StoreAddressReview compact token={accessToken} source={{ key: `manual:${stop.key}:${stop.storeId}`, shipTo: storeName || stop.pendingDestination || "Delivery store", customer: stop.customer, province: stop.province, city: stop.city }} decision={stopLocation(stop)} disabled={saving || locationSaving === stop.key} onChange={patch => {
+                      return <StoreEditor key={stop.key} number={si + 1} name={storeName} summary={`${lineCount} product${lineCount === 1 ? "" : "s"} · ${fmt(t.qty, 0)} qty · ${fmt(t.cbm)} CBM`} editing={stop.editLocation} disabled={saving || locationSaving === stop.key} formDisabled={saving || locationSaving === stop.key}
+                        onEdit={() => updateStop(stop.key, { editLocation: !stop.editLocation })}
+                        actions={stops.length > 1 && <button type="button" disabled={saving} onClick={() => setStops(list => list.filter(candidate => candidate.key !== stop.key))} aria-label={`Remove stop ${si + 1}`} className="store-remove"><Trash2 size={14} /></button>}
+                        deliveryStore={<DeliveryStoreField key={stop.key} name={storeName} selected={Boolean(stop.storeId)} disabled={saving || locationSaving === stop.key}>{onPicked => accessToken && <SearchableRelationshipEditor presentation="form" token={accessToken} kind="stores" value={storeName} customerId={stop.customerId} createDefaults={{ address: stop.address, city: stop.city, province: stop.province }} autoFocus={false} disabled={saving || locationSaving === stop.key} onSelect={option => { pickStore(stop.key, option.id, option); onPicked(); }} onCommitBlur={() => {}} onCancel={() => {}} />}</DeliveryStoreField>}
+                        address={accessToken && <StoreAddressReview compact token={accessToken} source={{ key: `manual:${stop.key}:${stop.storeId}`, shipTo: storeName || stop.pendingDestination || "Delivery store", customer: stop.customer, province: stop.province, city: stop.city }} decision={stopLocation(stop)} disabled={saving || locationSaving === stop.key} sourceAddress={stop.address} storeSaved={stop.locationSaved} onSaveStore={reviewed => saveStopLocation(stop, reviewed)} onChange={patch => {
                                 const location = { ...stopLocation(stop), ...patch };
                                 updateStop(stop.key, { location, locationSaved: stop.locationSaved && !(["address", "province", "city", "latitude", "longitude", "verified"] as const).some(field => patch[field] !== undefined && patch[field] !== stopLocation(stop)[field]), address: location.address, province: location.province, city: location.city });
-                              }} />
-                              <button type="button" className={secondaryAction} disabled={saving || locationSaving !== null || stop.locationSaved || !stop.storeId || !stopLocation(stop).verified || Boolean(stopLocation(stop).pin_address_mismatch)} onClick={() => void saveStopLocation(stop)}>{locationSaving === stop.key ? "Saving location..." : stop.locationSaved ? "Location saved to store" : "Save location to store"}</button>
-                              <p role="status" className="text-xs text-slate-500">{stop.locationSaved ? "This verified location is saved to the store record." : "Reviewing stays in this trip draft. Save location to store explicitly updates the selected store, even if you later close this trip."}</p>
-                            </div>}
-
-                            <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm">
-                              <MapPin className="h-4 w-4 shrink-0 text-slate-400" />
-                              <span className={`min-w-0 flex-1 truncate ${stop.address || stop.city ? "text-slate-700" : "text-slate-400"}`}>
-                                {[stop.address, stop.city, stop.province].filter(Boolean).join(", ") || "Address fills in when you pick a store."}
-                              </span>
-                              <button type="button" onClick={() => updateStop(stop.key, { editLocation: !stop.editLocation })}
-                                className="inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium text-[#2678b9] hover:bg-[#2678b9]/10 transition-colors">
-                                <Pencil className="h-3 w-3" /> {stop.editLocation ? "Done" : "Edit details"}
-                              </button>
-                            </div>
-                            
-                            {stop.editLocation && (
+                              }} />}
+                        details={stop.editLocation && (
                               <div className="grid gap-4 sm:grid-cols-2">
                                 <Field label="Customer name"><input value={stop.customer} onChange={(e) => updateStop(stop.key, { customer: e.target.value })} className={input} /></Field>
                                 <Field label="Province"><input value={stop.province} onChange={(e) => updateStop(stop.key, { province: e.target.value, locationSaved: false, location: { ...stopLocation(stop), province: e.target.value, store_verified: stopLocation(stop).verified || stopLocation(stop).store_verified, verified: false, pin_address_mismatch: true } })} className={input} /></Field>
@@ -860,17 +742,7 @@ export default function AddTripForm({
                                 <Field label="Ship-to address"><input value={stop.address} onChange={(e) => updateStop(stop.key, { address: e.target.value, locationSaved: false, location: { ...stopLocation(stop), address: e.target.value, store_verified: stopLocation(stop).verified || stopLocation(stop).store_verified, verified: false, pin_address_mismatch: true } })} className={input} /></Field>
                               </div>
                             )}
-                            {stop.importNotes && <Field label="Stop notes"><textarea value={stop.importNotes} onChange={(event) => updateStop(stop.key, { importNotes: event.target.value })} className={`${inputBase} p-3 text-xs`} /></Field>}
-                          </fieldset>
-
-                          {/* Products List */}
-                          <div className="border-t border-slate-100 bg-slate-50/50 p-6">
-                            <div className="mb-4 flex items-center justify-between">
-                              <h5 className="text-sm font-semibold text-slate-800">Products for this store</h5>
-                              <span className="text-xs text-slate-500">{lineCount} line{lineCount === 1 ? "" : "s"}</span>
-                            </div>
-                            
-                            <StoreProductsTable rows={stop.items} storeId={`stop:${stop.key}`} memory={storeNavigation} disabled={saving}
+                        products={<ProductsSection rows={stop.items} storeId={`stop:${stop.key}`} memory={storeNavigation} disabled={saving}
                               rowKey={item => `item:${item.key}`} searchText={item => [productLabel(item), item.dr, item.dn, item.so, item.sapSo, item.customerPo, item.po, item.category, item.importNotes].join(" ")}
                               columns={[
                                 { key: "code", label: "Product code", render: item => <div className="min-w-48">{item.addingProduct ? (
@@ -885,10 +757,10 @@ export default function AddTripForm({
                                               className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"><X className="h-4 w-4" /></button>
                                           </div>
                                         ) : (
-                                          accessToken ? <div className={`${inputSm} flex items-center px-2`}><SearchableRelationshipEditor presentation="form" token={accessToken} kind="products" value={labelOf(productOptions, item.productId) ?? ""} autoFocus={false} disabled={saving} onSelect={option => pickProduct(stop.key, item.key, option.id, option)} onCommitBlur={() => {}} onCancel={() => {}} /></div> : null
+                                          accessToken ? <div className="min-w-0"><SearchableRelationshipEditor presentation="form" token={accessToken} kind="products" value={labelOf(productOptions, item.productId) ?? ""} autoFocus={false} disabled={saving} onSelect={option => pickProduct(stop.key, item.key, option.id, option)} onCommitBlur={() => {}} onCancel={() => {}} /></div> : null
                                         )}</div> },
-                                { key: "qty", label: "Qty", render: item => <input disabled={saving} type="number" inputMode="numeric" min="0" step="1" value={item.qty} aria-label="Quantity" onChange={e => updateItem(stop.key, item.key, { qty: e.target.value })} className={inputSm} placeholder="0" /> },
-                                { key: "cbm", label: "Total CBM", render: item => <input disabled={saving} type="number" inputMode="decimal" min="0" step="any" value={item.cbm} aria-label="Total CBM" onChange={e => updateItem(stop.key, item.key, { cbm: e.target.value })} className={inputSm} placeholder="0" /> },
+                                { key: "qty", label: "Qty", render: item => <input disabled={saving} type="number" inputMode="numeric" min="0" step="any" value={item.qty} aria-label="Quantity" onChange={e => updateItem(stop.key, item.key, { qty: e.target.value })} className={inputSm} placeholder="0" /> },
+                                { key: "cbm", label: "CBM", render: item => <input disabled={saving} type="number" inputMode="decimal" min="0" step="any" value={item.cbm} aria-label="Total CBM" onChange={e => updateItem(stop.key, item.key, { cbm: e.target.value })} className={inputSm} placeholder="0" /> },
                                 { key: "dr", label: "DR", render: item => <input disabled={saving} value={item.dr} aria-label="DR number" onChange={e => updateItem(stop.key, item.key, { dr: e.target.value })} className={inputSm} placeholder="DR number" /> },
                                 { key: "status", label: "Status", render: item => <StatusChip label={!hasItemData(item) ? "Empty line" : invalidProduct({ customer_model: productLabel(item), quantity: item.qty, cbm: item.cbm }) ? "Needs attention" : "Not saved"} tone={hasItemData(item) && invalidProduct({ customer_model: productLabel(item), quantity: item.qty, cbm: item.cbm }) ? "warning" : "neutral"} /> },
                               ]}
@@ -935,17 +807,12 @@ export default function AddTripForm({
                                           </div>
                                         </div>
                                         {item.importNotes && <Field label="Notes"><textarea disabled={saving} value={item.importNotes} onChange={(event) => updateItem(stop.key, item.key, { importNotes: event.target.value })} className={`${inputBase} min-h-16 p-2 text-xs`} /></Field>}
-                                      </div>} />
-
-                          </div>
-                        </section>
-                      );
+                                      </div>} />}>
+                        {stop.importNotes && <Field label="Stop notes"><textarea value={stop.importNotes} onChange={event => updateStop(stop.key, { importNotes: event.target.value })} className={`${inputBase} p-3 text-xs`} /></Field>}
+                      </StoreEditor>;
                     }}</StoreMasterDetail>}
 
-                    <button type="button" disabled={saving} onClick={() => { const stop = newStop(); storeNavigation.selected = `stop:${stop.key}`; storeNavigation.members = [`stop:${stop.key}`]; storeNavigation.search = ""; setStops(list => [...list, stop]); }}
-                      className="flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-200 py-5 text-sm font-semibold text-slate-500 transition hover:border-[#2678b9]/50 hover:bg-blue-50 hover:text-[#2678b9]">
-                      <Plus className="h-5 w-5" /> Add another delivery store
-                    </button>
+
                   </div>
                 )}
               </div>
@@ -953,15 +820,17 @@ export default function AddTripForm({
 
             {/* ── step 3: assignments & cargo ── */}
             {step === 2 && (
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+              <div className="trip-assignments">
                 
                 {/* Left Column: Truck & Driver Assignments */}
-                <div className="lg:col-span-12 xl:col-span-5 space-y-6">
-                  <Section title="Truck & Driver Assignments" description="Assign the primary truck and any additional trucks for this trip.">
+                <div className="trip-assignment-fields space-y-6">
+                  <Section title="Assignments">
+                    {selectedTruckAssignments.length > 0 && (availabilityLoading || availabilityError) && <p className="mb-3 text-xs text-amber-800">{availabilityLoading ? "Checking truck availability. Optional details can be completed later." : "Truck availability could not be checked."}{availabilityError && <button type="button" className="ml-2 underline" onClick={() => setAvailabilityRetry(value => value + 1)}>Retry availability</button>}</p>}
+                    {selectedTruckAssignments.some(assignment => assignment.driverId) && (driverScheduleLoading || driverScheduleError) && <p className="mb-3 text-xs text-amber-800">{driverScheduleLoading ? "Checking driver availability. This does not prevent saving a planned trip." : "Driver availability could not be checked. The server will validate assignments when saving."}</p>}
                     <div className="mb-5">
                       <Field label="Origin warehouse">
                         {accessToken && (
-                          <div className={`${input} flex items-center px-2`}>
+                          <div className="min-w-0">
                             <SearchableRelationshipEditor presentation="form" token={accessToken} kind="warehouses" value={labelOf(lookups.warehouses, warehouseId) ?? ""} autoFocus={false} disabled={saving} onSelect={option => { rememberOption("warehouses", option); setWarehouseId(option.id); }} onCommitBlur={() => {}} onCancel={() => {}} />
                           </div>
                         )}
@@ -970,24 +839,12 @@ export default function AddTripForm({
 
                     <div className="space-y-4">
                       {truckAssignments.map((assignment, index) => {
-                        const otherCapacity = truckAssignments.filter(other => other.key !== assignment.key && other.truckId).reduce((total, other) => total + Number(lookups.trucks.find(truck => truck.id === other.truckId)?.values?.capacity_cbm || 0), 0);
-                        const remaining = Math.max(0, totals.cbm - otherCapacity);
-                        const ranked = lookups.trucks.filter(truck => truck.id === assignment.truckId || !truckAssignments.some(other => other.key !== assignment.key && other.truckId === truck.id)).map(truck => {
-                          const status = availability.find(row => row.id === truck.id); const capacity = Number(truck.values?.capacity_cbm || 0);
-                          const available = status?.availability === "AVAILABLE";
-                          return {
-                            ...truck, disabled: !status || status.availability === "CONFLICT", rank: !status || status.availability === "CONFLICT" ? 3 : !available ? 2 : capacity >= remaining ? 0 : 1,
-                            secondary: `${truck.values?.truck_type || "Truck"} · Max ${capacity > 0 ? fmt(capacity) : "unknown"} CBM · ${available ? `Available ${capacity > 0 ? fmt(capacity) : "unknown"} CBM` : status?.availability === "CONFLICT" ? "Conflicting assignment" : "Availability requires confirmation"} · ${capacity > 0 && capacity >= remaining ? "Fits remaining cargo" : capacity > 0 ? "Partial capacity" : "Capacity requires review"}`
-                          };
-                        }).sort((a, b) => a.rank - b.rank || Number(a.values?.capacity_cbm || 0) - Number(b.values?.capacity_cbm || 0) || a.label.localeCompare(b.label));
-                        
-                        const availableTrucks = ranked;
                         const truckState = availability.find(truck => truck.id === assignment.truckId);
                         const chosenTruck = lookups.trucks.find((truck) => truck.id === assignment.truckId);
                         const capacity = Number(chosenTruck?.values?.capacity_cbm);
                         
                         return (
-                          <div key={assignment.key} className="relative rounded-xl border border-slate-200 bg-white p-4 shadow-sm space-y-4">
+                          <div key={assignment.key} data-truck-fields="" className="space-y-4">
                             <div className="flex items-center justify-between gap-2">
                               <span className="text-xs font-semibold text-slate-800">{index === 0 ? "Primary Truck" : `Additional Truck #${index}`}</span>
                               {truckAssignments.length > 1 && (
@@ -997,17 +854,18 @@ export default function AddTripForm({
                             </div>
                             
                             <Field label="Truck">
-                              <Dropdown value={assignment.truckId} onChange={(truckId) => { setTruckPickerKey(null); setTruckAssignments((current) => current.map((item) => item.key === assignment.key ? { ...item, truckId, driverId: (() => { const defaultId = lookups.trucks.find(truck => truck.id === truckId)?.values?.default_driver_id || ""; return current.some(other => other.key !== item.key && other.driverId === defaultId) ? "" : defaultId; })(), availabilityConfirmed: false } : item)); }}
-                                options={availableTrucks} openRequested={truckPickerKey === assignment.key && !availabilityLoading && !availabilityError} disabled={availabilityLoading || Boolean(availabilityError)} placeholder="Choose truck" loading={loadingLookups} />
+                              <button type="button" aria-label={chosenTruck ? `Change truck ${chosenTruck.label}` : "Choose truck"} className={tripSecondaryAction} disabled={saving} onClick={() => setTruckPickerKey(assignment.key)}>{chosenTruck?.label || "Choose truck"}</button>
+                              {truckPickerKey === assignment.key && accessToken && <TruckPicker token={accessToken} start={loadingDate} end={etaDate} selectedIds={truckAssignments.filter(other => other.key !== assignment.key).map(other => other.truckId).filter(Boolean)} onClose={() => setTruckPickerKey(null)} onSelect={option => { rememberOption("trucks", option); setTruckPickerKey(null); setTruckAssignments(current => current.map(item => item.key !== assignment.key ? item : { ...item, truckId: option.id, driverId: current.some(other => other.key !== item.key && other.driverId === option.values?.default_driver_id) || driverAvailability.some(driver => driver.id === option.values?.default_driver_id && driver.availability === "CONFLICT") ? "" : option.values?.default_driver_id || "", availabilityConfirmed: false })); }} />}
+
                             </Field>
                             
-                            {truckState?.availability === "REVIEW" && <label className="flex items-start gap-2 text-xs text-amber-700"><input type="checkbox" className="mt-0.5" checked={Boolean(assignment.availabilityConfirmed)} onChange={event => setTruckAssignments(current => current.map(item => item.key === assignment.key ? { ...item, availabilityConfirmed: event.target.checked } : item))} />I have confirmed this truck's availability for the trip schedule.</label>}
+                            {truckState?.availability === "REVIEW" && <p className="text-xs text-amber-800">Schedule needs review. You can save this planned trip without dates.</p>}
                             {truckState?.availability === "CONFLICT" && <p className="text-xs text-rose-700">Conflicting assignment. Choose another truck.</p>}
                             
-                            <Field label="Driver">
+                            <Field label="Change driver">
                               <Dropdown value={assignment.driverId} onChange={(driverId) => setTruckAssignments((current) => current.map((item) => item.key === assignment.key ? { ...item, driverId } : item))}
-                                options={lookups.drivers.filter(driver => !truckAssignments.some(other => other.key !== assignment.key && other.driverId === driver.id)).map(driver => ({ ...driver, disabled: driverAvailability.some(state => state.id === driver.id && state.availability === "CONFLICT") }))}
-                                placeholder="Assign driver later" loading={loadingLookups} disabled={!assignment.truckId} />
+                                options={lookups.drivers.filter(driver => !truckAssignments.some(other => other.key !== assignment.key && other.driverId === driver.id) && !driverAvailability.some(state => state.id === driver.id && state.availability === "CONFLICT"))}
+                                placeholder="Assign driver later" loading={loadingLookups} disabled={!assignment.truckId} />{assignment.driverId && <button type="button" className="text-xs text-[#2678b9]" onClick={() => setTruckAssignments(current => current.map(item => item.key === assignment.key ? { ...item, driverId: "" } : item))}>Assign later</button>}
                             </Field>
                             {chosenTruck && (
                               <p className="text-xs text-slate-500 bg-slate-50 p-2 rounded-lg">
@@ -1023,14 +881,6 @@ export default function AddTripForm({
                       + Add another truck
                     </button>
 
-                    {selectedTruckAssignments.length > 0 && (
-                      <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-blue-50 px-4 py-3 text-xs text-blue-900 font-medium">
-                        {hasUnknownTruckCapacity
-                          ? <span>{selectedTruckAssignments.length} truck{selectedTruckAssignments.length === 1 ? "" : "s"} selected · capacity incomplete</span>
-                          : <><span>Total Truck Capacity: <strong className="font-bold">{fmt(assignedCapacity)} CBM</strong></span><span>Total Cargo: <strong className="font-bold">{fmt(totals.cbm)} CBM</strong></span></>}
-                      </div>
-                    )}
-                    
                     <div className="mt-5">
                       <Field label="Trip Remarks">
                         <input value={remarks} onChange={(e) => setRemarks(e.target.value)} className={input} placeholder="Anything the team should know" />
@@ -1040,44 +890,39 @@ export default function AddTripForm({
                 </div>
 
                 {/* Right Column: Cargo Distribution */}
-                <div className="lg:col-span-12 xl:col-span-7">
+                <div className="min-w-0">
                   {accessToken && cargoLines.length > 0 && selectedTruckAssignments.length > 0 ? (
-                    <div className="sticky top-6">
-                      <TripCargoPlanner token={accessToken} lines={cargoLines} plan={cargoPlan} onChange={setCargoPlan} fixedTrucks={cargoTrucks} truckTypes={Object.fromEntries(lookups.trucks.map(truck => [truck.id, truck.values?.truck_type || ""]))} onAddTruck={addCapacityTruck} disabled={saving} />
+                    <div className="min-w-0">
+                      <TripCargoPlanner token={accessToken} lines={cargoLines} plan={cargoPlan} onChange={setCargoPlan} fixedTrucks={cargoTrucks} truckTypes={Object.fromEntries(lookups.trucks.map(truck => [truck.id, truck.values?.truck_type || ""]))} onCapacity={setCapacityPreview} session={allocationSession.current} excludedTruckIds={cargoTrucks.filter(truck => availability.some(state => state.id === truck.id && state.availability === "CONFLICT") || driverAvailability.some(state => state.id === truck.driverId && state.availability === "CONFLICT")).map(truck => truck.id)} onAddTruck={addCapacityTruck} disabled={saving} />
                     </div>
                   ) : (
-                    <EmptyState title="Add a truck to start distributing cargo." description="Trucks and drivers can be assigned later. Add product lines in the previous step before distributing cargo." icon={<Truck className="h-6 w-6" />} />
+                    <p className="py-3 text-xs text-slate-500">Add a truck and product lines to distribute cargo.</p>
                   )}
                 </div>
               </div>
             )}
+        {excludedManualRows.length > 0 && <details className="manual-excluded"><summary>Excluded rows ({excludedManualRows.length})</summary>{excludedManualRows.map((reason, index) => <p key={index}>{reason}</p>)}</details>}
           </div>
         </div>
 
-        <aside aria-label="Live trip summary" className="hidden min-h-0 overflow-y-auto border-l border-slate-200 bg-slate-100/60 p-4 lg:block"><TripLiveSummary {...liveSummary} /></aside>
-        </div>
-
         {/* footer */}
-        <footer className="shrink-0 border-t border-slate-200 bg-white px-5 py-4 sm:px-8">
-          <div className="mx-auto max-w-[1400px]">
-            <TripLiveSummary {...liveSummary} mobile />
-            {error && (
-              <div className="mb-4 max-h-32 overflow-y-auto"><TripFormNotice tone="error" title="Check the trip details" onDismiss={() => setError("")}>{error}</TripFormNotice></div>
-            )}
-            <div className="flex flex-wrap items-center justify-between gap-4">
-              <p className="hidden text-xs text-slate-500 lg:block">Step {step + 1} of {STEPS.length} / {STEPS[step]}</p>
-              <div className="ml-auto flex items-center gap-3">
+        <footer className={tripFooter}>
+          <TripLiveSummary {...liveSummary} />
+          <div className="trip-footer-row">
+            <span className="text-xs text-slate-500">{isLast ? `Ready · ${manualFlags} details flagged for review` : `Step ${step + 1} of ${STEPS.length}`}</span>
+            <div className="trip-footer-actions">
+              {error && <button type="button" className="trip-footer-hint" onClick={() => document.getElementById("manual-trip-errors")?.scrollIntoView({ block: "start" })}>Review the trip details</button>}
+              {(saving || locationSaving !== null) && <span className="text-xs text-slate-500">{saving ? "Saving trip…" : "Wait for the location save"}</span>}
                 {step === 0 ? (
-                  <button type="button" onClick={onClose} disabled={saving || locationSaving !== null} className="rounded-full px-5 py-2.5 text-sm font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition">Cancel</button>
+                  <button type="button" onClick={onClose} disabled={saving || locationSaving !== null} className={tripSecondaryAction}>Cancel</button>
                 ) : (
-                  <button type="button" onClick={() => goTo(Math.max(0, step - 1))} disabled={saving} className="inline-flex items-center gap-1 rounded-full px-5 py-2.5 text-sm font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition">
+                  <button type="button" onClick={() => goTo(Math.max(0, step - 1))} disabled={saving} className={tripSecondaryAction}>
                     <ChevronLeft className="h-4 w-4" /> Back
                   </button>
                 )}
-                <button type="submit" disabled={saving || locationSaving !== null} className="inline-flex items-center gap-2 rounded-full bg-[#0b2341] px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#1a365d] disabled:cursor-not-allowed disabled:opacity-50">
+                <button type="submit" disabled={saving || locationSaving !== null} className={`${tripPrimaryAction} min-w-36`}>
                   {saving ? <><Loader2 className="h-4 w-4 animate-spin" />Saving trip…</> : isLast ? "Save trip" : <>Next <ChevronRight className="h-4 w-4" /></>}
                 </button>
-              </div>
             </div>
           </div>
         </footer>
