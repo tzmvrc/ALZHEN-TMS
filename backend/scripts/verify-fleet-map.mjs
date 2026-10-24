@@ -1,0 +1,14 @@
+import assert from 'node:assert/strict';
+import {fleetStatus,fleetTooltip,fleetViewport} from '../../frontend/src/services/fleet-map.ts';
+const truck=(key,overrides={})=>({key,tripId:'shared-trip',tripStatus:'IN_PROGRESS',estimatedDeliveryDate:'2026-10-25',plateNumber:key,driverName:'Driver',warehouse:{name:'Origin'},stops:[{name:'Destination'}],position:{latitude:14.6,longitude:121,capturedAt:'2026-10-24T03:00:00Z',simulated:false},...overrides});
+const a=truck('assignment-a'),b=truck('assignment-b'),none=truck('assignment-c',{position:null});
+assert.equal(fleetViewport([a,b,none],'','overview').length,2,'Convoy trucks must remain separate markers');
+assert.deepEqual(fleetViewport([a,b],b.key,'focus').map(row=>row.key),[b.key],'Only selected assignment contributes a route');
+assert.deepEqual(fleetViewport([a,b],'','focus'),[],'Overview must contribute zero routes');
+assert.equal(fleetStatus(truck('late',{estimatedDeliveryDate:'2026-10-23'}),Date.parse('2026-10-24T03:00:00Z')).label,'Delayed / overdue');
+assert.equal(fleetStatus(truck('completed',{tripStatus:'COMPLETED'})).label,'Completed');
+assert.equal(fleetStatus(a,Date.parse('2026-10-24T03:00:00Z')).label,'In Progress');
+assert.match(fleetTooltip(a),/Recorded device location/);
+assert.doesNotMatch(fleetTooltip(a),/Demo \/ Simulated/,'Real fixes must not become simulated');
+assert.match(fleetTooltip(truck('demo',{position:{...a.position,simulated:true}})),/Demo \/ Simulated/);
+console.log('Fleet map checks passed: convoy identity, route isolation, overview, statuses and GPS provenance.');

@@ -22,6 +22,8 @@ export interface RequestLineItem {
 }
 
 export interface DispatchRequest {
+  demo?: boolean;
+  emailSubject?: string;
   id: string;
   reference: string; // "Davao Trip 1"
   region: "Davao" | "CDO" | "Cebu" | "Luzon";

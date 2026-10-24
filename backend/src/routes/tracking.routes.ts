@@ -10,6 +10,22 @@ import {parseRoadTripIds,readRoadRouting} from "../services/road-routing-read.se
 import {generatePlannedRoute} from "../services/planned-route-runtime.service.js";
 const router=Router();
 router.use(authMiddleware);
+// Bounded, management-only activity read. Never returns private Storage paths.
+router.get("/roads/updates",requireRole("ADMIN","STAFF"),async(req,res)=>{
+ try{
+  const ids=parseRoadTripIds(req.query.trip_ids);
+  const {data,error}=await supabaseAdmin.from("driver_trip_updates")
+   .select("id,trip_id,driver_id,status,delivery_status,pod_image_path,pod_image_url,notes,updated_at")
+   .in("trip_id",ids).order("updated_at",{ascending:false}).order("id").limit(101);
+  if(error)throw new ApiError("Driver submissions could not be loaded.",503,"DRIVER_UPDATES_UNAVAILABLE");
+  // Legacy driver_id has no FK in the existing schema; resolve names explicitly.
+  const driverIds=[...new Set((data??[]).slice(0,100).map(row=>row.driver_id).filter(Boolean))];
+  const drivers=driverIds.length?await supabaseAdmin.from("drivers").select("id,first_name,last_name").in("id",driverIds):{data:[],error:null};
+  if(drivers.error)throw new ApiError("Driver identities could not be loaded.",503,"DRIVER_UPDATES_UNAVAILABLE");
+  const rows=(data??[]).slice(0,100).map(({pod_image_path,pod_image_url,...row})=>({...row,receiptSubmitted:!!(pod_image_path||pod_image_url),driver:drivers.data?.find(driver=>driver.id===row.driver_id)??null}));
+  return sendSuccess(res,200,"Saved driver submissions",{rows,limited:(data?.length??0)>100});
+ }catch(error){return fail(res,error);}
+});
 router.post("/roads/:id/planned",requireRole("ADMIN","STAFF"),async(req,res)=>{
  try{if(!isValidUuid(String(req.params.id)))throw new ApiError("Invalid physical assignment ID.",400,"PLANNED_INVALID");const result=await generatePlannedRoute({id:req.user!.id,role:req.user!.role!},String(req.params.id));if(result&&typeof result==="object"&&"state" in result&&result.state==="UPDATED")trackingEvents.emit("changed",{assignmentId:String(req.params.id)});return sendSuccess(res,200,"Planned route result",result);}catch(error){return fail(res,error);}
 });

@@ -5,3 +5,23 @@ dist/
 !.env.example
 deployment/secrets/
 deployment/runtime/
+
+# Generated browser inspection/test output (can contain tokens and session data).
+.playwright-mcp/
+.playwright/
+playwright-report/
+blob-report/
+test-results/
+test-results-*/
+**/playwright/.cache/
+**/playwright/.auth/
+playwright-screenshots/
+
+# Runtime logs, traces, temporary files and compiler caches.
+*.log
+*.log.*
+*.har
+*.trace.zip
+*.tmp
+*.temp
+*.tsbuildinfo

@@ -126,7 +126,7 @@ export default function RequestDetail({
               className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ${statusPill[request.status]}`}
             >
               <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${statusDot[request.status]}`} />
-              {request.status}
+              {request.demo && request.status === "Pending" ? "Pending Review" : request.status}
             </span>
           </div>
           <p className="mt-1 truncate text-[13px] text-slate-500">
@@ -149,6 +149,7 @@ export default function RequestDetail({
         </button>
       </header>
 
+      {request.demo && <div role="note" className="mx-7 mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900"><strong>Frontend demo email request</strong><p className="mt-1">{request.emailSubject}</p><p className="mt-1">Pending means Pending Review. Approve, decline and messages update local sample state only. No trip is created and no email is sent.</p></div>}
       {/* Scrollable body */}
       <div className="min-h-0 flex-1 overflow-y-auto px-7 pb-7">
         {/* KPI strip */}

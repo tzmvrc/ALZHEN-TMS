@@ -2,29 +2,45 @@ import {useEffect,useState,useMemo} from "react";
 import {createPortal} from "react-dom";
 import {ChevronDown,MapPin,X} from "lucide-react";
 import {useAuth} from "../../context/AuthContext";
-import {getCachedApiResponse,invalidateApiCache,type ApiResponse} from "../../services/api.service";
+import {apiPost,getCachedApiResponse,invalidateApiCache,type ApiResponse} from "../../services/api.service";
 import {subscribeCollaborationEvents} from "../../services/collaboration.service";
 import {fetchRoadTrips,roadEndpoint,roadView,roadDisplayView,type RoadTrip,type RoadMode} from "../../services/road-routing";
 import {demonstrationRoadTrips,demoKeyFor,realRoutesAvailable} from "../../services/demo-road-routes";
 import RoadRouteMap from "./RoadRouteMap";
 import WarehouseCoordinateEditor from "./WarehouseCoordinateEditor";
 
-export default function RoadRoutingPanel({tripIds,height=440,demoFallback=false,offlineStyle=false,focusKey=null,compact=false}:{tripIds:string[];height?:number;demoFallback?:boolean;offlineStyle?:boolean;focusKey?:string|null;compact?:boolean}){
+export default function RoadRoutingPanel({tripIds,height=440,demoFallback=false,offlineStyle=false,focusKey=null,compact=false,dashboard=false,onSelection,onRows}:{tripIds:string[];height?:number;demoFallback?:boolean;offlineStyle?:boolean;focusKey?:string|null;compact?:boolean;dashboard?:boolean;onSelection?:(row:RoadTrip|null)=>void;onRows?:(rows:RoadTrip[])=>void}){
  const {accessToken,profile}=useAuth();
  const ids=[...new Set(tripIds)].sort().slice(0,50),identity=ids.join(","),endpoint=roadEndpoint(ids);
  const allowed=profile&&["ADMIN","STAFF"].includes(profile.role);
- const [snapshot,setSnapshot]=useState<{token:string;identity:string;rows:RoadTrip[]}|null>(null),[error,setError]=useState(""),[retry,setRetry]=useState(0),[selection,setSelection]=useState(()=>focusKey?demoKeyFor(focusKey):""),[mode,setMode]=useState<RoadMode>("planned");
+ const [snapshot,setSnapshot]=useState<{token:string;identity:string;rows:RoadTrip[]}|null>(null),[error,setError]=useState(""),[retry,setRetry]=useState(0),[selection,setSelection]=useState(()=>focusKey?(demoFallback?demoKeyFor(focusKey):focusKey):""),[mode,setMode]=useState<RoadMode>("planned");
  const [seenFocus,setSeenFocus]=useState(focusKey);
  /* Clicking a trip elsewhere (fleet list, trip details) picks that trip's own demo route. */
- if(seenFocus!==focusKey){setSeenFocus(focusKey);setSelection(focusKey?demoKeyFor(focusKey):"");}
+ if(seenFocus!==focusKey){setSeenFocus(focusKey);setSelection(focusKey?(demoFallback?demoKeyFor(focusKey):focusKey):"");}
  const cached=allowed&&accessToken?getCachedApiResponse<ApiResponse<{rows:RoadTrip[]}>>(endpoint,accessToken,300000)?.data?.rows:null;
  const realRows=allowed&&accessToken?(snapshot?.token===accessToken&&snapshot.identity===identity?snapshot.rows:cached):null;
  const demoRows=useMemo(()=>demonstrationRoadTrips(),[]);
  const isDemo=Boolean(demoFallback&&(realRows||error||!identity)&&!realRoutesAvailable(realRows??[]));
  const rows=isDemo?demoRows:realRows,displayMode=demoFallback?"auto":mode;
- const selected=rows?.find(r=>r.key===selection)??rows?.[0],view=selected?roadDisplayView(selected,displayMode):null;
+ const selected=rows?.find(r=>r.key===selection||r.tripId===selection)??(dashboard?undefined:rows?.[0]),view=selected?roadDisplayView(selected,displayMode):null;
  const remaining=selected?roadView(selected,"remaining").stops:[];
+ useEffect(()=>{onSelection?.(selected??null);},[selected,onSelection]);
+ useEffect(()=>{if(rows)onRows?.(rows);},[rows,onRows]);
  const [coordinates,setCoordinates]=useState(false);
+ const [routeBusy,setRouteBusy]=useState(false),[routeMessage,setRouteMessage]=useState("");
+ // A deliberate user action after the demo seed has been approved and created.
+ // Reading the dashboard never calculates a route or writes to the cache.
+ const calculateDemoRoad=async()=>{
+  if(routeBusy||!accessToken||!selected?.demonstration||!selected.assignmentId)return;
+  setRouteBusy(true);setRouteMessage("");
+  try{
+   const result=await apiPost<ApiResponse<{state?:string}>>(`/tracking/roads/${encodeURIComponent(selected.assignmentId)}/planned`,{},accessToken);
+   if(!result.success)throw Error(result.message??"Road calculation was not confirmed.");
+   setRouteMessage(result.data?.state==="UPDATED"?"Mapbox road saved to the shared hourly cache.":`Routing result: ${result.data?.state??"confirmed"}. The existing hourly route guards remain active.`);
+   invalidateApiCache(endpoint);setRetry(value=>value+1);
+  }catch(cause){setRouteMessage(cause instanceof Error?cause.message:"Road routing unavailable. No straight-line route was substituted.");}
+  finally{setRouteBusy(false);}
+ };
  useEffect(()=>{
   if(!coordinates)return;
   const onKey=(e:KeyboardEvent)=>{if(e.key==="Escape")setCoordinates(false);};
@@ -50,22 +66,24 @@ export default function RoadRoutingPanel({tripIds,height=440,demoFallback=false,
  const estimate=hasEstimate?`${((distance as number)/1000).toFixed(1)} km · ${Math.round((duration as number)/60)} min`:isDemo?"Estimate not included in demo":"Road estimate unavailable";
  const card="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-900/5";
  const label="text-[10px] font-semibold uppercase tracking-wide text-slate-400";
- return <section className="space-y-3 overflow-hidden rounded-[28px] bg-white p-5 shadow-[0_1px_2px_rgba(11,35,65,0.03)] ring-1 ring-slate-900/[0.04]">
-  <header className="flex items-center justify-between gap-3">
+ return <section data-dashboard-map={dashboard||undefined} className="space-y-3 overflow-hidden rounded-[28px] bg-white p-5 shadow-[0_1px_2px_rgba(11,35,65,0.03)] ring-1 ring-slate-900/[0.04]">
+  {!dashboard&&<header className="flex items-center justify-between gap-3">
    <div>
     <h2 className="text-[17px] font-semibold tracking-tight text-[#0b2341]">Live trip map</h2>
     <p className="text-[11px] text-slate-500">Road routes, delivery stops and truck position</p>
    </div>
    {!!rows?.length&&<span className="shrink-0 rounded-full bg-[#e6f0f9] px-3 py-1 text-[11px] font-semibold text-[#1d5f94]">{rows.length} {rows.length===1?"trip":"trips"}</span>}
-  </header>
+  </header>}
   {isDemo&&<p role="status" className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900">Demonstration data — synthetic trucks on saved road routes across the Philippines, not live GPS. No operational data is changed.</p>}
+  {selected?.demonstration&&<div role="note" className={`rounded-xl border border-amber-200 bg-amber-50 text-xs leading-relaxed text-amber-900 ${dashboard?"home-map-demo":"px-3 py-3"}`}><strong>Demo trip / {selected.position?.simulated?"Simulated GPS":"Demonstration data"}</strong><p className={dashboard?"sr-only":undefined}>This sample position is not a live driver fix and does not start location sharing. Road geometry comes from Mapbox and the existing hourly cache.</p><button type="button" disabled={routeBusy} onClick={()=>void calculateDemoRoad()} className="mt-2 rounded-lg border border-amber-300 bg-white px-3 py-2 font-semibold disabled:opacity-50">{routeBusy?"Calculating road...":"Calculate demo road route"}</button>{routeMessage&&<p role="status" className="mt-2">{routeMessage}</p>}</div>}
+  {dashboard&&<div className="home-fleet-toolbar"><span><strong>{rows?.filter(row=>row.position).length??0}</strong> trucks with GPS{rows?.some(row=>row.position?.simulated)?" / includes demo GPS":""}</span>{selected?<button type="button" className="home-button home-button-outline" onClick={()=>setSelection("")}>Back to All Trucks</button>:<span>Select a truck to view its route</span>}</div>}
   {!compact&&<div className="flex flex-wrap items-center gap-2">
    <div className="relative min-w-0 flex-1 basis-48">
-    <select aria-label="Road route trip" className={`${field} w-full appearance-none truncate pr-9`} value={selected?.key??""} onChange={e=>setSelection(e.target.value)}>{rows?.map(row=><option key={row.key} value={row.key}>{row.dispatchNumber??row.tripId} · {row.plateNumber??"Unassigned truck"}</option>)}</select>
+    <select aria-label="Road route trip" className={`${field} w-full appearance-none truncate pr-9`} value={selected?.key??""} onChange={e=>setSelection(e.target.value)}>{dashboard&&<option value="">All trucks / Fleet overview</option>}{rows?.map(row=><option key={row.key} value={row.key}>{row.dispatchNumber??row.tripId} · {row.plateNumber??"Unassigned truck"}</option>)}</select>
     <ChevronDown aria-hidden="true" className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"/>
    </div>
    {!demoFallback&&<div className="relative min-w-0 flex-1 basis-48">
-    <select aria-label="Route mode" className={`${field} w-full appearance-none truncate pr-9`} value={mode} onChange={e=>setMode(e.target.value as RoadMode)}><option value="planned">Planned: warehouse → stops</option><option value="remaining">Remaining: truck → undelivered</option></select>
+    <select disabled={dashboard&&!selected} aria-label="Route mode" className={`${field} w-full appearance-none truncate pr-9`} value={mode} onChange={e=>setMode(e.target.value as RoadMode)}><option value="planned">Planned: warehouse → stops</option><option value="remaining">Remaining: truck → undelivered</option></select>
     <ChevronDown aria-hidden="true" className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"/>
    </div>}
    <button type="button" className={`${field} inline-flex shrink-0 items-center gap-1.5 hover:bg-slate-50 ${coordinates?"bg-[#e6f0f9] text-[#1d5f94]":""}`} aria-expanded={coordinates} onClick={()=>setCoordinates(v=>!v)}><MapPin aria-hidden="true" className="h-3.5 w-3.5"/>Warehouse coordinates</button>
@@ -87,15 +105,16 @@ export default function RoadRoutingPanel({tripIds,height=440,demoFallback=false,
   </div>,document.body)}
   {error&&<p role="alert" className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">{error} <button type="button" className="font-semibold underline" onClick={()=>setRetry(v=>v+1)}>Retry</button></p>}
   {!rows&&!error&&<div role="status" aria-busy="true" className="animate-pulse rounded-2xl bg-slate-100" style={{height}}/>}
+  {dashboard&&!!rows?.length&&!rows.some(row=>row.position)&&<p role="status" className="home-data-note">No recorded truck positions are available. Select a trip to inspect its saved route.</p>}
   {rows?.length===0&&<p className="rounded-2xl bg-slate-50 p-4 text-center text-sm text-slate-500">No active trips available.</p>}
-  {!!rows?.length&&<><RoadRouteMap rows={isDemo&&selected?[selected]:rows} mode={displayMode} selected={selected?.key??""} onSelect={setSelection} height={height} offlineStyle={offlineStyle}/>
-   <div className="grid gap-2 text-xs sm:grid-cols-2">
+  {!!rows?.length&&<><RoadRouteMap fleetMode={dashboard} rows={isDemo&&selected?[selected]:rows} mode={displayMode} selected={selected?.key??""} onSelect={setSelection} height={height} offlineStyle={offlineStyle}/>
+   {(!dashboard||selected)&&<><p className={dashboard?"home-selected-fleet-summary":"hidden"}><strong>{selected?.plateNumber} / {selected?.driverName}</strong><span>{selected?.dispatchNumber} / {selected?.stops.filter(stop=>["COMPLETED","DELIVERED"].includes(stop.status.toUpperCase())).length??0} of {selected?.stops.length??0} stops completed</span></p>{dashboard&&!view?.geometry&&<p role="status" className="home-update-warning">{view?.status??"Road route unavailable"}. No calculated road line is shown.</p>}<details open={dashboard?undefined:true} className={dashboard?"home-map-details":undefined}><summary className={dashboard?undefined:"hidden"}>Route &amp; GPS details / {estimate}</summary><div className="grid gap-2 text-xs sm:grid-cols-2">
     <div className={card}><p className={label}>Trip</p><p className="mt-1 text-sm font-semibold text-[#0b2341]">{selected?.dispatchNumber??"No dispatch"}</p><p className="text-slate-600">{selected?.driverName??"Driver unavailable"} · {selected?.plateNumber??"Plate unavailable"}</p><p className="text-slate-500">From {selected?.warehouse.name}</p></div>
     <div className={card}><p className={label}>Next delivery</p><p className="mt-1 text-sm font-semibold text-[#0b2341]">{remaining[0]?.name??"No remaining destinations"}</p><p className="text-slate-600">{remaining.length} remaining · {view?.stops.length??0} stops in saved order</p></div>
     <div className={card}><p className={label}>Route</p><p className="mt-1 text-sm font-semibold text-[#0b2341]">{estimate}</p><p className="text-slate-600">{view?.status}</p><p className="text-slate-500">{isDemo?"Static demonstration geometry":`Calculated ${stamp(view?.cache?.calculatedAt)}`}</p></div>
-    <div className={card}><p className={label}>Truck position</p><p className="mt-1 text-sm font-semibold text-[#0b2341]">{isDemo?"Synthetic — not live GPS":stamp(selected?.position?.capturedAt)}{view?.positionStale?" (stale)":""}</p><p className="text-slate-600">{selected?.position&&!isDemo?`Accuracy ${selected.position.accuracyMeters} m`:isDemo?"Demo position":"Accuracy unavailable"}</p></div>
+    <div className={card}><p className={label}>{selected?.position?.simulated?"Demo / Simulated GPS":"Truck position"}</p><p className="mt-1 text-sm font-semibold text-[#0b2341]">{isDemo||selected?.position?.simulated?"Synthetic — not live GPS":stamp(selected?.position?.capturedAt)}{view?.positionStale?" (stale)":""}</p><p className="text-slate-600">{selected?.position?.simulated?`Sample captured ${stamp(selected.position.capturedAt)}`:selected?.position&&!isDemo?`Accuracy ${selected.position.accuracyMeters} m`:isDemo?"Demo position":"Accuracy unavailable"}</p></div>
    </div>
-   <p className="px-1 text-[11px] text-slate-400">Read-only cached routing. This view does not request Directions or collect GPS.</p>
+   </details></>}<p className={dashboard?"sr-only":"px-1 text-[11px] text-slate-400"}>Reading this view uses cached roads and does not collect GPS. The demo calculation button explicitly requests Mapbox through the existing hourly cache guards.</p>
   </>}
  </section>;
 }

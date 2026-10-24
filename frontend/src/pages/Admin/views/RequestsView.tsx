@@ -303,6 +303,7 @@ export default function RequestsView() {
   const [view, setView] = useState<ViewMode>("list");
   const [query, setQuery] = useState("");
   const [detailOpen, setDetailOpen] = useState(false);
+  useEffect(() => { if (selectedId) setDetailOpen(true); }, [selectedId]);
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();

@@ -642,7 +642,6 @@ export default function DashboardPage({
             <RetainedFeature key={`home:${profile?.id}:${profile?.role}`} active={showOverview}><div
               className={showOverview ? "page-enter" : "hidden"}
             >
-              <h1 className="sr-only">Operations overview</h1>
               <OverviewView
                 key={profile?.id ?? "no-profile"}
                 active={showOverview}

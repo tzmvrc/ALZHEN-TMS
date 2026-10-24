@@ -9,6 +9,7 @@
 // and `sendRequestMessage` call your backend before updating local state.
 import { useSyncExternalStore } from "react";
 import type { DispatchRequest, RequestStatus } from "../../types/requests";
+import { homeDemoRequest } from "../../pages/Admin/data/homeDemoRequest";
 import { defaultRequests } from "../../pages/Admin/data/defaultRequests";
 
 type State = {
@@ -20,7 +21,7 @@ type State = {
 };
 
 let state: State = {
-  requests: defaultRequests,
+  requests: [homeDemoRequest, ...defaultRequests],
   selectedId: null,
   source: "sample",
 };

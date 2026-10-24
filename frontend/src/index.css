@@ -673,7 +673,7 @@ input[type="checkbox"] { width: 14px; height: 14px; min-width: 14px; min-height:
   padding-block: 2px !important;
   overflow: hidden;
 }
-.spreadsheet-grid tr[style*="--spreadsheet-row-height"] > :is(td,th) > :not(.spreadsheet-row-resize-handle):not(.database-header-controls):not([role="menu"]) {
+.spreadsheet-grid tr[style*="--spreadsheet-row-height"] > :is(td,th) > :not(.spreadsheet-row-resize-handle):not(.spreadsheet-row-resize-hit-area):not(.database-header-controls):not([role="menu"]) {
   min-height: 0;
   max-height: calc(var(--spreadsheet-row-height) - 5px);
   overflow: hidden;
@@ -688,4 +688,19 @@ input[type="checkbox"] { width: 14px; height: 14px; min-width: 14px; min-height:
   height: 0;
   border-top: 2px solid #2678b9;
   pointer-events: none;
+}
+
+/* Trips data gutters need a definite positioning box for their bottom-edge handle.
+   Keep this overlay out of row sizing and let the number/checkbox receive clicks. */
+.spreadsheet-grid tbody .spreadsheet-gutter > .spreadsheet-row-resize-hit-area {
+  position: absolute;
+  inset: 0;
+  min-height: 0;
+  max-height: none;
+  pointer-events: none;
+}
+.spreadsheet-row-resize-hit-area > .spreadsheet-row-resize-handle {
+  height: 6px;
+  min-height: 6px;
+  pointer-events: auto;
 }

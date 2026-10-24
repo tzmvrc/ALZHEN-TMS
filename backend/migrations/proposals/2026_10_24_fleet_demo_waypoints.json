@@ -1,0 +1,173 @@
+[
+  {
+    "name": "Quezon City / Marikina",
+    "origin": "Valenzuela",
+    "warehouse": [
+      120.983025,
+      14.70103
+    ],
+    "stops": [
+      {
+        "name": "North EDSA",
+        "point": [
+          121.028953,
+          14.65651
+        ]
+      },
+      {
+        "name": "Marikina",
+        "point": [
+          121.098396,
+          14.632427
+        ]
+      }
+    ],
+    "driver": "Rafael Cruz",
+    "type": "Wing Van",
+    "number": 1,
+    "gps": [
+      121.052727,
+      14.646055
+    ],
+    "provider": "Mapbox Directions driving",
+    "distance": 21908.029,
+    "duration": 4255.777
+  },
+  {
+    "name": "Makati / Taguig",
+    "origin": "Valenzuela",
+    "warehouse": [
+      120.983025,
+      14.70103
+    ],
+    "stops": [
+      {
+        "name": "Makati",
+        "point": [
+          121.026314,
+          14.554602
+        ]
+      },
+      {
+        "name": "Taguig",
+        "point": [
+          121.050967,
+          14.55104
+        ]
+      }
+    ],
+    "driver": "Carlo Reyes",
+    "type": "Closed Van",
+    "number": 2,
+    "gps": [
+      121.032638,
+      14.548453
+    ],
+    "provider": "Mapbox Directions driving",
+    "distance": 32339.592,
+    "duration": 4362.707
+  },
+  {
+    "name": "Antipolo / Cainta",
+    "origin": "Marikina",
+    "warehouse": [
+      121.098396,
+      14.632427
+    ],
+    "stops": [
+      {
+        "name": "Antipolo",
+        "point": [
+          121.176528,
+          14.62547
+        ]
+      },
+      {
+        "name": "Cainta",
+        "point": [
+          121.114525,
+          14.578669
+        ]
+      }
+    ],
+    "driver": "Luis Mendoza",
+    "type": "Wing Van",
+    "number": 3,
+    "gps": [
+      121.171633,
+      14.592987
+    ],
+    "provider": "Mapbox Directions driving",
+    "distance": 24303.076,
+    "duration": 4468.43
+  },
+  {
+    "name": "Bulacan / Pampanga",
+    "origin": "Valenzuela",
+    "warehouse": [
+      120.983025,
+      14.70103
+    ],
+    "stops": [
+      {
+        "name": "Malolos, Bulacan",
+        "point": [
+          120.815128,
+          14.858809
+        ]
+      },
+      {
+        "name": "San Fernando, Pampanga",
+        "point": [
+          120.653981,
+          15.032062
+        ]
+      }
+    ],
+    "driver": "Daniel Garcia",
+    "type": "Wing Van",
+    "overdue": true,
+    "number": 4,
+    "gps": [
+      120.858821,
+      14.860484
+    ],
+    "provider": "Mapbox Directions driving",
+    "distance": 71338.477,
+    "duration": 6684.792
+  },
+  {
+    "name": "Pasig / Mandaluyong",
+    "origin": "Valenzuela",
+    "warehouse": [
+      120.983025,
+      14.70103
+    ],
+    "stops": [
+      {
+        "name": "Pasig",
+        "point": [
+          121.060464,
+          14.585299
+        ]
+      },
+      {
+        "name": "Mandaluyong",
+        "point": [
+          121.039521,
+          14.581909
+        ]
+      }
+    ],
+    "driver": "Marco Bautista",
+    "type": "Closed Van",
+    "number": 5,
+    "gps": [
+      121.05823,
+      14.579539
+    ],
+    "provider": "Mapbox Directions driving",
+    "distance": 26234.477,
+    "duration": 4276.896
+  }
+]
