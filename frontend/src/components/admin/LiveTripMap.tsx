@@ -34,7 +34,7 @@ export default function LiveTripMap(props: Parameters<typeof RecordedTripMap>[0]
           ].filter((id): id is string => typeof id === "string"),
         ),
       ];
-  const showRoads = props.unified || view === "roads";
+  const showRoads = props.dashboard || props.unified || view === "roads";
   const tabs: { key: "roads" | "events"; label: string }[] = [
     { key: "roads", label: "Road routes" },
     { key: "events", label: "Recorded events" },
@@ -42,7 +42,7 @@ export default function LiveTripMap(props: Parameters<typeof RecordedTripMap>[0]
 
   return (
     <div className="space-y-3">
-      {!props.unified && (
+      {!props.unified && !props.dashboard && (
         <div role="tablist" aria-label="Map view" className="inline-flex rounded-full bg-slate-100 p-1">
           {tabs.map((tab) => (
             <button

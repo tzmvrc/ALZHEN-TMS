@@ -1,0 +1,76 @@
+.trip-detail-page { padding-top:30px; padding-bottom:24px; min-width:0; color:#19334d; }
+.trip-tracking-workspace { --trip-line:#dfe7ef; min-width:0; display:grid; gap:18px; }
+.trip-tracking-workspace :is(section,div,header) { min-width:0; }
+.trip-tracking-workspace button,.trip-tracking-workspace summary { cursor:pointer; }
+.trip-tracking-workspace button:focus-visible,.trip-tracking-workspace summary:focus-visible { outline:3px solid #2678b9; outline-offset:3px; }
+.trip-tracking-workspace h1,.trip-tracking-workspace h2,.trip-tracking-workspace p { margin:0; }
+.trip-command-header { position:relative; overflow:hidden; isolation:isolate; border-radius:18px; background:#0b2341; color:white; padding:23px 25px 18px; }
+.trip-command-header .home-truck-art { position:absolute; width:260px; height:90px; right:15px; top:8px; opacity:.24; pointer-events:none; z-index:-1; }
+.trip-kicker { font-size:10px; text-transform:uppercase; letter-spacing:1.5px; font-weight:700; color:#2678b9; }
+.trip-command-header .trip-kicker { color:#aacde8; display:flex; align-items:center; gap:12px; }
+.trip-small-badge { font-size:10px; font-weight:600; padding:2px 7px; background:#ffffff19; border:1px solid #ffffff44; border-radius:5px; text-transform:none; letter-spacing:0; }
+.trip-command-header h1 { font-size:clamp(22px,2.5vw,31px); font-weight:700; line-height:1.25; margin:6px 0; letter-spacing:-.6px; }
+.trip-command-meta { display:flex; flex-wrap:wrap; gap:10px; align-items:center; font-size:11px; color:#bdd4e6; }
+.trip-status-label { text-transform:capitalize; padding:3px 9px; color:#bcf1df; background:#16846c36; border:1px solid #5ea99466; border-radius:6px; }
+.trip-status-label[data-status="CANCELLED"],.trip-status-label[data-status="DELAYED"] { background:#a73e3e40; border-color:#f1b5b566; color:#ffd5d5; }
+.trip-status-label[data-status="PLANNED"] { background:#a1751940; border-color:#e4c87a66; color:#f8e7ae; }
+.trip-command-route { display:flex; flex-wrap:wrap; gap:8px; align-items:center; color:#d6e4ee; margin-top:12px !important; font-size:12px; max-width:90%; }
+.trip-header-facts { display:grid; grid-template-columns:1fr 1fr 1.5fr 1fr; gap:14px; padding-top:16px; margin-top:16px; border-top:1px solid #ffffff24; }
+.trip-header-facts small,.trip-header-facts strong,.trip-header-facts span { display:block; }
+.trip-header-facts small { font-size:10px; color:#a8c0d3; }
+.trip-header-facts strong { font-size:13px; margin-top:4px; }
+.trip-header-facts span { font-size:11px; color:#c5d8e7; margin-top:3px; }
+.trip-header-progress { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:7px; margin-top:17px; font-size:11px; color:#c5d8e7; }
+.trip-header-progress > div { width:100%; height:5px; border-radius:5px; background:#ffffff24; overflow:hidden; }
+.trip-header-progress i { display:block; height:100%; width:100%; transform-origin:left; background:#ffd43b; transition:transform .35s; }
+.trip-trucks-section { padding:18px; border:1px solid var(--trip-line); background:white; border-radius:16px; }
+.trip-trucks-section > header { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:13px; }
+.trip-tracking-workspace h2,.trip-operational-section > h2 { font-size:17px; font-weight:700; color:#0b2341; }
+.trip-trucks-section > header button { font-size:12px; min-height:40px; border:1px solid var(--trip-line); border-radius:9px; padding:7px 12px; color:#2678b9; }
+.trip-truck-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr)); gap:12px; }
+.trip-truck-card { border:1px solid var(--trip-line); border-radius:12px; padding:15px; text-align:left; background:#fbfcfe; }
+.trip-truck-card[aria-pressed=true] { background:#f0f6fb; border-color:#2678b9; box-shadow:inset 0 0 0 1px #2678b9; }
+.trip-truck-card-title { display:flex; gap:9px; align-items:center; color:#0b2341; }
+.trip-truck-card-title > span { margin-left:auto; color:#2678b9; font-size:10px; }
+.trip-truck-card p { margin-top:9px; font-size:12px; font-weight:600; }
+.trip-truck-card > small { display:block; font-size:11px; color:#5c6e80; margin-top:5px; }
+.trip-truck-card > div { display:flex; flex-wrap:wrap; gap:9px; justify-content:space-between; padding-top:10px; margin-top:10px; border-top:1px solid var(--trip-line); font-size:11px; }
+.trip-journey-grid { display:grid; grid-template-columns:minmax(260px,1fr) minmax(0,2fr); gap:18px; align-items:start; }
+.trip-journey-panel,.trip-tracking-map { background:white; border:1px solid var(--trip-line); border-radius:16px; padding:18px; }
+.trip-journey-panel ol { list-style:none; padding:0; margin:22px 0 0; }
+.trip-journey-panel li { display:flex; gap:12px; padding-bottom:23px; position:relative; }
+.trip-journey-panel li:not(:last-child)::before { content:""; position:absolute; left:8px; top:20px; bottom:2px; width:1px; background:var(--trip-line); }
+.trip-journey-panel li > svg { color:#738497; flex-shrink:0; margin-top:2px; }
+.trip-journey-panel li.is-complete > svg { color:#16846c; }
+.trip-journey-panel li.is-current > svg { color:#2678b9; }
+.trip-journey-panel strong { font-size:12px; display:block; }
+.trip-journey-panel small { font-size:11px; display:block; color:#5c6e80; margin-top:5px; text-transform:capitalize; }
+.trip-muted { font-size:12px; color:#5c6e80; margin-top:6px !important; }
+.trip-tracking-map > header { display:flex; flex-wrap:wrap; justify-content:space-between; gap:8px; align-items:center; margin-bottom:12px; }
+.trip-tracking-map > header > span { font-size:11px; color:#5c6e80; }
+.trip-tracking-map > section { border:0; padding:0; border-radius:0; box-shadow:none; --tw-ring-shadow:0 0 #0000; }
+.trip-tracking-map > section > header { display:none; }
+.trip-tracking-map > section > [role=note] { padding:7px 10px; font-size:11px; }
+.trip-tracking-map > section > .grid { font-size:11px; }
+.trip-tracking-map [aria-label="Road routes map"] { height:350px !important; }
+.trip-allocated-cargo,.trip-remarks,.trip-load-explorer { border:1px solid #dfe7ef; background:white; border-radius:12px; padding:12px 17px; }
+.trip-allocated-cargo summary { display:flex; align-items:center; gap:9px; min-height:30px; font-size:13px; font-weight:600; }
+.trip-allocated-cargo summary span { margin-left:auto; font-size:11px; color:#5c6e80; }
+.trip-cargo-scroll { overflow-x:auto; margin-top:12px; }
+.trip-cargo-scroll table { width:100%; border-collapse:collapse; text-align:left; font-size:12px; }
+.trip-cargo-scroll :is(td,th) { padding:10px; border-top:1px solid #e6edf3; }
+.trip-remarks summary,.trip-load-explorer summary { min-height:30px; cursor:pointer; font-size:13px; color:#2678b9; }
+.trip-remarks p { padding-top:8px; font-size:12px; color:#5c6e80; }
+.trip-operational-section > h2 { margin:18px 0 10px; }
+.trip-operational-section > section { padding:14px; }
+.trip-field-activity { --home-line:#dfe7ef; --home-navy:#0b2341; --home-blue:#2678b9; --home-muted:#5c6e80; border:1px solid #dfe7ef; background:white; border-radius:12px; padding:12px 17px; }
+.trip-field-activity > summary { min-height:30px; cursor:pointer; font-size:13px; color:#2678b9; }
+.trip-field-activity .home-trucker-updates { border:0; box-shadow:none; padding:12px 0 0; height:380px; }
+.trip-tracking-map .home-map-details > summary { min-height:36px; cursor:pointer; color:#2678b9; font-size:11px; padding:9px 0; }
+@media(max-width:950px) { .trip-journey-grid { grid-template-columns:minmax(0,1fr); } }
+@media(max-width:600px) { .trip-detail-page { padding-top:42px; } .trip-command-header { padding:17px; } .trip-header-facts { grid-template-columns:repeat(2,minmax(0,1fr)); } .trip-command-route { max-width:100%; } .trip-journey-panel,.trip-tracking-map,.trip-trucks-section { padding:13px; } .trip-tracking-map [aria-label="Road routes map"] { height:300px !important; } }
+@media(prefers-reduced-motion:reduce) { .trip-tracking-workspace * { transition:none !important; animation:none !important; } }
+
+.trip-disclosure-trigger{display:flex;align-items:center;gap:9px;min-height:36px;width:100%;text-align:left;font-size:13px;font-weight:600;color:#2678b9;background:transparent;border:0;padding:0}
+.trip-disclosure-trigger .trip-disclosure-icon{margin-left:auto;font-size:18px;color:#6c8194}.trip-disclosure-trigger>span{margin-left:auto;font-size:11px;color:#5c6e80}
+.trip-header-progress i{transition:transform .35s ease-out}.trip-status-label{transition:background-color .2s ease,color .2s ease,border-color .2s ease}.trip-truck-card{transition:background-color .18s ease,border-color .18s ease,box-shadow .18s ease}

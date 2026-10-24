@@ -1,16 +1,18 @@
 import { ArrowUpRight, Mail } from "lucide-react";
 import { useRequests } from "../requestsStore";
-import { HOME_DEMO_REQUEST_ID } from "../../../pages/Admin/data/homeDemoRequest";
 import { SectionHeading } from "./HomePrimitives";
-import { shortDay } from "./home-dashboard-data";
+import {newestPendingRequests} from "../../../services/request-presentation";
 
 export default function IncomingTripRequests({ onNavigate }: { onNavigate?: (section: string) => void }) {
   const { requests, pending, source, select } = useRequests();
-  const rows = source === "live" ? pending.slice(0, 3) : requests.filter(request => request.id === HOME_DEMO_REQUEST_ID && request.status === "Pending");
-  const pendingCount = source === "live" ? pending.length : rows.filter(request => request.status === "Pending").length;
-  return <section id="home-incoming-requests" className="home-panel home-incoming-requests" aria-label="Incoming Trip Requests">
-    <SectionHeading title="Incoming Trip Requests" description={source === "live" ? "Email requests awaiting operational review." : "Frontend email preview. No mailbox, n8n or production automation is connected."}><span className="home-count-badge">{pendingCount} pending{source !== "live" ? " demo" : ""}</span></SectionHeading>
-    {rows.map(request => <article key={request.id} className="home-incoming-row"><span className="home-mail-icon"><Mail size={21} aria-hidden="true"/></span><div><div className="home-incoming-title"><strong>{request.items[0]?.customerName || request.fromName}</strong>{request.demo && <span className="home-demo-label">Frontend demo</span>}</div><p>{request.emailSubject || request.reference}</p><small>{request.fromName} &lt;{request.fromEmail}&gt;</small><p><strong>Loading {shortDay(request.dispatchDate ?? null)}</strong> / {request.warehouse} to {[...new Set(request.items.map(item => item.shipTo))].join(" and ")}</p><small>{request.items.reduce((sum, item) => sum + item.qty, 0)} units / {request.items.reduce((sum, item) => sum + (item.totalCbm ?? 0), 0).toFixed(2)} CBM</small></div><div className="home-incoming-actions"><span className="home-status">{request.status === "Pending" ? "Pending Review" : request.status}</span><button type="button" className="home-button home-button-outline" onClick={() => { select(request.id); onNavigate?.("requests"); }}>Review request <ArrowUpRight size={15} aria-hidden="true"/></button></div></article>)}
-    {!rows.length && <p className="home-data-note">No pending requests.</p>}
+  const rows=newestPendingRequests(requests);
+  return <section id="home-incoming-requests" className="home-panel home-incoming-requests home-request-list" aria-label="Incoming Trip Requests">
+    <SectionHeading title="Incoming Trip Requests"><span className="home-request-heading-actions"><span className="home-count-badge">{pending.length} pending{source==="sample"?" / sample":""}</span><button type="button" className="home-text-button" onClick={()=>onNavigate?.("requests")}>View all requests <ArrowUpRight size={14} aria-hidden="true"/></button></span></SectionHeading>
+    <ul>{rows.map(request=>{
+      const cbm=request.items.reduce((sum,item)=>sum+(Number.isFinite(item.totalCbm)?item.totalCbm!:0),0);
+      const known=request.items.some(item=>typeof item.totalCbm==="number"&&Number.isFinite(item.totalCbm));
+      return <li key={request.id}><button type="button" className="home-request-item" onClick={()=>{select(request.id);}}><Mail size={17} aria-hidden="true"/><span><strong>{request.emailSubject||request.reference}</strong><small><time dateTime={request.receivedAt}>{Number.isFinite(Date.parse(request.receivedAt))?new Date(request.receivedAt).toLocaleString("en-PH",{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit",timeZone:"Asia/Manila"}):"Date unavailable"}</time>{known?` / ${cbm.toFixed(2)} CBM`:""}{source==="sample"?" / Sample":""}</small></span><span className="home-request-status"><i/>Pending</span><ArrowUpRight size={14} aria-hidden="true"/></button></li>;
+    })}</ul>
+    {!rows.length&&<p className="home-data-note">No pending requests.</p>}
   </section>;
 }

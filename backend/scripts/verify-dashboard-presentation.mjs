@@ -1,0 +1,14 @@
+import assert from 'node:assert/strict';
+import {newestPendingRequests} from '../../frontend/src/services/request-presentation.ts';
+import {activityDescription,cleanActivityNote,assignmentTripUrl} from '../../frontend/src/services/activity-presentation.ts';
+const request=(id,date,status='Pending')=>({id,receivedAt:date,status});
+const records=[request('old','2026-10-20'),request('newest','2026-10-24'),request('second','2026-10-23'),request('third','2026-10-22'),request('approved','2026-10-25','Approved')];
+assert.deepEqual(newestPendingRequests(records).map(r=>r.id),['newest','second','third']);
+assert.deepEqual(newestPendingRequests([]),[]);
+assert.equal(newestPendingRequests([request('done','2026-10-25','Approved')]).length,0);
+assert.equal(records[0].id,'old','Presentation must not reorder shared store state');
+assert.equal(activityDescription('UNLOADING_FINISHED','Makati'),'Delivery completed at Makati');
+assert.equal(activityDescription('INTERNAL_UNKNOWN_EVENT'),'Trip update recorded');
+assert.equal(cleanActivityNote('[ALZHEN_FLEET_DEMO_V1] [assignment:f1241024-0001-4000-8000-000000000101] Saved delivery'),'Saved delivery');
+assert.equal(assignmentTripUrl('trip-1','truck-b'),'/trips/trip-1?assignment=truck-b');
+console.log('Dashboard presentation checks passed: three newest pending requests, empty states, shared-state preservation, activity labels and assignment navigation.');

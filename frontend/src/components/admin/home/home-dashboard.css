@@ -408,3 +408,65 @@
 }
 
 .home-fleet-truck.is-muted { opacity:.25 !important; filter:grayscale(.55); }
+
+/* A quieter command surface: requests, fleet and a connected activity timeline. */
+.home-command-center .home-monitor-header { padding:14px 18px 9px; }
+.home-command-center .home-monitor-header h2 { margin:5px 0 0; font-size:20px; }
+.home-command-center .home-map-caption:empty { display:none; }
+.home-command-center .home-support-grid { grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
+.home-command-center .home-actions-panel { grid-column:auto; }
+.home-field-timeline { list-style:none; padding:12px 0 0 8px; margin:0; min-height:0; flex:1; overflow-y:auto; scrollbar-width:thin; }
+.home-field-timeline li { position:relative; padding:0 0 17px 20px; }
+.home-field-timeline li:not(:last-child)::before { content:""; position:absolute; left:3px; top:13px; bottom:-1px; width:1px; background:#d7e3ed; }
+.home-field-dot { position:absolute; left:0; top:7px; width:7px; height:7px; border-radius:50%; background:#2678b9; box-shadow:0 0 0 3px #eff5fa; }
+.home-field-timeline li[data-completed] .home-field-dot { background:#16846c; }
+.home-field-timeline button { text-align:left; width:100%; padding:0 6px 3px 0; border-radius:5px; }
+.home-field-timeline button:hover { background:#f5f9fc; }
+.home-field-top { display:flex; flex-wrap:wrap; align-items:baseline; gap:3px 7px; }
+.home-field-top time { font-size:10px; color:#5c6e80; white-space:nowrap; }
+.home-field-top strong { font-size:12px; color:#0b2341; }
+.home-field-top > svg { margin-left:auto; color:#5c6e80; }
+.home-field-timeline p { font-size:12px; margin-top:5px; color:#19334d; }
+.home-field-timeline small { display:block; font-size:10px; color:#5c6e80; margin-top:5px; }
+.home-field-demo { display:inline-flex; color:#805616; background:#fff5df; border-radius:4px; padding:1px 5px; margin-top:5px; font-size:9px; }
+.home-field-scope { border-top:1px solid var(--home-line); padding-top:9px; font-size:10px; color:#5c6e80; }
+.home-field-scope summary { cursor:pointer; min-height:24px; }
+.home-field-scope p { margin-top:5px; }
+.home-command-center .home-trucker-updates { max-height:620px; }
+.home-request-heading-actions { display:flex; flex-wrap:wrap; align-items:center; gap:6px 14px; }
+.home-request-list > ul { list-style:none; padding:0; margin:7px 0 0; }
+.home-request-list li { border-top:1px solid var(--home-line); }
+.home-request-item { display:flex; align-items:center; gap:12px; text-align:left; width:100%; padding:12px 0; }
+.home-request-item:hover { background:#f7fafd; }
+.home-request-item > svg { color:#2678b9; }
+.home-request-item > span:first-of-type { min-width:0; flex:1; }
+.home-request-item strong { display:block; color:#0b2341; font-size:12px; font-weight:650; }
+.home-request-item small { display:block; color:#5c6e80; font-size:11px; margin-top:3px; }
+.home-request-status { display:inline-flex; align-items:center; gap:5px; color:#936118; font-size:10px; white-space:nowrap; }
+.home-request-status i { width:5px; height:5px; background:#b38733; border-radius:50%; }
+.home-map-options { font-size:11px; color:#5c6e80; }
+.home-map-options summary { cursor:pointer; min-height:30px; padding:5px 0; }
+.home-map-options > div { display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:8px; border:1px solid var(--home-line); border-radius:9px; }
+.home-map-options label { display:flex; align-items:center; gap:6px; }
+.home-map-options select,.home-map-options button { padding:7px 9px; min-height:36px; border:1px solid var(--home-line); border-radius:7px; background:white; color:#2678b9; }
+.home-fleet-selection-overlay { position:absolute; bottom:31px; left:12px; max-width:calc(100% - 24px); border:1px solid #dbe5ef; background:#fffffff2; box-shadow:0 3px 12px #0b23411a; padding:9px 12px; border-radius:9px; color:#19334d; }
+.home-fleet-selection-overlay strong { display:block; font-size:11px; }
+.home-fleet-selection-overlay small { display:block; font-size:10px; margin-top:4px; color:#5c6e80; }
+@media(max-width:1100px) { .home-command-center .home-trucker-updates { max-height:430px; } }
+@media(max-width:780px) { .home-command-center .home-support-grid { grid-template-columns:minmax(0,1fr); } .home-request-item { gap:8px; } .home-request-item > svg:first-child { display:none; } }
+
+.home-fleet-tooltip { pointer-events:none; }
+.home-fleet-tooltip .mapboxgl-popup-content { pointer-events:none; }
+.home-fleet-truck { z-index:2; scroll-margin:90px 15px 20px; }
+.home-fleet-truck.is-selected { z-index:4; }
+
+/* Balanced, compact operational inbox and estimated delivery windows. */
+.home-request-workspace{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-top:16px;align-items:stretch}
+.home-command-center .home-request-workspace .home-incoming-requests{margin-top:0}
+.home-upcoming-deliveries{padding:14px 18px;min-width:0}.home-upcoming-deliveries .home-section-heading h2{font-size:17px}.home-upcoming-deliveries li+li{border-top:1px solid var(--home-line)}
+.home-upcoming-deliveries .home-request-item > .home-delivery-day{flex:0 0 auto;min-width:43px}
+.home-delivery-day{color:#2678b9;font-weight:650;font-size:11px;min-width:43px;flex-shrink:0}.home-delivery-note{font-size:10px;color:var(--home-muted);margin-top:8px}.home-request-workspace .home-section-heading{flex-wrap:wrap;gap:6px}.home-request-workspace .home-request-heading-actions{flex-wrap:wrap;justify-content:flex-start}.home-request-workspace .home-request-item strong{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}.home-request-workspace .home-request-item{min-height:63px}.home-request-workspace .home-request-item small{overflow-wrap:anywhere}
+.home-loop-truck{animation:home-truck-road-loop 26s linear infinite;will-change:transform}.home-truck-art{overflow:hidden}
+@keyframes home-truck-road-loop{from{transform:translateX(0)}to{transform:translateX(360px)}}
+@media(max-width:900px){.home-request-workspace{grid-template-columns:minmax(0,1fr)}}
+@media(prefers-reduced-motion:reduce){.home-loop-truck{animation:none!important;transform:none;will-change:auto}.home-loop-truck>use{display:none}}

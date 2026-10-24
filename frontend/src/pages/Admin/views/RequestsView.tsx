@@ -1,6 +1,5 @@
 // src/pages/Admin/views/RequestsView.tsx
-import { useEffect, useMemo, useState } from "react";
-import { createPortal } from "react-dom";
+import { useMemo, useState } from "react";
 import {
   CalendarDays,
   Check,
@@ -12,7 +11,6 @@ import {
   X,
 } from "lucide-react";
 import type { DispatchRequest, RequestStatus } from "../../../types/requests";
-import RequestDetail from "../../../components/admin/RequestDetail";
 import { useRequests } from "../../../components/admin/requestsStore";
 import { senderInitials } from "../../../components/admin/requestFormat";
 import { tableUi } from "../../../components/admin/dashboardStyles";
@@ -299,12 +297,9 @@ function RequestRow({
 }
 
 export default function RequestsView() {
-  const { requests, select, selectedId, setStatus, sendMessage } = useRequests();
+  const { requests, select } = useRequests();
   const [view, setView] = useState<ViewMode>("list");
   const [query, setQuery] = useState("");
-  const [detailOpen, setDetailOpen] = useState(false);
-  useEffect(() => { if (selectedId) setDetailOpen(true); }, [selectedId]);
-
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
     if (!needle) return requests;
@@ -315,26 +310,8 @@ export default function RequestsView() {
     );
   }, [requests, query]);
 
-  const selected = requests.find((request) => request.id === selectedId) ?? null;
-  const modalOpen = detailOpen && selected !== null;
-
-  useEffect(() => {
-    if (!modalOpen) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setDetailOpen(false);
-    };
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.removeEventListener("keydown", onKeyDown);
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [modalOpen]);
-
   function openRequest(request: DispatchRequest) {
     select(request.id);
-    setDetailOpen(true);
   }
 
   return (
@@ -342,7 +319,7 @@ export default function RequestsView() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <h1 className="text-xl font-bold leading-tight tracking-tight text-[#0b2341]">Requests</h1>
-          <p className="mt-1 text-xs leading-snug text-slate-600">Dispatch requests parsed from incoming TCL emails</p>
+          <p className="mt-1 text-xs leading-snug text-slate-600">Sample email requests / session-only demo review; no trips are created</p>
         </div>
         <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
           <label className="relative block w-full sm:w-72">
@@ -406,8 +383,8 @@ export default function RequestsView() {
                         key={request.id}
                         request={request}
                         onOpen={() => openRequest(request)}
-                        onApprove={() => setStatus(request.id, "Approved")}
-                        onDecline={() => setStatus(request.id, "Declined")}
+                        onApprove={() => openRequest(request)}
+                        onDecline={() => openRequest(request)}
                       />
                     ))
                   )}
@@ -427,8 +404,8 @@ export default function RequestsView() {
                 key={request.id}
                 request={request}
                 onOpen={() => openRequest(request)}
-                onApprove={() => setStatus(request.id, "Approved")}
-                onDecline={() => setStatus(request.id, "Declined")}
+                onApprove={() => openRequest(request)}
+                onDecline={() => openRequest(request)}
               />
             ))}
           </ul>
@@ -437,39 +414,7 @@ export default function RequestsView() {
 
       </div>
 
-      {/* Centered modal */}
-      {modalOpen && selected && createPortal(
-        <div
-          className="fixed inset-0 z-[2000] flex items-end justify-center bg-slate-900/20 p-0 backdrop-blur-[2px] sm:items-center sm:p-4"
-          role="presentation"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) setDetailOpen(false);
-          }}
-        >
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-label={`Request ${selected.reference}`}
-            className="flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-t-3xl bg-white shadow-[0_32px_80px_-20px_rgba(11,35,65,0.45)] ring-1 ring-slate-900/[0.06] sm:rounded-3xl"
-          >
-            <RequestDetail
-              key={selected.id}
-              request={selected}
-              onClose={() => setDetailOpen(false)}
-              onApprove={(note) => {
-                setStatus(selected.id, "Approved", note);
-                setDetailOpen(false);
-              }}
-              onDecline={(note) => {
-                setStatus(selected.id, "Declined", note);
-                setDetailOpen(false);
-              }}
-              onSendMessage={(body) => sendMessage(selected.id, body)}
-            />
-          </div>
-        </div>,
-        document.body,
-      )}
+
     </div>
   );
 }

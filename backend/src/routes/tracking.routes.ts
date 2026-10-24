@@ -8,6 +8,8 @@ import {supabaseAdmin} from "../config/supabase.js";
 import {assertTrackingTestScope,trackingTestScope} from "../services/tracking-test-scope.js";
 import {parseRoadTripIds,readRoadRouting} from "../services/road-routing-read.service.js";
 import {generatePlannedRoute} from "../services/planned-route-runtime.service.js";
+import {readFieldMilestones} from "../services/field-milestones.service.js";
+import {submissionAssignment} from "../services/field-milestones.logic.js";
 const router=Router();
 router.use(authMiddleware);
 // Bounded, management-only activity read. Never returns private Storage paths.
@@ -22,8 +24,11 @@ router.get("/roads/updates",requireRole("ADMIN","STAFF"),async(req,res)=>{
   const driverIds=[...new Set((data??[]).slice(0,100).map(row=>row.driver_id).filter(Boolean))];
   const drivers=driverIds.length?await supabaseAdmin.from("drivers").select("id,first_name,last_name").in("id",driverIds):{data:[],error:null};
   if(drivers.error)throw new ApiError("Driver identities could not be loaded.",503,"DRIVER_UPDATES_UNAVAILABLE");
-  const rows=(data??[]).slice(0,100).map(({pod_image_path,pod_image_url,...row})=>({...row,receiptSubmitted:!!(pod_image_path||pod_image_url),driver:drivers.data?.find(driver=>driver.id===row.driver_id)??null}));
-  return sendSuccess(res,200,"Saved driver submissions",{rows,limited:(data?.length??0)>100});
+  const assignments=await supabaseAdmin.from("trip_truck_assignments").select("id,trip_id,driver_id,assigned_at,unassigned_at").in("trip_id",ids).order("id").limit(501);
+  const scopeUnavailable=!!assignments.error||(assignments.data?.length??0)>500;
+  const rows=(data??[]).slice(0,100).map(({pod_image_path,pod_image_url,...row})=>({...row,assignment_id:scopeUnavailable?null:submissionAssignment(row,assignments.data??[]),receiptSubmitted:!!(pod_image_path||pod_image_url),driver:drivers.data?.find(driver=>driver.id===row.driver_id)??null}));
+  const milestones=await readFieldMilestones(ids);
+  return sendSuccess(res,200,"Saved driver submissions and operational milestones",{rows,limited:(data?.length??0)>100,...milestones,unavailableSources:[...milestones.unavailableSources,...(scopeUnavailable?["assignment history"]:[])]});
  }catch(error){return fail(res,error);}
 });
 router.post("/roads/:id/planned",requireRole("ADMIN","STAFF"),async(req,res)=>{

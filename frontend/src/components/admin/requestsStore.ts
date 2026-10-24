@@ -3,10 +3,10 @@
 // One shared place for dispatch requests, so the Requests page and the
 // dashboard card always show the same data (approve on one, the other updates).
 //
-// TODO(email automation): this is the only file that needs to change when the
-// email-to-system automation goes live. Replace `defaultRequests` with the
-// API response (fetch on mount / poll / realtime), and make `setRequestStatus`
-// and `sendRequestMessage` call your backend before updating local state.
+// Sample-only adapter. A future production integration must replace the local
+// mutations with authorized APIs and connect the review modal to server-side
+// validation and idempotent trip creation. Demo approval never creates trips.
+import {editableRequestFields,validateRequestDraft} from "../../services/request-draft";
 import { useSyncExternalStore } from "react";
 import type { DispatchRequest, RequestStatus } from "../../types/requests";
 import { homeDemoRequest } from "../../pages/Admin/data/homeDemoRequest";
@@ -14,7 +14,7 @@ import { defaultRequests } from "../../pages/Admin/data/defaultRequests";
 
 type State = {
   requests: DispatchRequest[];
-  /** Request opened in the Requests page (also set from the dashboard card). */
+  /** Request opened in the shared review modal from Home or Requests. */
   selectedId: string | null;
   /** "sample" until the email automation feeds real requests. */
   source: "sample" | "live";
@@ -25,6 +25,14 @@ let state: State = {
   selectedId: null,
   source: "sample",
 };
+const originals=new Map(state.requests.map(request=>[request.id,structuredClone(request)]));
+export function originalRequest(id:string){return structuredClone(originals.get(id));}
+export function saveRequestDraft(draft:DispatchRequest){
+  const current=state.requests.find(request=>request.id===draft.id);
+  if(!current||current.status!=="Pending"||state.source!=="sample")return false;
+  update({requests:state.requests.map(request=>request.id===draft.id?{...request,...editableRequestFields(draft)}:request)});
+  return true;
+}
 const listeners = new Set<() => void>();
 
 function update(next: Partial<State>) {
@@ -41,7 +49,7 @@ const getSnapshot = () => state;
 
 function message(body: string): DispatchRequest["messageThread"][number] {
   return {
-    id: `msg-${Date.now()}`,
+    id: `msg-${crypto.randomUUID()}`,
     from: "You",
     body,
     at: new Date().toISOString(),
@@ -54,6 +62,8 @@ export function selectRequest(id: string | null) {
 }
 
 export function setRequestStatus(id: string, status: RequestStatus, note?: string) {
+  const current=state.requests.find(request=>request.id===id);
+  if(!current||current.status!=="Pending"||state.source!=="sample"||status==="Approved"&&validateRequestDraft(current).length||status==="Declined"&&!note?.trim())return false;
   update({
     requests: state.requests.map((request) =>
       request.id === id
@@ -67,6 +77,7 @@ export function setRequestStatus(id: string, status: RequestStatus, note?: strin
         : request,
     ),
   });
+  return true;
 }
 
 export function sendRequestMessage(id: string, body: string) {

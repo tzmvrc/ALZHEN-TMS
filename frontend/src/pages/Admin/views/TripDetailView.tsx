@@ -1,9 +1,10 @@
+import {motion,useReducedMotion} from "motion/react";
+import TripTrackingWorkspace from "../../../components/admin/TripTrackingWorkspace";
 import TripConvoyPanel from "../../../components/admin/TripConvoyPanel";
 import { useDeferredRealtimeRefresh } from "../../../components/admin/useDeferredRealtimeRefresh";
 import { useEffect,useLayoutEffect,useRef, useState, type ReactNode } from "react";
 import {
   ArrowLeft,
-  Boxes,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -11,7 +12,6 @@ import {
   Eye,
   ImagePlus,
   Images,
-  MapPin,
   Package,
   Trash2,
   Truck,
@@ -32,7 +32,6 @@ import {
   type TripEvent,
   type TripRecord,
 } from "../../../services/trip.service";
-import LiveTripMap, { type TripEventTrack, type TripLocationRoute } from "../../../components/admin/LiveTripMap";
 import { surface } from "../../../components/admin/dashboardStyles";
 import ProductPhotoManager from "../../../components/admin/ProductPhotoManager";
 import ReceiptReviewCard from "../../../components/admin/ReceiptReviewCard";
@@ -91,13 +90,6 @@ function dateText(value: unknown, includeTime = false): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return includeTime ? date.toLocaleString() : date.toLocaleDateString();
-}
-
-function shortDate(value: unknown): string {
-  if (typeof value !== "string" || !value) return "Not set";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
 function getBookingValue(
@@ -441,99 +433,6 @@ const TRUCK_SLOTS = 12;
 /* ------------------------------------------------------------------ */
 /* Bento building blocks                                               */
 /* ------------------------------------------------------------------ */
-function MiniBars({ values }: { values: number[] }) {
-  const max = Math.max(...values, 1);
-  const peak = values.length ? values.indexOf(Math.max(...values)) : -1;
-  const bars = values.length ? values : [3, 5, 4, 6, 3, 5];
-  return (
-    <div aria-hidden="true" className="flex h-14 items-end gap-1.5">
-      {bars.map((value, index) => (
-        <span
-          key={index}
-          className={`w-2.5 rounded-full ${
-            !values.length ? "bg-slate-100" : index === peak ? "bg-[#2678b9]" : "bg-[#d7e6f5]"
-          }`}
-          style={{ height: `${Math.max(16, (value / (values.length ? max : 6)) * 100)}%` }}
-        />
-      ))}
-    </div>
-  );
-}
-
-function SegmentMeter({ percent, segments = 12 }: { percent: number; segments?: number }) {
-  const filled = Math.round((percent / 100) * segments);
-  return (
-    <div aria-hidden="true" className="flex h-14 items-end gap-1">
-      {Array.from({ length: segments }, (_, index) => (
-        <span
-          key={index}
-          className={`w-1.5 rounded-full ${index < filled ? "bg-[#2678b9]" : "bg-[#e3ecf5]"}`}
-          style={{ height: `${35 + (index / (segments - 1)) * 65}%` }}
-        />
-      ))}
-    </div>
-  );
-}
-
-function StopDots({ stops, nextIndex }: { stops: TripChildRecord[]; nextIndex: number }) {
-  const shown = stops.slice(0, 8);
-  return (
-    <div aria-hidden="true" className="flex items-center">
-      {shown.map((stop, index) => (
-        <span key={index} className="flex items-center">
-          {index > 0 && <span className="h-px w-3 bg-slate-200" />}
-          <span
-            className={`h-3 w-3 rounded-full ${
-              stopIsDone(stop)
-                ? "bg-[#2678b9]"
-                : index === nextIndex
-                  ? "bg-[#ffd43b] ring-4 ring-[#fff3b8]"
-                  : "bg-[#d7e6f5]"
-            }`}
-          />
-        </span>
-      ))}
-      {stops.length > shown.length && (
-        <span className="ml-1.5 text-[10px] font-semibold text-slate-400">+{stops.length - shown.length}</span>
-      )}
-    </div>
-  );
-}
-
-function KpiCard({
-  icon,
-  label,
-  value,
-  sub,
-  chart,
-}: {
-  icon: ReactNode;
-  label: string;
-  value: string;
-  sub?: string;
-  chart?: ReactNode;
-}) {
-  return (
-    <div className={`${surface.card} flex items-center gap-4 px-5 py-4`}>
-      <span
-        aria-hidden="true"
-        className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#0b2341] text-white [&>svg]:h-5 [&>svg]:w-5"
-      >
-        {icon}
-      </span>
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-slate-500">{label}</p>
-        <p className="mt-0.5 truncate text-3xl font-semibold leading-tight tabular-nums text-[#0b2341]">{value}</p>
-        {sub && <p className="mt-0.5 truncate text-[11px] text-slate-400" title={sub}>{sub}</p>}
-      </div>
-      {chart && <div className="hidden shrink-0 xl:block">{chart}</div>}
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/* Vehicle & load (one minimal card)                                   */
-/* ------------------------------------------------------------------ */
 function VehicleLoadCard({
   plate,
   status,
@@ -721,8 +620,10 @@ export default function TripDetailView({
   onBack: () => void;
   initialStopId?: string | null;
 }) {
+  const reduced=useReducedMotion();
   const { accessToken, refreshSession } = useAuth();
   const [convoyOpen,setConvoyOpen]=useState(false);
+  const [convoyInitial,setConvoyInitial]=useState<string|undefined>();
   const navigate = useNavigate();
   const snapshotEndpoint=`/trips/${encodeURIComponent(tripId)}/screen-snapshot`;
   const scope=`${accessToken}:${tripId}`;
@@ -741,7 +642,7 @@ export default function TripDetailView({
   const [photoProduct, setPhotoProduct] = useState<{ id: string; name: string } | null>(null);
   const [viewProduct, setViewProduct] = useState<Record<string, unknown> | null>(null);
   const [productPhotoOverrides, setProductPhotoOverrides] = useState<Record<string, string | null>>({});
-  const [sidePanel, setSidePanel] = useState<"trucks" | "products" | "stops" | "activity">("trucks");
+  const [sidePanel, setSidePanel] = useState<"trucks" | "products" | "stops">("trucks");
   const requestKey = `${accessToken ?? "no-session"}:${tripId}:${retry}`;
   const realtimeGate = useDeferredRealtimeRefresh(() => { invalidateTripCache(tripId); setRetry((value) => value + 1); }, Boolean(selectedCargoItem || photoProduct || viewProduct));
 
@@ -966,22 +867,6 @@ export default function TripDetailView({
   const orderedEvents = (detail?.events ?? [])
     .slice()
     .sort((a, b) => Date.parse(a.event_time) - Date.parse(b.event_time));
-  const mapTrack: TripEventTrack[] = trip ? [{ trip, events: detail?.events ?? [] }] : [];
-  const mapLocationIds = [
-    ...(typeof trip?.warehouse_id === "string" ? [trip.warehouse_id] : []),
-    ...stops.flatMap((stop) => typeof stop.store_id === "string" ? [stop.store_id] : []),
-  ];
-  const mapOriginWarehouseId = typeof trip?.warehouse_id === "string" ? trip.warehouse_id : "";
-  const mapDestinationStoreIds = [...new Set(stops
-    .flatMap((stop) => typeof stop.store_id === "string" ? [stop.store_id] : []))];
-  const mapLocationRoutes: TripLocationRoute[] = mapOriginWarehouseId && mapDestinationStoreIds.length
-    ? [{
-        tripId,
-        tripLabel: dispatchNumber,
-        originWarehouseId: mapOriginWarehouseId,
-        destinationStoreIds: mapDestinationStoreIds,
-      }]
-    : [];
   const destinationNames = [
     ...new Set(reportRows.map((row) => String(row.store_name ?? "")).filter(Boolean)),
   ];
@@ -1015,45 +900,16 @@ export default function TripDetailView({
   const totalQty = detail?.lineItems.length ? sumOf(detail.lineItems, "quantity") : sumOf(cargoRows, "quantity");
   const totalCbm = detail?.lineItems.length ? sumOf(detail.lineItems, "cbm") : sumOf(cargoRows, "cbm");
   const lineItemCount = productRows.length;
-  const driverName = getBookingValue(reportRows, "driver_name");
   const plate = getBookingValue(reportRows, "plate_number", "No plate recorded");
   const placeholder = isLoading&&!detail ? "…" : undefined;
-  const timelineEvents = orderedEvents.slice().reverse();
-  const nextStopIndex = stops.findIndex((stop) => !stopIsDone(stop));
-  const company = getBookingValue(reportRows, "trucking_company");
+  const nextStopIndex=stops.findIndex(stop=>!stopIsDone(stop));
   const sideTabs = [
     { key: "trucks" as const, label: "Trucks", count: assignments.length },
     { key: "products" as const, label: "Products", count: productRows.length },
     { key: "stops" as const, label: "Stops", count: stops.length },
-    { key: "activity" as const, label: "Activity", count: orderedEvents.length },
   ];
-  const tripNumber = valueText(trip?.trip_reference, "") || (trip?.trip_number != null ? `Trip ${valueText(trip.trip_number, "")}` : "");
-  const nextStop = nextStopIndex >= 0 ? stops[nextStopIndex] : null;
-  const nextStopName = nextStop
-    ? valueText(rowsForStop(String(nextStop.id ?? ""))[0]?.store_name, "Store not recorded")
-    : null;
   const capacity = hasMultipleActiveTrucks ? null : detail?.truckCapacityCbm ?? null;
   const loadPct = capacity !== null && capacity > 0 ? Math.min(100, Math.round((totalCbm / capacity) * 100)) : 0;
-  const driverInitials =
-    driverName === "Not recorded"
-      ? "?"
-      : driverName
-          .split(/\s+/)
-          .filter(Boolean)
-          .slice(0, 2)
-          .map((part) => part[0]?.toUpperCase() ?? "")
-          .join("") || "?";
-  const recentEvents = orderedEvents.slice(-4);
-  const itemQtyBars = productRows.slice(0, 8).map((row) => {
-    const n = Number(row.quantity);
-    return Number.isFinite(n) ? n : 0;
-  });
-  const timeText = (value: unknown): string => {
-    if (typeof value !== "string" || !value) return "";
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return "";
-    return date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
-  };
   const photoFor = (row: Record<string, unknown>): string | null => {
     const id = String(row.product_id ?? row._product_id ?? "");
     if (Object.hasOwn(productPhotoOverrides, id)) return productPhotoOverrides[id];
@@ -1063,8 +919,8 @@ export default function TripDetailView({
     productRows.filter((row) => String(row.trip_stop_id ?? row._trip_stop_id ?? "") === stopId).length;
 
   return (
-    <div className="space-y-4">
-      {convoyOpen&&accessToken&&<TripConvoyPanel token={accessToken} tripId={tripId} onClose={()=>setConvoyOpen(false)}/>}
+    <motion.div initial={reduced?false:{opacity:0,y:6}} animate={{opacity:1,y:0}} transition={{duration:.25}} className="trip-detail-page space-y-4">
+      {convoyOpen&&accessToken&&<TripConvoyPanel initialAssignmentId={convoyInitial} token={accessToken} tripId={tripId} onClose={()=>setConvoyOpen(false)}/>}
       {isLoading&&detail&&<p role="status" className="text-xs text-slate-500">Loading remaining trip details…</p>}
       {error&&detail&&<p role="alert" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">{error} Previous trip data is retained. <button type="button" className="underline" onClick={()=>setRetry(value=>value+1)}>Retry</button></p>}
       {/* Top bar */}
@@ -1096,98 +952,8 @@ export default function TripDetailView({
         </p>
       )}
 
-      {/* KPI row: the numbers that matter most */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <KpiCard
-          icon={<Package />}
-          label="Items"
-          value={placeholder ?? String(lineItemCount)}
-          sub={placeholder ? undefined : `${formatNumber(totalQty)} units on board`}
-          chart={<MiniBars values={itemQtyBars} />}
-        />
-        <KpiCard
-          icon={<Boxes />}
-          label="Total CBM"
-          value={placeholder ?? formatNumber(totalCbm)}
-          sub={placeholder ? undefined : hasMultipleActiveTrucks ? "Trip-wide cargo · per-truck allocation unavailable" : capacity !== null && capacity > 0 ? `${loadPct}% of ${formatNumber(capacity)} CBM` : "Truck capacity not set"}
-          chart={<SegmentMeter percent={hasMultipleActiveTrucks ? 0 : loadPct} />}
-        />
-        <KpiCard
-          icon={<MapPin />}
-          label="Stops"
-          value={placeholder ?? `${doneStops}/${stops.length}`}
-          sub={
-            placeholder
-              ? undefined
-              : nextStopName
-                ? `Next · ${nextStopName}`
-                : stops.length
-                  ? "All stops completed"
-                  : "No stops recorded"
-          }
-          chart={<StopDots stops={stops} nextIndex={nextStopIndex} />}
-        />
-      </div>
-
-      {/* Left: trip details + operations accordion. Right: live trip map. */}
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-12 xl:items-start">
-        <div className="flex min-w-0 flex-col gap-4 xl:col-span-5">
-        {/* Trip details */}
-        <section className={`${surface.card} flex min-w-0 flex-col p-5`}>
-          <h2 className="text-lg font-semibold text-[#0b2341]">Trip details</h2>
-          <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-slate-500">
-            <span>{tripNumber || "Trip"}</span>
-            <span aria-hidden="true" className="text-slate-300">|</span>
-            <StatusPill status={trip?.status} fallback="Loading" />
-          </div>
-
-          <dl className="mt-4 grid grid-cols-3 gap-2">
-            {[
-              ["Loading", shortDate(trip?.loading_date)],
-              ["Delivery", shortDate(trip?.estimated_delivery_date)],
-              ["Events", placeholder ?? String(orderedEvents.length)],
-            ].map(([label, value]) => (
-              <div key={label} className="min-w-0 rounded-2xl border border-slate-200/80 px-3 py-2.5">
-                <dd className="truncate text-sm font-semibold tabular-nums text-[#0b2341]">{value}</dd>
-                <dt className="truncate text-[10px] text-slate-400">{label}</dt>
-              </div>
-            ))}
-          </dl>
-
-          <div className="mt-5">
-            <p className="text-xs font-semibold text-[#0b2341]">Driver</p>
-            <div className="mt-2 flex items-center gap-3">
-              <span
-                aria-hidden="true"
-                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#e6f0f9] text-sm font-bold text-[#2678b9]"
-              >
-                {driverInitials}
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold text-[#0b2341]" title={driverName}>{driverName}</p>
-                <p className="truncate text-xs text-slate-500">
-                  {company !== "Not recorded" ? company : "Company not recorded"}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-4 flex items-center gap-3 rounded-2xl bg-[#f2f6fa] px-3.5 py-3">
-            <Truck aria-hidden="true" className="h-4 w-4 shrink-0 text-[#2678b9]" />
-            <span className="min-w-0 flex-1">
-              <span className="block text-[10px] text-slate-400">Vehicle</span>
-              <span className="block truncate text-sm font-semibold text-[#0b2341]">{plate}</span>
-            </span>
-          </div>
-
-          {Boolean(trip?.remarks) && (
-            <p className="mt-4 rounded-2xl bg-[#fff9e0] px-3.5 py-3 text-xs text-[#6b5300]">
-              {String(trip?.remarks)}
-            </p>
-          )}
-        </section>
-
-          {/* Loading, unloading, backload & offload (accordion lives inside OperationsTimeline) */}
+      {trip&&<TripTrackingWorkspace trip={trip} assignments={assignments} stops={stops} events={orderedEvents} origin={originName} destination={destinationText} progress={progress} totalCbm={totalCbm} totalQty={totalQty} onManage={id=>{setConvoyInitial(id);setConvoyOpen(true);}} refreshKey={retry}/>}
+      <section className="trip-operational-section" aria-label="Operational reports"><h2>Loading, deliveries & reports</h2>
           <section className={`${surface.card} min-w-0 p-5`}>
       <OperationsTimeline
         tripId={tripId}
@@ -1210,120 +976,8 @@ export default function TripDetailView({
         stopLabel={(stopId) => stopLabels[stopId] ?? null}
         error={detail?.sectionErrors.find((message) => message.startsWith("Operational reports:")) ?? null}
       />
-          </section>
-        </div>
-
-        {/* Live trip map: stays in view while the accordion scrolls */}
-        <section className={`${surface.card} min-w-0 p-3 xl:sticky xl:top-4 xl:col-span-7`}>
-          <LiveTripMap
-            demo
-            tracks={mapTrack}
-            locationIds={mapLocationIds}
-            tripLocationRoutes={mapLocationRoutes}
-            focusTripId={tripId}
-            eventLoadError={false}
-            height={600}
-          />
-        </section>
-      </div>
-
-      {/* Route & progress | vehicle & load */}
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
-        {/* Route & progress */}
-        <section className={`${surface.card} flex min-w-0 flex-col p-5 xl:col-span-7`}>
-          <h2 className="text-lg font-semibold text-[#0b2341]">Route &amp; progress</h2>
-          <div className="mt-3 grid flex-1 gap-3 sm:grid-cols-2">
-            <div className="flex min-w-0 flex-col justify-between rounded-3xl bg-[linear-gradient(145deg,#0b2341_0%,#12395f_55%,#1a4f80_100%)] p-4 text-white">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <p className="text-[10px] font-medium uppercase tracking-wide text-white/50">From</p>
-                  <p className="mt-0.5 line-clamp-2 break-words text-sm font-semibold leading-snug">{originName}</p>
-                </div>
-                <div className="min-w-0 flex-1 text-right">
-                  <p className="text-[10px] font-medium uppercase tracking-wide text-white/50">To</p>
-                  <p className="mt-0.5 line-clamp-2 break-words text-sm font-semibold leading-snug">{destinationText}</p>
-                </div>
-              </div>
-              <div aria-hidden="true" className="my-4 flex items-center justify-center text-[#ffd43b]">
-                <Truck className="h-12 w-12" strokeWidth={1.25} />
-              </div>
-              <div>
-                <div
-                  role="progressbar"
-                  aria-label="Trip progress"
-                  aria-valuemin={0}
-                  aria-valuemax={100}
-                  aria-valuenow={progress}
-                  className="relative h-1 rounded-full bg-white/20"
-                >
-                  <div className="absolute inset-y-0 left-0 rounded-full bg-[#ffd43b] transition-all duration-500" style={{ width: `${progress}%` }} />
-                  <span
-                    className="absolute top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white ring-4 ring-white/20 transition-all duration-500"
-                    style={{ left: `${progress}%` }}
-                  />
-                </div>
-                <div className="mt-2.5 flex justify-between text-[10px] text-white/60">
-                  <span>{placeholder ?? `${doneStops} of ${stops.length} stops`}</span>
-                  <span className="font-semibold text-[#ffd43b]">{placeholder ?? `${progress}%`}</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="min-w-0 rounded-3xl border border-slate-200/80 p-4">
-              <p className="truncate text-lg font-semibold text-[#0b2341]" title={dispatchNumber}>
-                {dispatchNumber}
-              </p>
-              {recentEvents.length === 0 ? (
-                <p className="mt-4 text-xs text-slate-500">{placeholder ?? "No events recorded yet."}</p>
-              ) : (
-                <ol className="mt-4 space-y-3.5">
-                  {recentEvents.map((event, index) => {
-                    const latest = index === recentEvents.length - 1;
-                    return (
-                      <li key={event.id} className="flex items-start gap-2.5">
-                        <span
-                          aria-hidden="true"
-                          className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${
-                            latest ? "bg-[#2678b9] ring-4 ring-[#e6f0f9]" : "border border-slate-300 bg-white"
-                          }`}
-                        />
-                        <div className="flex min-w-0 flex-1 items-baseline justify-between gap-2">
-                          <p className={`truncate text-xs capitalize ${latest ? "font-semibold text-[#0b2341]" : "text-slate-500"}`}>
-                            {event.event_type.replaceAll("_", " ").toLowerCase()}
-                          </p>
-                          <p className="shrink-0 text-[11px] tabular-nums text-slate-400">{timeText(event.event_time)}</p>
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ol>
-              )}
-            </div>
-          </div>
-
-          <div className="mt-3 flex items-center gap-3 rounded-2xl bg-[#f2f6fa] px-4 py-3">
-            <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true" className="shrink-0 -rotate-90">
-              <circle cx="12" cy="12" r="9" fill="none" stroke="#dbe7f3" strokeWidth="3" />
-              <circle
-                cx="12"
-                cy="12"
-                r="9"
-                fill="none"
-                stroke="#2678b9"
-                strokeWidth="3"
-                strokeLinecap="round"
-                strokeDasharray={56.55}
-                strokeDashoffset={56.55 * (1 - progress / 100)}
-              />
-            </svg>
-            <span className="text-sm font-semibold text-[#0b2341]">{placeholder ?? `${progress}% Completed`}</span>
-            <span className="ml-auto text-xs text-slate-500">
-              Deliveries {placeholder ?? `${doneStops}/${stops.length}`}
-            </span>
-          </div>
-        </section>
-
-        {hasMultipleActiveTrucks ? (
+          </section></section>
+      <details className="trip-load-explorer"><summary>Vehicle load explorer</summary>        {hasMultipleActiveTrucks ? (
           <section className={`${surface.card} flex min-w-0 flex-col justify-center p-5 xl:col-span-5`}>
             <CardHeader icon={<Package />} title="Trip cargo summary" />
             <p className="mt-3 text-2xl font-bold tabular-nums text-[#0b2341]">{formatNumber(totalCbm)} CBM</p>
@@ -1344,13 +998,12 @@ export default function TripDetailView({
             truckCapacityCbm={capacity}
             totalCbm={totalCbm}
           />
-        )}
-      </div>
+        )}</details>
 
       {/* Products / stops / activity beside trip photos */}
       <div className="grid grid-cols-1 items-stretch gap-4 xl:grid-cols-12">
         <section className={`${surface.card} flex max-h-[640px] min-w-0 flex-col p-4 xl:col-span-7`}>
-          <div role="tablist" aria-label="Trucks, products, stops and activity" className="flex shrink-0 items-center gap-1 overflow-x-auto rounded-full bg-[#eef3f8] p-1">
+          <div role="tablist" aria-label="Trucks, products and stops" className="flex shrink-0 items-center gap-1 overflow-x-auto rounded-full bg-[#eef3f8] p-1">
             {sideTabs.map(({ key, label, count }) => {
               const isActive = sidePanel === key;
               return (
@@ -1429,7 +1082,7 @@ export default function TripDetailView({
                           </div>
                           <div className="rounded-xl bg-[#fff9e0] px-3 py-2 sm:col-span-1">
                             <dt className="text-[#8a7130]">Cargo allocation</dt>
-                            <dd className="mt-0.5 font-semibold text-[#6b5300]"><button type="button" onClick={()=>setConvoyOpen(true)} className="underline">Manage allocations</button></dd>
+                            <dd className="mt-0.5 font-semibold text-[#6b5300]"><button type="button" onClick={()=>{setConvoyInitial(assignment.id);setConvoyOpen(true);}} className="underline">Manage allocations</button></dd>
                           </div>
                         </dl>
                       </li>
@@ -1590,29 +1243,7 @@ export default function TripDetailView({
               </ul>
             ))}
 
-          {sidePanel === "activity" &&
-            (timelineEvents.length === 0 ? (
-              <p className="py-8 text-center text-sm text-slate-500">No events recorded.</p>
-            ) : (
-              <ol role="tabpanel" className="relative ml-2 mt-5 min-h-0 flex-1 overflow-y-auto border-l-2 border-[#ffd43b]/70 pl-5 pr-1">
-                {timelineEvents.map((event, index) => (
-                  <li key={event.id} className="relative mb-5 last:mb-0">
-                    <span
-                      className={`timeline-dot absolute -left-[28px] top-1 h-3 w-3 rounded-full border-2 border-white ${
-                        index === 0 ? "bg-[#ffd43b] text-[#ffd43b]" : "bg-[#2678b9] text-[#2678b9]"
-                      }`}
-                    />
-                    <p className="text-sm font-semibold capitalize text-[#0b2341]">
-                      {event.event_type.replaceAll("_", " ").toLowerCase()}
-                    </p>
-                    <p className="mt-0.5 text-[11px] font-medium text-slate-400">
-                      {dateText(event.event_time, true)}
-                    </p>
-                    {event.notes && <p className="mt-1 text-xs text-slate-600">{event.notes}</p>}
-                  </li>
-                ))}
-              </ol>
-            ))}
+
         </section>
         <div className="flex min-w-0 flex-col xl:col-span-5 [&>div]:flex-1">
           <TripGallery key={tripId} plate={plate} tripId={tripId} accessToken={accessToken} />
@@ -1695,6 +1326,6 @@ export default function TripDetailView({
           </section>
         </div>
       )}
-    </div>
+    </motion.div>
   );
 }

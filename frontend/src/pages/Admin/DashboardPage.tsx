@@ -27,6 +27,7 @@ import {
 import type { DashboardData } from "../../types/dashboard";
 const UserProfilePage = lazy(() => import("./views/UserProfilePage"));
 const OverviewView = lazy(() => import("./views/OverviewView"));
+import RequestReviewModal from "../../components/admin/RequestDetail";
 import LiveTripAlerts from "../../components/admin/LiveTripAlerts";
 const ResourceView = lazy(() => import("./views/ResourceView"));
 const BillingView = lazy(() => import("./views/BillingView"));
@@ -568,6 +569,7 @@ export default function DashboardPage({
       setActiveId(`trip-detail:${tripId}:overview${stopId ? `:stop:${stopId}` : ""}`);
     }}>
     <div className="dotted-surface relative min-h-screen overflow-x-hidden text-slate-900">
+      <RequestReviewModal/>
       {profile?.role === "ADMIN" && newNotification && (
         <div
           role="status"
