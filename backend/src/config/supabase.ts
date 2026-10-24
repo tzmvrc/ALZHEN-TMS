@@ -44,7 +44,16 @@ export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey, {
  * It must remain separate from supabaseAdmin.
  */
 export const supabaseAuth = createClient(supabaseUrl, supabaseAnonKey, {
-  global: {fetch: timedSupabaseFetch},
+  global: {fetch: (input,init)=>{
+    // A stalled getUser request must not hold the shared authorization-read
+    // gate forever and block every subsequent navigation. Verification still
+    // fails closed; login/password mutations keep their existing behavior.
+    const method=(init?.method??(input instanceof Request?input.method:"GET")).toUpperCase();
+    if(method!=="GET")return timedSupabaseFetch(input,init);
+    const inherited=init?.signal??(input instanceof Request?input.signal:undefined);
+    const deadline=AbortSignal.timeout(10_000);
+    return timedSupabaseFetch(input,{...init,signal:inherited?AbortSignal.any([inherited,deadline]):deadline});
+  }},
   auth: {
     autoRefreshToken: false,
     persistSession: false,

@@ -1,3 +1,4 @@
+import {homeTripDetails} from "../services/home-trip-details.service.js";
 import { finalizeImportCargo, setDefaultTripDriver } from "../services/trip-workflow.service.js";
 import { parseDestination, resolveTripDestination } from "../services/trip-location.service.js";
 import { listImportBatches, readImportBatch, saveImportDraft, rememberImportBatchError } from "../services/trip-import-recovery.service.js";
@@ -50,6 +51,7 @@ import {
 
 import { saveMasterListCell } from "../services/master-list.service.js";
 const router = Router();
+router.post("/overview-details",authMiddleware,requireRole("ADMIN","STAFF"),async(req,res,next)=>{try{return sendSuccess(res,200,"Dashboard trip details",await homeTripDetails(req.body?.trip_ids));}catch(error){next(error);}});
 router.patch("/:id/master-list-cell", authMiddleware, requireRole("ADMIN", "STAFF"), async (req, res, next) => {
   try { return sendSuccess(res, 200, "Master List value saved", await saveMasterListCell(req.profile!.id, String(req.params.id), req.body ?? {})); }
   catch (error) { next(error); }

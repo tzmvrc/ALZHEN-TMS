@@ -16,8 +16,8 @@ export function parseOperationsPageQuery(input:Record<string,unknown>):Operation
   buildIlikeOrFilter(["search_text"],search);
   return {page:integer("page",1,1000000),limit:integer("limit",50,100),search,filter,sortBy,sortOrder:sortOrder as "asc"|"desc"};
 }
-export function operationsPageRequest(client:Pick<SupabaseClient,"from">,options:OperationsPageQuery){
-  let query=client.from("v_operations_report_page").select("source_type,source_record_id,trip_id,trip_stop_id,dr_number,quantity,total_cbm,route,date,reported_by",{count:"exact"});
+export function operationsPageRequest(client:Pick<SupabaseClient,"from">,options:OperationsPageQuery,selectionOnly=false){
+  let query=client.from("v_operations_report_page").select(selectionOnly?"source_type,source_record_id,trip_id,trip_stop_id,trip":"source_type,source_record_id,trip_id,trip_stop_id,dr_number,quantity,total_cbm,route,date,reported_by",{count:"exact"});
   const search=buildIlikeOrFilter(["search_text"],options.search);if(search)query=query.or(search);
   if(options.filter!=="All")query=query.eq("report_type",options.filter);
   const sortColumn=["date","quantity","total_cbm"].includes(options.sortBy)?options.sortBy:`${options.sortBy}_sort`;

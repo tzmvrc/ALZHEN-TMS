@@ -1,3 +1,9 @@
+import SpreadsheetRowSelectionHeader from "./SpreadsheetRowSelectionHeader";
+import {useSpreadsheetSelectAll} from "./useSpreadsheetSelectAll";
+import {fetchOperationsSelection} from "../../services/operations-report.service";
+import {useSpreadsheetInfiniteScroll} from "./useSpreadsheetInfiniteScroll";
+import {useVirtualSpreadsheetRows} from "./useVirtualSpreadsheetRows";
+import {appendSpreadsheetSnapshot} from "../../services/spreadsheet-pages";
 import { useOperationalFormulas } from "./useOperationalFormulas";
 import { physicalRowIdentity } from "../../services/spreadsheet-formula";
 import { cloneElement, type ReactElement, type HTMLAttributes } from "react";
@@ -6,7 +12,6 @@ import { useSpreadsheetHeaderFormatting } from "./useSpreadsheetHeaderFormatting
 import { reportHeaderAppearance } from "./ReportSpreadsheetUtils";
 import { reportColumnAppearance } from "./ReportSpreadsheetUtils";
 import { useSpreadsheetRowHeights } from "./useSpreadsheetRowHeights";
-import { tableUi } from "./dashboardStyles";
 import { SPREADSHEET_GUTTER_WIDTH, SPREADSHEET_PANEL_CLASS, SPREADSHEET_ATTACHED_VIEWPORT_CLASS, SpreadsheetFooter, SpreadsheetDetailsAction, spreadsheetFeedbackMessage, SpreadsheetBlankRows, SpreadsheetRowNumber, useSpreadsheetViewport, useSpreadsheetFeedback } from "./SpreadsheetPresentation";
 import { CollaborativeCell } from "./CollaborativeCell";
 import EditStepNavigation from "./EditStepNavigation";
@@ -114,6 +119,9 @@ export default function OperationsReportsView({ mode, onOpenTrip, refreshVersion
   const [active, setActive] = useState<Kind>("loading");
   const [pageQuery,setPageQuery]=useState<OperationsPageOptions>({page:1,limit:50,search:"",filter:"All",sortBy:"date",sortOrder:"desc"});
   const pageKey=JSON.stringify(pageQuery);
+  const [loadingMore,setLoadingMore]=useState(false);
+  const pageWindow=useRef({key:"",page:0});
+  const moreFlight=useRef(false);
   const paged=mode==="management"&&OPERATIONS_PAGINATION_ENABLED;
   const cached = accessToken ? getCachedOperations(accessToken, mode === "trucker",pageQuery) : null;
   const [dataState, setDataState] = useState(() => ({ token: accessToken, mode, pageKey, value: cached ?? emptyData }));
@@ -145,7 +153,10 @@ export default function OperationsReportsView({ mode, onOpenTrip, refreshVersion
     if (!quiet) setLoading(true);
     setError(null);
     try {
-      const response = mode === "trucker" ? await fetchAssignedOperations(accessToken) : await fetchOperationsOverview(accessToken,pageQuery);
+      let response = mode === "trucker" ? await fetchAssignedOperations(accessToken) : await fetchOperationsOverview(accessToken,pageQuery);
+      const target=paged&&pageWindow.current.key===pageKey?pageWindow.current.page:1;
+      for(let page=2;page<=Math.min(target,response.pagination?.totalPages??1);page++){if(version!==requestVersion.current)return;response=appendSpreadsheetSnapshot(response,await fetchOperationsOverview(accessToken,{...pageQuery,page}),["trips","stops","loading","unloading","backloads","offloads","event_rows","trip_options","conversions"]);}
+      pageWindow.current={key:pageKey,page:Math.max(1,Math.min(target,response.pagination?.totalPages??1))};
       if (version !== requestVersion.current) return;
       if (deferForEditing && realtimeGate.blocked()) { realtimeGate.request(); return; }
       if(paged&&response.pagination&&Number(pageQuery.page??1)>response.pagination.totalPages){setPageQuery(current=>({...current,page:response.pagination!.totalPages}));return;}
@@ -180,6 +191,14 @@ export default function OperationsReportsView({ mode, onOpenTrip, refreshVersion
       if (version === requestVersion.current) setLoading(false);
     }
   }, [accessToken, mode, realtimeGate, pageQuery, pageKey, paged]);
+  const loadMore=async()=>{
+    if(!accessToken||!paged||loading||moreFlight.current||gridInteraction.current()||pageWindow.current.key!==pageKey||pageWindow.current.page>=(data.pagination?.totalPages??1))return;
+    const expected=pageKey,version=requestVersion.current,page=pageWindow.current.page+1;moreFlight.current=true;setLoadingMore(true);setError(null);
+    try{const next=await fetchOperationsOverview(accessToken,{...pageQuery,page});if(version!==requestVersion.current||pageWindow.current.key!==expected)return;
+      setDataState(current=>current.pageKey===expected?{...current,value:appendSpreadsheetSnapshot(current.value,next,["trips","stops","loading","unloading","backloads","offloads","event_rows","trip_options","conversions"])}:current);pageWindow.current.page=page;
+    }catch(cause){setError(cause instanceof Error?cause.message:"More reports could not load. Retry to continue.");}
+    finally{moreFlight.current=false;setLoadingMore(false);}
+  };
   useEffect(() => { realtimeLoad.current = () => { invalidateOperationsReportsCache(); return load(true, false, true); }; }, [load]);
 
   useEffect(()=>{ if(mode === "trucker" && refreshVersion > 0)realtimeGate.request(); },[mode,refreshVersion,realtimeGate]);
@@ -279,7 +298,7 @@ export default function OperationsReportsView({ mode, onOpenTrip, refreshVersion
       {mode === "trucker" && <SlidingSegmentedControl aria-label="Operational report type" options={tabs} value={active} onChange={(value) => setActive(value)} />}
       {addReportButton}
     </div>}
-    {mode === "management" && <OperationsEventsTable toolbarLeading={toolbarLeading} rows={data.event_rows} loading={loading} hasLoaded={hasLoaded} loadError={error} token={accessToken ?? ""} profileId={profile?.id} canManageReports={["ADMIN", "STAFF"].includes(profile?.role ?? "")} onOpenTrip={onOpenTrip} onSaved={() => load(true, true)} toolbarActions={addReportButton} serverPage={paged?{query:pageQuery,pagination:data.pagination,pending:loading||(dataState.pageKey!==pageKey&&!cached),onChange:next=>{if(gridInteraction.current()){setNotice("Finish or cancel the active edit before changing pages or filters.");return;}setPageQuery(current=>({...current,...next}));}}:undefined} onInteractionCheck={registerGridInteraction} />}
+    {mode === "management" && <OperationsEventsTable toolbarLeading={toolbarLeading} rows={data.event_rows} loading={loading} hasLoaded={hasLoaded} loadError={error} token={accessToken ?? ""} profileId={profile?.id} canManageReports={["ADMIN", "STAFF"].includes(profile?.role ?? "")} onOpenTrip={onOpenTrip} onSaved={() => load(true, true)} toolbarActions={addReportButton} serverPage={paged?{onLoadMore:loadMore,loadingMore,hasMore:pageWindow.current.page<(data.pagination?.totalPages??1),query:pageQuery,pagination:data.pagination,pending:loading||(dataState.pageKey!==pageKey&&!cached),onChange:next=>{if(gridInteraction.current()){setNotice("Finish or cancel the active edit before changing pages or filters.");return;}setPageQuery(current=>({...current,...next}));}}:undefined} onInteractionCheck={registerGridInteraction} />}
     {mode === "trucker" && loading ? <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500">Loading assigned trip reports…</div> : null}
     {mode === "trucker" && <details open className={`${cardClass} group`}>
     <div className="space-y-4">
@@ -521,11 +540,14 @@ function readOperationsColumnLayout(storageKey = OPERATIONS_COLUMN_STORAGE_KEY) 
   } catch { return initial; }
 }
 
-export function OperationsEventsTable({ rows, loading, hasLoaded, loadError, token, profileId, canManageReports = false, onOpenTrip, onSaved, toolbarActions, toolbarLeading, onInteractionCheck, serverPage }: { toolbarLeading?: ReactNode; rows: OperationsEventRow[]; loading: boolean; hasLoaded: boolean; loadError: string | null; token: string; profileId?: string; canManageReports?: boolean; onOpenTrip?: (tripId: string, stopId?: string | null) => void; onSaved: () => void | Promise<void>; toolbarActions?: ReactNode; onInteractionCheck?: (check: () => boolean) => void; serverPage?: {query:OperationsPageOptions;pagination:OperationsReportData["pagination"];pending:boolean;onChange:(next:OperationsPageOptions)=>void} }) {
+export function OperationsEventsTable({ rows, loading, hasLoaded, loadError, token, profileId, canManageReports = false, onOpenTrip, onSaved, toolbarActions, toolbarLeading, onInteractionCheck, serverPage }: { toolbarLeading?: ReactNode; rows: OperationsEventRow[]; loading: boolean; hasLoaded: boolean; loadError: string | null; token: string; profileId?: string; canManageReports?: boolean; onOpenTrip?: (tripId: string, stopId?: string | null) => void; onSaved: () => void | Promise<void>; toolbarActions?: ReactNode; onInteractionCheck?: (check: () => boolean) => void; serverPage?: {onLoadMore:()=>Promise<void>;loadingMore:boolean;hasMore:boolean;query:OperationsPageOptions;pagination:OperationsReportData["pagination"];pending:boolean;onChange:(next:OperationsPageOptions)=>void} }) {
   const filter = (serverPage?.query.filter ?? "All") as EventFilter;
   const [localSearch, setLocalSearch] = useState("");
-  const search=serverPage?.query.search??localSearch;
-  const setSearch=(value:string)=>serverPage?serverPage.onChange({search:value,page:1}):setLocalSearch(value);
+  const search=localSearch;
+  const searchScope=serverPage?.query.search??"";
+  const searchAction=useRef(serverPage?.onChange);searchAction.current=serverPage?.onChange;
+  useEffect(()=>{if(!serverPage)return;const timer=setTimeout(()=>{if(localSearch!==searchScope)searchAction.current?.({search:localSearch,page:1});},250);return()=>clearTimeout(timer);},[localSearch,searchScope,Boolean(serverPage)]);
+  const setSearch=setLocalSearch;
   const [localSort, setLocalSort] = useState<{ key: EventSortKey; direction: "asc" | "desc" }>({ key: "date", direction: "desc" });
   const hasServerPage=Boolean(serverPage);
   const serverSortBy=serverPage?.query.sortBy,serverSortOrder=serverPage?.query.sortOrder;
@@ -632,9 +654,14 @@ export function OperationsEventsTable({ rows, loading, hasLoaded, loadError, tok
   })), [localRows]);
   const sortBy = (key: EventSortKey) => setSort((current) => ({ key, direction: current.key === key && current.direction === "asc" ? "desc" : "asc" }));
   const selectionDatasetKey = JSON.stringify([token, serverPage?.query.page, serverPage?.query.limit, filter, search, sort.key, sort.direction]);
-  const selectedRows = !serverPage?.pending && selectedRowState.datasetKey === selectionDatasetKey ? new Set([...selectedRowState.ids].filter(id => visibleRows.some(row => row.id === id))) : new Set<string>();
-  const selectableReportRows = visibleRows.filter(row => ["OFFLOAD", "BACKLOAD"].includes(row.source_type));
-  const selectedTargets = operationsDeleteTargets(visibleRows, selectedRows);
+  const [selectionRecords,setSelectionRecords]=useState<{key:string;rows:OperationsEventRow[]}>({key:"",rows:[]});
+  const selectAllRequest=useSpreadsheetSelectAll(selectionDatasetKey,message=>setDeleteMessage(message));
+  const selectionRows=useMemo(()=>appendSpreadsheetSnapshot({rows:visibleRows},{rows:selectionRecords.key===selectionDatasetKey?selectionRecords.rows:[]},["rows"]).rows,[visibleRows,selectionRecords,selectionDatasetKey]);
+  const selectionIds=useMemo(()=>new Set(selectionRows.map(row=>row.id)),[selectionRows]);
+  const selectedRows = !serverPage?.pending && selectedRowState.datasetKey === selectionDatasetKey ? new Set([...selectedRowState.ids].filter(id => selectionIds.has(id))) : new Set<string>();
+  const selectedTargets = operationsDeleteTargets(selectionRows, selectedRows);
+  const selectAllRows=()=>{if(!serverPage){setSelectedRows(new Set(visibleRows.map(row=>row.id)));return;}void selectAllRequest.run(current=>fetchOperationsSelection(token,serverPage.query,current),matching=>{setSelectionRecords({key:selectionDatasetKey,rows:matching});setSelectedRows(new Set(matching.map(row=>row.id)));});};
+  const allMatchingSelected=selectedRows.size>0&&selectedRows.size===(serverPage?.pagination?.total??visibleRows.length);
   const canDeleteSelectedReports = Boolean(selectedTargets?.length) && selectedTargets!.every(target => ["OFFLOAD", "BACKLOAD"].includes(target.source_type));
   const setSelectedRows = (update: Set<string> | ((current: Set<string>) => Set<string>)) => setSelectedRowState((currentState) => {
     const current = currentState.datasetKey === selectionDatasetKey ? currentState.ids : new Set<string>();
@@ -686,8 +713,8 @@ export function OperationsEventsTable({ rows, loading, hasLoaded, loadError, tok
   };
   const deleteSelectedRows = async () => {
     if (!token || deleteSaving.current || !selectedRows.size || !selectedTargets?.length || selectedTargets.length > 20) return;
-    const selected = [...selectedRows].map((id) => visibleRows.find((row) => row.id === id)).filter((row): row is OperationsEventRow => Boolean(row));
-    const targets = operationsDeleteTargets(visibleRows, selectedRows);
+    const selected = [...selectedRows].map((id) => selectionRows.find((row) => row.id === id)).filter((row): row is OperationsEventRow => Boolean(row));
+    const targets = operationsDeleteTargets(selectionRows, selectedRows);
     if (targets?.some(target => !["OFFLOAD", "BACKLOAD"].includes(target.source_type))) { setDeleteFeedbackKind("error"); setDeleteMessage("Select only Offload or Backload reports."); return; }
     if (!targets || selected.length !== selectedRows.size) {
       setDeleteFeedbackKind("error");
@@ -1022,7 +1049,10 @@ export function OperationsEventsTable({ rows, loading, hasLoaded, loadError, tok
 
   const formulaRows=useMemo(()=>visibleRows.map(row=>({...row,trip:row.dispatch_number??row.trip_number,report_type:row.report_types.join(", ")})),[visibleRows]);
   const formulaColumns=useMemo(()=>columns.filter(column=>column.key!=="details").map(column=>({key:String(column.key),title:column.label})),[columns]);
-  const formulas=useOperationalFormulas({token,table:"operations",rows:formulaRows,columns:formulaColumns,identity:physicalRowIdentity,sourceEditor:prepareFormulaSource,canEdit:canManageReports&&!headerFormatting.key,enabled:canManageReports,paused:Boolean(editing||rowEdit||deleteBusy),rowOffset:((serverPage?.pagination?.page??1)-1)*(serverPage?.query.limit??50)});
+  const formulas=useOperationalFormulas({viewport:viewportRef,token,table:"operations",rows:formulaRows,columns:formulaColumns,identity:physicalRowIdentity,sourceEditor:prepareFormulaSource,canEdit:canManageReports&&!headerFormatting.key,enabled:canManageReports,paused:Boolean(editing||rowEdit||deleteBusy),rowOffset:0});
+  const virtualKeys=useMemo(()=>visibleRows.map(row=>row.id),[visibleRows]);
+  const virtualRows=useVirtualSpreadsheetRows(viewportRef,virtualKeys,true,editing?virtualKeys.indexOf(editing.rowId):formulas.selectedIdentity?visibleRows.findIndex(row=>physicalRowIdentity(row)===formulas.selectedIdentity):-1,rowHeights.heights);
+  useSpreadsheetInfiniteScroll(viewportRef,{hasMore:!!serverPage?.hasMore,loading:loading||serverPage?.loadingMore,blocked:Boolean(loadError||editing||rowEdit||deleteBusy||formulas.draftPending),revision:rows.length,queryKey:JSON.stringify(serverPage?.query),onLoadMore:()=>serverPage?.onLoadMore()});
   const formatColumnKey = selectedCell?.field === "dispatch_number" ? "trip" : selectedCell?.field === "delivery_date" ? "date" : selectedCell?.field;
   const selectedFormat = selectedCell && formatColumnKey ? sharedDesign.columns[formatColumnKey]?.cells?.[selectedCell.rowId] ?? {} : {};
   const applyCellFormat = (patch: Partial<ReportCellFormat>) => {
@@ -1041,7 +1071,7 @@ export function OperationsEventsTable({ rows, loading, hasLoaded, loadError, tok
     <div ref={viewportRef} className={`${REPORT_GRID_VIEWPORT_CLASS} ${SPREADSHEET_ATTACHED_VIEWPORT_CLASS}`}>
       <table {...headerFormatting.tableProps} className="spreadsheet-grid table-fixed border-separate border-spacing-0" style={{ width: tableWidth + SPREADSHEET_GUTTER_WIDTH, minWidth: tableWidth + SPREADSHEET_GUTTER_WIDTH, height: "auto" }}>
         <colgroup><col style={{ width: SPREADSHEET_GUTTER_WIDTH }} />{columns.map((column) => <col key={column.key} style={{ width: column.width }} />)}</colgroup>
-        <thead><tr style={rowHeights.headerStyle}><th scope="col" className={`${REPORT_GRID_HEADER_CELL_CLASS} sticky left-0 z-[70] spreadsheet-gutter whitespace-nowrap text-center !px-1`}><SpreadsheetRowNumber value="#" /><input type="checkbox" disabled={serverPage?.pending} aria-label="Select all visible Offload and Backload reports" checked={selectableReportRows.length > 0 && selectableReportRows.every((row) => selectedRows.has(row.id))} onChange={(event) => setSelectedRows((current) => { const next = new Set(current); selectableReportRows.forEach((row) => event.target.checked ? next.add(row.id) : next.delete(row.id)); return next; })} className="h-4 w-4 rounded border-slate-300 accent-[#2678b9]" />{rowHeights.headerHandle()}</th>{columns.map((column) => {
+        <thead><tr style={rowHeights.headerStyle}><th scope="col" className={`${REPORT_GRID_HEADER_CELL_CLASS} sticky left-0 z-[70] spreadsheet-gutter whitespace-nowrap text-center !px-1`}><SpreadsheetRowSelectionHeader active={selectedRows.size>0} checked={allMatchingSelected} partial={selectedRows.size>0&&!allMatchingSelected} disabled={serverPage?.pending||selectAllRequest.busy} onChange={checked=>{if(checked)selectAllRows();else setSelectedRows(new Set());}}/>{rowHeights.headerHandle()}</th>{columns.map((column) => {
           const pinned = layout.pins[column.key];
           return <th key={column.key} {...headerFormatting.props(column.key)} onContextMenu={event=>setOpenColumnMenu({key:column.key,...headerFormatting.menuPosition(event)})} data-ops-column={column.key} scope="col" draggable={sharedDesign.canEdit && sharedDesign.loaded} onDragStart={(event) => { setDraggedColumn(column.key); event.dataTransfer.effectAllowed = "move"; }} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); reorderByDrop(column.key); }}
             className={`${REPORT_GRID_HEADER_CELL_CLASS} relative ${pinned ? "z-50" : "z-30"}`} style={cellStyle(column, true)}>
@@ -1053,8 +1083,8 @@ export function OperationsEventsTable({ rows, loading, hasLoaded, loadError, tok
           </th>;
         })}</tr></thead>
         <tbody>
-          {visibleRows.map((row, rowIndex) => <Fragment key={row.id}><tr style={rowHeights.style(row.id)} aria-selected={selectedRows.has(row.id)} className={`report-data-row ${REPORT_GRID_ROW_CLASS} focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500 ${selectedRows.has(row.id) ? "bg-blue-50 [&>td]:!bg-blue-50" : ""}`}>
-            <td data-cell-hover-disabled="true" style={{ width: SPREADSHEET_GUTTER_WIDTH, minWidth: SPREADSHEET_GUTTER_WIDTH, maxWidth: SPREADSHEET_GUTTER_WIDTH }} className={`${REPORT_GRID_BODY_CELL_CLASS} spreadsheet-gutter sticky left-0 z-20 whitespace-nowrap border-r border-slate-100 text-center !px-1 ${selectedRows.has(row.id) ? "!bg-blue-50" : "bg-slate-50"}`}><SpreadsheetRowNumber value={((serverPage?.pagination?.page ?? 1) - 1) * (serverPage?.query.limit ?? 50) + rowIndex + 1} /><input type="checkbox" disabled={serverPage?.pending} aria-label={`Select row ${row.dispatch_number || row.trip_number || row.id}`} checked={selectedRows.has(row.id)} onClick={(event) => event.stopPropagation()} onChange={() => toggleRowSelection(row.id)} className="h-4 w-4 rounded border-slate-300 accent-[#2678b9]" />{rowHeights.handle(row.id)}</td>
+          {virtualRows.map(item=>{if("spacer" in item)return <tr key={`spacer:${item.index}`} aria-hidden="true"><td colSpan={columns.length+1} style={{height:item.spacer,padding:0,border:0}}/></tr>;const rowIndex=item.index,row=visibleRows[rowIndex];return <Fragment key={row.id}><tr data-virtual-index={rowIndex} style={rowHeights.style(row.id)} aria-selected={selectedRows.has(row.id)} className={`report-data-row ${REPORT_GRID_ROW_CLASS} focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500 ${selectedRows.has(row.id) ? "bg-blue-50 [&>td]:!bg-blue-50" : ""}`}>
+            <td data-cell-hover-disabled="true" style={{ width: SPREADSHEET_GUTTER_WIDTH, minWidth: SPREADSHEET_GUTTER_WIDTH, maxWidth: SPREADSHEET_GUTTER_WIDTH }} className={`${REPORT_GRID_BODY_CELL_CLASS} spreadsheet-gutter sticky left-0 z-20 whitespace-nowrap border-r border-slate-100 text-center !px-1 ${selectedRows.has(row.id) ? "!bg-blue-50" : "bg-slate-50"}`}>{selectedRows.size?<input type="checkbox" disabled={serverPage?.pending} aria-label={`Select row ${rowIndex+1}`} checked={selectedRows.has(row.id)} onChange={()=>toggleRowSelection(row.id)} className="h-3.5 w-3.5 accent-blue-600"/>:<button type="button" aria-label={`Select row ${rowIndex+1}`} onClick={()=>toggleRowSelection(row.id)}><SpreadsheetRowNumber value={rowIndex+1}/></button>}{rowHeights.handle(row.id)}</td>
             {columns.map((column) => {
               const format = sharedDesign.columns[column.key]?.cells?.[row.id];
               const style: CSSProperties = { ...cellStyle(column), ...reportColumnAppearance(sharedDesign.columns[column.key], format ?? undefined, layout.colors[column.key]) };
@@ -1088,14 +1118,12 @@ export function OperationsEventsTable({ rows, loading, hasLoaded, loadError, tok
               const sourceRow=formulaRows.find(candidate=>candidate.id===row.id)??{...row,trip:row.dispatch_number??row.trip_number,report_type:row.report_types.join(", ")};
               return cloneElement(original,{...formulas.cellProps(sourceRow,String(column.key))},formulas.render(sourceRow,String(column.key),original.props.children));
             })}
-          </tr>{expandedLineItemsRow === row.id && <tr><td colSpan={columns.length + 1} className="border-b border-slate-200 bg-slate-50 px-4 py-3"><div className="overflow-x-auto">{row.line_items.length > 0 && <><div className="mb-2 text-xs font-bold text-[#0b2341]">Source line items · {row.dispatch_number || "Trip"}{row.trip_stop_id ? ` · Stop ${row.stop_sequence ?? ""}` : " · trip scope"}</div>{row.line_items.map((item) => <div key={item.id} className="grid min-w-[440px] grid-cols-[minmax(160px,1fr)_120px_120px] gap-3 border-b border-slate-200 py-2 text-xs last:border-0"><span>{item.dr_number || `Line item ${item.id}`}</span><span>Quantity: {item.quantity ?? ""}</span><span>CBM: {item.cbm ?? ""}</span></div>)}</>}{[...row.backload_records.map((record) => ({ record, kind: "backloads" as const })), ...row.offload_records.map((record) => ({ record, kind: "offloads" as const }))].map(({ record, kind }) => { const report: ScopeReport = record; const draft = cargoRecordDrafts[record.id] ?? report; const isEditing = editingCargoRecord === record.id; return <section key={record.id} className="mt-3 rounded-lg border border-slate-200 bg-white p-3"><div className="flex flex-wrap items-center justify-between gap-2"><div className="text-xs font-semibold text-slate-700">{kind === "backloads" ? "Backload" : "Offload"} · {record.trip_stop_id ? `Stop ${row.stop_sequence ?? ""}` : "Whole trip"} · record {record.id}</div><button type="button" onClick={() => { if (isEditing) setEditingCargoRecord(null); else { setEditingCargoRecord(record.id); setCargoRecordDrafts((current) => ({ ...current, [record.id]: { ...report } })); } }} className="text-xs font-semibold text-[#2678b9] underline">{isEditing ? "Close editor" : "Edit Row"}</button></div>{isEditing ? <div className="mt-3 grid gap-2 sm:grid-cols-3"><label className="text-xs font-semibold text-slate-600">Reason<input value={draft.reason ?? ""} onChange={(event) => setCargoRecordDrafts((current) => ({ ...current, [record.id]: { ...draft, reason: event.target.value || null } }))} className="mt-1 h-9 w-full rounded border border-slate-300 px-2 text-sm font-normal" /></label><label className="text-xs font-semibold text-slate-600">Number of boxes<input type="number" min="0" step="1" value={draft.number_of_boxes ?? ""} onChange={(event) => setCargoRecordDrafts((current) => ({ ...current, [record.id]: { ...draft, number_of_boxes: event.target.value === "" ? null : Number(event.target.value) } }))} className="mt-1 h-9 w-full rounded border border-slate-300 px-2 text-sm font-normal" /></label><label className="text-xs font-semibold text-slate-600">Comments<input value={draft.comments ?? ""} onChange={(event) => setCargoRecordDrafts((current) => ({ ...current, [record.id]: { ...draft, comments: event.target.value || null } }))} className="mt-1 h-9 w-full rounded border border-slate-300 px-2 text-sm font-normal" /></label><div className="sm:col-span-3"><button type="button" onClick={() => void saveCargoRecord(kind, report)} className="rounded bg-[#0b2341] px-3 py-1.5 text-xs font-semibold text-white">Save changes</button><button type="button" onClick={() => setEditingCargoRecord(null)} className="ml-2 rounded border border-slate-200 px-3 py-1.5 text-xs">Cancel</button></div></div> : <div className="mt-2 grid gap-2 text-xs sm:grid-cols-3"><span>Reason: {record.reason || ""}</span><span>Boxes: {record.number_of_boxes ?? ""}</span><span>Comments: {record.comments || ""}</span></div>}<OperationsReceiptGallery token={token} kind={kind} recordId={record.id} /></section>; })}{!row.line_items.length && !row.backload_records.length && !row.offload_records.length && <p className="text-xs text-slate-500">No editable source records are associated with this row.</p>}</div></td></tr>}</Fragment>)}
-          <SpreadsheetBlankRows count={spreadsheetPadding.count} height={spreadsheetPadding.height} start={((serverPage?.pagination?.page ?? 1) - 1) * (serverPage?.query.limit ?? 50) + visibleRows.length + 1} loading={(loading || !hasLoaded) && !visibleRows.length} columns={columns.map(column => ({ key: column.key, width: column.width, style: cellStyle(column) }))} />
+          </tr>{expandedLineItemsRow === row.id && <tr data-virtual-extra={rowIndex}><td colSpan={columns.length + 1} className="border-b border-slate-200 bg-slate-50 px-4 py-3"><div className="overflow-x-auto">{row.line_items.length > 0 && <><div className="mb-2 text-xs font-bold text-[#0b2341]">Source line items · {row.dispatch_number || "Trip"}{row.trip_stop_id ? ` · Stop ${row.stop_sequence ?? ""}` : " · trip scope"}</div>{row.line_items.map((item) => <div key={item.id} className="grid min-w-[440px] grid-cols-[minmax(160px,1fr)_120px_120px] gap-3 border-b border-slate-200 py-2 text-xs last:border-0"><span>{item.dr_number || `Line item ${item.id}`}</span><span>Quantity: {item.quantity ?? ""}</span><span>CBM: {item.cbm ?? ""}</span></div>)}</>}{[...row.backload_records.map((record) => ({ record, kind: "backloads" as const })), ...row.offload_records.map((record) => ({ record, kind: "offloads" as const }))].map(({ record, kind }) => { const report: ScopeReport = record; const draft = cargoRecordDrafts[record.id] ?? report; const isEditing = editingCargoRecord === record.id; return <section key={record.id} className="mt-3 rounded-lg border border-slate-200 bg-white p-3"><div className="flex flex-wrap items-center justify-between gap-2"><div className="text-xs font-semibold text-slate-700">{kind === "backloads" ? "Backload" : "Offload"} · {record.trip_stop_id ? `Stop ${row.stop_sequence ?? ""}` : "Whole trip"} · record {record.id}</div><button type="button" onClick={() => { if (isEditing) setEditingCargoRecord(null); else { setEditingCargoRecord(record.id); setCargoRecordDrafts((current) => ({ ...current, [record.id]: { ...report } })); } }} className="text-xs font-semibold text-[#2678b9] underline">{isEditing ? "Close editor" : "Edit Row"}</button></div>{isEditing ? <div className="mt-3 grid gap-2 sm:grid-cols-3"><label className="text-xs font-semibold text-slate-600">Reason<input value={draft.reason ?? ""} onChange={(event) => setCargoRecordDrafts((current) => ({ ...current, [record.id]: { ...draft, reason: event.target.value || null } }))} className="mt-1 h-9 w-full rounded border border-slate-300 px-2 text-sm font-normal" /></label><label className="text-xs font-semibold text-slate-600">Number of boxes<input type="number" min="0" step="1" value={draft.number_of_boxes ?? ""} onChange={(event) => setCargoRecordDrafts((current) => ({ ...current, [record.id]: { ...draft, number_of_boxes: event.target.value === "" ? null : Number(event.target.value) } }))} className="mt-1 h-9 w-full rounded border border-slate-300 px-2 text-sm font-normal" /></label><label className="text-xs font-semibold text-slate-600">Comments<input value={draft.comments ?? ""} onChange={(event) => setCargoRecordDrafts((current) => ({ ...current, [record.id]: { ...draft, comments: event.target.value || null } }))} className="mt-1 h-9 w-full rounded border border-slate-300 px-2 text-sm font-normal" /></label><div className="sm:col-span-3"><button type="button" onClick={() => void saveCargoRecord(kind, report)} className="rounded bg-[#0b2341] px-3 py-1.5 text-xs font-semibold text-white">Save changes</button><button type="button" onClick={() => setEditingCargoRecord(null)} className="ml-2 rounded border border-slate-200 px-3 py-1.5 text-xs">Cancel</button></div></div> : <div className="mt-2 grid gap-2 text-xs sm:grid-cols-3"><span>Reason: {record.reason || ""}</span><span>Boxes: {record.number_of_boxes ?? ""}</span><span>Comments: {record.comments || ""}</span></div>}<OperationsReceiptGallery token={token} kind={kind} recordId={record.id} /></section>; })}{!row.line_items.length && !row.backload_records.length && !row.offload_records.length && <p className="text-xs text-slate-500">No editable source records are associated with this row.</p>}</div></td></tr>}</Fragment>;})}
+          <SpreadsheetBlankRows count={spreadsheetPadding.count} height={spreadsheetPadding.height} start={visibleRows.length + 1} loading={(loading || !hasLoaded) && !visibleRows.length} columns={columns.map(column => ({ key: column.key, width: column.width, style: cellStyle(column) }))} />
         </tbody>
       </table>
     </div>
-    <SpreadsheetFooter label="Operations pagination" total={serverPage?.pagination?.total ?? visibleRows.length} page={serverPage?.pagination?.page ?? serverPage?.query.page ?? 1} totalPages={serverPage?.pagination?.totalPages ?? 1}>
-      {serverPage && <><label>Rows <select aria-label="Operations page size" disabled={serverPage.pending||Boolean(editing||rowEdit)} value={serverPage.query.limit??50} onChange={event=>serverPage.onChange({limit:Number(event.target.value),page:1})} className="h-8 rounded border border-slate-200 bg-white px-2 text-slate-600">{[25,50,100].map(size=><option key={size}>{size}</option>)}</select></label><button type="button" disabled={serverPage.pending||Boolean(editing||rowEdit)||Number(serverPage.query.page??1)<=1} onClick={()=>serverPage.onChange({page:Number(serverPage.query.page??1)-1})} className={`${tableUi.pageBtn} w-auto px-2`}>Previous</button><button type="button" disabled={serverPage.pending||Boolean(editing||rowEdit)||Number(serverPage.query.page??1)>=(serverPage.pagination?.totalPages??1)} onClick={()=>serverPage.onChange({page:Number(serverPage.query.page??1)+1})} className={`${tableUi.pageBtn} w-auto px-2`}>Next</button></>}
-    </SpreadsheetFooter>
+    <SpreadsheetFooter label="Operations loading" total={serverPage?.pagination?.total??visibleRows.length} page={1} totalPages={1}><span role="status">{serverPage?.loadingMore?"Loading more reports...":`${visibleRows.length} reports loaded`}</span>{serverPage?.hasMore&&<button type="button" disabled={serverPage.pending||serverPage.loadingMore} onClick={()=>void serverPage.onLoadMore()}>Load more</button>}</SpreadsheetFooter>
     </div>
     {detailRow && <div className="fixed inset-0 z-[2050] flex items-center justify-center bg-[#0b2341]/45 p-4 backdrop-blur-sm" role="presentation">
       <section role="dialog" aria-modal="true" aria-labelledby="operations-report-details-title" className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">

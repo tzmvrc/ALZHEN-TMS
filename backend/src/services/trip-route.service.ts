@@ -15,7 +15,7 @@ async function readByIds<T>(table: string, select: string, column: string, ids: 
         .from(table)
         .select(select)
         .in(column, batchIds)
-        .order("id", { ascending: true })
+        .order(table==="v_trip_route_labels"?"trip_id":"id", { ascending: true })
         .range(from, from + pageSize - 1);
       if (error) throw error;
       const page = (data ?? []) as T[];
@@ -28,9 +28,11 @@ async function readByIds<T>(table: string, select: string, column: string, ids: 
 }
 
 /** Fetch one bounded, batched enrichment set for the distinct report trip IDs. */
-export async function getTripRoutes(tripIds: string[], suppliedTrips?: RouteTrip[]): Promise<Map<string, string>> {
+export async function getTripRoutes(tripIds: string[], suppliedTrips?: RouteTrip[],projected=false): Promise<Map<string, string>> {
   const ids = [...new Set(tripIds.filter((id) => typeof id === "string" && id.trim()).map((id) => id.trim()))];
   if (!ids.length) return new Map();
+  if(projected){const labels=await readByIds<{trip_id:string;route:string}>("v_trip_route_labels","trip_id,route","trip_id",ids);return new Map(labels.map(row=>[row.trip_id,row.route]));}
+
 
   const [trips, stops] = await Promise.all([
     suppliedTrips ? Promise.resolve(suppliedTrips.filter(trip=>ids.includes(trip.id))) : readByIds<RouteTrip>("trips", "id, warehouse_id", "id", ids),

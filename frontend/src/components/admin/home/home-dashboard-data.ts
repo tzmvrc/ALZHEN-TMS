@@ -1,3 +1,4 @@
+import {isApprovedDemoTrip} from "../../../services/demo-trip-identity";
 import type { TripEvent, TripPage } from "../../../services/trip.service";
 import type { ReportRow } from "../../../services/report.service";
 import type { TripEventTrack, TripLocationRoute } from "../LiveTripMap";
@@ -62,7 +63,7 @@ export function buildHomeTrips(snapshot: HomeSnapshot): HomeTrip[] {
       ...(snapshot.bookingLimited ? [] : rows.map(row => manilaDay(row.finish_unloading_time))),
       ...events.filter(event => !event.trip_stop_id && ["COMPLETED", "TRIP_COMPLETED", "TRIP_FINISHED"].includes(event.event_type.toUpperCase())).map(event => manilaDay(event.event_time)),
     ].filter((day): day is string => day !== null).sort() : [];
-    return [{ demonstration: (/^f1241024-000[1-5]-4000-8000-000000000100$/.test(id)&&text(trip.remarks).includes("[ALZHEN_FLEET_DEMO_V1]")) || id === "d0241024-0000-4000-8000-000000000100" && text(trip.remarks).includes("[ALZHEN_HOME_DEMO_V1]"), id, reference: text(trip.dispatch_number ?? trip.trip_reference) || id.slice(0, 8),
+    return [{ demonstration: isApprovedDemoTrip({id,dispatch_number:trip.dispatch_number,remarks:trip.remarks}), id, reference: text(trip.dispatch_number ?? trip.trip_reference) || id.slice(0, 8),
       origin: text(rows.find(row => row.warehouse_name || row.warehouse_code)?.warehouse_name) || text(rows.find(row => row.warehouse_code)?.warehouse_code) || "Warehouse not recorded",
       destination: [...new Set(rows.map(row => text(row.store_name)).filter(Boolean))].join(" · ") || "Destination not recorded",
       driver: [...new Set(rows.map(row => text(row.driver_name)).filter(Boolean))].join(", ") || "Driver not recorded",

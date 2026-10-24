@@ -1,3 +1,5 @@
+import {useSpreadsheetInfiniteScroll} from "./useSpreadsheetInfiniteScroll";
+import {appendSpreadsheetRows} from "../../services/spreadsheet-pages";
 import type {TrackerSelectionRow} from "../../services/transmittal-tracker.service";
 import SpreadsheetRowSelectionHeader from "./SpreadsheetRowSelectionHeader";
 import {useSpreadsheetDragSelection} from "./useSpreadsheetDragSelection";
@@ -187,6 +189,10 @@ export default function TransmittalTrackerView({toolbarLeading,onDataReady}:{too
   const page = navigation.criteriaKey===criteriaKey ? navigation.page : 1;
   const pageOptions = useMemo<TrackerPageOptions>(()=>TRACKER_PAGINATION_ENABLED ? ({page,limit:navigation.limit,search:query,sortBy:sort?.key,sortOrder:sort?.direction,filterBy:columnFilter?.key,filter:columnFilter?.value,status:quickStatus}) : LEGACY_TRACKER_PAGE_OPTIONS,[page,navigation.limit,query,sort,columnFilter,quickStatus]);
   const cached = accessToken ? getCachedTransmittalTracker(accessToken,pageOptions) : null;
+  const windowKey=JSON.stringify([accessToken,pageOptions]);
+  const loadedWindow=useRef({key:"",page:0});
+  const moreFlight=useRef(false);
+  const [loadingMore,setLoadingMore]=useState(false);
   const deletedTripIds = useRef(new Set<string>());
   useEffect(()=>{deletedTripIds.current.clear();},[accessToken]);
   const [dataState, setDataState] = useState<{ token: string | null; value: TransmittalTrackerResponse | null }>(() => ({ token: accessToken, value: cached }));
@@ -353,7 +359,10 @@ export default function TransmittalTrackerView({toolbarLeading,onDataReady}:{too
         await initializeTransmittalTracker(accessToken); initializedRef.current = true;
         result = await fetchTransmittalTracker(accessToken,pageOptions.search??"",pageOptions);
       }
+      const target=TRACKER_PAGINATION_ENABLED&&loadedWindow.current.key===windowKey?loadedWindow.current.page:1;
+      for(let nextPage=2;nextPage<=Math.min(target,result.pagination?.totalPages??1);nextPage++){const next=await fetchTransmittalTracker(accessToken,pageOptions.search??"",{...pageOptions,page:nextPage});result={...result,rows:appendSpreadsheetRows(result.rows,next.rows,trackerRowKey)};}
       result={...result,rows:result.rows.filter(row=>!deletedTripIds.current.has(String(row.trip_id)))};
+      if(generation===loadGenerationRef.current)loadedWindow.current={key:windowKey,page:Math.max(1,Math.min(target,result.pagination?.totalPages??1))};
       if (generation === loadGenerationRef.current) {
         if ((deferForEditing || TRACKER_PAGINATION_ENABLED) && realtimeGate.blocked()) { realtimeGate.request(); return; }
         if (result.pagination && Number(pageOptions.page ?? 1) > Math.max(1, result.pagination.totalPages)) {
@@ -377,7 +386,7 @@ export default function TransmittalTrackerView({toolbarLeading,onDataReady}:{too
     } finally {
       if (generation===loadGenerationRef.current) setLoading(false);
     }
-  }, [accessToken, isAdmin, setData, realtimeGate, pageOptions]);
+  }, [accessToken, isAdmin, setData, realtimeGate, pageOptions,windowKey]);
   useEffect(() => { realtimeLoad.current = () => {
     if (dropdownRefreshPending.current) { dropdownRefreshPending.current = false; setDropdownRefresh((version) => version + 1); }
     return load(true, true);
@@ -835,7 +844,7 @@ export default function TransmittalTrackerView({toolbarLeading,onDataReady}:{too
     setSelectedCell({rowId:idForGrid,field});
     setCellSelection(current=>!extend&&current?.anchorRowId===idForGrid&&current.focusRowId===idForGrid&&current.anchorField===field&&current.focusField===field?current:extend&&current?{...current,focusRowId:idForGrid,focusField:field}:{anchorRowId:idForGrid,focusRowId:idForGrid,anchorField:field,focusField:field});
   }
-  const formulas=useOperationalFormulas({token:accessToken,table:"transmittal-tracker",rows:filteredRows,columns:formulaColumns,identity:trackerFormulaIdentity,sourceEditor:prepareFormulaSource,virtualRows:virtualTrackerRows,onSelect:(id,column,extend)=>selectTrackerRange(id.startsWith("stop:")?id.slice(5).replace(":assignment:","~"):id,column,extend),rowOffset:(page-1)*navigation.limit,canEdit:Boolean(data?.access.canEdit)&&!headerFormatting.key,paused:Boolean(editingCellKey||fillGesture)});
+  const formulas=useOperationalFormulas({viewport:viewportRef,token:accessToken,table:"transmittal-tracker",rows:filteredRows,columns:formulaColumns,identity:trackerFormulaIdentity,sourceEditor:prepareFormulaSource,virtualRows:virtualTrackerRows,onSelect:(id,column,extend)=>selectTrackerRange(id.startsWith("stop:")?id.slice(5).replace(":assignment:","~"):id,column,extend),rowOffset:(page-1)*navigation.limit,canEdit:Boolean(data?.access.canEdit)&&!headerFormatting.key,paused:Boolean(editingCellKey||fillGesture)});
   const selectionScope=JSON.stringify([accessToken,criteriaKey,page,navigation.limit]);
   const selectAllRequest=useSpreadsheetSelectAll(selectionScope,setSelectionError);
   useEffect(()=>{setFormatSelection(null);setCellSelection(null);setSelectedRows(new Set());setSelectionRecords([]);setSelectionError("");},[selectionScope]);
@@ -1265,6 +1274,14 @@ export default function TransmittalTrackerView({toolbarLeading,onDataReady}:{too
   const hasSelectedDataRows = selectedPhysicalRows.some(Boolean);
   const selectedStopCount=new Set(selectedPhysicalRows.flatMap(row=>row?[row.trip_stop_id]:[])).size;
   const pageNavigationBlocked = Boolean(editingCellKey || rowEdit || rowEditBusy || busyCells.size || Object.keys(drafts).length || resizeState || formulas.draftPending || formulas.busy);
+  const loadMore=async()=>{
+    if(!accessToken||!TRACKER_PAGINATION_ENABLED||loading||moreFlight.current||pageNavigationBlocked||loadedWindow.current.key!==windowKey||loadedWindow.current.page>=(data?.pagination?.totalPages??1))return;
+    const expected=windowKey,generation=loadGenerationRef.current,nextPage=loadedWindow.current.page+1;moreFlight.current=true;setLoadingMore(true);setError("");
+    try{const next=await fetchTransmittalTracker(accessToken,pageOptions.search??"",{...pageOptions,page:nextPage});if(generation!==loadGenerationRef.current||loadedWindow.current.key!==expected)return;setData(current=>current?{...next,rows:appendSpreadsheetRows(current.rows,next.rows.filter(row=>!deletedTripIds.current.has(String(row.trip_id))),trackerRowKey)}:current);loadedWindow.current.page=nextPage;}
+    catch(cause){setError(cause instanceof Error?cause.message:"Unable to load more rows.");}
+    finally{moreFlight.current=false;setLoadingMore(false);}
+  };
+  useSpreadsheetInfiniteScroll(viewportRef,{hasMore:TRACKER_PAGINATION_ENABLED&&loadedWindow.current.key===windowKey&&loadedWindow.current.page<(data?.pagination?.totalPages??1),loading:loading||loadingMore,blocked:Boolean(error)||pageNavigationBlocked,queryKey:windowKey,revision:filteredRows.length,onLoadMore:loadMore});
 
   useSpreadsheetFeedback(notice);
   useSpreadsheetFeedback(error || exportError, "error");
@@ -1348,13 +1365,7 @@ export default function TransmittalTrackerView({toolbarLeading,onDataReady}:{too
       <SpreadsheetHiddenColumns sheet={"transmittal"} columns={hiddenColumns.map(column=>({...column,title:headerFormatting.title(column.key,column.title)}))} onRestore={restoreColumn} onRestoreAll={() => saveColumnLayout({ ...columnLayout, hidden: [] })} />
     </div>
     {cellMenu&&<SpreadsheetCellContextMenu x={cellMenu.x} y={cellMenu.y} count={selectedFormatCellKeys.size} canFormat={sharedDesign.canEdit} format={{bold:selectionIsBold,italic:selectedFormats.length>0&&selectedFormats.every(format=>format.italic),color:selectedTextColor,backgroundColor:selectedBackgroundColor}} onApply={applyCellFormat} onSelectRow={()=>selectTrackerRow(cellMenu.row)} onSelectColumn={()=>{headerFormatting.clear();setSelectedRows(new Set());setFormatSelection({mode:"column",keys:[cellMenu.column]});}} onClose={()=>setCellMenu(null)}/>}
-    {Boolean(TRACKER_PAGINATION_ENABLED && data?.pagination && (data.pagination.totalPages>1 || page>1)) && <SpreadsheetFooter label="Tracker pagination" total={TRACKER_PAGINATION_ENABLED ? data?.pagination?.total ?? filteredRows.length : filteredRows.length} page={TRACKER_PAGINATION_ENABLED ? data?.pagination?.page ?? page : 1} totalPages={TRACKER_PAGINATION_ENABLED ? data?.pagination?.totalPages ?? 1 : 1}>
-      {TRACKER_PAGINATION_ENABLED && <>
-      <div className="flex items-center gap-2"><select aria-label="Tracker rows per page" value={navigation.limit} disabled={loading||pageNavigationBlocked} onChange={event=>setNavigation({criteriaKey,page:1,limit:Number(event.target.value)})} className="h-8 rounded border border-slate-200 bg-white px-2 text-slate-600">{[25,50,100].map(size=><option key={size}>{size}</option>)}</select>
-      <button type="button" disabled={loading||pageNavigationBlocked||page<=1} onClick={()=>setNavigation({criteriaKey,page:page-1,limit:navigation.limit})} className={`${tableUi.pageBtn} w-auto px-2`}>Previous</button>
-      <button type="button" disabled={loading||pageNavigationBlocked||!data?.pagination||page>=data.pagination.totalPages} onClick={()=>setNavigation({criteriaKey,page:page+1,limit:navigation.limit})} className={`${tableUi.pageBtn} w-auto px-2`}>Next</button></div>
-      </>}
-    </SpreadsheetFooter>}
+    {TRACKER_PAGINATION_ENABLED&&data?.pagination&&<SpreadsheetFooter label="Tracker loading" total={data.pagination.total} page={1} totalPages={1}><span role="status">{loadingMore?"Loading more rows...":`${filteredRows.length} rows loaded`}</span>{loadedWindow.current.page<data.pagination.totalPages&&<button type="button" disabled={loading||loadingMore||pageNavigationBlocked} onClick={()=>void loadMore()}>Load more</button>}</SpreadsheetFooter>}
     </div>
     {rowEdit && rowEdit.profileId === (profile?.id ?? null) && <div className="fixed inset-0 z-[2100] flex items-center justify-center bg-[#0b2341]/45 p-4 backdrop-blur-sm" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !rowEditBusy) closeRowEditor(); }}><section onKeyDown={(event) => { if (event.key === "Escape") { event.stopPropagation(); closeRowEditor(); } }} role="dialog" aria-modal="true" aria-labelledby="tracker-row-edit-title" className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl"><div className="flex items-start justify-between gap-3"><div><h2 id="tracker-row-edit-title" className="text-lg font-semibold text-[#0b2341]">Edit Transmittal Tracker row</h2><p className="mt-1 text-xs text-slate-500">Delivery stop {rowEdit.stopId}. Changes save to this stop only.</p></div><button type="button" disabled={rowEditBusy} onClick={closeRowEditor} className="rounded px-2 py-1 text-slate-500 hover:bg-slate-100">Close</button></div><EditStepNavigation steps={["Delivery details", "Shipping / Supporting details"]} current={rowEditStep} onChange={setRowEditStep} busy={rowEditBusy} /><div className="mt-4 grid gap-3 sm:grid-cols-2">{TRACKER_COLUMNS.filter(column=>column.editor!=="readonly").filter((_, index) => rowEditStep === 0 ? index < 7 : index >= 7).map((column) => {
       const value = rowEdit.values[column.field] ?? "";

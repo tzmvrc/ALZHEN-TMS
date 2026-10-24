@@ -1,3 +1,4 @@
+import {postgrestBatches} from "../utils/postgrest-batches.js";
 import { validateFormulaSyntax } from "../../../packages/spreadsheet-formula/index.js";
 import { randomUUID } from "node:crypto";
 import { supabaseAdmin } from "../config/supabase.js";
@@ -172,21 +173,31 @@ export async function createTable(actor: FlexActor, input: Record<string, unknow
   return { ...data, access: { can_view: true, can_edit: true, can_manage: true, is_owner: true } };
 }
 
-export async function getTable(actor: FlexActor, tableId: unknown) {
-  const { table, access } = await getTableAccess(tableId, actor, "view");
-  const id = table.id as string;
-  const readAll = async (build: () => any) => { const result:TableRecord[]=[]; for(let offset=0;offset<10000;offset+=1000){const page=await build().range(offset,offset+999);if(page.error)failDb("load complete table data for",page.error);result.push(...(page.data??[]));if((page.data?.length??0)<1000)return result;}throw new ApiError("This table exceeds the current spreadsheet loading limit.",400,"FLEX_TABLE_SIZE_LIMIT");};
-  const [columns,rows]=await Promise.all([
-    readAll(()=>supabaseAdmin.from("flex_columns").select(COLUMN_FIELDS).eq("table_id",id).eq("is_archived",false).order("position").order("created_at").order("id")),
-    readAll(()=>supabaseAdmin.from("flex_rows").select(ROW_FIELDS).eq("table_id",id).eq("row_kind","CUSTOM").is("archived_at",null).order("position").order("created_at").order("id")),
-  ]);
-  const cells:TableRecord[]=[],options:TableRecord[]=[];
-  for(let offset=0;offset<rows.length;offset+=100){const batch=rows.slice(offset,offset+100).map(row=>row.id);cells.push(...await readAll(()=>supabaseAdmin.from("flex_cells").select(CELL_FIELDS).in("row_id",batch).order("id")));}
-  for(let offset=0;offset<columns.length;offset+=100){const batch=columns.slice(offset,offset+100).map(column=>column.id);options.push(...await readAll(()=>supabaseAdmin.from("flex_dropdown_options").select(OPTION_FIELDS).in("column_id",batch).eq("is_active",true).order("position").order("id")));}
-
-  const cellsByRow: Record<string, TableRecord[]> = {};
-  for (const cell of cells) (cellsByRow[cell.row_id] ??= []).push(cell);
-  return { table, access, columns, rows: rows.map((row) => ({ ...row, cells: cellsByRow[row.id] ?? [] })), options };
+export async function getTable(actor: FlexActor, tableId: unknown, query:Record<string,unknown>={}) {
+  const {table,access}=await getTableAccess(tableId,actor,"view");
+  for(const key of ["page","limit"]){const value=query[key];if(value!==undefined&&(typeof value!=="string"||!/^\d+$/.test(value)||!Number.isSafeInteger(Number(value))||Number(value)<1||Number(value)>(key==="limit"?100:1000000)))badRequest("Invalid page or page size.");}
+  if(query.search!==undefined&&(typeof query.search!=="string"||query.search.length>500))badRequest("Use a search of 500 characters or fewer.");
+  const id=String(table.id),page=Math.max(1,Math.floor(Number(query.page)||1)),limit=Math.max(1,Math.min(100,Math.floor(Number(query.limit)||50))),search=String(query.search??"").trim().slice(0,500);
+  const readAll=async(build:()=>any)=>{const result:TableRecord[]=[];for(let offset=0;;offset+=1000){const next=await build().range(offset,offset+999);if(next.error)failDb("load",next.error);result.push(...(next.data??[]));if((next.data?.length??0)<1000)return result;}};
+  let rowQuery=supabaseAdmin.from("v_flex_row_search").select(ROW_FIELDS,{count:"exact"}).eq("table_id",id);
+  if(search)rowQuery=rowQuery.ilike("_search_text",`%${search.replace(/[\\%_]/g,"\\$&")}%`);
+  const [columns,rowPage]=await Promise.all([readAll(()=>supabaseAdmin.from("flex_columns").select(COLUMN_FIELDS).eq("table_id",id).eq("is_archived",false).order("position").order("created_at").order("id")),rowQuery.order("position").order("created_at").order("id").range((page-1)*limit,page*limit-1)]);
+  if(rowPage.error)failDb("load rows for",rowPage.error);
+  const rows:TableRecord[]=rowPage.data??[],options:TableRecord[]=[],cells:TableRecord[]=[],sources:TableRecord[]=[];
+  const readCells=async(ids:string[])=>{const values:TableRecord[]=[];for(const batch of postgrestBatches(ids))values.push(...await readAll(()=>supabaseAdmin.from("flex_cells").select(CELL_FIELDS).in("row_id",batch).order("id")));return values;};
+  cells.push(...await readCells(rows.map(row=>row.id)));
+  // Return only the transitive formula dependencies of this page. Never pull the
+  // entire table into the browser merely to evaluate a visible formula.
+  const seen=new Set(rows.map(row=>String(row.id)));let frontier=[...cells];
+  while(frontier.length){const missing=new Set<string>();for(const cell of frontier)for(const ref of Object.values(cell.formula?.references??{}) as Array<{rowId?:string}>){if(ref.rowId&&!seen.has(ref.rowId)){seen.add(ref.rowId);missing.add(ref.rowId);}}
+    if(!missing.size)break;if(seen.size>5000)throw new ApiError("Formula dependency graph exceeds the supported size.",422,"FLEX_FORMULA_GRAPH_LIMIT");
+    const found:TableRecord[]=[];for(const batch of postgrestBatches([...missing]))found.push(...await readAll(()=>supabaseAdmin.from("flex_rows").select(ROW_FIELDS).eq("table_id",id).eq("row_kind","CUSTOM").is("archived_at",null).in("id",batch).order("id")));
+    frontier=await readCells(found.map(row=>row.id));sources.push(...found);cells.push(...frontier);
+  }
+  for(const batch of postgrestBatches(columns.map(column=>column.id)))options.push(...await readAll(()=>supabaseAdmin.from("flex_dropdown_options").select(OPTION_FIELDS).in("column_id",batch).eq("is_active",true).order("position").order("id")));
+  const cellsByRow:Record<string,TableRecord[]>={};for(const cell of cells)(cellsByRow[cell.row_id]??=[]).push(cell);
+  const hydrate=(row:TableRecord)=>({...row,cells:cellsByRow[row.id]??[]});
+  return {table,access,columns,rows:rows.map(hydrate),formula_sources:sources.map(hydrate),options,pagination:{page,limit,total:rowPage.count??0,totalPages:Math.max(1,Math.ceil((rowPage.count??0)/limit))}};
 }
 
 export async function updateTable(actor: FlexActor, tableIdInput: unknown, input: Record<string, unknown>, requestId?: string) {

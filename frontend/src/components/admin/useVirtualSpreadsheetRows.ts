@@ -14,25 +14,27 @@ export function useVirtualSpreadsheetRows(ref:RefObject<HTMLDivElement|null>, ke
   const measure=()=>{
    let changed=false;
    for(const row of viewport.querySelectorAll<HTMLTableRowElement>("tr[data-virtual-index]")){
-    const index=Number(row.dataset.virtualIndex),key=keys[index],height=row.getBoundingClientRect().height;
+    const index=Number(row.dataset.virtualIndex),key=keys[index];let height=row.getBoundingClientRect().height;
+    let extra=row.nextElementSibling as HTMLElement|null;
+    while(extra?.dataset.virtualExtra===String(index)){height+=extra.getBoundingClientRect().height;extra=extra.nextElementSibling as HTMLElement|null;}
     const previous=heights.current.get(key),configured=configuredHeights?.[key];
     if(key&&height>0&&(!previous||previous.configured!==configured||Math.abs(previous.height-height)>.5)){heights.current.set(key,{height,configured});changed=true;}
    }
    const start=Math.max(0,find(viewport.scrollTop)-15),end=Math.min(keys.length,find(viewport.scrollTop+viewport.clientHeight)+15);
-   const activeRow=document.activeElement?.closest<HTMLTableRowElement>("tr[data-virtual-index]");
-   const active=activeRow&&viewport.contains(activeRow)?Number(activeRow.dataset.virtualIndex):-1;
+   const activeRow=document.activeElement?.closest<HTMLTableRowElement>("tr[data-virtual-index],tr[data-virtual-extra]");
+   const active=activeRow&&viewport.contains(activeRow)?Number(activeRow.dataset.virtualIndex??activeRow.dataset.virtualExtra):-1;
    setWindow(previous=>previous.start===start&&previous.end===end&&!changed&&previous.active===active?previous:{start,end,active,revision:previous.revision+(changed?1:0)});
   };
   const schedule=()=>{if(!frame)frame=requestAnimationFrame(()=>{frame=0;measure();});};
   let previousTop=viewport.scrollTop;
   const onScroll=()=>{if(viewport.scrollTop!==previousTop){previousTop=viewport.scrollTop;schedule();}};
   const observer=new ResizeObserver(schedule);observer.observe(viewport);
-  viewport.querySelectorAll("tr[data-virtual-index]").forEach(row=>observer.observe(row));
+  viewport.querySelectorAll("tr[data-virtual-index],tr[data-virtual-extra]").forEach(row=>observer.observe(row));
   viewport.addEventListener("scroll",onScroll,{passive:true});viewport.addEventListener("focusin",schedule);viewport.addEventListener("focusout",schedule);schedule();
   return()=>{cancelAnimationFrame(frame);observer.disconnect();viewport.removeEventListener("scroll",onScroll);viewport.removeEventListener("focusin",schedule);viewport.removeEventListener("focusout",schedule);};
  },[ref,enabled,signature,offsets,window.start,window.end]);
  return useMemo<Item[]>(()=>{
-  if(!enabled||keys.length<=100)return keys.map((_,index)=>({index}));
+  if(!enabled||keys.length<=60)return keys.map((_,index)=>({index}));
   const visible=new Set<number>();for(let index=Math.min(window.start,keys.length);index<Math.min(keys.length,Math.max(window.end,window.start+1));index++)visible.add(index);
   if(window.active>=0&&window.active<keys.length)visible.add(window.active);
   if(keepAlive>=0&&keepAlive<keys.length)visible.add(keepAlive);

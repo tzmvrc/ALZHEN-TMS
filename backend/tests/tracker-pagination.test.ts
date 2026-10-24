@@ -13,10 +13,10 @@ test("Tracker page reads only a requested stable ID range with server filters, s
  query.range=(...args:unknown[])=>{calls.push(["range",...args]);return Promise.resolve({data:[{trip_stop_id:"stop-2"}],count:125,error:null});};
  const client={from:(table:string)=>{assert.equal(table,"v_transmittal_tracker_page");return query;}};
  const result=await trackerPageRequest(client,parseTrackerPageQuery({page:"3",limit:"25",search:"DR-2",sort_by:"delivered_to",sort_order:"desc",filter_by:"status",filter:"COMPLETE",reference:"REF-2"}));
- assert.deepEqual(calls.at(-1),["range",50,74]);assert.deepEqual(calls[0],["select","trip_stop_id",{count:"exact"}]);
+ assert.deepEqual(calls.at(-1),["range",50,74]);assert.deepEqual(calls[0],["select","*",{count:"exact"}]);
  assert.ok(calls.some(c=>c[0]==="or"&&String(c[1]).includes("status.ilike")));
  assert.ok(calls.some(c=>c[0]==="eq"&&c[1]==="transmittal_ref"&&c[2]==="REF-2"));
- assert.deepEqual(calls.filter(c=>c[0]==="order").map(c=>c[1]),["delivered_to","trip_stop_id"]);
+ assert.deepEqual(calls.filter(c=>c[0]==="order").map(c=>c[1]),["delivered_to","trip_stop_id","assignment_id"]);
  assert.equal(result.data[0].trip_stop_id,"stop-2");
 });
 

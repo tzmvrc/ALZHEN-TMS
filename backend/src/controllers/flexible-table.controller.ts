@@ -35,7 +35,7 @@ async function respond(res: Response, message: string, operation: () => Promise<
 
 export const listTables = (req: Request, res: Response) => respond(res, "Flexible tables retrieved successfully", () => service.listTables(actorFromRequest(req)));
 export const createTable = (req: Request, res: Response) => respond(res, "Flexible table created successfully", () => service.createTable(actorFromRequest(req), body(req), requestId(req)), 201);
-export const getTable = (req: Request, res: Response) => respond(res, "Flexible table retrieved successfully", () => service.getTable(actorFromRequest(req), param(req, "tableId")));
+export const getTable = (req: Request, res: Response) => respond(res, "Flexible table retrieved successfully", () => service.getTable(actorFromRequest(req), param(req, "tableId"),req.query));
 export const updateTable = (req: Request, res: Response) => respond(res, "Flexible table updated successfully", () => service.updateTable(actorFromRequest(req), param(req, "tableId"), body(req), requestId(req)));
 export const archiveTable = (req: Request, res: Response) => respond(res, "Flexible table archived successfully", () => service.archiveTable(actorFromRequest(req), param(req, "tableId"), body(req), requestId(req)));
 export const createColumn = (req: Request, res: Response) => respond(res, "Column created successfully", () => service.createColumn(actorFromRequest(req), param(req, "tableId"), body(req), requestId(req)), 201);

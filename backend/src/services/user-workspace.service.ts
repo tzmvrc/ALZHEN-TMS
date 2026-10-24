@@ -1,4 +1,5 @@
 import {assertPicturePermission,commitAccountPicture} from "./account-picture.service.js";
+import {wakeUserMaintenance} from './user-maintenance.service.js';
 import {supabaseAdmin} from "../config/supabase.js";
 import {ApiError} from "../utils/api-response.js";
 import {buildIlikeOrFilter} from "../utils/postgrest-search.js";
@@ -47,6 +48,7 @@ export async function deactivateUsers(actor:Actor,input:unknown){
  if(!Array.isArray(input)||!input.length||input.length>100||input.some(id=>typeof id!=='string'||!valid(id)))throw new ApiError('Choose between 1 and 100 valid accounts.',400);
  const deleted:string[]=[],failed:Array<{id:string;message:string}>=[];
  for(const id of new Set<string>(input)){const {data,error}=await db.rpc('user_deactivate_v1',{p_actor:actor.id,p_subject:id});if(error){failed.push({id,message:id===actor.id?'Your signed-in account cannot be deleted.':error.code==='42501'?'A required administrator cannot be deleted.':'The account could not be deactivated. Its history is preserved.'});}else if(data?.deleted)deleted.push(id);else failed.push({id,message:'Account deactivation was not confirmed.'});}
+ if(deleted.length)wakeUserMaintenance();
  return {deleted,failed,retention:'Accounts are deactivated; operational and audit history is retained.'};
 }
 const privateKey=/password|token|secret|authorization|cookie|session|storage_path|profile_picture_path|ip_address|user_agent/i;

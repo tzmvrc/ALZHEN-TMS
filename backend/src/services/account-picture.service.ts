@@ -1,4 +1,5 @@
 import {randomUUID} from "node:crypto";
+import {wakeUserMaintenance} from './user-maintenance.service.js';
 import {supabaseAdmin} from "../config/supabase.js";
 import {ApiError} from "../utils/api-response.js";
 const db=supabaseAdmin as any;
@@ -24,6 +25,7 @@ export async function commitAccountPicture(actorId:string,subjectId:string,path:
  if(path!==null&&actorId===subjectId){
   const result=await db.rpc("user_profile_picture_v1",{p_actor:actorId,p_subject:subjectId,p_path:path});
   if(result.error)throw new ApiError("Picture changes were not confirmed. Refresh before retrying.",result.error.code==="42501"?403:409);
+  wakeUserMaintenance();
   return {cleanup_pending:Boolean(subject.profile_picture_path?.startsWith(subjectId+"/")&&!subject.profile_picture_path.includes("..")),audit_warning:false};
  }
  // The existing service-only RPC intentionally has a narrower Admin/self rule.
@@ -50,5 +52,6 @@ export async function commitAccountPicture(actorId:string,subjectId:string,path:
   const audit=await db.from("audit_logs").update({action:"PROFILE_PICTURE_UPDATED",new_data:final}).eq("id",intent);
   if(audit.error){warning=true;await db.from("user_maintenance_jobs").insert({profile_id:subjectId,kind:"FINALIZE_ACTIVITY",dedupe_key:`activity:${intent}`,payload:{id:intent,action:"PROFILE_PICTURE_UPDATED",new_data:final}});}
  }catch{warning=true;}
+ wakeUserMaintenance();
  return {cleanup_pending:ownsOld,audit_warning:warning};
 }

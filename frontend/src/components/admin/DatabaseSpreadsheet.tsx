@@ -1,3 +1,5 @@
+import {appendSpreadsheetRows} from "../../services/spreadsheet-pages";
+import {useSpreadsheetInfiniteScroll} from "./useSpreadsheetInfiniteScroll";
 import { useSpreadsheetRowHeights } from "./useSpreadsheetRowHeights";
 import SpreadsheetRowSelectionHeader from "./SpreadsheetRowSelectionHeader";
 import {useDatabaseRowSelection,type DatabaseQuerySelection} from "./useDatabaseRowSelection";
@@ -106,7 +108,7 @@ export default function DatabaseSpreadsheet({dataSource,resource,fields:sourceFi
  const visible=management.visibleColumns;
  const filler=useSpreadsheetViewport(viewport,rows.length,active);
  const keys=useMemo(()=>rows.map(row=>row.id),[rows]);
- const virtual=useVirtualSpreadsheetRows(viewport,keys,active,rows.findIndex(row=>row.id===draft?.id),rowHeights.heights);
+ const virtual=useVirtualSpreadsheetRows(viewport,keys,active,rows.findIndex(row=>row.id===(draft?.id??focused?.id)),rowHeights.heights);
  useEffect(()=>{alive.current=true;return()=>{alive.current=false;request.current++;};},[]);
  const gate=useDeferredRealtimeRefresh(()=>{invalidate();setRefresh(value=>value+1);},!!draft||saving||deleting||!!confirm||preparingDeletion||selection.busy);
  useEffect(()=>subscribeToAdminRealtime(event=>{const changed=event.kind==="batch"?event.tables:event.kind==="change"?[event.payload.table]:event.kind==="recovered"?[event.table]:[];if(event.kind==="resume"||changed.some(table=>[...(dataSource?.topics??[resourceTable[resource]]),...(resource==="trucks"?["trucking_companies"]:resource==="stores"?["customers"]:resource==="store-contacts"?["customer_stores"]:[])].includes(table)))gate.request();}),[resource,gate]);
@@ -151,11 +153,11 @@ export default function DatabaseSpreadsheet({dataSource,resource,fields:sourceFi
   if(!active||loadLock.current||loaded.current>=pages||!loaded.current)return;
   loadLock.current=true;setMore(true);const generation=request.current;const page=loaded.current+1;
   try{const result=await load(page);if(!alive.current||request.current!==generation)return;
-   setRows(previous=>[...new Map([...previous,...result.rows].map(row=>[row.id,row])).values()]);setPages(result.pagination.totalPages);setTotal(result.pagination.total);loaded.current=page;setLastPage(page);setError("");
+   setRows(previous=>appendSpreadsheetRows(previous,result.rows,row=>row.id));setPages(result.pagination.totalPages);setTotal(result.pagination.total);loaded.current=page;setLastPage(page);setError("");
   }catch{if(alive.current&&request.current===generation)setError("More records could not load. Use Retry to continue.");}
   finally{if(alive.current&&request.current===generation){loadLock.current=false;setMore(false);}}
- },[active,pages,resource,token,query,sort.key,sort.direction]);
- useEffect(()=>{const element=viewport.current;if(!active||!element)return;const scroll=()=>{if(element.scrollHeight-element.scrollTop-element.clientHeight<180)void loadMore();};element.addEventListener("scroll",scroll,{passive:true});scroll();return()=>element.removeEventListener("scroll",scroll);},[active,rows.length,loadMore]);
+ },[active,pages,resource,token,query,sort.key,sort.direction,dataSource]);
+ useSpreadsheetInfiniteScroll(viewport,{queryKey:scope,enabled:active,hasMore:lastPage>0&&lastPage<pages,loading:loading||more,blocked:Boolean(error||draft||saving||deleting),revision:rows.length,onLoadMore:loadMore});
  const getFormat=(id:string,field:string)=>design.columns[field]?.cells?.[id]??undefined;
  const isSelected=(id:string,field:string)=>rowSelection.has(id)||columnSelection.has(field)||cells.has(keyFor(id,field));
  const selectCell=(id:string,field:string,event?:{ctrlKey?:boolean;metaKey?:boolean;shiftKey?:boolean})=>{

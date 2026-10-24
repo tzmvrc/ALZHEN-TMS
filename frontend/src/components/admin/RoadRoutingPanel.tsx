@@ -1,4 +1,4 @@
-import {useEffect,useState,useMemo} from "react";
+import {useEffect,useState,useMemo,useRef} from "react";
 import {useNavigate} from "react-router-dom";
 import {assignmentTripUrl} from "../../services/activity-presentation";
 import {createPortal} from "react-dom";
@@ -11,13 +11,16 @@ import {demonstrationRoadTrips,demoKeyFor,realRoutesAvailable} from "../../servi
 import RoadRouteMap from "./RoadRouteMap";
 import WarehouseCoordinateEditor from "./WarehouseCoordinateEditor";
 
-export default function RoadRoutingPanel({tripIds,height=440,demoFallback=false,offlineStyle=false,focusKey=null,compact=false,dashboard=false,assignmentOnly=false,minimal=false,onSelection,onRows}:{tripIds:string[];height?:number;demoFallback?:boolean;offlineStyle?:boolean;focusKey?:string|null;compact?:boolean;dashboard?:boolean;assignmentOnly?:boolean;minimal?:boolean;onSelection?:(row:RoadTrip|null)=>void;onRows?:(rows:RoadTrip[])=>void}){
+export default function RoadRoutingPanel({tripIds,active=true,height=440,demoFallback=false,offlineStyle=false,focusKey=null,compact=false,dashboard=false,assignmentOnly=false,minimal=false,onSelection,onRows}:{tripIds:string[];active?:boolean;height?:number;demoFallback?:boolean;offlineStyle?:boolean;focusKey?:string|null;compact?:boolean;dashboard?:boolean;assignmentOnly?:boolean;minimal?:boolean;onSelection?:(row:RoadTrip|null)=>void;onRows?:(rows:RoadTrip[])=>void}){
  const navigate=useNavigate();
  const {accessToken,profile}=useAuth();
- const ids=[...new Set(tripIds)].sort().slice(0,50),identity=ids.join(","),endpoint=roadEndpoint(ids);
+ const panel=useRef<HTMLElement|null>(null);
+ const ids=[...new Set(tripIds)].sort().slice(0,50),identity=ids.join(",");
  const allowed=profile&&["ADMIN","STAFF"].includes(profile.role);
  const [snapshot,setSnapshot]=useState<{token:string;identity:string;rows:RoadTrip[]}|null>(null),[error,setError]=useState(""),[retry,setRetry]=useState(0),[selection,setSelection]=useState(()=>focusKey?(demoFallback?demoKeyFor(focusKey):focusKey):""),[mode,setMode]=useState<RoadMode>("planned");
  const [seenFocus,setSeenFocus]=useState(focusKey);
+ const contextAssignment=dashboard?(snapshot?.token===accessToken&&snapshot.identity===identity?snapshot.rows.find(r=>r.key===selection||r.tripId===selection)?.assignmentId:null)??null:undefined;
+ const endpoint=roadEndpoint(ids,contextAssignment);
  /* Clicking a trip elsewhere (fleet list, trip details) picks that trip's own demo route. */
  if(seenFocus!==focusKey){setSeenFocus(focusKey);setSelection(focusKey?(demoFallback?demoKeyFor(focusKey):focusKey):"");}
  const cached=allowed&&accessToken?getCachedApiResponse<ApiResponse<{rows:RoadTrip[]}>>(endpoint,accessToken,300000)?.data?.rows:null;
@@ -53,13 +56,17 @@ export default function RoadRoutingPanel({tripIds,height=440,demoFallback=false,
   return()=>{document.body.style.overflow=previous;document.removeEventListener("keydown",onKey);};
  },[coordinates]);
  useEffect(()=>{
-  if(!accessToken||!allowed||!identity)return;let current=true,busy=false,queued=false;
-  const refresh=async()=>{if(busy){queued=true;return;}busy=true;try{const result=await fetchRoadTrips(accessToken,identity.split(","));if(current){setSnapshot({token:accessToken,identity,rows:result});setError("");}}catch{if(current)setError("Road details could not refresh. Retry to load the latest saved data.");}finally{busy=false;if(current&&queued){queued=false;void refresh();}}};
+  if(!active||!accessToken||!allowed||!identity)return;let current=true,busy=false,queued=false,failures=0,nextAttempt=0;
+  let eventTimer:ReturnType<typeof setTimeout>|undefined;
+  const visible=()=>document.visibilityState==='visible'&&Boolean(panel.current?.getClientRects().length);
+  const refresh=async()=>{if(!visible()||Date.now()<nextAttempt)return;if(busy){queued=true;return;}busy=true;try{const result=await fetchRoadTrips(accessToken,identity.split(","),contextAssignment);failures=0;nextAttempt=0;if(current){setSnapshot({token:accessToken,identity,rows:result});setError("");}}catch{failures++;nextAttempt=Date.now()+Math.min(120_000,15_000*2**Math.min(failures,4));if(current)setError("Road details could not refresh. Retry to load the latest saved data.");}finally{busy=false;if(current&&queued){queued=false;requestRefresh();}}};
+  const requestRefresh=()=>{if(!eventTimer)eventTimer=setTimeout(()=>{eventTimer=undefined;void refresh();},200);};
   void refresh();const timer=setInterval(()=>void refresh(),15000);
   const topics=["trips","trip_stops","trip_truck_assignments","warehouses","customer_stores","trucks","drivers"];
-  const unsubscribe=subscribeCollaborationEvents(e=>{if(e.kind==="tracking"||e.kind==="connected"||(e.kind==="signal"&&topics.includes(e.topic))||(e.kind==="commit"&&topics.includes(e.commit.source))){invalidateApiCache(endpoint);void refresh();}});
-  return()=>{current=false;clearInterval(timer);unsubscribe();};
- },[accessToken,allowed,identity,endpoint,retry]);
+  const unsubscribe=subscribeCollaborationEvents(e=>{if(e.kind==="tracking"||e.kind==="connected"||(e.kind==="signal"&&topics.includes(e.topic))||(e.kind==="commit"&&topics.includes(e.commit.source))){invalidateApiCache('/tracking/roads?');requestRefresh();}});
+  document.addEventListener('visibilitychange',requestRefresh);
+  return()=>{current=false;clearInterval(timer);clearTimeout(eventTimer);document.removeEventListener('visibilitychange',requestRefresh);unsubscribe();};
+ },[accessToken,allowed,identity,endpoint,retry,active]);
  if(!allowed)return <p className="p-4">Road routing is available to authorized Admin and Staff accounts.</p>;
  if(!identity&&!demoFallback)return <p className="p-4 text-sm">No trips selected for routing.</p>;
  const stamp=(value:string|null|undefined)=>value&&Number.isFinite(Date.parse(value))?new Date(value).toLocaleString("en-PH",{timeZone:"Asia/Manila"}):"Unavailable";
@@ -69,7 +76,7 @@ export default function RoadRoutingPanel({tripIds,height=440,demoFallback=false,
  const estimate=hasEstimate?`${((distance as number)/1000).toFixed(1)} km · ${Math.round((duration as number)/60)} min`:isDemo?"Estimate not included in demo":"Road estimate unavailable";
  const card="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-900/5";
  const label="text-[10px] font-semibold uppercase tracking-wide text-slate-400";
- return <section data-dashboard-map={dashboard||undefined} className="space-y-3 overflow-hidden rounded-[28px] bg-white p-5 shadow-[0_1px_2px_rgba(11,35,65,0.03)] ring-1 ring-slate-900/[0.04]">
+ return <section ref={panel} data-dashboard-map={dashboard||undefined} className="space-y-3 overflow-hidden rounded-[28px] bg-white p-5 shadow-[0_1px_2px_rgba(11,35,65,0.03)] ring-1 ring-slate-900/[0.04]">
   {!dashboard&&<header className="flex items-center justify-between gap-3">
    <div>
     <h2 className="text-[17px] font-semibold tracking-tight text-[#0b2341]">Live trip map</h2>

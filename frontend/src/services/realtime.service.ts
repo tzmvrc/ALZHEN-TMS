@@ -342,6 +342,8 @@ type Entry = {
   unavailable: boolean;
   replacing: boolean;
   recoveryTimer?: number;
+  recoveryAttempt?: number;
+  lastWarningAt?: number;
 };
 
 const channels = new Map<string, Entry>();
@@ -380,38 +382,36 @@ function createTableChannel(table: string, entry: Entry): RealtimeChannel {
         [...entry.listeners.keys()].forEach((listener) => listener(event));
       },
     )
-    .subscribe((status, error) => {
+    .subscribe((status) => {
       if (channels.get(table) !== entry || entry.channel !== channel) return;
       if (entry.replacing) return;
 
       if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
         entry.unavailable = true;
-        console.warn(
-          `Realtime unavailable for public.${table}; periodic report refresh remains active.`,
-          error,
-        );
+        if(Date.now()-(entry.lastWarningAt??0)>=60_000){entry.lastWarningAt=Date.now();console.warn(`Realtime unavailable for public.${table}; periodic report refresh remains active.`);}
         return;
       }
 
       if (status === "CLOSED") {
         if (entry.listeners.size === 0 || entry.replacing) return;
         entry.unavailable = true;
-        console.warn(
-          `Realtime channel closed for public.${table}; reconnecting the table channel.`,
-        );
+        if(Date.now()-(entry.lastWarningAt??0)>=60_000){entry.lastWarningAt=Date.now();console.warn(`Realtime channel closed for public.${table}; reconnecting the table channel.`);}
         if (entry.recoveryTimer === undefined) {
           entry.recoveryTimer = window.setTimeout(() => {
             entry.recoveryTimer = undefined;
             if (channels.get(table) !== entry || entry.listeners.size === 0)
               return;
             removeChannelAndReconcile(table, entry);
-          }, 500);
+          }, Math.round(Math.min(30_000,1000*2**Math.min(entry.recoveryAttempt??0,5))*(.9+Math.random()*.2)));
+          entry.recoveryAttempt=(entry.recoveryAttempt??0)+1;
         }
         return;
       }
 
       if (status === "SUBSCRIBED" && entry.unavailable) {
         entry.unavailable = false;
+        entry.recoveryAttempt=0;
+        window.clearTimeout(entry.recoveryTimer);entry.recoveryTimer=undefined;
         [...entry.listeners.values()].forEach((onRecovered) => onRecovered());
       }
     });

@@ -21,17 +21,10 @@ export async function preloadAdminPageData(token:string,role:string,feature?:Adm
  const searchRelationshipOptions=async(token:string,kind:"trip-types"|"warehouses"|"trucking-companies",query:string)=>(await import("./lookup.service")).searchRelationshipOptions(token,kind,query);
  const fetchTrips=async(token:string,options:Parameters<typeof import("./trip.service").fetchTrips>[1])=>(await import("./trip.service")).fetchTrips(token,options);
  const fetchUsersDirectory=async(token:string,role:string)=>(await import("./user-workspace.service")).loadUserSheet(token,role==="ADMIN"?"staff":"truckers");
- const preloadOperationsOverview=async(token:string)=>(await import("./operations-report.service")).preloadOperationsOverview(token);
- const preloadTransmittalTracker=async(token:string)=>(await import("./transmittal-tracker.service")).preloadTransmittalTracker(token);
  const references=[()=>fetchDropdownOptions(token),...(["trip-types","warehouses","trucking-companies"] as const).map(kind=>()=>searchRelationshipOptions(token,kind,""))];
- const tasks:Array<()=>Promise<unknown>>=feature==="users"?[()=>fetchUsersDirectory(token,role)]:feature==="reports"?[
-  ()=>page(initialReport),...references,
-  ...(["combined","dispatch-monitoring","dispatch","trip-booking","store-calling"] as ReportKey[]).filter(key=>key!==initialReport).map(key=>()=>page(key)),
-  ()=>preloadOperationsOverview(token),()=>preloadTransmittalTracker(token),
- ]:feature==="trips"?[
-  ()=>page("dispatch-monitoring"),...references,
-  ...(["dispatch","trip-booking","store-calling"] as ReportKey[]).map(key=>()=>page(key)),
- ]:[
+ // Report workspaces already schedule their own bounded, cancelable warmups.
+ // Keep this queue to useful reference data rather than competing page sweeps.
+ const tasks:Array<()=>Promise<unknown>>=feature==="users"?[()=>fetchUsersDirectory(token,role)]:feature==="reports"?[()=>page(initialReport),...references]:feature==="trips"?references:[
   ()=>fetchTrips(token,{limit:100,archiveScope:"active"}),
   ()=>fetchTrips(token,{limit:1,status:"IN_PROGRESS",archiveScope:"active"}),
   ()=>fetchTrips(token,{limit:1,status:"COMPLETED",archiveScope:"active"}),

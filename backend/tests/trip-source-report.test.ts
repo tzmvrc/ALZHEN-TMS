@@ -16,7 +16,7 @@ test("Master List expands by physical product while monitoring stays at stop gra
     const chain: any = { select: () => chain, eq: () => chain, in: () => chain, order: () => chain, range: () => chain,
       limit: (value: number) => { limit = value; return chain; },
       then: (resolve: (value: unknown) => unknown) => {
-        const data = limit === 0 ? [] : table === "v_trip_source_master" ? source : table === "v_dispatch_monitoring" ? [{ trip_id: trip, _trip_stop_id: stop }]
+        const data = limit === 0 ? [] : ["v_trip_source_master","v_trip_master_csv"].includes(table) ? source : table === "v_dispatch_monitoring" ? [{ trip_id: trip, _trip_stop_id: stop }]
           : table === "trips" ? [{ id: trip, dispatch_number: "DISPATCH261021-1", trip_reference: "TRIP261021-1" }]
           : table === "trip_line_items" ? lines : [];
         return Promise.resolve({ data: data.map(row => ({ ...row })), count: data.length, error: null }).then(resolve);
@@ -30,6 +30,8 @@ test("Master List expands by physical product while monitoring stays at stop gra
     assert.ok(master.rows.every(row => row.unit_cbm === "0.123456789123" && row.cbm === "0.246913578246"));
     const monitor = await getReportData("dispatch-monitoring"); assert.equal(monitor.rows.length, 1);
     const columns = (await getReportColumns("dispatch-monitoring", true)).columns;
-    for (const title of ["SP", "PH TRUCK NAME", "DN", "DR", "Order Item No.", "Customer Name", "Ship To", "SAP SO No.", "SO NO.", "Customer PO", "PO NO.", "Product Category", "Province", "City", "Customer Model", "Qty", "stocks", "Warehouse", "CBM", "Total CBM", "SO Approval Date", "Item Status"]) assert.ok(columns.some(column => column.title === title), title);
+    const {MASTER_LIST_COLUMNS}=await import("../src/config/master-list-columns.js");
+    assert.deepEqual(columns.map(column=>column.key),MASTER_LIST_COLUMNS.map(column=>column.key));
+    assert.ok(columns.some(column=>column.key==="quantity"));assert.ok(columns.some(column=>column.key==="cbm"));
   } finally { supabaseAdmin.from = originalFrom; }
 });

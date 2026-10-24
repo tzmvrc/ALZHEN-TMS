@@ -6,7 +6,7 @@ import {isValidUuid} from "../utils/validation.js";
 import {trackingEnabled,requireTracking,liveTracking,trackingFeed,trackingEvents,trackingMetrics} from "../services/tracking-runtime.service.js";
 import {supabaseAdmin} from "../config/supabase.js";
 import {assertTrackingTestScope,trackingTestScope} from "../services/tracking-test-scope.js";
-import {parseRoadTripIds,readRoadRouting} from "../services/road-routing-read.service.js";
+import {parseRoadTripIds,parseRoadContextAssignment,readRoadRouting} from "../services/road-routing-read.service.js";
 import {generatePlannedRoute} from "../services/planned-route-runtime.service.js";
 import {readFieldMilestones} from "../services/field-milestones.service.js";
 import {submissionAssignment} from "../services/field-milestones.logic.js";
@@ -35,7 +35,7 @@ router.post("/roads/:id/planned",requireRole("ADMIN","STAFF"),async(req,res)=>{
  try{if(!isValidUuid(String(req.params.id)))throw new ApiError("Invalid physical assignment ID.",400,"PLANNED_INVALID");const result=await generatePlannedRoute({id:req.user!.id,role:req.user!.role!},String(req.params.id));if(result&&typeof result==="object"&&"state" in result&&result.state==="UPDATED")trackingEvents.emit("changed",{assignmentId:String(req.params.id)});return sendSuccess(res,200,"Planned route result",result);}catch(error){return fail(res,error);}
 });
 router.get("/roads",requireRole("ADMIN","STAFF"),async(req,res)=>{
- try{return sendSuccess(res,200,"Read-only road routing",{rows:await readRoadRouting({id:req.user!.id,role:req.user!.role!},parseRoadTripIds(req.query.trip_ids))});}catch(error){return fail(res,error);}
+ try{return sendSuccess(res,200,"Read-only road routing",{rows:await readRoadRouting({id:req.user!.id,role:req.user!.role!},parseRoadTripIds(req.query.trip_ids),parseRoadContextAssignment(req.query.context_assignment))});}catch(error){return fail(res,error);}
 });
 router.get("/capabilities",requireRole("ADMIN","STAFF","TRUCKER"),(req,res)=>{
  try{const scope=trackingTestScope();return sendSuccess(res,200,"Tracking availability",{enabled:trackingEnabled()&&(!scope||req.user!.role!=="TRUCKER"||scope.profileId===req.user!.id)});}catch(error){return fail(res,error);}

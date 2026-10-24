@@ -1,4 +1,5 @@
 import type { Server as HttpServer } from "node:http";
+import {withSupabaseDeadline} from '../utils/supabase-request-scope.js';
 import { Server } from "socket.io";
 import { createAdapter } from "@socket.io/redis-adapter";
 import { createClient } from "redis";
@@ -144,7 +145,8 @@ export async function attachCollaborationServer(http:HttpServer,options:Options=
   });
   channel.subscribe(status=>{bridgeHealthy=status==="SUBSCRIBED";io.to("management").emit("bridge:status",{healthy:bridgeHealthy});});
  }
- const versionCheck=async()=>{try{const result=await supabaseAdmin.from("trips").select("collaboration_version").limit(1);setCollaborationVersionsReady(!result.error);}catch{setCollaborationVersionsReady(false);}};
+ let versionChecking=false;
+ const versionCheck=async()=>{if(versionChecking)return;versionChecking=true;try{const result=await withSupabaseDeadline(10_000,async()=>await supabaseAdmin.from("trips").select("collaboration_version").limit(1).retry(false));setCollaborationVersionsReady(!result.error);}catch{setCollaborationVersionsReady(false);}finally{versionChecking=false;}};
  if(options.bridge!==false)void versionCheck();
  const versionTimer=options.bridge===false?null:setInterval(()=>void versionCheck(),60000);
  const seenTimer=setInterval(()=>{for(const cache of [seen,truckerSeen])for(const [key,time] of cache)if(time<Date.now()-120000)cache.delete(key);for(const[key,value]of draftBudgets)if(value.since<Date.now()-60000)draftBudgets.delete(key);},60000);

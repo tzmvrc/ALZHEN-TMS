@@ -23,9 +23,9 @@ export function roadDisplayView(row:RoadTrip,mode:RoadMode|"auto",now=Date.now()
  const planned=roadView(row,"planned",now),remaining=roadView(row,"remaining",now);
  return planned.geometry?planned:remaining.geometry?remaining:planned;
 }
-export function roadEndpoint(ids:string[]){return `/tracking/roads?trip_ids=${encodeURIComponent([...new Set(ids)].sort().join(","))}`;}
-export async function fetchRoadTrips(token:string,ids:string[]){
+export function roadEndpoint(ids:string[],contextAssignment?:string|null){return `/tracking/roads?trip_ids=${encodeURIComponent([...new Set(ids)].sort().join(","))}${contextAssignment===undefined?'':`&context_assignment=${encodeURIComponent(contextAssignment??'none')}`}`;}
+export async function fetchRoadTrips(token:string,ids:string[],contextAssignment?:string|null){
  if(!ids.length)return [];
- const result=await apiGetCached<ApiResponse<{rows:RoadTrip[]}>>(roadEndpoint(ids),token,15000);
+ const result=await apiGetCached<ApiResponse<{rows:RoadTrip[]}>>(roadEndpoint(ids,contextAssignment),token,15000);
  if(!result.success||!result.data)throw Error("Road routing could not be loaded");return result.data.rows;
 }

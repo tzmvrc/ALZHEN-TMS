@@ -1,3 +1,4 @@
+import {collectSelectionPages} from "./spreadsheet-selection";
 import { apiDelete, apiGetCached, apiPatch, apiPost, apiPostFile, apiPut, getCachedApiResponse, invalidateApiCache, type ApiResponse } from "./api.service";
 import { updateTripAssignmentRecord, updateTripLineItemRecord, updateTripRecord, updateTripStopRecord, updateTripUnscopedLineItemRecord } from "./trip.service";
 import { invalidateReportPageCache } from "./report.service";
@@ -166,3 +167,5 @@ export async function updateOperationsLineItem(token: string, lineItem: Operatio
   }
   return updateTripUnscopedLineItemRecord(token, lineItem.trip_id, lineItem.id, updates);
 }
+
+export const fetchOperationsSelection=(token:string,options:OperationsPageOptions,current:()=>boolean)=>collectSelectionPages(page=>unwrap(apiGetCached<ApiResponse<{rows:OperationsEventRow[];pagination:{total:number;totalPages:number}}>>(`${operationsPageEndpoint({...options,page,limit:100})}&selection_only=true`,token,0)),row=>row.id,current);

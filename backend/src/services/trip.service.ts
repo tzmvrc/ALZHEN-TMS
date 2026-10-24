@@ -350,32 +350,9 @@ export async function getTripList(
   const warehouseId = normalizeText(query.warehouse_id);
   const tripTypeId = normalizeText(query.trip_type_id);
 
-  let queryBuilder = supabaseAdmin
-    .from("trips")
-    .select("*", { count: "exact" });
-
-  // Match the Trips screen: a trip remains visible while at least one of its
-  // transactions is unarchived (including trips with no stops yet).
-  if (query.archive_scope === "active") {
-    const activeIds = new Set<string>();
-    for (let offset = 0; ; offset += 1000) {
-      const { data: transactions, error: archiveError } = await supabaseAdmin
-        .from("v_dispatch_monitoring")
-        .select("trip_id")
-        .is("transaction_archived_at", null)
-        .order("trip_id")
-        .range(offset, offset + 999);
-      if (archiveError) throw new Error("Unable to fetch active trip transactions");
-      for (const row of transactions ?? []) {
-        if (typeof row.trip_id === "string") activeIds.add(row.trip_id);
-      }
-      if (!transactions || transactions.length < 1000) break;
-    }
-    if (activeIds.size === 0) {
-      return { rows: [], pagination: buildPaginationMeta(page, limit, 0) };
-    }
-    queryBuilder = queryBuilder.in("id", [...activeIds]);
-  }
+  // Keep active-transaction visibility in PostgreSQL. An unbounded ID scan
+  // followed by a PostgREST IN URL fails as the fleet grows.
+  let queryBuilder=supabaseAdmin.from(query.archive_scope==="active"?"v_active_trip_listing":"trips").select("*",{count:"exact"});
 
   if (status) queryBuilder = queryBuilder.eq("status", status);
   if (dateFrom) queryBuilder = queryBuilder.gte("loading_date", dateFrom);
@@ -393,6 +370,7 @@ export async function getTripList(
   if (search) queryBuilder = applyTripSearch(queryBuilder, search, await tripReferenceAvailable());
 
   queryBuilder = queryBuilder.order(sortBy, { ascending: sortOrder === "asc" });
+  if(sortBy!=="id")queryBuilder=queryBuilder.order("id");
   queryBuilder = queryBuilder.range(from, from + limit - 1);
 
   const { data, error, count } = await queryBuilder;

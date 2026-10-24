@@ -144,6 +144,7 @@ export function clearReportPageCache() {
   reportPageSessionGeneration += 1;
   reportPageCacheGeneration += 1;
   reportCollections.clear();
+  collectionOwners.clear();
   reportCollectionRequests.clear();
   tripReportRequests.clear();
   reportPageCache.clear();
@@ -175,6 +176,7 @@ export function setCachedReportPage(
   options: ReportPageOptions,
   value: ReportPageBundle,
 ) {
+  for(const key of reportPageCache.keys()){if(reportPageCache.size<150)break;if(!reportPageRequests.has(key))reportPageCache.delete(key);}
   reportPageCache.set(reportPageCacheKey(reportKey, token, options), {
     reportKey,
     token,
@@ -452,6 +454,7 @@ export function getReportFilters(reportKey: ReportKey): ReportFilter[] {
 // A collection uses the same authorized endpoint, with bounded network pages and no total cap.
 type CollectionEntry={reportKey:ReportKey;token:string;expiresAt:number;value:ReportPageBundle};
 const reportCollections=new Map<string,CollectionEntry>();
+const collectionOwners=new Map<string,Set<symbol>>();
 type CollectionRequest={latest?:ReportPageBundle;promise:Promise<ReportPageBundle>;listeners:Set<(value:ReportPageBundle)=>void>;consumers:Set<symbol>;cancelled:boolean};
 const reportCollectionRequests=new Map<string,CollectionRequest>();
 async function consumeCollection(key:string,entry:CollectionRequest,onProgress?: (value:ReportPageBundle)=>void,signal?:AbortSignal){
@@ -461,11 +464,18 @@ async function consumeCollection(key:string,entry:CollectionRequest,onProgress?:
  signal?.addEventListener("abort",leave,{once:true});
  try{return await entry.promise;}finally{signal?.removeEventListener("abort",leave);leave();}
 }
-const collectionKey=(report:ReportKey,token:string,options:ReportPageOptions)=>reportPageCacheKey(report,token,{...options,page:1,limit:200});
+const collectionKey=(report:ReportKey,token:string,options:ReportPageOptions)=>reportPageCacheKey(report,token,{...options,page:1,limit:options.limit});
+/** Mounted (including retained hidden) sheets own their loaded window. */
+export function retainReportCollection(report:ReportKey,token:string,options:ReportPageOptions){
+ const key=collectionKey(report,token,options),owner=Symbol(),owners=collectionOwners.get(key)??new Set<symbol>();owners.add(owner);collectionOwners.set(key,owners);
+ return()=>{owners.delete(owner);if(!owners.size&&collectionOwners.get(key)===owners)collectionOwners.delete(key);};
+}
 export function getReportCollection(report:ReportKey,token:string,options:ReportPageOptions,stale=false){
  const entry=reportCollections.get(collectionKey(report,token,options));return entry&&(stale||entry.expiresAt>Date.now())?entry.value:null;
 }
 export async function fetchReportCollection(report:ReportKey,token:string,options:ReportPageOptions,onProgress?:(value:ReportPageBundle)=>void,refresh=false,signal?:AbortSignal):Promise<ReportPageBundle>{
+ for(const [oldKey,entry] of reportCollections)if(entry.expiresAt+300_000<Date.now()&&!reportCollectionRequests.has(oldKey)&&!collectionOwners.has(oldKey))reportCollections.delete(oldKey);
+ for(const oldKey of reportCollections.keys()){if(reportCollections.size<=20)break;if(!reportCollectionRequests.has(oldKey)&&!collectionOwners.has(oldKey))reportCollections.delete(oldKey);}
  const key=collectionKey(report,token,options),cached=getReportCollection(report,token,options);
  if(cached&&!refresh)return cached;
  const existing=reportCollectionRequests.get(key);
@@ -477,20 +487,17 @@ export async function fetchReportCollection(report:ReportKey,token:string,option
   // First paint needs one page, not every historical record. On recovery,
   // revalidate only the pages this user has already requested.
   const previous=getReportCollection(report,token,options,true);
-  // Master List fields include generated references and values attached after SQL.
-  // Search authorized, enriched pages literally; retain server filters and bounded reads.
-  const literalSearch = options.filters.source_lines === "true" ? options.search.trim().toLocaleLowerCase() : "";
-  const readOptions = literalSearch ? { ...options, search: "" } : options;
-  const loadedPages=literalSearch ? Infinity : refresh?(previous?.collection?.page??1):1;
-  const first=await fetchReportPage(report,token,{...readOptions,page:1,limit:200},refresh);
+  const readOptions=options;
+  const loadedPages=refresh?(previous?.collection?.page??1):1;
+  const first=await fetchReportPage(report,token,{...readOptions,page:1,limit:options.limit},refresh);
   const columns=first.columns,physical=new Map<string,ReportRow>();let page=1;let result:ReportPageBundle;
   do{
    if(entry.cancelled)throw new DOMException("Report request cancelled.","AbortError");
    if(session!==reportPageSessionGeneration)throw Error("The session changed while loading reports.");
-   const next=page===1?first:await fetchReportPage(report,token,{...readOptions,page,limit:200},refresh);
+   const next=page===1?first:await fetchReportPage(report,token,{...readOptions,page,limit:options.limit},refresh);
    for(const row of next.rows){const id=getReportRowIdentity(report,row);if(id)physical.set(id,row);else physical.set(`unmapped:${page}:${physical.size}`,row);}
-   const rows=[...physical.values()].filter(row=>!isDeletedReportRecord(row) && (!literalSearch || columns.some(column=>column.type !== "action" && String(row[column.key] ?? "").toLocaleLowerCase().includes(literalSearch))));
-   result={columns,rows,pagination:{...next.pagination,page:1,limit:rows.length,total:literalSearch ? rows.length : next.pagination.total,totalPages:1},collection:{page,totalPages:next.pagination.totalPages}};
+   const rows=[...physical.values()].filter(row=>!isDeletedReportRecord(row));
+   result={columns,rows,pagination:{...next.pagination,page:1,limit:rows.length,total:next.pagination.total,totalPages:1},collection:{page,totalPages:next.pagination.totalPages}};
    entry.latest=result;for(const listener of listeners)listener(result);
    if(page>=Math.min(loadedPages,next.pagination.totalPages)||!next.rows.length)break;
    page++;
@@ -518,7 +525,7 @@ export async function fetchNextReportCollection(report:ReportKey,token:string,op
  const entry:CollectionRequest={promise:null as unknown as Promise<ReportPageBundle>,listeners:new Set(),consumers:new Set(),cancelled:false};
  entry.promise=(async()=>{
   const nextPage=base.collection!.page+1;
-  const next=await fetchReportPage(report,token,{...options,page:nextPage,limit:200});
+  const next=await fetchReportPage(report,token,{...options,page:nextPage,limit:options.limit});
   if(entry.cancelled||session!==reportPageSessionGeneration)throw new DOMException("Report request cancelled.","AbortError");
   if(version!==(reportPageVersions.get(report)??0))throw Error("Report data changed while loading more rows. Retry after reconciliation.");
   const latest=getReportCollection(report,token,options,true)??base;

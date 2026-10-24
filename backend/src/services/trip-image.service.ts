@@ -248,3 +248,13 @@ export async function deleteTripImage(tripId: string, imageId: string) {
   }
   return { id: deleted.id };
 }
+
+/** First photo per dashboard trip, signed together in the existing private bucket. */
+export async function listOverviewTripImages(ids:string[]):Promise<TripImageRecord[]>{
+ if(!ids.length)return [];ids.forEach(validateTripId);if(ids.length>100)throw new TripImageError("Select at most 100 trips.");
+ const first=new Map<string,Record<string,unknown>>();
+ for(let offset=0;;offset+=1000){const result=await supabaseAdmin.from("trip_images").select("id,trip_id,storage_path,file_name,display_order,created_at,updated_at").in("trip_id",ids).eq("kind","photo").order("display_order").order("created_at").order("id").range(offset,offset+999);if(result.error)throw databaseFailure("load dashboard photos",result.error);for(const row of result.data)if(!first.has(row.trip_id))first.set(row.trip_id,row);if(result.data.length<1000)break;}
+ const rows=[...first.values()];if(!rows.length)return [];await ensureTripImageBucket();
+ const result=await supabaseAdmin.storage.from(bucket).createSignedUrls(rows.map(row=>String(row.storage_path)),3600);if(result.error)throw new TripImageError("Unable to create secure dashboard photo links.",502);
+ return rows.map((row,index)=>{const signed=result.data?.[index];if(!signed?.signedUrl||signed.error)throw new TripImageError("Unable to create a secure dashboard photo link.",502);return {...row,signed_url:signed.signedUrl} as TripImageRecord;});
+}

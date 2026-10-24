@@ -22,6 +22,8 @@ function scheduleRead<T>(read:()=>Promise<T>):Promise<T>{return new Promise((res
 });}
 export function invalidateOperationalFormulaReads(table?:string){for(const [key,entry] of formulaReads)if(!table||entry.table===table)formulaReads.delete(key);}
 export async function readOperationalFormulas(token:string,table_key:string,rows:string[]){
+ for(const [key,entry] of formulaReads)if(entry.expiresAt<Date.now())formulaReads.delete(key);
+ for(const key of formulaReads.keys()){if(formulaReads.size<=12000)break;formulaReads.delete(key);}
  const formulas=new Map<string,FormulaOverlay>(),sources=new Map<string,FormulaSnapshot["sources"][number]>();
  const unique=[...new Set(rows)],requests=new Set<Promise<FormulaSnapshot>>(),missing:string[]=[];
  const key=(row:string)=>`${token}\u0000${table_key}\u0000${row}`;

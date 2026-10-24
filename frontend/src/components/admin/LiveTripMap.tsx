@@ -22,7 +22,7 @@ import type { RoadTrip } from "../../services/road-routing";
 
 const MAPBOX_ACCESS_TOKEN = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN?.trim();
 const RoadRoutingPanel = lazy(()=>import("./RoadRoutingPanel"));
-export default function LiveTripMap(props: Parameters<typeof RecordedTripMap>[0] & { unified?: boolean; demo?: boolean; dashboard?: boolean; onRoadSelection?: (row: RoadTrip | null) => void; onRoadRows?: (rows: RoadTrip[]) => void }) {
+export default function LiveTripMap(props: Parameters<typeof RecordedTripMap>[0] & { active?:boolean; unified?: boolean; demo?: boolean; dashboard?: boolean; onRoadSelection?: (row: RoadTrip | null) => void; onRoadRows?: (rows: RoadTrip[]) => void }) {
   const [view, setView] = useState<"roads" | "events">("roads");
   const ids = props.focusTripId && !props.dashboard
     ? [props.focusTripId]
@@ -70,7 +70,7 @@ export default function LiveTripMap(props: Parameters<typeof RecordedTripMap>[0]
             />
           }
         >
-          <RoadRoutingPanel dashboard={props.dashboard} onSelection={props.onRoadSelection} onRows={props.onRoadRows} tripIds={props.dashboard&&props.focusTripId?[props.focusTripId,...ids.filter(id=>id!==props.focusTripId).slice(0,49)]:ids} height={props.height} demoFallback={props.unified || props.demo} focusKey={props.focusTripId} compact={Boolean(props.demo && !props.unified && props.focusTripId)} />
+          <RoadRoutingPanel active={props.active} dashboard={props.dashboard} onSelection={props.onRoadSelection} onRows={props.onRoadRows} tripIds={props.dashboard&&props.focusTripId?[props.focusTripId,...ids.filter(id=>id!==props.focusTripId).slice(0,49)]:ids} height={props.height} demoFallback={props.unified || props.demo} focusKey={props.focusTripId} compact={Boolean(props.demo && !props.unified && props.focusTripId)} />
         </Suspense>
       ) : (
         <RecordedTripMap {...props} />

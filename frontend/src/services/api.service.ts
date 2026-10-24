@@ -230,6 +230,12 @@ async function request<T>(
 const responseCache = new Map<string, { expiresAt: number; value: unknown }>();
 const cachedRequests = new Map<string, Promise<unknown>>();
 const cacheRevisions = new Map<string, number>();
+/** Bound historical query variants, not the records in a mounted sheet. */
+function trimResponseCache(){
+  const now=Date.now();for(const [key,entry] of responseCache)if(entry.expiresAt+300_000<now&&!cachedRequests.has(key))responseCache.delete(key);
+  for(const key of responseCache.keys()){if(responseCache.size<=350)break;if(!cachedRequests.has(key))responseCache.delete(key);}
+}
+
 let cacheSessionGeneration = 0;
 export const apiCacheGeneration=()=>cacheSessionGeneration;
 /** Composed screen snapshots share logout isolation and API-prefix invalidation. */
@@ -279,6 +285,7 @@ export async function apiGetCached<T>(
   requestEndpoint = endpoint,
   timeoutMs?: number,
 ): Promise<T> {
+  trimResponseCache();
   const cacheKey = `${token ?? "anon"}:${endpoint}`;
   const now = Date.now();
   const cached = responseCache.get(cacheKey);
@@ -320,6 +327,7 @@ export async function apiPost<T>(
   body: unknown,
   token?: string,
   signal?: AbortSignal,
+  timeoutMs?:number,
 ): Promise<T> {
   return request<T>(
     endpoint,
@@ -329,6 +337,7 @@ export async function apiPost<T>(
       signal,
     },
     token,
+    timeoutMs,
   );
 }
 

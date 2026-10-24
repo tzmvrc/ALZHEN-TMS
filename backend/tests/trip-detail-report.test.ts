@@ -32,6 +32,7 @@ test(`${report}: scoped detail reads use physical parent IDs and isolate stops a
       is: () => chain,
       order: () => chain,
       limit: () => chain,
+      ilike: (_key:string,value:string) => {viewSearch=value;return chain;},
       or: (value: string) => { search = value; if (table === "v_trip_booking" || table === "v_dispatch_report") viewSearch = value; return chain; },
       range: (from: number, to: number) => { start = from; end = to; return chain; },
       then: (resolve: (value: unknown) => unknown, reject: (error: unknown) => unknown) => {
@@ -60,7 +61,7 @@ test(`${report}: scoped detail reads use physical parent IDs and isolate stops a
     assert.equal(trips[0].trip_number, 1, "display enrichment must not change the stored numeric position");
     const found = await getReportData(report, { trip_id: tripId, search: "TRIP261020-7" });
     assert.equal(found.rows[0].trip_number, "TRIP261020-7");
-    assert.ok(viewSearch.includes(`_trip_id.in.(${tripId})`), "generated trip searches must use the view's exact parent ID column");
+    assert.ok(viewSearch.includes("TRIP261020-7"), "generated trip searches must be filtered by the server projection");
     for (const report of ["combined", "dispatch-monitoring", "dispatch", "trip-booking"] as const) {
       const metadata = await getReportColumns(report);
       assert.equal(metadata.columns.find(column => column.key === "trip_number")?.type, "text");

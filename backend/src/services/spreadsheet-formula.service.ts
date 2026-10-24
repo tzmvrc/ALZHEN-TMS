@@ -5,13 +5,16 @@ import { getReportData } from "./report.service.js";
 import { getTracker, trackerDraftColumns } from "./transmittal-tracker.service.js";
 import { getTripOperations } from "./operations-report.service.js";
 import { isValidUuid } from "../utils/validation.js";
+import { postgrestBatches } from "../utils/postgrest-batches.js";
+import {MASTER_LIST_COLUMNS} from "../config/master-list-columns.js";
+import {TRIP_SOURCE_COLUMNS,TRIP_CARGO_COLUMNS,SOURCE_LINE_COLUMNS} from "../config/trip-source-columns.js";
 import { validateFormulaSyntax, formulaReferenceAddresses, physicalRowIdentity } from "../../../packages/spreadsheet-formula/index.js";
 type Actor={profileId:string;role:string};
 type Row=Record<string,any>;
 const TRACKER=["assigned_plate_number","driver_name","warehouse_code","delivered_to","plate_number","delivery_receipt_no","sales_order_no","transmittal_ref","date_created","status","lbc_waybill_no","shipping_date_via_lbc","remarks"];
 const OPERATIONS=["date","trip","plate_number","driver_name","route","dr_number","quantity","total_cbm","report_type","remarks","reported_by"];
 function authorize(actor:Actor,table:unknown):string {if(!["ADMIN","STAFF"].includes(actor.role))throw new ApiError("Formula access denied.",403);if(typeof table!=="string"||!(table==="trips"||table==="operations"||table==="transmittal-tracker"||table.startsWith("report:")&&Object.hasOwn(REPORT_DEFINITIONS,table.slice(7))))throw new ApiError("Unknown formula table.",400);return table;}
-function columns(table:string):string[]{return table==="operations"?OPERATIONS:table==="transmittal-tracker"?TRACKER:REPORT_DEFINITIONS[table==="trips"?"dispatch-monitoring":table.slice(7)].columns.map(c=>c.key);}
+function columns(table:string):string[]{return table==="operations"?OPERATIONS:table==="transmittal-tracker"?TRACKER:[...new Set([...(table==="trips"?[...MASTER_LIST_COLUMNS,...REPORT_DEFINITIONS["dispatch-monitoring"].columns]:REPORT_DEFINITIONS[table.slice(7)].columns),...TRIP_SOURCE_COLUMNS,...TRIP_CARGO_COLUMNS,...(table==="trips"?SOURCE_LINE_COLUMNS:[])].map(c=>c.key))];}
 function identities(input:unknown):string[]{if(!Array.isArray(input)||input.length>500||input.some(id=>typeof id!=="string"||id.length>1000||!id||!/^[a-zA-Z0-9:_-]+$/.test(id)))throw new ApiError("Select at most 500 physical rows.",400);return [...new Set(input)] as string[];}
 /** Read only this dependency graph, never every overlay in the sheet. */
 async function dependencyFormulas(table:string,requested:string[]){
@@ -19,9 +22,9 @@ async function dependencyFormulas(table:string,requested:string[]){
  while(pending.length){const batch=[...new Set(pending)].filter(id=>!visited.has(id));pending=[];
   if(visited.size+batch.length>500)throw new ApiError("Formula dependencies exceed 500 physical rows.",400);
   for(const id of batch)visited.add(id);
-  for(let index=0;index<batch.length;index+=100){
-   for(let offset=0;;offset+=1000){const result=await supabaseAdmin.from("spreadsheet_cell_formulas").select("*").eq("table_key",table).in("row_identity",batch.slice(index,index+100)).order("id").range(offset,offset+999);
-    if(result.error)throw new ApiError("Formula storage is unavailable.",503);
+  for(const ids of postgrestBatches(batch)){
+   for(let offset=0;;offset+=1000){const result=await supabaseAdmin.from("spreadsheet_cell_formulas").select("*").eq("table_key",table).in("row_identity",ids).order("id").range(offset,offset+999);
+    if(result.error)throw new ApiError("Formula storage could not be read. Retry without discarding your draft.",503,"FORMULA_STORAGE_UNAVAILABLE");
     for(const row of result.data??[]){rows.push(row);if(!row.is_deleted)for(const ref of Object.values(row.reference_bindings??{}) as Array<{rowId:string}>)if(!visited.has(ref.rowId))pending.push(ref.rowId);}
     if(rows.length>5000)throw new ApiError("Formula dependency graph is too large.",400);
     if((result.data?.length??0)<1000)break;
@@ -47,7 +50,8 @@ async function sourceRows(actor:Actor,table:string,ids:string[]):Promise<Map<str
  for(const tripId of table==="operations"?tripIds:["batched"]){if(table==="operations"){const source=await getTripOperations(actor,tripId).catch(error=>{if(error instanceof ApiError&&error.statusCode===404)return null;throw error;});if(!source)continue;for(const row of source.event_rows){const id=physicalRowIdentity(row);if(id&&ids.includes(id))result.set(id,{...row,trip:row.dispatch_number??row.trip_number,report_type:row.report_types.join(", ")});}continue;}
   const callIds=table==="report:store-calling"?lookups.get("store_calls")??[]:[];
   const scopes=callIds.length?Array.from({length:Math.ceil(callIds.length/100)},(_,i)=>({storeCallIds:callIds.slice(i*100,i*100+100)})):[{tripIds:[...tripIds]}];
-  for(const scope of scopes)for(let page=1;page<=20;page++){const source=await getReportData(table==="trips"?"dispatch-monitoring":table.slice(7),{page,limit:500},scope);for(const row of source.rows){const id=physicalRowIdentity(row);if(id&&ids.includes(id)){if(result.has(id))throw new ApiError("The report has ambiguous physical rows.",409);result.set(id,row);}}if(page>=source.pagination.totalPages)break;if(page===20)throw new ApiError("Narrow the formula reference set.",400);}
+  const lineProjection=table==="trips"&&ids.some(id=>id.includes(":line:"));
+  for(const scope of scopes)for(let page=1;page<=20;page++){const source=await getReportData(table==="trips"?"dispatch-monitoring":table.slice(7),{page,limit:500,...(lineProjection?{source_lines:"true"}:{})},scope);for(const row of source.rows){const id=physicalRowIdentity(row);if(id&&ids.includes(id)){if(result.has(id))throw new ApiError("The report has ambiguous physical rows.",409);result.set(id,row);}}if(page>=source.pagination.totalPages)break;if(page===20)throw new ApiError("Narrow the formula reference set.",400);}
  }
  return result;
 }
@@ -68,5 +72,5 @@ export async function saveSpreadsheetFormulas(actor:Actor,input:Row){const table
   }
   return {...change,references:change.expression===null?{}:change.references};});
  if(needed.size>500)throw new ApiError("Formula batch references too many rows.",400);const source=await sourceRows(actor,table,[...needed]);if([...needed].some(id=>!source.has(id)))throw new ApiError("A formula row or reference was deleted or is unavailable.",409,"FORMULA_REFERENCE_UNAVAILABLE");
- const result=await supabaseAdmin.rpc("save_spreadsheet_formulas_v1",{p_actor:actor.profileId,p_table:table,p_changes:changes});if(result.error)throw new ApiError(result.error.code==="40001"?"Another user changed a formula. Your draft is retained; refresh and retry.":result.error.code==="23514"?"Circular or excessively deep formula dependencies are not allowed.":"Unable to save the formula batch. Nothing was saved.",result.error.code==="40001"?409:400,"FORMULA_SAVE_FAILED");return result.data;
+ const result=await supabaseAdmin.rpc("save_spreadsheet_formulas_v1",{p_actor:actor.profileId,p_table:table,p_changes:changes}).retry(false);if(result.error)throw new ApiError(["40001","PT409"].includes(result.error.code)?"Another user changed a formula. Your draft is retained; refresh and retry.":result.error.code==="23514"?"Circular or excessively deep formula dependencies are not allowed.":"Unable to save the formula batch. Nothing was saved.",["40001","PT409"].includes(result.error.code)?409:400,"FORMULA_SAVE_FAILED");return result.data;
 }

@@ -220,7 +220,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           success: boolean;
           message?: string;
           data: AuthSessionResponse & { role: string; expiresAt?: string | null };
-        }>("/auth/session/bootstrap", {}, session.access_token);
+        }>("/auth/session/bootstrap", {}, session.access_token,undefined,20_000);
 
         if(epoch!==sessionEpoch.current||authSyncLockedRef.current)return;
         if (!response.success || !response.data) {

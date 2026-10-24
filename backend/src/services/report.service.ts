@@ -1,4 +1,4 @@
-import { issueFilterTripIds } from "./trip-issues.service.js";
+import {REPORT_PROJECTIONS} from "../config/report-projections.js";
 import { supabaseAdmin } from "../config/supabase.js";
 import { REPORT_DEFINITIONS, REPORT_KEYS } from "../config/reports.js";
 import type {
@@ -14,7 +14,6 @@ import {
 import { isValidUuid, normalizeSortOrder, normalizeText } from "../utils/validation.js";
 import { buildIlikeOrFilter } from "../utils/postgrest-search.js";
 import { getTripRoutes } from "./trip-route.service.js";
-import { getOngoingTripIds } from "./trip-ongoing.service.js";
 import { resolveLegacyPodCellValue } from "./transmittal-tracker.logic.js";
 import { tripReferenceAvailable } from "./trip-reference.schema.js";
 import { tripImportAvailable,tripAllocationReportAvailable } from "./trip-import.schema.js";
@@ -308,6 +307,7 @@ async function attachOperationalRecordIds(
         (lineItems ?? []).map((item) => [String(item.id), item.product_id]),
       );
       for (const row of rows) {
+        delete row._search_text;
         if (typeof row.trip_line_item_id === "string" && !row.product_id) {
           row.product_id =
             productsByLineItem.get(row.trip_line_item_id) ?? null;
@@ -619,6 +619,8 @@ function getReportDefinition(reportKey: string): ReportDefinition {
 }
 
 async function attachSourceDecimals(rows: Record<string, unknown>[]) {
+  if(rows.every(row=>Object.hasOwn(row,"_source_quantity_text"))){for(const row of rows)for(const field of ["quantity","cbm","unit_cbm","stock_quantity"]){row[field]=row[`_source_${field}_text`];delete row[`_source_${field}_text`];}return;}
+
   const ids = [...new Set(rows.map(row => row.trip_line_item_id).filter((id): id is string => typeof id === "string" && isValidUuid(id)))];
   for (let offset = 0; offset < ids.length; offset += 100) {
     // Cast at the database boundary, before JSON numeric values become JavaScript doubles.
@@ -720,35 +722,20 @@ export async function getReportData(
   const sortBy = requestedSort && definition.sortableColumns.includes(requestedSort) ? requestedSort : definition.defaultSort;
   const sortOrder = normalizeSortOrder(getQueryString(query.sort_order), definition.defaultSortOrder);
   const ongoingOnly = key === "dispatch-monitoring" && getQueryString(query.ongoing_only) === "true";
-  const ongoingTripIds = ongoingOnly ? await getOngoingTripIds() : null;
-  if (ongoingTripIds?.length === 0) {
-    return { rows: [], pagination: buildPaginationMeta(page, limit, 0) };
-  }
-
-  const issueTripIds=await issueFilterTripIds(getQueryString(query.issue_filter)??"All");
-  if(issueTripIds?.length===0)return {rows:[],pagination:buildPaginationMeta(page,limit,0)};
+  const issueFilter=getQueryString(query.issue_filter)??"All";
+  const issueFields:Record<string,string>={"In Progress":"_filter_in_progress",Completed:"_filter_completed",Offload:"_filter_offload",Backload:"_filter_backload",Demurrage:"_filter_demurrage"};
+  if(issueFilter!=="All"&&!Object.hasOwn(issueFields,issueFilter))throw new ApiError("Invalid trip issue filter.",400);
   let matchingTripIds: string[] = [];
-  if (search && ["combined", "dispatch-monitoring", "dispatch", "trip-booking"].includes(key)) {
-    const fields = ["dispatch_number", ...(await tripReferenceAvailable() ? ["trip_reference"] : [])];
-    const filter = buildIlikeOrFilter(fields, search);
-    for(let offset=0;;offset+=1000){const {data,error}=await supabaseAdmin.from("trips").select("id").or(filter!).order("id").range(offset,offset+999);
-      if(error)throw new ApiError("Unable to search saved trip references",500,"TRIP_REFERENCE_QUERY_FAILED");
-      matchingTripIds.push(...(data??[]).map(trip=>String(trip.id)));if((data?.length??0)<1000)break;
-    }
-  }
 
   const matchingAssignees:string[]=[];
-  if(key==="store-calling"&&search){
-    const tokens=search.split(/\s+/).filter(Boolean),predicates=tokens.map(token=>buildIlikeOrFilter(["first_name","last_name"],token)!);
-    const predicate=predicates.length===1?predicates[0]:`and(${predicates.map(value=>`or(${value})`).join(",")})`;
-    for(let offset=0;;offset+=1000){const result=await supabaseAdmin.from("profiles").select("id").or(predicate).order("id").range(offset,offset+999);if(result.error)throw new ApiError("Unable to search assigned users.",503);matchingAssignees.push(...(result.data??[]).map(row=>String(row.id)).filter(isValidUuid));if((result.data?.length??0)<1000)break;}
-  }
+
   let scopedCalls:string[]|undefined;
   if(key==="store-calling"&&tripId){scopedCalls=[];for(let offset=0;;offset+=1000){const result=await supabaseAdmin.from("store_calls").select("id").eq("trip_id",tripId).order("id").range(offset,offset+999);if(result.error)throw new ApiError("Unable to read trip store calls.",503);scopedCalls.push(...(result.data??[]).map(row=>row.id));if((result.data?.length??0)<1000)break;}if(!scopedCalls.length)return {rows:[],pagination:buildPaginationMeta(page,limit,0)};}
   let lastError: Error | null = null;
   for (const viewName of viewNames) {
-    let builder = supabaseAdmin.from(viewName).select("*", { count: "exact" });
-    const mapField=(field:string)=>key!=="store-calling"?field:viewName==="vw_store_calling_tracker"?({status:"contact_status",assigned_to:"assigned_to_id"} as Record<string,string>)[field]??field:field==="ship_to"?"store_name":field;
+    const projection=REPORT_PROJECTIONS[viewName]?.join(",")??"*";
+    let builder = supabaseAdmin.from(viewName).select(requestedSourceLines&&!legacySourceLines?`${projection},_source_quantity_text:quantity::text,_source_cbm_text:cbm::text,_source_unit_cbm_text:unit_cbm::text,_source_stock_quantity_text:stock_quantity::text`:projection, { count: "exact" });
+    const mapField=(field:string)=>key==="trip-exceptions"?({backload_reason:"backload_reasons",offload_reason:"offload_reasons"} as Record<string,string>)[field]??field:key!=="store-calling"?field:viewName==="vw_store_calling_tracker"?({status:"contact_status",assigned_to:"assigned_to_id"} as Record<string,string>)[field]??field:field==="ship_to"?"store_name":field;
     if (tripId && key!=="store-calling") builder = builder.eq(tripIdField, tripId);
     if(scopedCalls)builder=builder.in("store_call_id",scopedCalls);
     if(scope?.tripIds)builder=builder.in(tripIdField,scope.tripIds);
@@ -758,8 +745,8 @@ export async function getReportData(
         ? builder.not("transaction_archived_at", "is", null)
         : builder.is("transaction_archived_at", null);
     }
-    if (ongoingTripIds) builder = builder.in(tripIdField, ongoingTripIds);
-    if(issueTripIds)builder=builder.in(tripIdField,issueTripIds);
+    if(ongoingOnly)builder=builder.eq("_filter_ongoing",true);
+    if(issueFilter!=="All")builder=builder.eq(issueFields[issueFilter],true);
     builder = applyFilters(builder, key==="store-calling"?{...definition,filters:definition.filters.map(filter=>({...filter,field:mapField(filter.field)}))}:definition, query);
     const reportTableKeys = [
       "combined",
@@ -780,9 +767,10 @@ export async function getReportData(
           title: column,
           type: "text" as const,
         }));
-    builder = applySearch(builder, search, searchColumns.map(column=>({...column,key:mapField(column.key)})), matchingTripIds, tripIdField,
+    const serverSearch=["combined","dispatch-monitoring","dispatch","trip-booking","store-calling"].includes(key);
+    builder = serverSearch&&search?builder.ilike("_search_text",`%${search.replace(/[\\%_]/g,"\\$&")}%`):applySearch(builder, search, searchColumns.map(column=>({...column,key:mapField(column.key)})), matchingTripIds, tripIdField,
       matchingAssignees.length?[`${mapField("assigned_to")}.in.(${matchingAssignees.join(",")})`]:[]);
-    builder = builder.order(mapField(sortBy), { ascending: sortOrder === "asc" });
+    builder = builder.order(mapField(sortBy==="trip_number"&&["combined","dispatch","dispatch-monitoring","trip-booking"].includes(key)?"_parent_trip_reference":sortBy), { ascending: sortOrder === "asc" });
     // Stable boundaries when many Master List rows share the selected sort value.
     // These physical columns are part of the existing dispatch-monitoring view.
     const tieBreakers: Record<string,string[]> = {
@@ -793,12 +781,19 @@ export async function getReportData(
     };
     for(const column of tieBreakers[legacySourceLines ? "trip-booking" : key]??[])if(column!==sortBy)builder=builder.order(column,{ascending:true,nullsFirst:false});
     if (sourceLines) builder = builder.order("_trip_line_item_id", { ascending: true, nullsFirst: false });
+    // Every report, including aggregate and POD/file sheets, needs deterministic
+    // physical tie breakers before range pagination.
+    const existingOrders=new Set([sortBy,...(tieBreakers[legacySourceLines?"trip-booking":key]??[]),...(sourceLines?["_trip_line_item_id"]:[])]);
+    const available=REPORT_PROJECTIONS[viewName]??[];
+    for(const field of ["pod_drive_file_id","pod_record_id","_trip_id","trip_id","_trip_stop_id","trip_stop_id","_trip_line_item_id","trip_line_item_id","_assignment_id","assignment_id","_billing_id","_incident_id","_backload_id","_offload_id","store_call_id"]){if(available.includes(field)&&!existingOrders.has(field))builder=builder.order(field,{ascending:true,nullsFirst:false});}
+
     builder = builder.range(from, from + limit - 1);
     const { data, error, count } = await builder;
     if (!error) {
-      const rows = (data ?? []) as Record<string, unknown>[];
+      const rows = (data ?? []) as unknown as Record<string, unknown>[];
       for (const row of rows) {
         if (requestedSourceLines) row._master_list = true;
+        if(key==="trip-exceptions"){row.backload_reason??=row.backload_reasons;row.offload_reason??=row.offload_reasons;}
         if(key==="store-calling"){row.ship_to??=row.store_name;row.status??=row.contact_status;row.assigned_to??=row.assigned_to_id;}
         if (Object.hasOwn(row, "transmittal_ref")) {
           const reference = resolveLegacyPodCellValue(row.transmittal_ref);
@@ -807,16 +802,19 @@ export async function getReportData(
         }
       }
       let parentTrips:Record<string,unknown>[]|undefined;
-      if(["combined","dispatch","dispatch-monitoring","trip-booking"].includes(key)){
+      if(["combined","dispatch","dispatch-monitoring","trip-booking"].includes(key)&&rows.every(row=>Object.hasOwn(row,"_parent_trip_reference"))){
+        parentTrips=[...new Map(rows.map(row=>[row.trip_id??row._trip_id,{id:row.trip_id??row._trip_id,dispatch_number:row._parent_dispatch_number,transaction_number:row._parent_transaction_number,trip_reference:row._parent_trip_reference,warehouse_id:row._parent_warehouse_id,departure_from_warehouse_at:row._parent_departure_at}])).values()];
+      }else if(["combined","dispatch","dispatch-monitoring","trip-booking"].includes(key)){
         const ids=[...new Set(rows.map(row=>row.trip_id??row._trip_id).filter((id):id is string=>typeof id==="string"&&isValidUuid(id)))];
         const tripFields = requestedSourceLines && !legacySourceLines
           ? "id,dispatch_number,transaction_number,trip_reference"
           : "id,dispatch_number,transaction_number,trip_reference,warehouse_id,departure_from_warehouse_at";
         if(ids.length){let result=await supabaseAdmin.from("trips").select(tripFields).in("id",ids);
           if(result.error&&["42703","PGRST204"].includes(result.error.code)&&/trip_reference/i.test(result.error.message))result=await supabaseAdmin.from("trips").select(tripFields.replace(",trip_reference", "")).in("id",ids) as typeof result;
-          if(result.error)throw new ApiError("Unable to load report trip relationships.",503);parentTrips=result.data??[];
+          if(result.error)throw new ApiError("Unable to load report trip relationships.",503);parentTrips=(result.data??[]) as unknown as Record<string,unknown>[];
         }else parentTrips=[];
       }
+      for(const row of rows){delete row._search_text;for(const field of Object.keys(row))if(field.startsWith("_filter_"))delete row[field];}
       const enriched = ["combined", "dispatch", "dispatch-monitoring", "trip-booking", "store-calling"].includes(key)
         ? await attachOperationalRecordIds(rows, key === "dispatch-monitoring", parentTrips, getQueryString(query.record_delete_versions)==="true", !requestedSourceLines)
         : rows;
@@ -830,10 +828,11 @@ export async function getReportData(
         hasSource ? attachSourceDecimals(enriched) : Promise.resolve(),
         attachGeneratedTripNumbers(enriched,parentTrips),
         !requestedSourceLines && ["combined", "dispatch", "dispatch-monitoring"].includes(key) ? attachLoadingMilestones(enriched) : Promise.resolve(),
-        !requestedSourceLines && ["combined", "dispatch", "dispatch-monitoring", "trip-booking", "store-calling"].includes(key) ? getTripRoutes(tripIds,parentTrips?.map(trip=>({id:String(trip.id),warehouse_id:typeof trip.warehouse_id==="string"?trip.warehouse_id:null}))).then(routes => {
+        !requestedSourceLines && ["combined", "dispatch", "dispatch-monitoring", "trip-booking", "store-calling"].includes(key) ? getTripRoutes(tripIds,parentTrips?.map(trip=>({id:String(trip.id),warehouse_id:typeof trip.warehouse_id==="string"?trip.warehouse_id:null})),true).then(routes => {
           for (const row of enriched) row.route = typeof row.trip_id === "string" ? routes.get(row.trip_id) ?? null : null;
         }).catch(() => { for (const row of enriched) row.route = null; console.warn("Report route enrichment unavailable", {reportKey:key}); }) : Promise.resolve(),
       ]);
+      for(const row of enriched)for(const field of Object.keys(row))if(field.startsWith("_parent_"))delete row[field];
       return {
         rows: enriched,
         pagination: buildPaginationMeta(page, limit, count ?? rows.length),

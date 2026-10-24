@@ -82,7 +82,6 @@ export async function fetchPagedTrackerExportRows(token:string,options:TrackerPa
     if(!result.pagination)throw new Error("The export page is missing pagination metadata.");
     if(expectedTotal!==undefined&&expectedTotal!==result.pagination.total)throw new Error("Tracker records changed during export. Retry to export current data.");
     expectedTotal=result.pagination.total;
-    if(expectedTotal>20000)throw new Error("Export exceeds 20,000 rows. Filter by a Transmittal Reference or narrow the export.");
     for(const row of result.rows){const identity=trackerRowKey(row);if(seen.has(identity))throw new Error("Tracker rows changed during export. Retry.");seen.add(identity);rows.push(row);}
     if(page>=result.pagination.totalPages)break;
     if(!result.rows.length)throw new Error("Tracker records changed during export. Retry.");

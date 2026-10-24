@@ -1,3 +1,4 @@
+import {useSpreadsheetInfiniteScroll} from "./useSpreadsheetInfiniteScroll";
 import SpreadsheetRowSelectionHeader from "./SpreadsheetRowSelectionHeader";
 import {useSpreadsheetDragSelection} from "./useSpreadsheetDragSelection";
 import {useSpreadsheetSelectAll} from "./useSpreadsheetSelectAll";
@@ -71,6 +72,7 @@ import { ApiError, invalidateApiCache } from "../../services/api.service";
 import {
   fetchReportPage,
   fetchReportCollection,
+  retainReportCollection,
   fetchNextReportCollection,
   fetchReportTripRows,
   updateReportCollection,
@@ -90,6 +92,7 @@ import {
   type ReportColumn,
   type ReportKey,
   type ReportRow,
+  type ReportPageOptions,
 } from "../../services/report.service";
 import { getReportRowIdentity } from "../../services/report-row-identity";
 import { confirmReportCellWrite } from "../../services/report-edit-confirmation";
@@ -161,19 +164,23 @@ async function loadExportLibraries() {
   }
 }
 
-async function fetchAllReportRows(reportKey: ReportKey, token: string, sourceLines = false) {
-  const filters: Record<string, string> = sourceLines ? { source_lines: "true" } : {};
+async function fetchAllReportRows(reportKey: ReportKey, token: string, sourceLines = false, options?:ReportPageOptions) {
+  const filters: Record<string, string> = {...options?.filters,...(sourceLines?{source_lines:"true"}:{})};
   const columns = await fetchReportColumns(reportKey, token, false, sourceLines);
   const firstPage = await fetchReportRows(reportKey, token, {
-    page: 1, limit: 100, search: "", sortBy: "", sortOrder: "asc", filters, fresh: true,
+    page: 1, limit: 100, search: options?.search??"", sortBy: options?.sortBy??"", sortOrder: options?.sortOrder??"asc", filters, fresh: true,
   });
   const rows = [...firstPage.rows];
+  const identity=(row:ReportRow)=>getReportRowKey(reportKey,row);
+  const seen=new Set(rows.map(identity));
   for (let pageNumber = 2; pageNumber <= firstPage.pagination.totalPages; pageNumber += 1) {
     const pageResult = await fetchReportRows(reportKey, token, {
-      page: pageNumber, limit: 100, search: "", sortBy: "", sortOrder: "asc", filters, fresh: true,
+      page: pageNumber, limit: 100, search: options?.search??"", sortBy: options?.sortBy??"", sortOrder: options?.sortOrder??"asc", filters, fresh: true,
     });
-    rows.push(...pageResult.rows);
+    if(pageResult.pagination.total!==firstPage.pagination.total)throw Error("Records changed during export. Retry to export the current matching data.");
+    for(const row of pageResult.rows){const key=identity(row);if(!key||seen.has(key))throw Error("Report rows changed during export. Retry to avoid duplicate or missing rows.");seen.add(key);rows.push(row);}
   }
+  if(rows.length!==firstPage.pagination.total)throw Error("The export is incomplete. Retry to export every matching row.");
   return { columns, rows };
 }
 
@@ -1294,13 +1301,6 @@ export default function ReportDataView({
     }),
     [columnsByKey, hiddenColumnKeys, layoutColumnKeys],
   );
-  const visibleSelectionKeys = useMemo(
-    () => displayedRows.flatMap((row) => {
-      const key = getReportRowKey(reportKey, row);
-      return key ? [key] : [];
-    }),
-    [displayedRows, reportKey],
-  );
   const leftPinnedColumnKeys = useMemo(
     () => gridColumns.filter((column) => pinnedColumnSides[column.key] === "left").map((column) => column.key),
     [gridColumns, pinnedColumnSides],
@@ -1313,7 +1313,8 @@ export default function ReportDataView({
   const renderedGridColumns = gridColumns;
   const spreadsheetPadding = useSpreadsheetViewport(tableViewportRef, displayedRows.length, viewMode === "table");
   const presentationColumns=useMemo<ReportColumn[]>(()=>renderedGridColumns.length?renderedGridColumns:Array.from({length:5},(_,index)=>({key:`__loading_${index}`,title:"",type:"action"})),[renderedGridColumns]);
-  const sheetRowOffset=allTripRecords?0:(page-1)*50;
+  const infiniteRows=viewMode==="table";
+  const sheetRowOffset=infiniteRows?0:(page-1)*50;
   const virtualGridRows=useMemo(()=>Array.from({length:spreadsheetPadding.count},(_,index)=>({id:`virtual:${transactionView?"trips":reportKey}:slot:${sheetRowOffset+displayedRows.length+index+1}`})),[spreadsheetPadding.count,transactionView,reportKey,sheetRowOffset,displayedRows.length]);
   const issueTripIds=useMemo(()=>displayedRows.flatMap(row=>typeof (row.trip_id??row._trip_id)==="string"?[String(row.trip_id??row._trip_id)]:[]),[displayedRows]);
   const physicalGridKeys=useMemo(()=>displayedRows.map((row,index)=>getReportRowKey(reportKey,row)??`display:${reportKey}:${page}:${index}`),[displayedRows,reportKey,page]);
@@ -1345,15 +1346,16 @@ export default function ReportDataView({
   const snapshotKey = JSON.stringify({ accessToken, activeSortBy, appliedFilters: queryFilters, appliedSearch: effectiveSearch, page, reportKey, sortOrder });
   const pageOptions = useMemo(() => ({
     page,
-    limit: allTripRecords ? 200 : 50,
+    limit: 50,
     search: effectiveSearch,
     sortBy: activeSortBy,
     sortOrder,
     filters: queryFilters,
   }), [activeSortBy, queryFilters, effectiveSearch, page, sortOrder, allTripRecords]);
-  const formulas=useOperationalFormulas({token:accessToken,table:transactionView?"trips":`report:${reportKey}`,rows:displayedRows,columns:formulaColumns,identity:physicalRowIdentity,sourceEditor:prepareFormulaSource,virtualRows:virtualGridRows,onSelect:syncGridCellSelection,rowOffset:sheetRowOffset,canEdit:["ADMIN","STAFF"].includes(profile?.role??"")&&!headerFormatting.key,paused:Boolean(editingCell||editModalOpen||fillGesture)});
+  const formulas=useOperationalFormulas({viewport:tableViewportRef,token:accessToken,table:transactionView?"trips":`report:${reportKey}`,rows:displayedRows,columns:formulaColumns,identity:physicalRowIdentity,sourceEditor:prepareFormulaSource,virtualRows:virtualGridRows,onSelect:syncGridCellSelection,rowOffset:sheetRowOffset,canEdit:["ADMIN","STAFF"].includes(profile?.role??"")&&!headerFormatting.key,paused:Boolean(editingCell||editModalOpen||fillGesture)});
   const formulaFocusIndex=useMemo(()=>formulas.selectedIdentity?(formulaRowLookup.get(formulas.selectedIdentity)?.index??-1):-1,[formulas.selectedIdentity,formulaRowLookup]);
   const virtualItems = useVirtualSpreadsheetRows(tableViewportRef, physicalGridKeys, viewMode === "table", editingCell?physicalGridKeys.indexOf(editingCell.rowKey):formulaFocusIndex,rowHeights.heights);
+  useEffect(()=>accessToken&&infiniteRows?retainReportCollection(reportKey,accessToken,pageOptions):undefined,[accessToken,reportKey,snapshotKey,infiniteRows]);
   const snapshotKeyRef = useRef(snapshotKey);
   const loadedSnapshotKeyRef = useRef<string | null>(null);
   const reportKeyRef = useRef(reportKey);
@@ -1639,8 +1641,8 @@ export default function ReportDataView({
 
     let active = true;
     const collectionAbort = new AbortController();
-    const cached = allTripRecords ? getReportCollection(reportKey, accessToken, pageOptions) : getCachedReportPage(reportKey, accessToken, pageOptions);
-    const displayCache = cached ?? (allTripRecords ? getReportCollection(reportKey, accessToken, pageOptions,true) : getStaleReportPage(reportKey, accessToken, pageOptions));
+    const cached = infiniteRows ? getReportCollection(reportKey, accessToken, pageOptions) : getCachedReportPage(reportKey, accessToken, pageOptions);
+    const displayCache = cached ?? (infiniteRows ? getReportCollection(reportKey, accessToken, pageOptions,true) : getStaleReportPage(reportKey, accessToken, pageOptions));
     if (displayCache) {
       setColumns(displayCache.columns);
       setRows(displayCache.rows.filter(row => !deletedTripIds.current.has(String(row.trip_id))));
@@ -1669,7 +1671,7 @@ export default function ReportDataView({
 
     void (async () => {
       try {
-        const result = allTripRecords
+        const result = infiniteRows
           ? await fetchReportCollection(reportKey, accessToken, pageOptions, progress=>{
               if(!active||activeReportEdit.current||successfulSaveVersion.current!==requestSaveVersion)return;
               setColumns(progress.columns);
@@ -1797,6 +1799,7 @@ export default function ReportDataView({
     page,
     pageOptions,
     allTripRecords,
+    infiniteRows,
     queryKey,
     reportKey,
     refreshSession,
@@ -1806,10 +1809,10 @@ export default function ReportDataView({
     snapshotKey,
   ]);
 
-  const collectionWindow=allTripRecords&&accessToken?getReportCollection(reportKey,accessToken,pageOptions,true)?.collection:null;
+  const collectionWindow=infiniteRows&&accessToken?getReportCollection(reportKey,accessToken,pageOptions,true)?.collection:null;
   const hasMoreRows=Boolean(collectionWindow&&collectionWindow.page<collectionWindow.totalPages);
   const loadMoreRows=async()=>{
-    if(!accessToken||!allTripRecords||!hasMoreRows||moreRowsFlight.current||activeReportEdit.current||formulas.draftPending||cellSaveInFlight.current)return;
+    if(!accessToken||!infiniteRows||!hasMoreRows||moreRowsFlight.current||activeReportEdit.current||formulas.draftPending||cellSaveInFlight.current)return;
     const expected=snapshotKey;moreRowsFlight.current=true;setLoadingMore(true);setMoreRowsError("");
     try{
       const next=await fetchNextReportCollection(reportKey,accessToken,pageOptions);
@@ -1824,13 +1827,7 @@ export default function ReportDataView({
   };
   const loadMoreRowsRef=useRef(loadMoreRows);loadMoreRowsRef.current=loadMoreRows;
   useSpreadsheetFeedback(moreRowsError,"error");
-  useEffect(()=>{
-    const viewport=tableViewportRef.current;if(!allTripRecords||!viewport)return;
-    let frame=0;
-    const check=()=>{if(!frame)frame=requestAnimationFrame(()=>{frame=0;if(viewport.scrollTop>0&&viewport.scrollTop+viewport.clientHeight>=viewport.scrollHeight-300)void loadMoreRowsRef.current();});};
-    viewport.addEventListener("scroll",check,{passive:true});
-    return()=>{cancelAnimationFrame(frame);viewport.removeEventListener("scroll",check);};
-  },[allTripRecords]);
+  useSpreadsheetInfiniteScroll(tableViewportRef,{queryKey:snapshotKey,enabled:infiniteRows,hasMore:hasMoreRows,loading:loadingMore||loadedQueryKey!==queryKey,blocked:Boolean(moreRowsError||editingCell||editModalOpen||formulas.draftPending||formulas.busy||productDrafts.length||physicalDeletion||rowDeletion),revision:rows.length,onLoadMore:()=>loadMoreRowsRef.current()});
 
   useEffect(() => {
     if (!accessToken) return;
@@ -3166,7 +3163,7 @@ export default function ReportDataView({
       const { ExcelJS, JSZip } = await loadExportLibraries();
       const keys = exportMode === "current-report" ? [reportKey] : reportKeys;
       const datasets = await Promise.all(
-        keys.map(async (key) => ({ key, ...(await fetchAllReportRows(key, accessToken, allTripRecords && key === "dispatch-monitoring")) })),
+        keys.map(async (key) => ({ key, ...(await fetchAllReportRows(key, accessToken, allTripRecords && key === "dispatch-monitoring",exportMode==="current-report"?pageOptions:undefined)) })),
       );
       if (exportMode === "all-workbook") {
         const workbook = new ExcelJS.Workbook();
@@ -3866,8 +3863,8 @@ export default function ReportDataView({
               </table>
             )}
           </div>
-          {(pageCount>1||page>1)&&<div aria-label="Table pagination" className="flex items-center justify-end gap-2 border-t border-slate-200 px-3 py-1 text-[11px] text-slate-500"><button type="button" disabled={isLoading||page<=1||Boolean(editingCell||editModalOpen||fillGesture||formulas.draftPending)} onClick={()=>setPage(current=>Math.max(1,current-1))} className="rounded-sm border px-2 py-1 disabled:opacity-40">Previous</button><label>Page <input key={page} aria-label="Go to page" inputMode="numeric" defaultValue={page} disabled={isLoading||Boolean(editingCell||editModalOpen||fillGesture||formulas.draftPending)} onKeyDown={event=>{if(event.key==="Enter")event.currentTarget.blur();}} onBlur={event=>{const next=Number(event.target.value);if(Number.isInteger(next)&&next>=1&&next<=pageCount)setPage(next);else event.target.value=String(page);}} className="w-12 rounded-sm border border-slate-200 px-1 text-center"/></label><span>of {pageCount}</span><button type="button" disabled={isLoading||page>=pageCount||Boolean(editingCell||editModalOpen||fillGesture||formulas.draftPending)} onClick={()=>setPage(current=>Math.min(pageCount,current+1))} className="rounded-sm border px-2 py-1 disabled:opacity-40">Next</button></div>}
-          {allTripRecords&&hasMoreRows&&<div className="flex shrink-0 justify-center border-t border-slate-100 bg-white py-1"><button type="button" disabled={loadingMore} onClick={()=>void loadMoreRowsRef.current()} className="rounded-sm px-3 py-1 text-xs text-blue-700 hover:bg-blue-50 disabled:opacity-50">{loadingMore?"Loading more rows...":"Load more rows"}</button></div>}
+          {!infiniteRows&&(pageCount>1||page>1)&&<div aria-label="Table pagination" className="flex items-center justify-end gap-2 border-t border-slate-200 px-3 py-1 text-[11px] text-slate-500"><button type="button" disabled={isLoading||page<=1||Boolean(editingCell||editModalOpen||fillGesture||formulas.draftPending)} onClick={()=>setPage(current=>Math.max(1,current-1))} className="rounded-sm border px-2 py-1 disabled:opacity-40">Previous</button><label>Page <input key={page} aria-label="Go to page" inputMode="numeric" defaultValue={page} disabled={isLoading||Boolean(editingCell||editModalOpen||fillGesture||formulas.draftPending)} onKeyDown={event=>{if(event.key==="Enter")event.currentTarget.blur();}} onBlur={event=>{const next=Number(event.target.value);if(Number.isInteger(next)&&next>=1&&next<=pageCount)setPage(next);else event.target.value=String(page);}} className="w-12 rounded-sm border border-slate-200 px-1 text-center"/></label><span>of {pageCount}</span><button type="button" disabled={isLoading||page>=pageCount||Boolean(editingCell||editModalOpen||fillGesture||formulas.draftPending)} onClick={()=>setPage(current=>Math.min(pageCount,current+1))} className="rounded-sm border px-2 py-1 disabled:opacity-40">Next</button></div>}
+          {infiniteRows&&hasMoreRows&&<div className="flex shrink-0 justify-center border-t border-slate-100 bg-white py-1"><button type="button" disabled={loadingMore} onClick={()=>void loadMoreRowsRef.current()} className="rounded-sm px-3 py-1 text-xs text-blue-700 hover:bg-blue-50 disabled:opacity-50">{loadingMore?"Loading more rows...":"Load more rows"}</button></div>}
           <SpreadsheetHiddenColumns sheet={transactionView?"trips":reportKey} columns={hiddenColumns.map(column=>({...column,title:headerFormatting.title(column.key,column.title)}))} onRestore={restoreReportColumn} onRestoreAll={() => saveColumnLayout({ ...columnLayout, order: layoutColumnKeys, hidden: [] })} />
         </>
       </section>

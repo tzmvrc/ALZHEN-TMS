@@ -329,13 +329,14 @@ export async function convertOperationsReport(actor: ReportActor, input: unknown
 export async function getOperationsPage(actor: ReportActor, input: Record<string, unknown>) {
   assertOperationsManagementRole(actor);
   const options = parseOperationsPageQuery(input);
-  const { data, error, count } = await operationsPageRequest(supabaseAdmin, options);
+  const { data, error, count } = await operationsPageRequest(supabaseAdmin, options,input.selection_only==="true");
   if (error) {
     if (["42P01", "PGRST205"].includes(error.code)) throw new ApiError("Operations pagination is not configured. Apply the reviewed pagination proposal before enabling this feature.", 503, "OPERATIONS_PAGE_NOT_CONFIGURED");
     throwDb(error, "read Operations page");
   }
   if (count === null) throw new ApiError("Operations pagination count is unavailable.", 503, "OPERATIONS_PAGE_COUNT_FAILED");
-  const identities = data ?? [];
+  const identities = (data ?? []) as unknown as Array<Record<string,any>>;
+  if(input.selection_only==="true")return {rows:identities.map(row=>({id:`${row.source_type.toLowerCase()}:${row.source_record_id}`,source_type:row.source_type,source_record_id:row.source_record_id,trip_id:row.trip_id,trip_stop_id:row.trip_stop_id,dispatch_number:(row as Record<string,unknown>).trip,event_type_records:[{id:row.source_record_id,source_type:row.source_type}]})),pagination:{page:options.page,limit:options.limit,total:count,totalPages:Math.max(1,Math.ceil(count/options.limit))}};
   const sources: Record<string, string[]> = {};
   const tables: Record<string, string> = {LOADING:"loading_reports",UNLOADING:"unloading_reports",BACKLOAD:"backloads",OFFLOAD:"offloads"};
   for (const row of identities) {

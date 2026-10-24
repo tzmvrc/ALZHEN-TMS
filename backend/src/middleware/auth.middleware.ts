@@ -32,6 +32,11 @@ async function authenticate(
       data: { user },
       error,
     } = await shareRead(`user:${fingerprint(token)}`,()=>supabaseAuth.auth.getUser(token));
+    if(error&&(!Number.isFinite(error.status)||Number(error.status)===0||Number(error.status)>=500||/Fetch|Unknown|Timeout|Abort/.test(error.name))){
+      // An unavailable identity provider is not evidence of an expired token.
+      // Deny the request without destroying a valid browser/app session.
+      return res.status(503).json({success:false,code:"AUTH_VERIFICATION_UNAVAILABLE",message:"Account verification is temporarily unavailable. Keep your session and retry."});
+    }
     if (error || !user) {
       console.error("Supabase getUser error:", {
         code: error?.code,

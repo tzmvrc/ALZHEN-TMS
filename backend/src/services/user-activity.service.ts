@@ -1,4 +1,5 @@
 import type {Request,Response} from "express";
+import {wakeUserMaintenance} from './user-maintenance.service.js';
 import {randomUUID} from "node:crypto";
 import {supabaseAdmin} from "../config/supabase.js";
 const db=supabaseAdmin as any;
@@ -11,7 +12,7 @@ export async function captureUserActivity(req:Request,res:Response){
  if(!req.user||!['POST','PATCH','PUT','DELETE'].includes(req.method))return;
  const path=req.originalUrl.split('?')[0];
  if(!/^\/api\/(?:master-data|trips|store-calls|users|reports|website)\b/.test(path))return;
- if(/\/(?:preview|read|columns|options|search|availability|assigned)(?:\/|$)/.test(path)||path.includes('formulas/read'))return;
+ if(/\/(?:preview|read|columns|options|search|availability|assigned)(?:\/|$)/.test(path)||path.includes('formulas/read')||path==='/api/trips/overview-details')return;
  // These routes already write authoritative transaction/audit events exposed by v_user_activity.
  if(/\/api\/users\/(?!$)/.test(path)||/delete-records|\/deletion|\/operations\/|\/pod\//.test(path)||req.method==='DELETE')return;
  if(path.includes('/flexible-')||path.includes('/transmittal'))return;
@@ -32,7 +33,7 @@ export async function captureUserActivity(req:Request,res:Response){
   const action=`${module.replaceAll('-','_').toUpperCase()}_${requestType}`;
   void (async()=>{
    const saved=await db.from('audit_logs').update({action,new_data:newData}).eq('id',intent);
-   if(saved.error){console.error('Confirmed activity outcome queued for retry',{code:saved.error.code});const queued=await db.from('user_maintenance_jobs').insert({profile_id:req.user!.id,kind:'FINALIZE_ACTIVITY',dedupe_key:'activity:'+intent,payload:{id:intent,action,new_data:newData}});if(queued.error)console.error('Activity outcome retry could not be queued; intent is retained');}
+   if(saved.error){console.error('Confirmed activity outcome queued for retry',{code:saved.error.code});const queued=await db.from('user_maintenance_jobs').insert({profile_id:req.user!.id,kind:'FINALIZE_ACTIVITY',dedupe_key:'activity:'+intent,payload:{id:intent,action,new_data:newData}});if(queued.error)console.error('Activity outcome retry could not be queued; intent is retained');else wakeUserMaintenance();}
   })().catch(()=>console.error('Activity outcome was not confirmed; intent is retained')).finally(()=>{original(payload);});
   return res;
  }) as typeof res.json;

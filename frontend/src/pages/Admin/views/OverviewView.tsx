@@ -3,9 +3,7 @@ import { RefreshCw } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../../context/AuthContext";
 import { ApiError, invalidateApiCache } from "../../../services/api.service";
-import { settledBackgroundPreload } from "../../../services/background-preload";
-import { fetchTripEvents, fetchTrips } from "../../../services/trip.service";
-import { fetchTripImages } from "../../../services/trip-image.service";
+import { fetchHomeTripDetails, fetchTrips } from "../../../services/trip.service";
 import { subscribeToAdminRealtime } from "../../../services/realtime.service";
 import { fetchReportPage, invalidateReportPageCache, type ReportRow } from "../../../services/report.service";
 import HomeCommandCenter from "../../../components/admin/home/HomeCommandCenter";
@@ -94,79 +92,12 @@ export default function OverviewView({ onOpenTrip, onMetricNavigate, active = tr
         const activeStopIds = new Set(bookingRows.map((row) => textValue(row.trip_stop_id ?? row._trip_stop_id)).filter(Boolean));
         if (!isCurrent) return;
         setSnapshot(previous => previous ? {...previous, bookingRows, bookingUnavailable, bookingLimited} : previous);
-        const partialTracks: OverviewSnapshot["tracks"] = [];
-        const partialPhotos: Record<string,string> = {};
-        let detailAuthFailure: ApiError | undefined;
-        // One bounded queue for both resources; never run two independent 100-trip queues.
-        const details = await settledBackgroundPreload(tripsWithIds.map((trip, index) => async () => {
-          await new Promise(resolve => window.setTimeout(resolve, 200));
-          if (!isCurrent) throw new Error("Overview navigation changed");
-          const events = await Promise.allSettled([fetchTripEvents(accessToken, trip.id)]);
-          if (events[0].status === "rejected" && events[0].reason instanceof ApiError && events[0].reason.status === 401) detailAuthFailure = events[0].reason;
-          if (!isCurrent || detailAuthFailure) return {trip, events: events[0], images: null};
-          const images = await Promise.allSettled([fetchTripImages(accessToken, trip.id)]);
-          if (images[0].status === "rejected" && images[0].reason instanceof ApiError && images[0].reason.status === 401) detailAuthFailure = images[0].reason;
-          if (events[0].status === "fulfilled") partialTracks.push({trip, events: events[0].value.filter(event => !event.trip_stop_id || (!bookingUnavailable && activeStopIds.has(event.trip_stop_id)))});
-          if (images[0].status === "fulfilled" && images[0].value[0]) partialPhotos[trip.id] = images[0].value[0].signed_url;
-          // Publish early map/activity detail, then batches, without rerendering per request.
-          if (isCurrent && (index < 3 || index % 10 === 9)) {
-            const tracks = [...partialTracks], photoUrls = {...partialPhotos};
-            setSnapshot(previous => previous ? {...previous, tracks, photoUrls,
-              events: tracks.flatMap(({trip,events}) => events.map(event => ({...event, dispatch_number: String(trip.dispatch_number ?? trip.id ?? "Trip")}))),
-            } : previous);
-          }
-          return {trip, events: events[0], images: images[0]};
-        }), 1, () => isCurrent && !detailAuthFailure);
-        if (detailAuthFailure) throw detailAuthFailure;
-        const eventResults = details.map(result => {
-          if (result.status === "rejected") return result;
-          const {trip, events} = result.value;
-          return events.status === "rejected" ? events : {
-            status: "fulfilled" as const, value: {trip, events: events.value.filter(
-              event => !event.trip_stop_id || (!bookingUnavailable && activeStopIds.has(event.trip_stop_id)),
-            )},
-          };
-        });
-        const photoResults = details.map(result => {
-          if (result.status === "rejected") return result;
-          const {trip, images} = result.value;
-          return !images ? {status: "rejected" as const, reason: "Navigation changed"} : images.status === "rejected" ? images : {
-            status: "fulfilled" as const, value: {tripId: trip.id, images: images.value},
-          };
-        });
+        const batch=await fetchHomeTripDetails(accessToken,tripsWithIds.map(trip=>trip.id));
         if(!isCurrent)return;
-        const authFailure = eventResults.find(
-          (result) =>
-            result.status === "rejected" &&
-            result.reason instanceof ApiError &&
-            result.reason.status === 401,
-        );
-        if (authFailure?.status === "rejected") throw authFailure.reason;
-        const fulfilledTracks = eventResults.flatMap((result) =>
-          result.status === "fulfilled" ? [result.value] : [],
-        );
-        const tracks = fulfilledTracks.map(({ trip, events }) => ({
-          trip,
-          events,
-        }));
-        const events = fulfilledTracks.flatMap(({ trip, events: tripEvents }) =>
-          tripEvents.map((event) => ({
-            ...event,
-            dispatch_number: String(trip.dispatch_number ?? trip.id ?? "Trip"),
-          })),
-        );
-        const photoUrls: Record<string, string> = {};
-        photoResults.forEach((result, index) => {
-          if (result.status === "fulfilled") {
-            const firstPhoto = result.value.images[0];
-            if (firstPhoto) photoUrls[result.value.tripId] = firstPhoto.signed_url;
-            return;
-          }
-          console.warn(
-            `Unable to load the saved photo for trip ${tripsWithIds[index].id}:`,
-            result.reason,
-          );
-        });
+        const byTrip=new Map<string,typeof batch.events>();for(const event of batch.events){const values=byTrip.get(event.trip_id)??[];values.push(event);byTrip.set(event.trip_id,values);}
+        const tracks=tripsWithIds.map(trip=>({trip,events:(byTrip.get(trip.id)??[]).filter(event=>!event.trip_stop_id||(!bookingUnavailable&&activeStopIds.has(event.trip_stop_id)))}));
+        const events=tracks.flatMap(({trip,events})=>events.map(event=>({...event,dispatch_number:String(trip.dispatch_number??trip.id)})));
+        const photoUrls:Record<string,string>={};for(const image of batch.images)photoUrls[image.trip_id]=image.signed_url;
         if (!isCurrent) return;
         setSnapshot({
           recent: allTrips.rows,
@@ -174,9 +105,7 @@ export default function OverviewView({ onOpenTrip, onMetricNavigate, active = tr
           tracks,
           events,
           bookingRows,
-          eventsUnavailable: eventResults.some(
-            (result) => result.status === "rejected",
-          ),
+          eventsUnavailable: false,
           bookingUnavailable, bookingLimited,
           detailsLoading: false, planned: plannedPage.pagination.total,
           total: allTrips.pagination.total,

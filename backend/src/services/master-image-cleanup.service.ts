@@ -2,6 +2,8 @@ import {supabaseAdmin} from "../config/supabase.js";
 import {PRODUCT_PHOTO_BUCKET,removeProductPhotoObjects} from "./product-photo.service.js";
 import {TRUCK_IMAGE_BUCKET,removeTruckImageObjects} from "./truck-image.service.js";
 import {ApiError} from "../utils/api-response.js";
+import {createAdaptiveWorker} from '../utils/adaptive-worker.js';
+import {withSupabaseDeadline} from '../utils/supabase-request-scope.js';
 
 type ObjectReceipt={bucket:string;path:string;object_id:string;metadata_hash:string;object_version:string|null};
 type CleanupJob={id:string;resource:"products"|"trucks";record_id:string;attempts:number;storage_objects:ObjectReceipt[]};
@@ -14,6 +16,7 @@ function owned(job:CleanupJob,object:ObjectReceipt){
 async function processJob(job:CleanupJob){
  let errorMessage:string|null=null;
  try{
+  await withSupabaseDeadline(60_000,async()=>{
   if(!uuid.test(job.record_id)||!Array.isArray(job.storage_objects)||job.storage_objects.some(object=>!owned(job,object)))throw Error("Unverified image ownership; review the cleanup manifest.");
   // Recheck references and the exact Storage object identity before every attempt.
   const checked=await supabaseAdmin.rpc("validate_master_image_cleanup_v1",{p_operation:job.id,p_attempt:job.attempts});
@@ -27,18 +30,20 @@ async function processJob(job:CleanupJob){
   }
   const remaining=await supabaseAdmin.rpc("validate_master_image_cleanup_v1",{p_operation:job.id,p_attempt:job.attempts});
   if(remaining.error||!Array.isArray(remaining.data)||remaining.data.length)throw Error("Storage cleanup could not be confirmed; retry is queued.");
+  });
  }catch(error){errorMessage=error instanceof Error?error.message:"Image cleanup needs retry.";}
  // An unsuccessful acknowledgement leaves a leased, durable job for recovery.
  const saved=await supabaseAdmin.from("master_image_cleanup_jobs").update({state:errorMessage?"PENDING":"COMPLETE",lease_until:null,last_error:errorMessage,
   next_attempt_at:new Date(Date.now()+Math.min(3_600_000,10_000*2**Math.min(job.attempts,8))).toISOString(),
-  ...(errorMessage?{}:{completed_at:new Date().toISOString()})}).eq("id",job.id).eq("attempts",job.attempts).eq("state","RUNNING").select("id").maybeSingle();
+  ...(errorMessage?{}:{completed_at:new Date().toISOString()})}).eq("id",job.id).eq("attempts",job.attempts).eq("state","RUNNING").select("id").abortSignal(AbortSignal.timeout(5_000)).maybeSingle().retry(false);
  return !errorMessage&&!saved.error&&Boolean(saved.data);
 }
 /** Database leases prevent duplicate work across requests and backend processes. */
-export async function runMasterImageCleanup(operation?:string){
- const claimed=await supabaseAdmin.rpc("claim_master_image_cleanup_v1",{p_operation:operation??null});
+export async function runMasterImageCleanup(operation?:string,onClaim?:(count:number)=>void){
+ const claimed=await supabaseAdmin.rpc("claim_master_image_cleanup_v1",{p_operation:operation??null}).abortSignal(AbortSignal.timeout(10_000)).retry(false);
  if(claimed.error)throw new ApiError("Image cleanup queue is unavailable; committed jobs remain queued.",503);
  const jobs=(claimed.data??[]) as CleanupJob[];
+ onClaim?.(jobs.length);
  let complete=false;
  for(const job of jobs){
   try{const done=await processJob(job);if(job.id===operation)complete=done;}
@@ -59,9 +64,10 @@ export async function retryMasterImageCleanup(operation:string){
  if(!result.data)throw new ApiError("Cleanup operation not found.",404);
  return {operation_id:operation,cleanup_pending:result.data.state!=="COMPLETE"};
 }
+let worker:ReturnType<typeof createAdaptiveWorker>|undefined;
+export const masterImageCleanupMetrics=()=>worker?.metrics();
 export function startMasterImageCleanupWorker(){
- let stopped=false,running=false,reported=false;
- const tick=async()=>{if(stopped||running)return;running=true;try{await runMasterImageCleanup();reported=false;}catch{if(!reported)console.error("Master image cleanup deferred; durable jobs remain queued. Check the image cleanup migration and Storage availability.");reported=true;}finally{running=false;}};
- const timer=setInterval(()=>void tick(),15_000);timer.unref();void tick();
- return()=>{stopped=true;clearInterval(timer);};
+ if(worker)return()=>{};
+ const current=createAdaptiveWorker({name:'master_image_cleanup',run:async()=>{let count=0;await runMasterImageCleanup(undefined,n=>{count=n;});return count;}});worker=current;
+ return()=>{current.stop();if(worker===current)worker=undefined;};
 }

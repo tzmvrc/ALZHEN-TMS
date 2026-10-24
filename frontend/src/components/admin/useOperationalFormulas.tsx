@@ -1,4 +1,4 @@
-import { useCallback,useEffect,useMemo,useRef,useState,type MouseEvent,type PointerEvent as ReactPointerEvent,type KeyboardEvent as ReactKeyboardEvent,type ClipboardEvent as ReactClipboardEvent,type ReactNode } from "react";
+import { useCallback,useEffect,useLayoutEffect,useMemo,useRef,useState,type MouseEvent,type PointerEvent as ReactPointerEvent,type KeyboardEvent as ReactKeyboardEvent,type ClipboardEvent as ReactClipboardEvent,type ReactNode,type RefObject } from "react";
 import { SpreadsheetFormulaBar } from "./SpreadsheetFormulaBar";
 import { bindFormula,shiftBoundFormula,addressParts,createFormulaEvaluator,FormulaError,formulaDraftReferenceAddresses,type CellFormula } from "../../services/spreadsheet-formula";
 import { invalidateOperationalFormulaReads, readOperationalFormulas,saveOperationalFormulas,type FormulaSnapshot } from "../../services/operational-formula.service";
@@ -11,10 +11,15 @@ const EMPTY_FORMULAS:FormulaSnapshot={formulas:[],sources:[]};
 const NO_VIRTUAL_ROWS:Array<{id:string}>=[];
 const text=(value:unknown)=>value===null||value===undefined?"":typeof value==="object"?JSON.stringify(value):String(value);
 /** Expressions use separate overlays; ordinary values use the view's existing source editor. */
-export function useOperationalFormulas<R extends Row>({token,table,rows,columns,identity,canEdit,paused=false,rowOffset=0,enabled=true,sourceEditor,virtualRows=NO_VIRTUAL_ROWS,onSelect}:{token:string|null;table:string;rows:R[];columns:Column[];identity:(row:R)=>string|null;canEdit:boolean;paused?:boolean;rowOffset?:number;enabled?:boolean;sourceEditor?:(row:R,column:string)=>FormulaSourceEditor|undefined;virtualRows?:Array<{id:string}>;onSelect?:(row:string,column:string,extend:boolean)=>void}) {
+export function useOperationalFormulas<R extends Row>({token,table,rows,columns,identity,canEdit,paused=false,rowOffset=0,enabled=true,viewport,sourceEditor,virtualRows=NO_VIRTUAL_ROWS,onSelect}:{token:string|null;table:string;rows:R[];columns:Column[];identity:(row:R)=>string|null;canEdit:boolean;paused?:boolean;rowOffset?:number;enabled?:boolean;viewport?:RefObject<HTMLDivElement|null>;sourceEditor?:(row:R,column:string)=>FormulaSourceEditor|undefined;virtualRows?:Array<{id:string}>;onSelect?:(row:string,column:string,extend:boolean)=>void}) {
  const owner=`${token??""}:${table}:${enabled?"view":"disabled"}`;
  const rowIds=useMemo(()=>rows.flatMap(row=>{const id=identity(row);return id?[id]:[];}),[rows,identity]);
- const signature=useMemo(()=>[...new Set(rows.filter(row=>!row._new_product_draft).flatMap(row=>{const id=identity(row);return id?[id]:[];}))].sort().join("|"),[rows,identity]);
+ const [visibleFormulaRows,setVisibleFormulaRows]=useState<{owner:string;ids:string[]}>({owner:"",ids:[]});
+ const signature=useMemo(()=>[...new Set((viewport&&visibleFormulaRows.owner===owner?visibleFormulaRows.ids:viewport?rowIds.slice(0,80):rowIds))].sort().join("|"),[viewport,visibleFormulaRows,owner,rowIds]);
+ useLayoutEffect(()=>{const element=viewport?.current;if(!element)return;let frame=0;
+   const check=()=>{if(frame)return;frame=requestAnimationFrame(()=>{frame=0;const ids=[...new Set([...element.querySelectorAll<HTMLElement>("td[data-formula-row]")].map(cell=>cell.dataset.formulaRow!).filter(Boolean))].sort();if(!ids.length)return;setVisibleFormulaRows(current=>current.owner===owner&&current.ids.join("|")===ids.join("|")?current:{owner,ids});});};
+   const observer=new MutationObserver(check);observer.observe(element,{childList:true,subtree:true});element.addEventListener("scroll",check,{passive:true});check();return()=>{cancelAnimationFrame(frame);observer.disconnect();element.removeEventListener("scroll",check);};
+ },[viewport,owner,rowIds]);
  const allRowIds=useMemo(()=>[...rowIds,...virtualRows.map(row=>row.id)],[rowIds,virtualRows]);
  const rowIndex=useMemo(()=>new Map(allRowIds.map((id,index)=>[id,index])),[allRowIds]);
  const rowById=useMemo(()=>new Map(rows.flatMap(row=>{const id=identity(row);return id?[[id,row] as const]:[];})),[rows,identity]);

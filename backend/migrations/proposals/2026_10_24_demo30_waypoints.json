@@ -1,0 +1,1122 @@
+[
+  {
+    "number": 1,
+    "hub": "Valenzuela",
+    "warehouse": [
+      120.983025,
+      14.70103
+    ],
+    "stops": [
+      {
+        "name": "Quezon City",
+        "point": [
+          121.028953,
+          14.65651
+        ]
+      },
+      {
+        "name": "Marikina",
+        "point": [
+          121.098396,
+          14.632427
+        ]
+      }
+    ],
+    "gps": [
+      [
+        121.021827,
+        14.693295
+      ],
+      [
+        121.032873,
+        14.65511
+      ]
+    ],
+    "multi": true,
+    "status": "IN_PROGRESS",
+    "delayed": false,
+    "provider": "Mapbox Directions / driving",
+    "distanceMeters": 21908.029,
+    "durationSeconds": 4262.333
+  },
+  {
+    "number": 2,
+    "hub": "Valenzuela",
+    "warehouse": [
+      120.983025,
+      14.70103
+    ],
+    "stops": [
+      {
+        "name": "Makati",
+        "point": [
+          121.026314,
+          14.554602
+        ]
+      },
+      {
+        "name": "Taguig",
+        "point": [
+          121.050967,
+          14.55104
+        ]
+      }
+    ],
+    "gps": [
+      [
+        121.02544,
+        14.592902
+      ]
+    ],
+    "multi": false,
+    "status": "IN_PROGRESS",
+    "delayed": false,
+    "provider": "Mapbox Directions / driving",
+    "distanceMeters": 32339.592,
+    "durationSeconds": 4371.972
+  },
+  {
+    "number": 3,
+    "hub": "Marikina",
+    "warehouse": [
+      121.098396,
+      14.632427
+    ],
+    "stops": [
+      {
+        "name": "Antipolo",
+        "point": [
+          121.176528,
+          14.62547
+        ]
+      },
+      {
+        "name": "Cainta",
+        "point": [
+          121.114525,
+          14.578669
+        ]
+      }
+    ],
+    "gps": [
+      [
+        121.153042,
+        14.584754
+      ]
+    ],
+    "multi": false,
+    "status": "IN_PROGRESS",
+    "delayed": false,
+    "provider": "Mapbox Directions / driving",
+    "distanceMeters": 24303.076,
+    "durationSeconds": 4476.095
+  },
+  {
+    "number": 4,
+    "hub": "Valenzuela",
+    "warehouse": [
+      120.983025,
+      14.70103
+    ],
+    "stops": [
+      {
+        "name": "Malolos",
+        "point": [
+          120.815128,
+          14.858809
+        ]
+      },
+      {
+        "name": "San Fernando",
+        "point": [
+          120.653981,
+          15.032062
+        ]
+      },
+      {
+        "name": "Angeles",
+        "point": [
+          120.589615,
+          15.145041
+        ]
+      }
+    ],
+    "gps": [
+      [
+        120.961089,
+        14.767368
+      ],
+      [
+        120.821067,
+        14.850243
+      ]
+    ],
+    "multi": true,
+    "status": "IN_PROGRESS",
+    "delayed": true,
+    "provider": "Mapbox Directions / driving",
+    "distanceMeters": 88231.859,
+    "durationSeconds": 9498.968
+  },
+  {
+    "number": 5,
+    "hub": "Valenzuela",
+    "warehouse": [
+      120.983025,
+      14.70103
+    ],
+    "stops": [
+      {
+        "name": "Pasig",
+        "point": [
+          121.060464,
+          14.585299
+        ]
+      },
+      {
+        "name": "Mandaluyong",
+        "point": [
+          121.039521,
+          14.581909
+        ]
+      }
+    ],
+    "gps": [
+      [
+        121.006721,
+        14.639462
+      ]
+    ],
+    "multi": false,
+    "status": "IN_PROGRESS",
+    "delayed": false,
+    "provider": "Mapbox Directions / driving",
+    "distanceMeters": 26234.477,
+    "durationSeconds": 4283.123
+  },
+  {
+    "number": 6,
+    "hub": "Cabuyao",
+    "warehouse": [
+      121.124888,
+      14.278074
+    ],
+    "stops": [
+      {
+        "name": "Calamba",
+        "point": [
+          121.165203,
+          14.211057
+        ]
+      },
+      {
+        "name": "Santa Rosa",
+        "point": [
+          121.112725,
+          14.312013
+        ]
+      }
+    ],
+    "gps": [
+      [
+        121.108754,
+        14.246175
+      ]
+    ],
+    "multi": false,
+    "status": "COMPLETED",
+    "delayed": false,
+    "provider": "Mapbox Directions / driving",
+    "distanceMeters": 30709.285,
+    "durationSeconds": 4799.374
+  },
+  {
+    "number": 7,
+    "hub": "Dasmarinas",
+    "warehouse": [
+      120.939698,
+      14.329406
+    ],
+    "stops": [
+      {
+        "name": "Imus",
+        "point": [
+          120.93683,
+          14.429759
+        ]
+      },
+      {
+        "name": "Bacoor",
+        "point": [
+          120.964459,
+          14.458197
+        ]
+      }
+    ],
+    "gps": [
+      [
+        120.940487,
+        14.40565
+      ]
+    ],
+    "multi": false,
+    "status": "PLANNED",
+    "delayed": false,
+    "provider": "Mapbox Directions / driving",
+    "distanceMeters": 17203.289,
+    "durationSeconds": 3246.245
+  },
+  {
+    "number": 8,
+    "hub": "Mandaue",
+    "warehouse": [
+      123.921701,
+      10.323612
+    ],
+    "stops": [
+      {
+        "name": "Cebu City",
+        "point": [
+          123.89135,
+          10.310836
+        ]
+      },
+      {
+        "name": "Talisay Cebu",
+        "point": [
+          123.849233,
+          10.244674
+        ]
+      },
+      {
+        "name": "Naga Cebu",
+        "point": [
+          123.75857,
+          10.208929
+        ]
+      }
+    ],
+    "gps": [
+      [
+        123.911411,
+        10.312682
+      ],
+      [
+        123.890208,
+        10.310386
+      ]
+    ],
+    "multi": true,
+    "status": "IN_PROGRESS",
+    "delayed": false,
+    "provider": "Mapbox Directions / driving",
+    "distanceMeters": 29649.814,
+    "durationSeconds": 5353.081
+  },
+  {
+    "number": 9,
+    "hub": "CDO",
+    "warehouse": [
+      124.650453,
+      8.485817
+    ],
+    "stops": [
+      {
+        "name": "Opol",
+        "point": [
+          124.572671,
+          8.52132
+        ]
+      },
+      {
+        "name": "El Salvador",
+        "point": [
+          124.521976,
+          8.55768
+        ]
+      }
+    ],
+    "gps": [
+      [
+        124.560103,
+        8.535437
+      ]
+    ],
+    "multi": false,
+    "status": "IN_PROGRESS",
+    "delayed": false,
+    "provider": "Mapbox Directions / driving",
+    "distanceMeters": 20004.393,
+    "durationSeconds": 2517.032
+  },
+  {
+    "number": 10,
+    "hub": "Davao",
+    "warehouse": [
+      125.63029,
+      7.103385
+    ],
+    "stops": [
+      {
+        "name": "Davao Downtown",
+        "point": [
+          125.613127,
+          7.064366
+        ]
+      },
+      {
+        "name": "Toril",
+        "point": [
+          125.496417,
+          7.012968
+        ]
+      }
+    ],
+    "gps": [
+      [
+        125.624246,
+        7.085725
+      ],
+      [
+        125.566774,
+        7.043076
+      ]
+    ],
+    "multi": true,
+    "status": "IN_PROGRESS",
+    "delayed": true,
+    "provider": "Mapbox Directions / driving",
+    "distanceMeters": 22928.613,
+    "durationSeconds": 3557.962
+  },
+  {
+    "number": 11,
+    "hub": "Valenzuela",
+    "warehouse": [
+      120.983025,
+      14.70103
+    ],
+    "stops": [
+      {
+        "name": "San Jose del Monte",
+        "point": [
+          121.074837,
+          14.813776
+        ]
+      },
+      {
+        "name": "Meycauayan",
+        "point": [
+          120.960762,
+          14.734894
+        ]
+      }
+    ],
+    "gps": [
+      [
+        121.031836,
+        14.798335
+      ]
+    ],
+    "multi": false,
+    "status": "IN_PROGRESS",
+    "delayed": false,
+    "provider": "Mapbox Directions / driving",
+    "distanceMeters": 45105.859,
+    "durationSeconds": 7919.112
+  },
+  {
+    "number": 12,
+    "hub": "Valenzuela",
+    "warehouse": [
+      120.983025,
+      14.70103
+    ],
+    "stops": [
+      {
+        "name": "Bocaue",
+        "point": [
+          120.938287,
+          14.799038
+        ]
+      },
+      {
+        "name": "Balagtas",
+        "point": [
+          120.908208,
+          14.814868
+        ]
+      }
+    ],
+    "gps": [
+      [
+        120.925462,
+        14.798655
+      ]
+    ],
+    "multi": false,
+    "status": "COMPLETED",
+    "delayed": false,
+    "provider": "Mapbox Directions / driving",
+    "distanceMeters": 20845.799,
+    "durationSeconds": 2883.614
+  },
+  {
+    "number": 13,
+    "hub": "Marikina",
+    "warehouse": [
+      121.098396,
+      14.632427
+    ],
+    "stops": [
+      {
+        "name": "San Mateo",
+        "point": [
+          121.119135,
+          14.697315
+        ]
+      },
+      {
+        "name": "Rodriguez",
+        "point": [
+          121.142848,
+          14.732514
+        ]
+      }
+    ],
+    "gps": [
+      [
+        121.108001,
+        14.668687
+      ]
+    ],
+    "multi": false,
+    "status": "PLANNED",
+    "delayed": false,
+    "provider": "Mapbox Directions / driving",
+    "distanceMeters": 14395.052,
+    "durationSeconds": 3400.164
+  },
+  {
+    "number": 14,
+    "hub": "Cabuyao",
+    "warehouse": [
+      121.124888,
+      14.278074
+    ],
+    "stops": [
+      {
+        "name": "San Pedro",
+        "point": [
+          121.057622,
+          14.358263
+        ]
+      },
+      {
+        "name": "Binan",
+        "point": [
+          121.081967,
+          14.338629
+        ]
+      }
+    ],
+    "gps": [
+      [
+        121.061281,
+        14.323096
+      ],
+      [
+        121.044071,
+        14.367303
+      ]
+    ],
+    "multi": true,
+    "status": "IN_PROGRESS",
+    "delayed": false,
+    "provider": "Mapbox Directions / driving",
+    "distanceMeters": 26275.027,
+    "durationSeconds": 3182.67
+  },
+  {
+    "number": 15,
+    "hub": "Dasmarinas",
+    "warehouse": [
+      120.939698,
+      14.329406
+    ],
+    "stops": [
+      {
+        "name": "General Trias",
+        "point": [
+          120.881673,
+          14.385911
+        ]
+      },
+      {
+        "name": "Tanza",
+        "point": [
+          120.853005,
+          14.394224
+        ]
+      }
+    ],
+    "gps": [
+      [
+        120.863104,
+        14.395794
+      ]
+    ],
+    "multi": false,
+    "status": "IN_PROGRESS",
+    "delayed": false,
+    "provider": "Mapbox Directions / driving",
+    "distanceMeters": 16461.223,
+    "durationSeconds": 3096.788
+  },
+  {
+    "number": 16,
+    "hub": "Mandaue",
+    "warehouse": [
+      123.921701,
+      10.323612
+    ],
+    "stops": [
+      {
+        "name": "Lapu-Lapu",
+        "point": [
+          123.949179,
+          10.310286
+        ]
+      },
+      {
+        "name": "Cordova",
+        "point": [
+          123.949612,
+          10.251075
+        ]
+      }
+    ],
+    "gps": [
+      [
+        123.934936,
+        10.331644
+      ]
+    ],
+    "multi": false,
+    "status": "COMPLETED",
+    "delayed": false,
+    "provider": "Mapbox Directions / driving",
+    "distanceMeters": 14837.703,
+    "durationSeconds": 3104.841
+  },
+  {
+    "number": 17,
+    "hub": "CDO",
+    "warehouse": [
+      124.650453,
+      8.485817
+    ],
+    "stops": [
+      {
+        "name": "Tagoloan",
+        "point": [
+          124.752135,
+          8.539807
+        ]
+      },
+      {
+        "name": "Villanueva",
+        "point": [
+          124.776671,
+          8.585026
+        ]
+      }
+    ],
+    "gps": [
+      [
+        124.71409,
+        8.474286
+      ]
+    ],
+    "multi": false,
+    "status": "PLANNED",
+    "delayed": false,
+    "provider": "Mapbox Directions / driving",
+    "distanceMeters": 24359.008,
+    "durationSeconds": 3472.515
+  },
+  {
+    "number": 18,
+    "hub": "Davao",
+    "warehouse": [
+      125.63029,
+      7.103385
+    ],
+    "stops": [
+      {
+        "name": "Panabo",
+        "point": [
+          125.684058,
+          7.30816
+        ]
+      },
+      {
+        "name": "Carmen Davao",
+        "point": [
+          125.68045,
+          7.360307
+        ]
+      },
+      {
+        "name": "Tagum",
+        "point": [
+          125.80787,
+          7.447805
+        ]
+      }
+    ],
+    "gps": [
+      [
+        125.650588,
+        7.18518
+      ],
+      [
+        125.645851,
+        7.206585
+      ]
+    ],
+    "multi": true,
+    "status": "IN_PROGRESS",
+    "delayed": false,
+    "provider": "Mapbox Directions / driving",
+    "distanceMeters": 60613.223,
+    "durationSeconds": 7222.243
+  },
+  {
+    "number": 19,
+    "hub": "SanFernando",
+    "warehouse": [
+      120.68506,
+      15.046684
+    ],
+    "stops": [
+      {
+        "name": "Angeles",
+        "point": [
+          120.589615,
+          15.145041
+        ]
+      },
+      {
+        "name": "Mabalacat",
+        "point": [
+          120.580618,
+          15.222929
+        ]
+      }
+    ],
+    "gps": [
+      [
+        120.61453,
+        15.163252
+      ],
+      [
+        120.603768,
+        15.159077
+      ]
+    ],
+    "multi": true,
+    "status": "IN_PROGRESS",
+    "delayed": true,
+    "provider": "Mapbox Directions / driving",
+    "distanceMeters": 35133.258,
+    "durationSeconds": 3667.761
+  },
+  {
+    "number": 20,
+    "hub": "Valenzuela",
+    "warehouse": [
+      120.983025,
+      14.70103
+    ],
+    "stops": [
+      {
+        "name": "Las Pinas",
+        "point": [
+          120.977879,
+          14.444496
+        ]
+      },
+      {
+        "name": "Muntinlupa",
+        "point": [
+          121.044599,
+          14.407927
+        ]
+      }
+    ],
+    "gps": [
+      [
+        121.025902,
+        14.593885
+      ]
+    ],
+    "multi": false,
+    "status": "COMPLETED",
+    "delayed": false,
+    "provider": "Mapbox Directions / driving",
+    "distanceMeters": 54648.109,
+    "durationSeconds": 6456.56
+  },
+  {
+    "number": 21,
+    "hub": "Valenzuela",
+    "warehouse": [
+      120.983025,
+      14.70103
+    ],
+    "stops": [
+      {
+        "name": "Manila Ermita",
+        "point": [
+          120.983034,
+          14.578818
+        ]
+      }
+    ],
+    "gps": [
+      [
+        120.983034,
+        14.578818
+      ]
+    ],
+    "multi": false,
+    "status": "IN_PROGRESS",
+    "delayed": false,
+    "provider": "Mapbox Directions / driving",
+    "distanceMeters": 22180.135,
+    "durationSeconds": 2531.096
+  },
+  {
+    "number": 22,
+    "hub": "Marikina",
+    "warehouse": [
+      121.098396,
+      14.632427
+    ],
+    "stops": [
+      {
+        "name": "Quezon City",
+        "point": [
+          121.043808,
+          14.636537
+        ]
+      }
+    ],
+    "gps": [
+      [
+        121.072654,
+        14.631055
+      ]
+    ],
+    "multi": false,
+    "status": "PLANNED",
+    "delayed": false,
+    "provider": "Mapbox Directions / driving",
+    "distanceMeters": 7351.63,
+    "durationSeconds": 1610.856
+  },
+  {
+    "number": 23,
+    "hub": "Cabuyao",
+    "warehouse": [
+      121.124888,
+      14.278074
+    ],
+    "stops": [
+      {
+        "name": "Los Banos",
+        "point": [
+          121.242354,
+          14.179467
+        ]
+      },
+      {
+        "name": "Bay Laguna",
+        "point": [
+          121.285156,
+          14.183331
+        ]
+      }
+    ],
+    "gps": [
+      [
+        121.196513,
+        14.173744
+      ]
+    ],
+    "multi": false,
+    "status": "COMPLETED",
+    "delayed": false,
+    "provider": "Mapbox Directions / driving",
+    "distanceMeters": 26873.664,
+    "durationSeconds": 4503.518
+  },
+  {
+    "number": 24,
+    "hub": "Dasmarinas",
+    "warehouse": [
+      120.939698,
+      14.329406
+    ],
+    "stops": [
+      {
+        "name": "Silang",
+        "point": [
+          120.967772,
+          14.230345
+        ]
+      },
+      {
+        "name": "Tagaytay",
+        "point": [
+          120.962124,
+          14.115302
+        ]
+      }
+    ],
+    "gps": [
+      [
+        120.957488,
+        14.294658
+      ],
+      [
+        120.973799,
+        14.255678
+      ]
+    ],
+    "multi": true,
+    "status": "IN_PROGRESS",
+    "delayed": false,
+    "provider": "Mapbox Directions / driving",
+    "distanceMeters": 28770.035,
+    "durationSeconds": 3927.233
+  },
+  {
+    "number": 25,
+    "hub": "Mandaue",
+    "warehouse": [
+      123.921701,
+      10.323612
+    ],
+    "stops": [
+      {
+        "name": "Consolacion",
+        "point": [
+          123.957502,
+          10.376093
+        ]
+      },
+      {
+        "name": "Liloan",
+        "point": [
+          123.982204,
+          10.39932
+        ]
+      },
+      {
+        "name": "Compostela Cebu",
+        "point": [
+          124.010423,
+          10.454863
+        ]
+      }
+    ],
+    "gps": [
+      [
+        123.947675,
+        10.342578
+      ],
+      [
+        123.94986,
+        10.358901
+      ]
+    ],
+    "multi": true,
+    "status": "IN_PROGRESS",
+    "delayed": false,
+    "provider": "Mapbox Directions / driving",
+    "distanceMeters": 22896.346,
+    "durationSeconds": 4309.167
+  },
+  {
+    "number": 26,
+    "hub": "CDO",
+    "warehouse": [
+      124.650453,
+      8.485817
+    ],
+    "stops": [
+      {
+        "name": "Iponan",
+        "point": [
+          124.597913,
+          8.502886
+        ]
+      }
+    ],
+    "gps": [
+      [
+        124.623131,
+        8.504621
+      ]
+    ],
+    "multi": false,
+    "status": "IN_PROGRESS",
+    "delayed": false,
+    "provider": "Mapbox Directions / driving",
+    "distanceMeters": 6780.826,
+    "durationSeconds": 1065.803
+  },
+  {
+    "number": 27,
+    "hub": "Davao",
+    "warehouse": [
+      125.63029,
+      7.103385
+    ],
+    "stops": [
+      {
+        "name": "Buhangin",
+        "point": [
+          125.613119,
+          7.110598
+        ]
+      }
+    ],
+    "gps": [
+      [
+        125.613119,
+        7.110598
+      ]
+    ],
+    "multi": false,
+    "status": "PLANNED",
+    "delayed": false,
+    "provider": "Mapbox Directions / driving",
+    "distanceMeters": 3363.501,
+    "durationSeconds": 650.716
+  },
+  {
+    "number": 28,
+    "hub": "Valenzuela",
+    "warehouse": [
+      120.983025,
+      14.70103
+    ],
+    "stops": [
+      {
+        "name": "Paranaque",
+        "point": [
+          121.016942,
+          14.479079
+        ]
+      },
+      {
+        "name": "Pasay",
+        "point": [
+          121.001396,
+          14.537793
+        ]
+      }
+    ],
+    "gps": [
+      [
+        121.008968,
+        14.633327
+      ]
+    ],
+    "multi": false,
+    "status": "COMPLETED",
+    "delayed": false,
+    "provider": "Mapbox Directions / driving",
+    "distanceMeters": 48796.051,
+    "durationSeconds": 5552.582
+  },
+  {
+    "number": 29,
+    "hub": "SanFernando",
+    "warehouse": [
+      120.68506,
+      15.046684
+    ],
+    "stops": [
+      {
+        "name": "Guagua",
+        "point": [
+          120.633633,
+          14.975952
+        ]
+      },
+      {
+        "name": "Lubao",
+        "point": [
+          120.601604,
+          14.937483
+        ]
+      }
+    ],
+    "gps": [
+      [
+        120.665295,
+        15.01818
+      ]
+    ],
+    "multi": false,
+    "status": "COMPLETED",
+    "delayed": false,
+    "provider": "Mapbox Directions / driving",
+    "distanceMeters": 19407.137,
+    "durationSeconds": 3049.97
+  },
+  {
+    "number": 30,
+    "hub": "Marikina",
+    "warehouse": [
+      121.098396,
+      14.632427
+    ],
+    "stops": [
+      {
+        "name": "Taytay Rizal",
+        "point": [
+          121.132605,
+          14.558164
+        ]
+      },
+      {
+        "name": "Angono",
+        "point": [
+          121.152403,
+          14.526595
+        ]
+      }
+    ],
+    "gps": [
+      [
+        121.116431,
+        14.578078
+      ],
+      [
+        121.131912,
+        14.565787
+      ]
+    ],
+    "multi": true,
+    "status": "IN_PROGRESS",
+    "delayed": true,
+    "provider": "Mapbox Directions / driving",
+    "distanceMeters": 15414.643,
+    "durationSeconds": 3615.759
+  }
+]
