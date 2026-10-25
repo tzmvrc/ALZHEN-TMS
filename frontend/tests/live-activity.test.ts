@@ -1,6 +1,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { deriveActivities, trackerIndex } from "../src/services/live-activity.service.ts";
+test('assignment delivery notices use saved milestones and deduplicate repeated commits',()=>{
+ const memory=new Map<string,string>();
+ const row={id:'event-one',trip_id:'trip-one',trip_stop_id:'stop-one',event_type:'PARTIAL_UNLOAD',notes:'Eight boxes delivered'};
+ const notices=deriveActivities('trip_events',row,true,memory);
+ assert.equal(notices[0].stage,'unloading');assert.equal(notices[0].title,'Cargo quantities updated');
+ assert.equal(deriveActivities('trip_events',row,true,memory).length,0);
+ const custom=deriveActivities('trip_events',{...row,id:'event-two',event_type:'CUSTOM_STATUS',delivery_metadata:{title:'Traffic'}},true,memory);
+ assert.equal(custom[0].title,'Traffic');assert.equal(custom[0].stage,'alert');
+ assert.equal(deriveActivities('trip_events',{...row,id:'event-three'},false,memory).length,0);
+});
 
 const now = Date.parse("2026-10-16T08:00:00Z");
 const timestamp = new Date(now).toISOString();

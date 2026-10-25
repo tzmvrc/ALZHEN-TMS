@@ -1834,6 +1834,7 @@ export default function ReportDataView({
     finally{moreRowsFlight.current=false;setLoadingMore(false);}
   };
   const loadMoreRowsRef=useRef(loadMoreRows);loadMoreRowsRef.current=loadMoreRows;
+  useEffect(()=>setMoreRowsError(""),[snapshotKey]);
   useSpreadsheetFeedback(moreRowsError,"error");
   useSpreadsheetInfiniteScroll(tableViewportRef,{queryKey:snapshotKey,enabled:infiniteRows,hasMore:hasMoreRows,loading:loadingMore||loadedQueryKey!==queryKey,blocked:Boolean(moreRowsError||editingCell||editModalOpen||formulas.draftPending||formulas.busy||productDrafts.length||physicalDeletion||rowDeletion),revision:rows.length,onLoadMore:()=>loadMoreRowsRef.current()});
 
@@ -3872,7 +3873,8 @@ export default function ReportDataView({
             )}
           </div>
           {!infiniteRows&&(pageCount>1||page>1)&&<div aria-label="Table pagination" className="flex items-center justify-end gap-2 border-t border-slate-200 px-3 py-1 text-[11px] text-slate-500"><button type="button" disabled={isLoading||page<=1||Boolean(editingCell||editModalOpen||fillGesture||formulas.draftPending)} onClick={()=>setPage(current=>Math.max(1,current-1))} className="rounded-sm border px-2 py-1 disabled:opacity-40">Previous</button><label>Page <input key={page} aria-label="Go to page" inputMode="numeric" defaultValue={page} disabled={isLoading||Boolean(editingCell||editModalOpen||fillGesture||formulas.draftPending)} onKeyDown={event=>{if(event.key==="Enter")event.currentTarget.blur();}} onBlur={event=>{const next=Number(event.target.value);if(Number.isInteger(next)&&next>=1&&next<=pageCount)setPage(next);else event.target.value=String(page);}} className="w-12 rounded-sm border border-slate-200 px-1 text-center"/></label><span>of {pageCount}</span><button type="button" disabled={isLoading||page>=pageCount||Boolean(editingCell||editModalOpen||fillGesture||formulas.draftPending)} onClick={()=>setPage(current=>Math.min(pageCount,current+1))} className="rounded-sm border px-2 py-1 disabled:opacity-40">Next</button></div>}
-          {infiniteRows&&hasMoreRows&&<div className="flex shrink-0 justify-center border-t border-slate-100 bg-white py-1"><button type="button" disabled={loadingMore} onClick={()=>void loadMoreRowsRef.current()} className="rounded-sm px-3 py-1 text-xs text-blue-700 hover:bg-blue-50 disabled:opacity-50">{loadingMore?"Loading more rows...":"Load more rows"}</button></div>}
+          {infiniteRows&&moreRowsError&&<div role="alert" className="flex shrink-0 items-center justify-center gap-2 border-t border-amber-100 bg-white py-1 text-xs text-amber-800"><span>{moreRowsError}</span><button type="button" disabled={loadingMore} onClick={()=>{setMoreRowsError('');void loadMoreRowsRef.current();}} className="rounded px-2 py-1 text-blue-700">Retry loading</button></div>}
+          {infiniteRows&&loadingMore&&<div role="status" className="flex shrink-0 justify-center border-t border-slate-100 bg-white py-1 text-xs text-slate-500">Loading more rows...</div>}
           <SpreadsheetHiddenColumns sheet={transactionView?"trips":reportKey} columns={hiddenColumns.map(column=>({...column,title:headerFormatting.title(column.key,column.title)}))} onRestore={restoreReportColumn} onRestoreAll={() => saveColumnLayout({ ...columnLayout, order: layoutColumnKeys, hidden: [] })} />
         </>
       </section>

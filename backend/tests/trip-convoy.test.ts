@@ -21,7 +21,7 @@ test("convoy saves use one atomic RPC, preserve physical IDs, and expose version
   db.rpc=(async(name:string,payload:any)=>{calls.push({name,payload});return conflict?{data:null,error:{code:"40001"}}:{data:[{...change,id:uuid(5),trip_id:trip,collaboration_version:1}],error:null};}) as typeof old;
   try{
     const result=await saveTripAllocations(actor,trip,[change]);assert.equal(result[0].id,uuid(5));
-    assert.equal(calls[0].name,"save_trip_cargo_allocations_v1");assert.equal(calls[0].payload.p_trip,trip);assert.deepEqual(calls[0].payload.p_changes,[change]);
+    assert.equal(calls[0].name,"save_trip_cargo_allocations_v1");assert.equal(calls[0].payload.p_trip,trip);assert.deepEqual(calls[0].payload.p_changes,[{...change,quantity:"10",allocated_cbm:"50"}]);
     conflict=true;await assert.rejects(saveTripAllocations(actor,trip,[change]),{statusCode:409});
   }finally{db.rpc=old;}
 });

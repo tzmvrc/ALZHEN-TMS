@@ -348,11 +348,13 @@ export async function apiPost<T>(
   token?: string,
   signal?: AbortSignal,
   timeoutMs?:number,
+  extraHeaders?:Record<string,string>,
 ): Promise<T> {
   return request<T>(
     endpoint,
     {
       method: "POST",
+      headers:extraHeaders,
       body: JSON.stringify(body),
       signal,
     },

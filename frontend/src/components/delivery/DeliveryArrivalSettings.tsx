@@ -1,0 +1,12 @@
+import {useEffect,useState} from 'react';
+import {useAuth} from '../../context/AuthContext';
+import {apiPatch,type ApiResponse} from '../../services/api.service';
+import {readDeliveryWorkspace} from '../../services/delivery.service';
+type Area={id:string;kind:string;name:string;radius:number};
+export default function DeliveryArrivalSettings({assignmentId}:{assignmentId:string}){
+ const {accessToken,profile}=useAuth(),[open,setOpen]=useState(false),[rows,setRows]=useState<Area[]>([]),[error,setError]=useState(''),[saved,setSaved]=useState(''),[busy,setBusy]=useState('');
+ useEffect(()=>{if(!open||!accessToken)return;let active=true;void readDeliveryWorkspace(accessToken,assignmentId).then(w=>{if(active)setRows([...w.warehouse?[{id:w.warehouse.id,kind:'warehouses',name:w.warehouse.name,radius:w.warehouse.arrival_radius_meters}]:[],...w.stops.flatMap(s=>s.store?[{id:s.store.id,kind:'customer_stores',name:s.store.name,radius:s.store.arrival_radius_meters}]:[])].filter((r,i,all)=>all.findIndex(x=>x.id===r.id)===i));},e=>{if(active)setError(e.message);});return()=>{active=false;};},[open,accessToken,assignmentId]);
+ if(profile?.role!=='ADMIN')return null;
+ const save=async(row:Area)=>{if(!accessToken||busy)return;if(!Number.isInteger(row.radius)||row.radius<100||row.radius>5000){setError('Use a radius between 100 and 5000 meters.');return;}setBusy(row.id);setError('');try{await apiPatch<ApiResponse<unknown>>(`/delivery/locations/${row.kind}/${row.id}/geofence`,{radius:row.radius},accessToken);setSaved(`${row.name}: arrival area saved and audited.`);}catch(e){setError((e as Error).message);}finally{setBusy('');}};
+ return <details className="delivery-gps-history" onToggle={e=>setOpen(e.currentTarget.open)}><summary>Arrival area settings</summary><p>Shared by deliveries to this saved location. Coordinate verification remains required.</p>{rows.map(row=><label key={row.id} className="delivery-geofence-row"><span>{row.name}</span><input type="number" min="100" max="5000" step="100" aria-label={`Arrival radius in meters for ${row.name}`} value={row.radius} onChange={e=>setRows(a=>a.map(r=>r.id===row.id?{...r,radius:Number(e.target.value)}:r))}/><span>m</span><button className="delivery-secondary" disabled={!!busy} onClick={()=>void save(row)}>{busy===row.id?'Saving...':'Save'}</button></label>)}{error&&<p role="alert">{error}</p>}{saved&&<p role="status">{saved}</p>}</details>;
+}

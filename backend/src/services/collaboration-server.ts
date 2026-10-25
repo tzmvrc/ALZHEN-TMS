@@ -120,10 +120,22 @@ export async function attachCollaborationServer(http:HttpServer,options:Options=
   const sweep=setInterval(()=>{for(const [table,at] of Object.entries(socket.data.tableViews) as Array<[string,number]>)if(at<Date.now()-(options.viewTtl??45000)){delete socket.data.tableViews[table];socket.emit("table:expired",{table});void Promise.resolve(socket.leave(`table:${table}`)).then(()=>publishViewers(table));socket.data.roomCount--;leavePresence(table);}for(const [table,presence] of Object.entries(socket.data.presences) as Array<[string,{expiresAt:number}]>)if(presence.expiresAt<Date.now())leavePresence(table);},Math.min(5000,ttl));
   socket.on("disconnect",()=>{presenceSerial++;clearTimeout(expiry);clearInterval(sessionTimer);clearInterval(sweep);for(const table of Object.keys(socket.data.presences))leavePresence(table);for(const table of Object.keys(socket.data.tableViews))publishViewers(table);});
  });
- const emitTracking=(value:{assignmentId:string})=>io.to("management").emit("tracking:changed",value);
+ const emitTracking=(value:{assignmentId:string})=>{
+  if(!isValidUuid(value.assignmentId))return;
+  // The local acknowledgement and database bridge may report the same fix.
+  // Captures are throttled upstream; coalesce only their short echo window.
+  const key=`tracking:${value.assignmentId}`,last=seen.get(key);
+  if(last&&Date.now()-last<1000)return;
+  seen.set(key,Date.now());
+  io.to("management").emit("tracking:changed",{assignmentId:value.assignmentId});
+ };
  trackingEvents.on("changed",emitTracking);
  const channel=options.bridge===false?null:supabaseAdmin.channel(`collaboration-server-${process.pid}-${Date.now()}`);
  if(channel){
+  channel.on("postgres_changes",{schema:"public",table:"trip_tracking_locations",event:"*"},payload=>{
+   const record=(payload.eventType==="DELETE"?payload.old:payload.new) as Record<string,unknown>;
+   if(typeof record.assignment_id==='string')emitTracking({assignmentId:record.assignment_id});
+  });
   channel.on("postgres_changes",{schema:"public",table:"admin_notifications",event:"*"},payload=>{
    const notice=payload.new as Record<string,unknown>;
    if(typeof notice?.id!=="string"||typeof notice.recipient_profile_id!=="string")return;
@@ -136,6 +148,11 @@ export async function attachCollaborationServer(http:HttpServer,options:Options=
    const signal=payload.new as Record<string,unknown>;
    if(typeof signal.topic==="string"&&signal.topic.length<=100&&typeof signal.revision==="string")io.to("management").emit("datasets:invalidated",{topic:signal.topic,revision:signal.revision});
    if(["trips","trip_stops","trip_truck_assignments","customer_stores"].includes(String(signal.topic)))trackingEvents.emit("routes");
+  });
+  channel.on("postgres_changes",{schema:"public",table:"trip_events",event:"*"},payload=>{
+   const record=(payload.eventType==="DELETE"?payload.old:payload.new) as Record<string,unknown>;
+   if(typeof record.id!=="string"||typeof record.trip_id!=="string")return;
+   emitCommit({source:"trip_events",recordId:record.id,tripId:record.trip_id,fields:[],actorId:null,version:null,operation:payload.eventType,eventId:`delivery:${record.id}:${record.delivery_version??0}`});
   });
   for(const source of Object.keys(SOURCE_FIELDS))channel.on("postgres_changes",{schema:"public",table:source,event:"*"},payload=>{
    const record=(payload.eventType==="DELETE"?payload.old:payload.new) as Record<string,unknown>;

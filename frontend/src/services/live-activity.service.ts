@@ -194,6 +194,14 @@ export function deriveActivities(
       const type = String(row.event_type ?? "").toUpperCase();
       const notes = text(row.notes);
       const stopId = text(row.trip_stop_id);
+      const milestones:Record<string,[ActivityStage,string]>={WAREHOUSE_ARRIVAL:['warehouse','Arrived at warehouse'],LOADING_STARTED:['loading','Started loading'],LOADING_FINISHED:['loaded','Finished loading'],WAREHOUSE_DEPARTURE:['route','Departed warehouse'],IN_TRANSIT:['route','In transit'],ARRIVED:['arrived','Arrived at delivery stop'],UNLOADING_STARTED:['unloading','Started unloading'],PARTIAL_UNLOAD:['unloading','Cargo quantities updated'],UNLOADING_FINISHED:['unloading','Finished unloading'],STOP_DEPARTURE:['route','Departed delivery stop'],ASSIGNMENT_COMPLETED:['delivered','Assigned delivery completed'],POD_SUBMITTED:['receipt','POD submitted'],PHOTO_UPLOADED:['receipt','Delivery photo submitted'],BACKLOAD_REPORTED:['alert','Backload reported'],OFFLOAD_REPORTED:['alert','Offload reported'],CUSTOM_STATUS:['alert','Driver update']};
+      const milestone=milestones[type];
+      if(milestone){
+        const metadata=row.delivery_metadata as {title?:unknown}|undefined;
+        const title=type==='CUSTOM_STATUS'&&typeof metadata?.title==='string'?metadata.title:milestone[1];
+        if(once(`delivery-event:${row.id}`))push(milestone[0],title,{stopId,detail:notes??undefined,sticky:milestone[0]==='alert'});
+        break;
+      }
       if (/DELAY|INCIDENT|BREAKDOWN|ERROR|EXCEPTION/.test(type)) {
         push("alert", type.replaceAll("_", " ").toLowerCase().replace(/^./, (c) => c.toUpperCase()), { stopId, detail: notes ?? undefined, sticky: true });
       } else if (type === "STORE_ARRIVAL") {

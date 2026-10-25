@@ -602,7 +602,7 @@ export default function DashboardPage({
         </div>
       )}
 
-      <div
+      <div data-delivery-workspace={route.tripId?true:undefined}
         className={`relative z-10 pl-[5.5rem] pr-4 transition-[padding-left] duration-300 motion-reduce:transition-none ${
           sidebarCollapsed ? "" : "lg:pl-[17rem]"
         }`}
@@ -655,7 +655,7 @@ export default function DashboardPage({
             </div></RetainedFeature>
             <RetainedFeature key={`trips:${profile?.id}:${profile?.role}`} active={!isClientWebsite&&activeId==="trips"}><ResourceView id="dispatches" workspaceReport={reportView} data={filteredData} onNavigate={handleNavigate} notificationTarget={notificationTarget} onReportScopeChange={setReportView}/></RetainedFeature>
             <RetainedFeature key={`billing:${profile?.id}:${profile?.role}`} active={!isClientWebsite&&activeId==="billing"}><BillingView/></RetainedFeature>
-            <div key={`${workspace}:${activeId}:${clientTab}`} className="page-enter" hidden={showOverview}>
+            <div key={`${workspace}:${activeId.startsWith("trip-detail:")?`trip-detail:${activeId.split(":")[1]}`:activeId}:${clientTab}`} className="page-enter" hidden={showOverview}>
               {isClientWebsite ? (
                 <ClientWebsiteWorkspace
                   userName={displayName}

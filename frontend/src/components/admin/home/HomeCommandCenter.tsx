@@ -1,14 +1,14 @@
-import { useEffect, useRef, useState } from "react";
+import { lazy, memo, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { motion, MotionConfig, useReducedMotion } from "motion/react";
 import { ArrowRight, ArrowUpRight, CalendarDays, CheckCheck, CircleAlert, ClipboardList, Mail, MapPinned, Pause, Play, Radio, RefreshCw, ShieldCheck, Truck, WalletCards } from "lucide-react";
 import LiveTripMap from "../LiveTripMap";
 import OverviewMiniCalendar from "../OverviewMiniCalendar";
 import { useRequests } from "../requestsStore";
-import UpcomingDeliveries from "./UpcomingDeliveries";
+import WorkspaceShortcuts from "./WorkspaceShortcuts";
 import IncomingTripRequests from "./IncomingTripRequests";
 import TruckerUpdates from "./TruckerUpdates";
 import type { RoadTrip } from "../../../services/road-routing";
-import HomeAnalytics from "./HomeAnalytics";
+const HomeAnalytics=lazy(()=>import("./HomeAnalytics").then(module=>({default:memo(module.default)})));
 import HomeTripTable, { type HomeTripFilter } from "./HomeTripTable";
 import { EmptyState, MetricsStrip, SectionHeading, TruckJourneyIllustration, type HomeMetric } from "./HomePrimitives";
 import { buildHomeTrips, homeAnalytics, homeMapData, manilaDay, shortDay, type HomeSnapshot } from "./home-dashboard-data";
@@ -21,6 +21,8 @@ export default function HomeCommandCenter({ snapshot, name, refreshing, error, o
   const [selectedRoad,setSelectedRoad] = useState<RoadTrip|null>(null);
   const [roadRows,setRoadRows] = useState<RoadTrip[]>([]);
   const [days, setDays] = useState(14);
+  const analyticsAnchor=useRef<HTMLDivElement>(null),[analyticsReady,setAnalyticsReady]=useState(false);
+  useEffect(()=>{if(!active||analyticsReady||!analyticsAnchor.current)return;const observer=new IntersectionObserver(entries=>{if(entries.some(entry=>entry.isIntersecting)){setAnalyticsReady(true);observer.disconnect();}},{rootMargin:'250px'});observer.observe(analyticsAnchor.current);return()=>observer.disconnect();},[active,analyticsReady]);
   const [filter, setFilter] = useState<HomeTripFilter>("All");
   const [focus, setFocus] = useState<string | null>(null);
   const [motionEnabled, setMotionEnabled] = useState(true);
@@ -37,9 +39,9 @@ export default function HomeCommandCenter({ snapshot, name, refreshing, error, o
   useEffect(() => {
     if (active) window.scrollTo({ top: 0, left: 0, behavior: "instant" });
   }, [active]);
-  const trips = buildHomeTrips(snapshot);
-  const analytics = homeAnalytics(trips, snapshot, days);
-  const mapData = homeMapData(snapshot, trips);
+  const trips = useMemo(()=>buildHomeTrips(snapshot),[snapshot]);
+  const analytics = useMemo(()=>homeAnalytics(trips, snapshot, days),[trips,snapshot,days]);
+  const mapData = useMemo(()=>homeMapData(snapshot, trips),[snapshot,trips]);
   const attention = trips.filter(trip => Boolean(trip.issue));
   const focused = focus && mapData.activeIds.has(focus) ? focus : null;
   const updated = new Date(snapshot.fetchedAt).toLocaleTimeString("en-PH", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" });
@@ -63,7 +65,7 @@ export default function HomeCommandCenter({ snapshot, name, refreshing, error, o
     <motion.header {...entrance} className="home-page-heading"><div><p className="home-eyebrow">ALZHEN TMS <span>/</span> Operations command center</p><h1>Keep every delivery moving<span>.</span></h1><p className="home-description">Welcome back, {name}. Here is where operations stand.</p></div><div className="home-heading-actions"><span className={`home-sync-state ${stale || error ? "is-stale" : ""}`}><Radio size={13} aria-hidden="true"/>{refreshing ? "Refreshing" : stale || error ? "Snapshot needs refresh" : "Synced"}<small>Updated {updated} PHT</small></span><button type="button" className="home-icon-button" onClick={() => setMotionEnabled(value => !value)} aria-label={motionEnabled ? "Pause dashboard animations" : "Enable dashboard animations"} aria-pressed={!motionEnabled}>{motionEnabled ? <Pause size={16} aria-hidden="true"/> : <Play size={16} aria-hidden="true"/>}</button><button type="button" onClick={onRefresh} disabled={refreshing} className="home-button home-button-outline"><RefreshCw size={15} aria-hidden="true" className={refreshing && animate ? "home-refreshing" : ""}/>Refresh</button></div></motion.header>
     {error && <div className="home-message home-message-warning" role="alert"><CircleAlert size={17} aria-hidden="true"/><span>Refresh failed. Showing the last successful snapshot. {error}</span><button type="button" onClick={onRefresh} disabled={refreshing}>Retry</button></div>}
     <motion.div {...entrance} transition={{ duration: 0.4, delay: animate ? 0.05 : 0 }}><MetricsStrip metrics={metrics} animate={animate}/></motion.div>
-    <div className="home-request-workspace"><IncomingTripRequests onNavigate={onNavigate}/><UpcomingDeliveries trips={trips} loading={snapshot.detailsLoading} onOpenTrip={onOpenTrip}/></div>
+    <div className="home-request-workspace"><IncomingTripRequests onNavigate={onNavigate}/><WorkspaceShortcuts onNavigate={onNavigate}/></div>
     <div className="home-scope-line"><ShieldCheck size={14} aria-hidden="true"/><p>Headline trip counts cover all {snapshot.total.toLocaleString()} non-archived trips. Monitoring, issues, truck counts and analytics use the latest {trips.length} loaded trips.</p>{snapshot.detailsLoading && <span role="status">Loading operational details...</span>}</div>
     {trips.some(trip => trip.demonstration) && <p className="home-bounded-note"><strong>Demonstration trips included.</strong> Trips marked Demo and their products, drivers, trucks and GPS samples are demonstration data. Headline totals include these saved demos; map positions are labeled Demo / Simulated GPS.</p>}
     {(snapshot.bookingUnavailable || snapshot.eventsUnavailable) && <div className="home-message home-message-warning" role="status"><CircleAlert size={16} aria-hidden="true"/><span>{snapshot.bookingUnavailable ? "Some truck, stop and route details could not be loaded. " : ""}{snapshot.eventsUnavailable ? "Some recorded trip events could not be loaded. " : ""}Monitoring and analytics may be incomplete; headline trip totals remain available.</span></div>}
@@ -73,7 +75,7 @@ export default function HomeCommandCenter({ snapshot, name, refreshing, error, o
       <TruckerUpdates snapshot={snapshot} trips={trips} roads={roadRows} selected={selectedRoad} active={active} onOpenTrip={onOpenTrip}/>
     </motion.section>
     <div ref={board} className="home-board-anchor"><HomeTripTable trips={trips} filter={filter} onFilter={setFilter} focusedTrip={focused} onFocus={id => { setFocus(id === focused ? null : id); map.current?.scrollIntoView({ behavior: animate ? "smooth" : "instant", block: "start" }); }} onOpenTrip={onOpenTrip} photos={snapshot.photoUrls} detailsLoading={snapshot.detailsLoading} total={snapshot.total} onViewAll={() => navigate("combined")}/></div>
-    <HomeAnalytics data={analytics} days={days} onDays={setDays} animate={animate} detailsLoading={snapshot.detailsLoading} detailsUnavailable={snapshot.bookingUnavailable || snapshot.eventsUnavailable || snapshot.bookingLimited}/>
+    <div ref={analyticsAnchor} className="home-analytics-anchor">{analyticsReady?<Suspense fallback={<div className="home-analytics-placeholder" role="status">Loading performance charts...</div>}><HomeAnalytics data={analytics} days={days} onDays={setDays} animate={animate} detailsLoading={snapshot.detailsLoading} detailsUnavailable={snapshot.bookingUnavailable || snapshot.eventsUnavailable || snapshot.bookingLimited}/></Suspense>:<div className="home-analytics-placeholder" aria-hidden="true"/>}</div>
     <div className="home-secondary-totals"><span><strong>{snapshot.planned}</strong> pending dispatches</span><span><strong>{snapshot.completed}</strong> completed trips</span><span><strong>{analytics.truckCount}</strong> assigned trucks in loaded active trips</span></div>
     {attention.length>0&&<div className="home-secondary-attention"><aside className="home-panel home-priority-panel"><SectionHeading title="Attention desk" description="Review the exceptions before the next dispatch."><span className="home-count-badge">{attention.length}</span></SectionHeading>
         {attention.length ? <ol className="home-priority-list">{attention.slice(0, 4).map(trip => <li key={trip.id}><button type="button" onClick={() => onOpenTrip?.(trip.id)}><span className="home-priority-icon"><CircleAlert size={17} aria-hidden="true"/></span><span><strong>{trip.reference}</strong><small>{trip.issue}</small><span>{trip.origin} → {trip.destination}</span></span><ArrowUpRight size={14} aria-hidden="true"/></button></li>)}</ol> : <EmptyState title={snapshot.detailsLoading ? "Checking operational details" : "No exceptions in the loaded trips"} icon={ShieldCheck}>{snapshot.detailsLoading ? "Assignment checks appear after the detail read finishes." : "Overdue estimates and missing active-trip assignments are checked here."}</EmptyState>}

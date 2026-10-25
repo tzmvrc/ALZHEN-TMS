@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode, type CSSProperties } from "react";
 import { animate, motion } from "motion/react";
 import { ArrowUpRight, Inbox, Truck, type LucideIcon } from "lucide-react";
 import { STATUS_COLORS, type HomeStatus } from "./home-dashboard-data";
@@ -34,16 +34,19 @@ export function MetricsStrip({ metrics, animate: enabled }: { metrics: HomeMetri
     </motion.button>)}</section>;
 }
 /** Decorative road graphic. It never represents a real location or GPS reading. */
-export function TruckJourneyIllustration({loop=false}:{loop?:boolean}) {
-  const truckId=useId();
-  return <svg className="home-truck-art" viewBox="0 0 360 118" fill="none" aria-hidden="true" focusable="false">
-    <path d="M-20 92H390" stroke="white" strokeOpacity=".1" strokeWidth="25"/>
-    <path d="M-20 92H390" stroke="#FFD43B" strokeOpacity=".7" strokeWidth="1.5" strokeDasharray="10 12"/>
+export function TruckJourneyIllustration({loop=false,wide=false}:{loop?:boolean;wide?:boolean}) {
+  const truckId=useId(),art=useRef<SVGSVGElement>(null);
+  const [roadWidth,setRoadWidth]=useState(600);
+  useEffect(()=>{if(!wide||!art.current)return;const node=art.current;const resize=()=>{const {width,height}=node.getBoundingClientRect();if(width&&height)setRoadWidth(Math.round(width*118/height));};resize();const observer=new ResizeObserver(resize);observer.observe(node);return()=>observer.disconnect();},[wide]);
+  return <svg ref={art} className="home-truck-art" style={wide?{'--trip-drive-distance':`${roadWidth}px`} as CSSProperties:undefined} viewBox={wide?`0 0 ${roadWidth} 118`:"0 0 360 118"} fill="none" aria-hidden="true" focusable="false">
+    <path d={wide?`M-20 92H${roadWidth+20}`:"M-20 92H390"} stroke="white" strokeOpacity=".1" strokeWidth="25"/>
+    <path d={wide?`M-20 92H${roadWidth+20}`:"M-20 92H390"} stroke="#FFD43B" strokeOpacity=".7" strokeWidth="1.5" strokeDasharray="10 12"/>
     <path d="M20 73V45H70V73M29 45V35H62V45M35 55H56M35 62H56" stroke="white" strokeOpacity=".23" strokeWidth="2"/>
     <path d="M270 72V26L302 12L334 26V72M280 72V39H324V72M280 47H324M280 56H324" stroke="white" strokeOpacity=".23" strokeWidth="2"/>
     <path d="M60 21C95 2 138 6 158 25C181 48 216 34 251 24" stroke="white" strokeOpacity=".22" strokeDasharray="3 5"/>
     <circle cx="251" cy="24" r="4" fill="#FFD43B"/><circle cx="60" cy="21" r="4" fill="#5BB5DC"/>
-    <g className={`home-moving-truck ${loop?"home-loop-truck":""}`}><g id={truckId}>
+    {wide&&<path transform={`translate(${roadWidth-600} 0)`} d="M510 72V26L542 12L574 26V72M520 72V39H564V72M520 47H564M520 56H564" stroke="white" strokeOpacity=".23" strokeWidth="2"/>}
+    <g className={`home-moving-truck ${loop?"home-loop-truck":""}`}><g id={truckId} transform={wide?"translate(-40 -15) scale(1.3)":undefined}>
       <ellipse cx="166" cy="84" rx="54" ry="4" fill="#020D1C" fillOpacity=".35"/>
       <rect x="113" y="39" width="73" height="36" rx="4" fill="#F4F7FB"/>
       <path d="M186 49H208L224 65V77H186V49Z" fill="#FFD43B"/>
@@ -55,7 +58,7 @@ export function TruckJourneyIllustration({loop=false}:{loop?:boolean}) {
       <circle cx="210" cy="78" r="8" fill="#071B30"/><circle cx="210" cy="78" r="3" fill="#CCDAE7"/>
       <rect x="219" y="67" width="5" height="4" rx="1" fill="white"/>
       <path d="M95 52H103M88 61H102" stroke="white" strokeOpacity=".45" strokeLinecap="round"/>
-    </g>{loop&&<use href={`#${truckId}`} transform="translate(-360 0)"/>}</g>
+    </g>{loop&&<use href={`#${truckId}`} transform={wide?`translate(${-roadWidth} 0)`:"translate(-360 0)"}/>}</g>
   </svg>;
 }
 export function HomeSkeleton() {

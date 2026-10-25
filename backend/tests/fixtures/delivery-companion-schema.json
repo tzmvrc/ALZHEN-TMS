@@ -1,0 +1,207 @@
+[
+  {
+    "name": "audit_logs",
+    "columns": "id uuid default gen_random_uuid() not null, user_id uuid, action text not null, entity_type text, entity_id uuid, old_data jsonb, new_data jsonb, ip_address inet, user_agent text, created_at timestamp with time zone default now() not null",
+    "constraints": [
+      "PRIMARY KEY (id)"
+    ]
+  },
+  {
+    "name": "backload_items",
+    "columns": "id uuid default gen_random_uuid() not null, backload_id uuid not null, trip_line_item_id uuid, ship_to_snapshot text, customer_name_snapshot text, dr_number text, sap_so_number text, customer_po_number text, customer_model text, quantity numeric, total_cbm numeric, remarks text, created_at timestamp with time zone default now() not null, updated_at timestamp with time zone default now() not null",
+    "constraints": [
+      "PRIMARY KEY (id)"
+    ]
+  },
+  {
+    "name": "backloads",
+    "columns": "id uuid default gen_random_uuid() not null, trip_id uuid not null, trip_stop_id uuid, reason text, number_of_boxes numeric(14,3), comments text, created_by uuid, created_at timestamp with time zone default now() not null, updated_at timestamp with time zone default now() not null, report_date date, subject text, dispatch_number_snapshot text, narrative text, pickup_location text, driver_name_snapshot text, plate_number_snapshot text, route_id uuid, route_name_snapshot text, status text default 'SUBMITTED'::text not null, submitted_by uuid, submitted_at timestamp with time zone, event_type text default 'Backload'::text not null",
+    "constraints": [
+      "CHECK ((event_type = ANY (ARRAY['Loading'::text, 'Unloading'::text, 'Backload'::text, 'Offload'::text])))",
+      "PRIMARY KEY (id)"
+    ]
+  },
+  {
+    "name": "customer_stores",
+    "columns": "id uuid default gen_random_uuid() not null, customer_id uuid not null, name text not null, code text, address text, province text, city text, postal_code text, latitude numeric(10,7), longitude numeric(10,7), status text default 'ACTIVE'::text not null, notes text, created_at timestamp with time zone default now() not null, updated_at timestamp with time zone default now() not null, region text, location_verified boolean default false not null, location_verified_at timestamp with time zone, location_verified_by uuid",
+    "constraints": [
+      "PRIMARY KEY (id)",
+      "CHECK (((region IS NULL) OR (region = ANY (ARRAY['LUZON'::text, 'VISAYAS'::text, 'MINDANAO'::text]))))"
+    ]
+  },
+  {
+    "name": "drivers",
+    "columns": "id uuid default gen_random_uuid() not null, trucking_company_id uuid, first_name text not null, last_name text not null, contact_number text, license_number text, status text default 'ACTIVE'::text not null, notes text, created_at timestamp with time zone default now() not null, updated_at timestamp with time zone default now() not null, profile_id uuid, assigned_truck_id uuid",
+    "constraints": [
+      "PRIMARY KEY (id)",
+      "UNIQUE (profile_id)"
+    ]
+  },
+  {
+    "name": "loading_reports",
+    "columns": "id uuid default gen_random_uuid() not null, trip_id uuid not null, route_id uuid, route_name_snapshot text, status text default 'DRAFT'::text not null, created_by uuid, submitted_by uuid, submitted_at timestamp with time zone, created_at timestamp with time zone default now() not null, updated_at timestamp with time zone default now() not null, warehouse_arrival_at timestamp with time zone, loading_start_at timestamp with time zone, loading_finished_at timestamp with time zone, event_type text default 'Loading'::text not null",
+    "constraints": [
+      "CHECK ((event_type = ANY (ARRAY['Loading'::text, 'Unloading'::text, 'Backload'::text, 'Offload'::text])))",
+      "PRIMARY KEY (id)",
+      "CHECK ((status = ANY (ARRAY['DRAFT'::text, 'SUBMITTED'::text])))",
+      "UNIQUE (trip_id)"
+    ]
+  },
+  {
+    "name": "offload_items",
+    "columns": "id uuid default gen_random_uuid() not null, offload_id uuid not null, trip_line_item_id uuid, ship_to_snapshot text, customer_name_snapshot text, dr_number text, sap_so_number text, customer_po_number text, customer_model text, quantity numeric, total_cbm numeric, remarks text, reason text, created_at timestamp with time zone default now() not null, updated_at timestamp with time zone default now() not null",
+    "constraints": [
+      "PRIMARY KEY (id)"
+    ]
+  },
+  {
+    "name": "offloads",
+    "columns": "id uuid default gen_random_uuid() not null, trip_id uuid not null, trip_stop_id uuid, reason text, number_of_boxes numeric(14,3), comments text, created_by uuid, created_at timestamp with time zone default now() not null, updated_at timestamp with time zone default now() not null, report_date date, customer_name_snapshot text, dr_number text, route_id uuid, route_name_snapshot text, driver_name_snapshot text, plate_number_snapshot text, status text default 'SUBMITTED'::text not null, submitted_by uuid, submitted_at timestamp with time zone, event_type text default 'Offload'::text not null, reported_at timestamp with time zone default now(), reported_by uuid",
+    "constraints": [
+      "CHECK ((event_type = ANY (ARRAY['Loading'::text, 'Unloading'::text, 'Backload'::text, 'Offload'::text])))",
+      "PRIMARY KEY (id)"
+    ]
+  },
+  {
+    "name": "operations_report_conversions",
+    "columns": "id uuid default gen_random_uuid() not null, source_type text not null, source_id uuid not null, target_type text not null, target_id uuid not null, trip_id uuid not null, trip_stop_id uuid, actor_profile_id uuid, source_snapshot jsonb not null, source_items_snapshot jsonb default '[]'::jsonb not null, created_at timestamp with time zone default now() not null",
+    "constraints": [
+      "CHECK (((source_type <> target_type) OR (source_id <> target_id)))",
+      "PRIMARY KEY (id)",
+      "UNIQUE (source_type, source_id)",
+      "CHECK ((source_type = ANY (ARRAY['LOADING'::text, 'UNLOADING'::text, 'BACKLOAD'::text, 'OFFLOAD'::text])))",
+      "CHECK ((target_type = ANY (ARRAY['LOADING'::text, 'UNLOADING'::text, 'BACKLOAD'::text, 'OFFLOAD'::text])))"
+    ]
+  },
+  {
+    "name": "profiles",
+    "columns": "id uuid not null, role text default 'TRUCKER'::text not null, created_at timestamp with time zone default now() not null, updated_at timestamp with time zone default now() not null, first_name text, last_name text, profile_picture_path text, created_by uuid, is_admin boolean default false not null, contact_number text, deactivated_at timestamp with time zone, deactivated_by uuid",
+    "constraints": [
+      "PRIMARY KEY (id)",
+      "CHECK ((role = ANY (ARRAY['ADMIN'::text, 'STAFF'::text, 'TRUCKER'::text])))"
+    ]
+  },
+  {
+    "name": "trip_assignment_stops",
+    "columns": "id uuid default gen_random_uuid() not null, trip_id uuid not null, assignment_id uuid not null, trip_stop_id uuid not null, progress text default 'PENDING'::text not null, collaboration_version bigint default 1 not null, created_at timestamp with time zone default now() not null, updated_at timestamp with time zone default now() not null",
+    "constraints": [
+      "UNIQUE (assignment_id, trip_stop_id)",
+      "CHECK (((collaboration_version >= 1) AND (collaboration_version <= '9007199254740991'::bigint)))",
+      "PRIMARY KEY (id)",
+      "CHECK ((progress = ANY (ARRAY['PENDING'::text, 'IN_PROGRESS'::text, 'COMPLETED'::text])))"
+    ]
+  },
+  {
+    "name": "trip_cargo_allocations",
+    "columns": "id uuid default gen_random_uuid() not null, trip_id uuid not null, assignment_id uuid not null, trip_line_item_id uuid not null, quantity numeric not null, allocated_cbm numeric not null, collaboration_version bigint default 1 not null, created_by uuid, updated_by uuid, created_at timestamp with time zone default now() not null, updated_at timestamp with time zone default now() not null",
+    "constraints": [
+      "CHECK (((allocated_cbm >= (0)::numeric) AND (allocated_cbm < 'Infinity'::numeric) AND (allocated_cbm <> 'NaN'::numeric)))",
+      "UNIQUE (assignment_id, trip_line_item_id)",
+      "CHECK (((collaboration_version >= 1) AND (collaboration_version <= '9007199254740991'::bigint)))",
+      "PRIMARY KEY (id)",
+      "CHECK (((quantity >= (0)::numeric) AND (quantity < 'Infinity'::numeric) AND (quantity <> 'NaN'::numeric)))"
+    ]
+  },
+  {
+    "name": "trip_events",
+    "columns": "id uuid default gen_random_uuid() not null, trip_id uuid not null, trip_stop_id uuid, event_type text not null, event_time timestamp with time zone not null, recorded_by uuid, latitude numeric(10,7), longitude numeric(10,7), notes text, created_at timestamp with time zone default now() not null",
+    "constraints": [
+      "PRIMARY KEY (id)"
+    ]
+  },
+  {
+    "name": "trip_images",
+    "columns": "id uuid default gen_random_uuid() not null, trip_id uuid not null, storage_path text not null, file_name text not null, display_order integer default 0 not null, created_at timestamp with time zone default now() not null, updated_at timestamp with time zone default now() not null, kind text default 'photo'::text not null, trip_stop_id uuid, uploaded_by uuid, dr_number text, ocr_text text, ocr_confidence double precision, ocr_version integer default 0 not null, reviewed_at timestamp with time zone, reviewed_by uuid, pod_review_status text default 'PENDING'::text not null, pod_review_version bigint default 0 not null, pod_reviewed_at timestamp with time zone, pod_reviewed_by uuid, pod_rejection_reason text, pod_record_id uuid, mime_type text, file_sha256 text",
+    "constraints": [
+      "CHECK ((file_sha256 ~ '^[a-f0-9]{64}$'::text))",
+      "CHECK ((kind = ANY (ARRAY['photo'::text, 'receipt'::text])))",
+      "CHECK ((mime_type = ANY (ARRAY['image/jpeg'::text, 'image/png'::text, 'image/webp'::text, 'application/pdf'::text])))",
+      "CHECK (((ocr_confidence >= (0)::double precision) AND (ocr_confidence <= (100)::double precision)))",
+      "PRIMARY KEY (id)",
+      "CHECK ((pod_review_status = ANY (ARRAY['PENDING'::text, 'APPROVED'::text, 'REJECTED'::text])))",
+      "CHECK (((pod_review_version >= 0) AND (pod_review_version <= '9007199254740991'::bigint)))",
+      "UNIQUE (storage_path)"
+    ]
+  },
+  {
+    "name": "trip_line_items",
+    "columns": "id uuid default gen_random_uuid() not null, trip_id uuid not null, trip_stop_id uuid, product_id uuid, quantity numeric(14,3), cbm numeric(14,6), dr_number text, sap_so_number text, customer_po_number text, internal_po_number text, customer_model text, remarks text, created_at timestamp with time zone default now() not null, updated_at timestamp with time zone default now() not null, collaboration_version bigint default 0 not null, sp_reference text, ph_truck_reference text, dn_reference text, order_item_number text, so_number text, stock_quantity numeric, unit_cbm numeric, so_approval_date timestamp without time zone, item_status text, source_warehouse text, source_product_category text, source_province text, source_city text, source_warehouse_id uuid, source_page_no text",
+    "constraints": [
+      "UNIQUE (id, trip_id)",
+      "CHECK (((collaboration_version >= 0) AND (collaboration_version <= '9007199254740991'::bigint)))",
+      "PRIMARY KEY (id)"
+    ]
+  },
+  {
+    "name": "trip_stops",
+    "columns": "id uuid default gen_random_uuid() not null, trip_id uuid not null, stop_sequence integer not null, customer_id uuid, store_id uuid, delivery_status text default 'PENDING'::text not null, arrival_time timestamp with time zone, start_unloading_time timestamp with time zone, finish_unloading_time timestamp with time zone, departure_time timestamp with time zone, remarks text, created_at timestamp with time zone default now() not null, updated_at timestamp with time zone default now() not null, dispatch_number text, transaction_number text, dr_number text, dr_version bigint default 0 not null, quantity numeric(18,3), total_cbm numeric(18,6), archived_at timestamp with time zone, archived_by uuid, collaboration_version bigint default 0 not null, spreadsheet_issue_type text, spreadsheet_issue_reason text, delivery_location jsonb",
+    "constraints": [
+      "CHECK (((collaboration_version >= 0) AND (collaboration_version <= '9007199254740991'::bigint)))",
+      "PRIMARY KEY (id)",
+      "CHECK ((length(spreadsheet_issue_reason) <= 2000))",
+      "CHECK ((length(spreadsheet_issue_type) <= 500))",
+      "CHECK ((((dr_number IS NULL) OR (char_length(dr_number) <= 100)) AND ((quantity IS NULL) OR ((quantity >= (0)::numeric) AND (quantity < 'Infinity'::numeric) AND (quantity <> 'NaN'::numeric))) AND ((total_cbm IS NULL) OR ((total_cbm >= (0)::numeric) AND (total_cbm < 'Infinity'::numeric) AND (total_cbm <> 'NaN'::numeric)))))",
+      "UNIQUE (trip_id, stop_sequence)"
+    ]
+  },
+  {
+    "name": "trip_tracking_locations",
+    "columns": "assignment_id uuid not null, profile_id uuid not null, tracking_session_id uuid not null, enabled boolean default true not null, consented_at timestamp with time zone default now() not null, disabled_at timestamp with time zone, latitude double precision, longitude double precision, accuracy_meters double precision, captured_at timestamp with time zone, received_at timestamp with time zone, revision bigint default 0 not null",
+    "constraints": [
+      "CHECK (((accuracy_meters >= (0)::double precision) AND (accuracy_meters < (100000)::double precision)))",
+      "CHECK ((((latitude IS NULL) AND (longitude IS NULL) AND (captured_at IS NULL) AND (received_at IS NULL)) OR ((latitude IS NOT NULL) AND (longitude IS NOT NULL) AND (accuracy_meters IS NOT NULL) AND (captured_at IS NOT NULL) AND (received_at IS NOT NULL))))",
+      "CHECK (((latitude >= ('-90'::integer)::double precision) AND (latitude <= (90)::double precision)))",
+      "CHECK (((longitude >= ('-180'::integer)::double precision) AND (longitude <= (180)::double precision)))",
+      "PRIMARY KEY (assignment_id)",
+      "CHECK ((revision >= 0))"
+    ]
+  },
+  {
+    "name": "trip_truck_assignments",
+    "columns": "id uuid default gen_random_uuid() not null, trip_id uuid not null, truck_id uuid, driver_id uuid, trucking_company_id uuid, assignment_type text default 'PRIMARY'::text not null, assigned_at timestamp with time zone, unassigned_at timestamp with time zone, remarks text, created_at timestamp with time zone default now() not null, updated_at timestamp with time zone default now() not null, collaboration_version bigint default 0 not null, stop_scope text default 'ALL'::text not null",
+    "constraints": [
+      "UNIQUE (id, trip_id)",
+      "CHECK (((collaboration_version >= 0) AND (collaboration_version <= '9007199254740991'::bigint)))",
+      "PRIMARY KEY (id)",
+      "CHECK ((stop_scope = ANY (ARRAY['ALL'::text, 'SELECTED'::text])))"
+    ]
+  },
+  {
+    "name": "trips",
+    "columns": "id uuid default gen_random_uuid() not null, dispatch_number text not null, trip_type_id uuid, warehouse_id uuid, loading_date date, estimated_delivery_date date, status text default 'PLANNED'::text not null, authorization_letter text, page_no text, remarks text, created_by uuid, created_at timestamp with time zone default now() not null, updated_at timestamp with time zone default now() not null, transaction_number text, trip_number integer, added_to_report boolean, letter_status text, truck_allocated_by uuid, subcon_rate_manual numeric, signed_dr_upload_date date, transmittal_date date, tms_date date, tms_done_by uuid, pod_ac_shipping_date date, lbc_tracking_number text, request_received_at timestamp with time zone, departure_from_warehouse_at timestamp with time zone, archived_at timestamp with time zone, archived_by uuid, collaboration_version bigint default 0 not null, trip_reference text, spreadsheet_issue_type text, spreadsheet_issue_reason text, creation_request_id uuid, creation_payload jsonb",
+    "constraints": [
+      "CHECK (((collaboration_version >= 0) AND (collaboration_version <= '9007199254740991'::bigint)))",
+      "CHECK (((letter_status IS NULL) OR (letter_status = ANY (ARRAY['READY'::text, 'SENT'::text, 'CANCELLED'::text]))))",
+      "PRIMARY KEY (id)",
+      "CHECK ((length(spreadsheet_issue_reason) <= 2000))",
+      "CHECK ((length(spreadsheet_issue_type) <= 500))"
+    ]
+  },
+  {
+    "name": "trucks",
+    "columns": "id uuid default gen_random_uuid() not null, plate_number text not null, trucking_company_id uuid, truck_type text, capacity_cbm numeric(12,4), status text default 'ACTIVE'::text not null, notes text, created_at timestamp with time zone default now() not null, updated_at timestamp with time zone default now() not null",
+    "constraints": [
+      "PRIMARY KEY (id)",
+      "UNIQUE (plate_number)"
+    ]
+  },
+  {
+    "name": "unloading_reports",
+    "columns": "id uuid default gen_random_uuid() not null, trip_id uuid not null, trip_stop_id uuid not null, status text default 'DRAFT'::text not null, created_by uuid, submitted_by uuid, submitted_at timestamp with time zone, created_at timestamp with time zone default now() not null, updated_at timestamp with time zone default now() not null, event_type text default 'Unloading'::text not null",
+    "constraints": [
+      "CHECK ((event_type = ANY (ARRAY['Loading'::text, 'Unloading'::text, 'Backload'::text, 'Offload'::text])))",
+      "PRIMARY KEY (id)",
+      "CHECK ((status = ANY (ARRAY['DRAFT'::text, 'SUBMITTED'::text])))",
+      "UNIQUE (trip_stop_id)"
+    ]
+  },
+  {
+    "name": "warehouses",
+    "columns": "id uuid default gen_random_uuid() not null, code text not null, name text not null, address text, province text, city text, warehouse_type text, status text default 'ACTIVE'::text not null, notes text, created_at timestamp with time zone default now() not null, updated_at timestamp with time zone default now() not null, region text, latitude double precision, longitude double precision, location_verified boolean default false not null, location_verified_at timestamp with time zone, location_verified_by uuid",
+    "constraints": [
+      "UNIQUE (code)",
+      "PRIMARY KEY (id)",
+      "CHECK (((region IS NULL) OR (region = ANY (ARRAY['LUZON'::text, 'VISAYAS'::text, 'MINDANAO'::text]))))"
+    ]
+  }
+]

@@ -91,6 +91,8 @@ export type TripPage = {
 };
 
 export type TripEvent = {
+  delivery_metadata?: {title?:string};
+  assignment_id?: string | null;
   id: string;
   trip_id: string;
   trip_stop_id?: string | null;

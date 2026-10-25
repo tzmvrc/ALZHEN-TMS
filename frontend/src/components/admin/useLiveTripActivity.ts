@@ -4,6 +4,8 @@ import { subscribeToAdminRealtime } from "../../services/realtime.service";
 import { fetchTripDetail, fetchTripStops, invalidateTripCache } from "../../services/trip.service";
 import { invalidateTripImagesCache } from "../../services/trip-image.service";
 import { deriveActivities, WATCHED_TABLES, type RawActivity } from "../../services/live-activity.service";
+import {subscribeCollaborationEvents} from '../../services/collaboration.service';
+import {apiGet,type ApiResponse} from '../../services/api.service';
 
 export type ActivityItem = RawActivity & {
   id: string;
@@ -115,6 +117,21 @@ export function useLiveTripActivity() {
     },
     [resolveLabels],
   );
+
+  useEffect(() => {
+    if (!accessToken) return;
+    let active=true;
+    const stop=subscribeCollaborationEvents(event=>{
+      if(event.kind!=='commit'||event.commit.source!=='trip_events'||event.commit.operation==='DELETE')return;
+      // Fetch only the confirmed event through the authorized API. Socket
+      // invalidations deliberately carry no private notes or evidence.
+      void apiGet<ApiResponse<Record<string,unknown>>>(`/delivery/events/${encodeURIComponent(event.commit.recordId)}/notification`,accessToken).then(result=>{
+        if(!active||!result.data||Number(result.data.delivery_version)>0)return;
+        for(const raw of deriveActivities('trip_events',result.data,true,memory.current))void publish(accessToken,raw);
+      }).catch(()=>{/* The timeline remains the authoritative, retryable history. */});
+    });
+    return()=>{active=false;stop();};
+  },[accessToken,publish]);
 
   useEffect(() => {
     if (!accessToken) return;

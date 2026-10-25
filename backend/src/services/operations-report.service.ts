@@ -393,17 +393,28 @@ export async function getAssignedOperations(actor: ReportActor) {
   return { ...collections, ...await buildEventRows(collections) };
 }
 
-export async function getTripOperations(actor: ReportActor, tripId: string) {
+export async function getTripOperations(actor: ReportActor, tripId: string, includeEvidence: boolean | "metadata" = false) {
   const trip = await getTrip(actor, tripId);
   await assertActorTripAccess(actor, trip);
   const collections = await readReportCollections([trip.id]);
-  return { ...collections, ...await buildEventRows(collections) };
+  const result = { ...collections, ...await buildEventRows(collections) };
+  if(!includeEvidence||!['ADMIN','STAFF'].includes(actor.role))return result;
+  const sources=[['loading_report_id',collections.loading],['unloading_report_id',collections.unloading],['backload_id',collections.backloads],['offload_id',collections.offloads]] as const;
+  const filters=sources.flatMap(([field,records])=>records.length?[`${field}.in.(${records.map(record=>record.id).join(',')})`]:[]);
+  if(!filters.length)return {...result,report_evidence:[],evidence_limited:false};
+  const evidence=await supabaseAdmin.from('report_receipts').select('id,loading_report_id,unloading_report_id,backload_id,offload_id,file_name,mime_type,storage_path,created_at').or(filters.join(',')).eq('upload_status','READY').order('created_at',{ascending:false}).order('id').limit(61);
+  if(evidence.error)return {...result,report_evidence:[],evidence_error:'Report attachments could not load. Open the report image viewer to retry.'};
+  const files=(evidence.data??[]).slice(0,60);
+  const links=files.length&&includeEvidence!=="metadata"?await supabaseAdmin.storage.from(RECEIPT_BUCKET).createSignedUrls(files.map(file=>file.storage_path),600):null;
+  return {...result,evidence_links_pending:includeEvidence==="metadata",evidence_limited:(evidence.data?.length??0)>60,report_evidence:files.map(({storage_path,...file},index)=>({...file,signed_url:links?.data?.[index]?.signedUrl??null})),...(links?.error?{evidence_error:'Some attachment links are unavailable. Open the report viewer to retry.'}:{})};
+
 }
 
 export async function saveLoadingReport(actor: ReportActor, tripId: string, input: unknown, expectedReportId?: string) {
   const expectedId = expectedReportId === undefined ? undefined : requireReportUuid(expectedReportId, "loading_report_id");
   const trip = await getTrip(actor, tripId);
   await assertActorTripAccess(actor, trip);
+  if(actor.role.toUpperCase()==="TRUCKER")throw new ApiError("Use My trip to record loading milestones. Saved times can only be corrected by Admin with a reason.",409,"DELIVERY_WORKFLOW_REQUIRED");
   const values = validateLoadingInput(input);
   const { data: current, error: readError } = await supabaseAdmin.from("loading_reports").select(LOADING_SELECT).eq("trip_id", trip.id).maybeSingle();
   if (readError) throwDb(readError, "read loading");
@@ -437,6 +448,7 @@ export async function saveUnloadingReport(actor: ReportActor, tripId: string, st
   const trip = await getTrip(actor, tripId);
   await assertActorTripAccess(actor, trip);
   const stop = await getOwnedStop(trip.id, stopId);
+  if(actor.role.toUpperCase()==="TRUCKER")throw new ApiError("Use My trip to record unloading against your assigned cargo.",409,"DELIVERY_WORKFLOW_REQUIRED");
   const values = validateUnloadingInput(input);
 
   // The unique trip_stop_id index makes this create-once marker safe to retry.
@@ -635,6 +647,13 @@ async function getEventReportForActor(actor: ReportActor, eventType: OperationsR
   if (error) throwDb(error, "read report receipt scope");
   if (!data) throw new ApiError("Report not found.", 404, "REPORT_NOT_FOUND");
   const trip = await validateReportScope(actor, data.trip_id, "trip_stop_id" in data ? data.trip_stop_id : null);
+  if(actor.role==='TRUCKER'&&(eventType==='BACKLOAD'||eventType==='OFFLOAD')){
+    const linked=await supabaseAdmin.from('trip_events').select('assignment:trip_truck_assignments(driver:drivers(profile_id))').eq(eventType==='BACKLOAD'?'backload_id':'offload_id',id).limit(1).maybeSingle();
+    if(linked.error)throwDb(linked.error,'check delivery report assignment');
+    const assignment=Array.isArray(linked.data?.assignment)?linked.data.assignment[0]:linked.data?.assignment;
+    const driver=Array.isArray(assignment?.driver)?assignment.driver[0]:assignment?.driver;
+    if(linked.data&&driver?.profile_id!==actor.profileId)throw new ApiError('This report belongs to another truck assignment.',403,'REPORT_FORBIDDEN');
+  }
   await assertReportSourceNotConverted(eventType, id);
   return { target, report: data, trip };
 }
@@ -676,7 +695,7 @@ export async function listOperationsReceipts(actor: ReportActor, eventTypeValue:
     .eq(target.receiptColumn, report.id)
     .order("created_at", { ascending: true });
   if (error) throwDb(error, "read report images");
-  return Promise.all((data ?? []).map(async (receipt) => {
+  const existing = await Promise.all((data ?? []).map(async (receipt) => {
     if (receipt.upload_status === "PENDING") {
       const { storage_path: _path, upload_request_id, ...pending } = receipt;
       return { ...pending, signed_url: "", ...(receipt.uploaded_by === actor.profileId ? { upload_request_id } : {}) };
@@ -687,6 +706,14 @@ export async function listOperationsReceipts(actor: ReportActor, eventTypeValue:
     const { storage_path: _privatePath, upload_request_id: _requestId, ...safeReceipt } = receipt;
     return { ...safeReceipt, signed_url: signed.signedUrl };
   }));
+  if(eventType!=="BACKLOAD"&&eventType!=="OFFLOAD")return existing;
+  const events=await supabaseAdmin.from("trip_events").select("id").eq(eventType==="BACKLOAD"?"backload_id":"offload_id",report.id).limit(10);
+  if(events.error)throwDb(events.error,"read delivery report evidence");
+  if(!events.data?.length)return existing;
+  const images=await supabaseAdmin.from("trip_images").select("id,storage_path,file_name,mime_type,uploaded_by,created_at").in("delivery_event_id",events.data.map(e=>e.id)).eq("delivery_upload_state","READY").limit(60);
+  if(images.error)throwDb(images.error,"read delivery evidence images");
+  const linked=await Promise.all((images.data??[]).map(async({storage_path,...image})=>{const signed=await supabaseAdmin.storage.from("trip-images").createSignedUrl(storage_path,600);if(signed.error)throw new ApiError("Evidence link unavailable. Retry to refresh it.",503);return {...image,signed_url:signed.data!.signedUrl,upload_status:"READY",file_size_bytes:null,received_at:image.created_at};}));
+  return [...existing,...linked];
 }
 
 async function assertExistingReportScope(table: "backloads" | "offloads", recordId: string, tripId: string) {

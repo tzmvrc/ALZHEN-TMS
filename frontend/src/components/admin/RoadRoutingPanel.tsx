@@ -4,17 +4,18 @@ import {assignmentTripUrl} from "../../services/activity-presentation";
 import {createPortal} from "react-dom";
 import {ChevronDown,MapPin,X} from "lucide-react";
 import {useAuth} from "../../context/AuthContext";
-import {apiPost,getCachedApiResponse,invalidateApiCache,type ApiResponse} from "../../services/api.service";
+import {apiGet,apiPost,getCachedApiResponse,invalidateApiCache,type ApiResponse} from "../../services/api.service";
 import {subscribeCollaborationEvents} from "../../services/collaboration.service";
 import {fetchRoadTrips,roadEndpoint,roadView,roadDisplayView,type RoadTrip,type RoadMode} from "../../services/road-routing";
 import {demonstrationRoadTrips,demoKeyFor,realRoutesAvailable} from "../../services/demo-road-routes";
 import RoadRouteMap from "./RoadRouteMap";
 import WarehouseCoordinateEditor from "./WarehouseCoordinateEditor";
 
-export default function RoadRoutingPanel({tripIds,active=true,height=440,demoFallback=false,offlineStyle=false,focusKey=null,compact=false,dashboard=false,assignmentOnly=false,minimal=false,onSelection,onRows}:{tripIds:string[];active?:boolean;height?:number;demoFallback?:boolean;offlineStyle?:boolean;focusKey?:string|null;compact?:boolean;dashboard?:boolean;assignmentOnly?:boolean;minimal?:boolean;onSelection?:(row:RoadTrip|null)=>void;onRows?:(rows:RoadTrip[])=>void}){
+export default function RoadRoutingPanel({eventPoint,tripIds,active=true,height=440,demoFallback=false,offlineStyle=false,focusKey=null,compact=false,dashboard=false,assignmentOnly=false,minimal=false,onSelection,onRows}:{eventPoint?:{latitude:number;longitude:number;label:string}|null;tripIds:string[];active?:boolean;height?:number;demoFallback?:boolean;offlineStyle?:boolean;focusKey?:string|null;compact?:boolean;dashboard?:boolean;assignmentOnly?:boolean;minimal?:boolean;onSelection?:(row:RoadTrip|null)=>void;onRows?:(rows:RoadTrip[])=>void}){
  const navigate=useNavigate();
  const {accessToken,profile}=useAuth();
  const panel=useRef<HTMLElement|null>(null);
+ const monitored=useRef(new Set<string>());
  const ids=[...new Set(tripIds)].sort().slice(0,50),identity=ids.join(",");
  const allowed=profile&&["ADMIN","STAFF"].includes(profile.role);
  const [snapshot,setSnapshot]=useState<{token:string;identity:string;rows:RoadTrip[]}|null>(null),[error,setError]=useState(""),[retry,setRetry]=useState(0),[selection,setSelection]=useState(()=>focusKey?(demoFallback?demoKeyFor(focusKey):focusKey):""),[mode,setMode]=useState<RoadMode>("planned");
@@ -29,6 +30,7 @@ export default function RoadRoutingPanel({tripIds,active=true,height=440,demoFal
  const isDemo=Boolean(demoFallback&&(realRows||error||!identity)&&!realRoutesAvailable(realRows??[]));
  const rows=isDemo?demoRows:realRows,displayMode=demoFallback||minimal?"auto":mode;
  const selected=rows?.find(r=>r.key===selection||r.tripId===selection)??(dashboard||assignmentOnly&&focusKey?undefined:rows?.[0]),view=selected?roadDisplayView(selected,displayMode):null;
+ monitored.current=new Set((rows??[]).flatMap(r=>r.assignmentId?[r.assignmentId]:[]));
  const remaining=selected?roadView(selected,"remaining").stops:[];
  useEffect(()=>{onSelection?.(selected??null);},[selected,onSelection]);
  useEffect(()=>{if(rows)onRows?.(rows);},[rows,onRows]);
@@ -61,9 +63,11 @@ export default function RoadRoutingPanel({tripIds,active=true,height=440,demoFal
   const visible=()=>document.visibilityState==='visible'&&Boolean(panel.current?.getClientRects().length);
   const refresh=async()=>{if(!visible()||Date.now()<nextAttempt)return;if(busy){queued=true;return;}busy=true;try{const result=await fetchRoadTrips(accessToken,identity.split(","),contextAssignment);failures=0;nextAttempt=0;if(current){setSnapshot({token:accessToken,identity,rows:result});setError("");}}catch{failures++;nextAttempt=Date.now()+Math.min(120_000,15_000*2**Math.min(failures,4));if(current)setError("Road details could not refresh. Retry to load the latest saved data.");}finally{busy=false;if(current&&queued){queued=false;requestRefresh();}}};
   const requestRefresh=()=>{if(!eventTimer)eventTimer=setTimeout(()=>{eventTimer=undefined;void refresh();},200);};
-  void refresh();const timer=setInterval(()=>void refresh(),15000);
+  void refresh();const timer=setInterval(()=>void refresh(),300000);
   const topics=["trips","trip_stops","trip_truck_assignments","warehouses","customer_stores","trucks","drivers"];
-  const unsubscribe=subscribeCollaborationEvents(e=>{if(e.kind==="tracking"||e.kind==="connected"||(e.kind==="signal"&&topics.includes(e.topic))||(e.kind==="commit"&&topics.includes(e.commit.source))){invalidateApiCache('/tracking/roads?');requestRefresh();}});
+  const gpsPending=new Set<string>();
+  const location=async(id:string)=>{if(!monitored.current.has(id)||gpsPending.has(id)||!visible())return;gpsPending.add(id);try{const r=await apiGet<ApiResponse<{position:RoadTrip['position']}>>(`/delivery/assignments/${encodeURIComponent(id)}/location`,accessToken);if(current&&r.success&&r.data)setSnapshot(previous=>previous?.identity===identity?{...previous,rows:previous.rows.map(row=>row.assignmentId===id?{...row,position:r.data!.position??(row.position?.simulated?row.position:null)}:row)}:previous);}catch{/* Keep last confirmed position, with its existing timestamp. */}finally{gpsPending.delete(id);}};
+  const unsubscribe=subscribeCollaborationEvents(e=>{if(e.kind==="tracking"){if(e.assignmentId)void location(e.assignmentId);return;}if(e.kind==="connected"||(e.kind==="signal"&&topics.includes(e.topic))||(e.kind==="commit"&&topics.includes(e.commit.source))){invalidateApiCache('/tracking/roads?');requestRefresh();}});
   document.addEventListener('visibilitychange',requestRefresh);
   return()=>{current=false;clearInterval(timer);clearTimeout(eventTimer);document.removeEventListener('visibilitychange',requestRefresh);unsubscribe();};
  },[accessToken,allowed,identity,endpoint,retry,active]);
@@ -118,7 +122,7 @@ export default function RoadRoutingPanel({tripIds,active=true,height=440,demoFal
   {!rows&&!error&&<div role="status" aria-busy="true" className="animate-pulse rounded-2xl bg-slate-100" style={{height}}/>}
   {dashboard&&!!rows?.length&&!rows.some(row=>row.position)&&<p role="status" className="home-data-note">No recorded truck positions are available. Select a trip to inspect its saved route.</p>}
   {rows?.length===0&&<p className="rounded-2xl bg-slate-50 p-4 text-center text-sm text-slate-500">No active trips available.</p>}
-  {!!rows?.length&&<><RoadRouteMap selectionOverlay={dashboard&&selected?<><strong>{selected.plateNumber??"Truck"} / {selected.driverName??"Driver unavailable"}</strong><small>{selected.dispatchNumber} / {selected.stops.filter(stop=>["COMPLETED","DELIVERED"].includes(stop.status.toUpperCase())).length} of {selected.stops.length} stops complete</small></>:undefined} onOpenAssignment={row=>{if(row.assignmentId)navigate(assignmentTripUrl(row.tripId,row.assignmentId));}} fleetMode={dashboard} rows={assignmentOnly?(selected?[selected]:[]):isDemo&&selected?[selected]:rows} mode={displayMode} selected={selected?.key??""} onSelect={setSelection} height={height} offlineStyle={offlineStyle}/>
+  {!!rows?.length&&<>{active&&<RoadRouteMap eventPoint={eventPoint} selectionOverlay={dashboard&&selected?<><strong>{selected.plateNumber??"Truck"} / {selected.driverName??"Driver unavailable"}</strong><small>{selected.dispatchNumber} / {selected.stops.filter(stop=>["COMPLETED","DELIVERED"].includes(stop.status.toUpperCase())).length} of {selected.stops.length} stops complete</small></>:undefined} onOpenAssignment={row=>{if(row.assignmentId)navigate(assignmentTripUrl(row.tripId,row.assignmentId));}} fleetMode={dashboard} rows={assignmentOnly?(selected?[selected]:[]):isDemo&&selected?[selected]:rows} mode={displayMode} selected={selected?.key??""} onSelect={setSelection} height={height} offlineStyle={offlineStyle}/>}
    {(!dashboard||selected)&&<>{(dashboard||minimal)&&!view?.geometry&&<p role="status" className="home-update-warning">{view?.status??"Road route unavailable"}. No calculated road line is shown.</p>}<details open={dashboard||minimal?undefined:true} className={dashboard||minimal?"home-map-details":undefined}><summary className={dashboard||minimal?undefined:"hidden"}>Route &amp; GPS details / {estimate}</summary><div className="grid gap-2 text-xs sm:grid-cols-2">
     <div className={card}><p className={label}>Trip</p><p className="mt-1 text-sm font-semibold text-[#0b2341]">{selected?.dispatchNumber??"No dispatch"}</p><p className="text-slate-600">{selected?.driverName??"Driver unavailable"} · {selected?.plateNumber??"Plate unavailable"}</p><p className="text-slate-500">From {selected?.warehouse.name}</p></div>
     <div className={card}><p className={label}>Next delivery</p><p className="mt-1 text-sm font-semibold text-[#0b2341]">{remaining[0]?.name??"No remaining destinations"}</p><p className="text-slate-600">{remaining.length} remaining · {view?.stops.length??0} stops in saved order</p></div>

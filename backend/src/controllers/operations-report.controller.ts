@@ -32,11 +32,12 @@ export const getOffloadTransactions = (req: Request, res: Response) => respond(r
 export const getPendingCleanup = (req: Request, res: Response) => respond(res, () => listPendingOffloadCleanup(actor(req)), "Pending image cleanup retrieved");
 export const retryCleanup = (req: Request, res: Response) => respond(res, () => retryOffloadCleanup(actor(req), param(req, "operationId")), "Image cleanup outcome retrieved");
 export const getAssigned = (req: Request, res: Response) => respond(res, () => service.getAssignedOperations(actor(req)), "Assigned operational reports retrieved successfully");
-export const getTripDetails = (req: Request, res: Response) => respond(res, () => service.getTripOperations(actor(req), param(req, "tripId")), "Trip operational details retrieved successfully");
+export const getTripDetails = (req: Request, res: Response) => respond(res, () => service.getTripOperations(actor(req), param(req, "tripId"), req.query.evidence === "metadata" ? "metadata" : req.query.evidence === "1"), "Trip operational details retrieved successfully");
 export const updateLoading = (req: Request, res: Response) => respond(res, () => service.saveLoadingReport(actor(req), param(req, "tripId"), req.body, param(req, "recordId")), "Loading report updated successfully");
 export const saveLoading = (req: Request, res: Response) => respond(res, () => service.saveLoadingReport(actor(req), param(req, "tripId"), req.body), "Loading report saved successfully");
 export const saveUnloading = (req: Request, res: Response) => respond(res, () => service.saveUnloadingReport(actor(req), param(req, "tripId"), param(req, "stopId"), req.body), "Unloading report saved successfully");
 function submissionBody(req: Request) {
+  if(actor(req).role==='TRUCKER')throw new ApiError('Use Submit Report in My trip to include your truck, cargo and required photo evidence.',409,'DELIVERY_WORKFLOW_REQUIRED');
   requireReportUuid(req.body?.request_id, "request_id");
   return req.body;
 }

@@ -1856,7 +1856,7 @@ export async function getTripEvents(id: string) {
 
   const { data, error } = await supabaseAdmin
     .from("trip_events")
-    .select("*")
+    .select("*,attachments:trip_images!trip_images_delivery_event_id_fkey(id,file_name,kind),actor:profiles!trip_events_recorded_by_fkey(first_name,last_name)")
     .eq("trip_id", id)
     .order("event_time", { ascending: true });
 

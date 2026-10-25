@@ -23,7 +23,8 @@ export type OperationsEventRow = { id: string; source_type: OperationsSourceType
 export type OperationsReceipt = { id: string; file_name: string; mime_type: string; file_size_bytes: number; signed_url: string; received_at: string | null; created_at: string | null; upload_status?: "PENDING" | "READY"; upload_request_id?: string };
 export type OperationsReceiptEventType = "LOADING" | "UNLOADING" | "BACKLOAD" | "OFFLOAD";
 export type OperationsReceiptUpload = { id: string; trip_id: string; trip_stop_id: string | null; file_name: string; mime_type: string; file_size_bytes: number; uploaded_by: string; received_at: string | null; created_at: string | null };
-export type OperationsReportData = { trips: OperationsTrip[]; trip_options: OperationsTripOption[]; stops: OperationsStop[]; loading: LoadingReport[]; unloading: UnloadingReport[]; backloads: ScopeReport[]; offloads: ScopeReport[]; event_rows: OperationsEventRow[]; pagination?: {page:number;limit:number;total:number;totalPages:number} };
+export type ReportEvidence={id:string;loading_report_id:string|null;unloading_report_id:string|null;backload_id:string|null;offload_id:string|null;file_name:string;mime_type:string;signed_url:string|null;created_at:string};
+export type OperationsReportData = { report_evidence?:ReportEvidence[];evidence_links_pending?:boolean;evidence_limited?:boolean;evidence_error?:string; trips: OperationsTrip[]; trip_options: OperationsTripOption[]; stops: OperationsStop[]; loading: LoadingReport[]; unloading: UnloadingReport[]; backloads: ScopeReport[]; offloads: ScopeReport[]; event_rows: OperationsEventRow[]; pagination?: {page:number;limit:number;total:number;totalPages:number} };
 
 const ROOT = "/reports/operations";
 export type OperationsReporter = { id: string; name: string; role: string };
@@ -47,7 +48,7 @@ export const fetchOperationsOverview = (token: string,options:OperationsPageOpti
 export const getCachedOperations = (token: string, assigned = false,options:OperationsPageOptions={}) => getCachedApiResponse<ApiResponse<OperationsReportData>>(assigned?`${ROOT}/assigned`:OPERATIONS_PAGINATION_ENABLED?operationsPageEndpoint(options):`${ROOT}/overview`, token, 5 * 60_000)?.data ?? null;
 export const preloadOperationsOverview = (token: string) => OPERATIONS_PAGINATION_ENABLED ? fetchOperationsPage(token) : unwrap(apiGetCached<ApiResponse<OperationsReportData>>(`${ROOT}/overview`, token, 30_000, `${ROOT}/overview?preload=true`));
 export const fetchAssignedOperations = (token: string) => unwrap(apiGetCached<ApiResponse<OperationsReportData>>(`${ROOT}/assigned`, token, 15_000));
-export const fetchTripOperations = (token: string, tripId: string) => unwrap(apiGetCached<ApiResponse<OperationsReportData>>(`${ROOT}/trips/${encodeURIComponent(tripId)}`, token, 30_000,undefined,20_000));
+export const fetchTripOperations = (token: string, tripId: string, evidence:boolean|"metadata"=false) => unwrap(apiGetCached<ApiResponse<OperationsReportData>>(`${ROOT}/trips/${encodeURIComponent(tripId)}${evidence==='metadata'?'?evidence=metadata':evidence?'?evidence=1':''}`, token, 30_000,undefined,20_000));
 
 function invalidateOperations(tripFieldsChanged = false) {
   invalidateApiCache(`${ROOT}/`);
@@ -139,8 +140,8 @@ export async function uploadOperationsReceipt(token: string, eventType: "BACKLOA
   return response;
 }
 
-export async function fetchOperationsReceipts(token: string, eventType: OperationsReceiptEventType, recordId: string) {
-  return unwrap(apiGetCached<ApiResponse<OperationsReceipt[]>>(`${ROOT}/${eventType.toLowerCase()}/${encodeURIComponent(recordId)}/receipts`, token, 0));
+export async function fetchOperationsReceipts(token: string, eventType: OperationsReceiptEventType, recordId: string, cacheMs=0) {
+  return unwrap(apiGetCached<ApiResponse<OperationsReceipt[]>>(`${ROOT}/${eventType.toLowerCase()}/${encodeURIComponent(recordId)}/receipts`, token, cacheMs));
 }
 
 export async function updateOperationsAssignment(token: string, tripId: string, assignmentId: string, updates: Record<string, unknown>) {

@@ -75,15 +75,18 @@ export default function ReceiptReviewCard({
   accessToken,
   stopLabels,
   refreshKey = 0,
+  onRecordsChange,
 }: {
   tripId: string;
   accessToken: string | null;
   /** trip_stop_id → "Stop 1 · Store name" */
   stopLabels: Record<string, string>;
   refreshKey?: number;
+  onRecordsChange?: (records:TripReceipt[]|null)=>void;
 }) {
   const [receipts, setReceipts] = useState<TripReceipt[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  useEffect(()=>{onRecordsChange?.(loadError?null:receipts);},[receipts,loadError,onRecordsChange]);
   const [activeId, setActiveId] = useState<string | null>(null);
   /* `work` is what the admin is editing; `base` is what is saved. They differ = unsaved edits. */
   const [work, setWork] = useState<ReceiptSnapshot>(EMPTY_SNAPSHOT);
@@ -305,7 +308,7 @@ export default function ReceiptReviewCard({
   const canSave = Boolean(active) && hasContent && (dirty || state !== "reviewed") && !scanning && !saving && !interpreting;
 
   return (
-    <section aria-labelledby="receipt-card-title" className="min-w-0 space-y-4">
+    <section aria-labelledby="receipt-card-title" data-unsaved={dirty||scanning||saving||interpreting||undefined} className="min-w-0 space-y-4">
       <header className="flex flex-wrap items-end justify-between gap-2">
         <div>
           <h3 id="receipt-card-title" className="text-lg font-bold text-[#0b2341]">Delivery receipts &amp; OCR</h3>
@@ -313,20 +316,20 @@ export default function ReceiptReviewCard({
         </div>
       </header>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      {!!receipts?.length&&<div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label="Receipts" value={counts.total} hint="Uploaded for this trip" tone="text-[#0b2341]" />
         <Stat label="Awaiting OCR" value={counts.awaiting} hint="Not scanned yet" tone="text-slate-600" />
         <Stat label="Needs review" value={counts.review} hint="Read, not yet checked" tone="text-amber-600" />
         <Stat label="Verified" value={counts.done} hint="Checked by an admin" tone="text-emerald-600" />
-      </div>
+      </div>}
 
       {receipts === null ? (
-        <div role="status" className={`${surface.card} flex items-center justify-center gap-2 py-16 text-sm text-slate-500`}>
+        <div role="status" className={`${surface.card} flex items-center justify-center gap-2 py-6 text-sm text-slate-500`}>
           <LoaderCircle aria-hidden="true" className="h-4 w-4 animate-spin text-[#2678b9]" />
           Loading receipts
         </div>
       ) : receipts.length === 0 ? (
-        <div className={`${surface.card} flex flex-col items-center justify-center gap-1 py-14 text-center`}>
+        <div className={`${surface.card} flex flex-col items-center justify-center gap-1 py-4 text-center`}>
           <p className="text-sm font-semibold text-[#0b2341]">No receipts uploaded yet</p>
           <p className="max-w-xs text-xs text-slate-500">When a driver saves a delivery receipt photo, it appears here with its fields ready to check.</p>
           {loadError && <p role="alert" className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700">{loadError}</p>}

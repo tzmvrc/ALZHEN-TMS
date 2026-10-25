@@ -43,9 +43,9 @@ router.patch("/operations/loading/:tripId/reports/:recordId", authMiddleware, re
 router.put("/operations/loading/:tripId", authMiddleware, operationsReportController.saveLoading);
 router.put("/operations/unloading/:tripId/stops/:stopId", authMiddleware, operationsReportController.saveUnloading);
 router.post("/operations/backloads", authMiddleware, operationsReportController.createBackload);
-router.patch("/operations/backloads/:recordId", authMiddleware, operationsReportController.updateBackload);
+router.patch("/operations/backloads/:recordId", authMiddleware, requireRole("ADMIN", "STAFF"), operationsReportController.updateBackload);
 router.post("/operations/offloads", authMiddleware, operationsReportController.createOffload);
-router.patch("/operations/offloads/:recordId", authMiddleware, operationsReportController.updateOffload);
+router.patch("/operations/offloads/:recordId", authMiddleware, requireRole("ADMIN", "STAFF"), operationsReportController.updateOffload);
 router.patch("/operations/types/:sourceType/:recordId", authMiddleware, operationsReportController.updateEventType);
 router.post("/operations/reports/delete", authMiddleware, requireRole("ADMIN", "STAFF"), operationsReportController.deleteReports);
 router.delete("/operations/reports/:sourceType/:recordId", authMiddleware, operationsReportController.deleteReport);

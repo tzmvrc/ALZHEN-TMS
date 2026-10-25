@@ -5,7 +5,7 @@ const coordinate=(latitude:unknown,longitude:unknown)=>typeof latitude==="number
 
 export function validateTrackingCapture(input:Record<string,unknown>,now=Date.now()){
  const captured=typeof input.captured_at==="string"&&/(?:Z|[+-]\d{2}:\d{2})$/.test(input.captured_at)?Date.parse(input.captured_at):NaN;
- if(!coordinate(input.latitude,input.longitude)||typeof input.accuracy_meters!=="number"||!Number.isFinite(input.accuracy_meters)||input.accuracy_meters<0||input.accuracy_meters>=100000||!Number.isFinite(captured)||captured>now+120000||captured<now-120000)throw new ApiError("A recent GPS capture with valid coordinates, accuracy and timezone is required.",400,"TRACKING_CAPTURE_INVALID");
+ if(!coordinate(input.latitude,input.longitude)||typeof input.accuracy_meters!=="number"||!Number.isFinite(input.accuracy_meters)||input.accuracy_meters<0||input.accuracy_meters>200||!Number.isFinite(captured)||captured>now+120000||captured<now-120000)throw new ApiError("A recent GPS capture with valid coordinates, accuracy and timezone is required.",400,"TRACKING_CAPTURE_INVALID");
  return {latitude:input.latitude as number,longitude:input.longitude as number,accuracy_meters:input.accuracy_meters,captured_at:new Date(captured).toISOString()};
 }
 export function captureIsNewer(capturedAt:string,previousAt:string|null){return previousAt===null||Date.parse(capturedAt)>Date.parse(previousAt);}

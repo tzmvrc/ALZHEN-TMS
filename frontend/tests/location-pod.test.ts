@@ -52,7 +52,8 @@ test("GPS asks permission only on explicit start, throttles, stops watches and n
  const capture=createLocationCapture({geolocation,now:()=>now,onState:s=>states.push(s),api:{begin:async()=>({session_id:"test-session"}),send:async()=>{sends++;},stop:async()=>{stops++;}}});
  assert.equal(permissionCalls,0);await capture.start();await new Promise(resolve=>setTimeout(resolve,0));assert.equal(permissionCalls,1);assert.equal(sends,1);
  for(let i=0;i<10;i++){now+=1000;callback(position());}assert.equal(sends,1);
- now+=30000;callback(position());await new Promise(resolve=>setTimeout(resolve,0));assert.equal(sends,2);
+ now+=30000;callback(position());await new Promise(resolve=>setTimeout(resolve,0));assert.equal(sends,1); // stationary jitter is suppressed
+ now+=300000;callback(position());await new Promise(resolve=>setTimeout(resolve,0));assert.equal(sends,2); // bounded stationary heartbeat
  await capture.stop();callback(position());assert.equal(sends,2);assert.equal(clears,1);assert.equal(stops,1);
  denied=true;await capture.start();assert.equal(watchCalls,1);assert.equal(states.at(-1),"PERMISSION_OR_LOCATION_UNAVAILABLE");
  errorCallback({code:2} as GeolocationPositionError);assert.equal(watchCalls,1);

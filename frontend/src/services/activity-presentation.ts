@@ -2,6 +2,9 @@
 export function activityDescription(value: string, destination?: string) {
   const key=value.toUpperCase().replaceAll("_"," ").replace(/^DEMO /,"");
   const place=destination?` at ${destination}`:"";
+  if(key==='PARTIAL UNLOAD')return 'Partial unloading recorded';
+  if(key==='IN TRANSIT')return 'On the way to destination';
+  if(key==='ASSIGNMENT COMPLETED')return 'Assigned delivery completed';
   if(/GPS|LOCATION/.test(key))return "GPS location updated";
   if(key==="TRIP ASSIGNED")return "Trip assignment recorded";
   if(key==="ON THE WAY")return "Truck is on the way";
@@ -9,8 +12,11 @@ export function activityDescription(value: string, destination?: string) {
   if(key==="UNLOADING")return "Unloading in progress";
   if(/WAREHOUSE.*ARRIV/.test(key))return "Arrived at warehouse";
   if(/STOP DEPART/.test(key))return `Departed delivery stop${place}`;
+  if(/ACCIDENT/.test(key))return "Accident reported";
+  if(/BREAKDOWN/.test(key))return "Vehicle breakdown reported";
+  if(/TRAFFIC|DELAY/.test(key))return "Traffic / delay reported";
   if(/INCIDENT/.test(key))return "Incident report recorded";
-  if(/UNLOADING.*(FINISH|COMPLETE)|FIRST DELIVERY COMPLETED/.test(key))return `Delivery completed${place}`;
+  if(/UNLOADING.*(FINISH|COMPLETE)|FIRST DELIVERY COMPLETED/.test(key))return `Finished unloading${place}`;
   if(/UNLOADING.*START|START.*UNLOAD/.test(key))return `Started unloading${place}`;
   if(/LOADING.*(FINISH|COMPLETE)/.test(key))return "Finished loading at warehouse";
   if(/LOADING.*START|START.*LOAD/.test(key))return "Started loading at warehouse";

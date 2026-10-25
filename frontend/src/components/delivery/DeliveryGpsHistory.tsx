@@ -1,0 +1,10 @@
+import {useState} from 'react';
+import {useAuth} from '../../context/AuthContext';
+import {apiGet,type ApiResponse} from '../../services/api.service';
+import {phTime} from '../../services/delivery.service';
+type Fix={id:string;latitude:number;longitude:number;accuracy_meters:number;captured_at:string};
+export default function DeliveryGpsHistory({assignmentId,onLocate}:{assignmentId:string;onLocate:(point:{latitude:number;longitude:number;label:string})=>void}){
+ const {accessToken}=useAuth(),[rows,setRows]=useState<Fix[]>([]),[cursor,setCursor]=useState<string|null>(new Date().toISOString()),[busy,setBusy]=useState(false),[loaded,setLoaded]=useState(false),[error,setError]=useState('');
+ const load=async()=>{if(!accessToken||!cursor||busy)return;setBusy(true);try{const r=await apiGet<ApiResponse<{rows:Fix[];next:string|null}>>(`/delivery/assignments/${encodeURIComponent(assignmentId)}/location?before=${encodeURIComponent(cursor)}`,accessToken);if(!r.success||!r.data)throw Error('GPS history unavailable.');setRows(prev=>[...new Map([...prev,...r.data!.rows].map(f=>[f.id,f])).values()]);setCursor(r.data.next);setLoaded(true);setError('');}catch(e){setError((e as Error).message);}finally{setBusy(false);}};
+ return <details className="delivery-gps-history" onToggle={e=>{if(e.currentTarget.open&&!loaded)void load();}}><summary>Recorded GPS history</summary><small>Accepted foreground captures; newest first. Simulation samples are not telemetry.</small>{error&&<p role="alert">{error}</p>}{loaded&&!rows.length&&<p>No recorded GPS history for this assignment.</p>}<ul>{rows.map(f=><li key={f.id}><button className="delivery-inline" onClick={()=>onLocate({latitude:f.latitude,longitude:f.longitude,label:`Recorded GPS · ${phTime(f.captured_at)}`})}>{phTime(f.captured_at)} · {Math.round(f.accuracy_meters)} m accuracy</button></li>)}</ul>{cursor&&<button className="delivery-secondary" disabled={busy} onClick={()=>void load()}>{busy?'Loading...':loaded?'Earlier positions':'Load positions'}</button>}</details>;
+}

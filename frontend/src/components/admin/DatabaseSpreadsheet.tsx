@@ -292,7 +292,7 @@ export default function DatabaseSpreadsheet({dataSource,resource,fields:sourceFi
     </tbody>
    </table>
   </div>
-  <div className="flex shrink-0 items-center gap-2 bg-white px-2 text-xs text-slate-500">{more&&<span role="status" className="inline-flex items-center gap-1"><LoaderCircle className="h-3 w-3 animate-spin"/>Loading more records</span>}{lastPage>0&&lastPage<pages&&!more&&<button className="py-1 hover:text-blue-700" onClick={()=>void loadMore()}>Load more</button>}<span className="sr-only">{rows.length} of {total} records loaded</span></div>
+  <div className="flex shrink-0 items-center gap-2 bg-white px-2 text-xs text-slate-500">{more&&<span role="status" className="inline-flex items-center gap-1"><LoaderCircle className="h-3 w-3 animate-spin"/>Loading more records</span>}<span className="sr-only">{rows.length} of {total} records loaded</span></div>
   {menu&&<SpreadsheetCellContextMenu x={menu.x} y={menu.y} count={selectedCount} format={format} canFormat={canEdit} onApply={apply}
     actions={<>
       <button role="menuitem" className={cellMenuItemClass} disabled={!canEdit||!keys.includes(menu.id)||(menu.row&&dataSource?.canEditRow?.(rows.find(row=>row.id===menu.id)!)===false)||(!menu.row&&(fields.find(field=>field.key===menu.field)?.readOnly||dataSource?.canEditField?.(rows.find(row=>row.id===menu.id)!,fields.find(field=>field.key===menu.field)!)===false))} onClick={()=>{const row=rows.find(row=>row.id===menu.id);if(row){if(menu.row)onEdit(row);else begin(menu.id,menu.field);}setMenu(null);}}>{menu.row&&dataSource?"Edit User":menu.row?"Edit record":"Edit cell"}</button>

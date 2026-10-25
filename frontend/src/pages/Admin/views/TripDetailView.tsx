@@ -2,7 +2,8 @@ import {motion,useReducedMotion} from "motion/react";
 import TripTrackingWorkspace from "../../../components/admin/TripTrackingWorkspace";
 import TripConvoyPanel from "../../../components/admin/TripConvoyPanel";
 import { useDeferredRealtimeRefresh } from "../../../components/admin/useDeferredRealtimeRefresh";
-import { useEffect,useLayoutEffect,useRef, useState, type ReactNode } from "react";
+import { lazy,Suspense,useEffect,useLayoutEffect,useRef, useState, type ReactNode } from "react";
+import type {TripRecordTarget} from '../../../components/admin/TripDeliveryOperations';
 import {
   ArrowLeft,
   Check,
@@ -35,8 +36,7 @@ import {
 import { surface } from "../../../components/admin/dashboardStyles";
 import ProductPhotoManager from "../../../components/admin/ProductPhotoManager";
 import ReceiptReviewCard from "../../../components/admin/ReceiptReviewCard";
-import OperationsTimeline from "../../../components/admin/OperationsTimeline";
-import truckBg from "../../../assets/trip-truck.png";
+import TripWorkspaceDialog from "../../../components/admin/TripWorkspaceDialog";
 import {
   deleteTripImage,
   fetchTripImages,
@@ -50,6 +50,8 @@ import {
   fetchTripOperations,
   type OperationsReportData,
 } from "../../../services/operations-report.service";
+
+const OperationsReportsView=lazy(()=>import("../../../components/admin/OperationsReportsView"));
 
 type BookingPage = {
   rows: Record<string, unknown>[];
@@ -65,16 +67,10 @@ type DetailState = {
   operations: OperationsReportData;
   bookingRows: Record<string, unknown>[];
   bookingError: string | null;
-  truckCapacityCbm: number | null;
-  truckCapacityError: string | null;
   sectionErrors: string[];
 };
 
-type TruckLookupRow = {
-  id: string;
-  plate_number: string | null;
-  capacity_cbm: number | null;
-};
+
 
 /* ------------------------------------------------------------------ */
 /* Helpers                                                             */
@@ -312,7 +308,7 @@ function TripGallery({
   };
 
   return (
-    <div className={`${surface.card} flex flex-col p-5`}>
+    <div aria-busy={photoBusy||undefined} className={`${surface.card} flex flex-col p-5`}>
       <CardHeader
         icon={<Images />}
         title="Trip photos"
@@ -433,153 +429,6 @@ const TRUCK_SLOTS = 12;
 /* ------------------------------------------------------------------ */
 /* Bento building blocks                                               */
 /* ------------------------------------------------------------------ */
-function VehicleLoadCard({
-  plate,
-  status,
-  cargoRows,
-  selectedItem,
-  onSelectItem,
-  loadPercentage,
-  truckCapacityCbm,
-  totalCbm,
-  className = "",
-}: {
-  plate: string;
-  status: unknown;
-  cargoRows: Record<string, unknown>[];
-  selectedItem: Record<string, unknown> | null;
-  onSelectItem: (item: Record<string, unknown>) => void;
-  loadPercentage: number;
-  truckCapacityCbm: number | null;
-  totalCbm: number;
-  className?: string;
-}) {
-  const slots = Array.from({ length: TRUCK_SLOTS }, (_, i) => cargoRows[i] ?? null);
-  const remainingCbm = truckCapacityCbm !== null ? Math.max(0, truckCapacityCbm - totalCbm) : null;
-  const barColor = loadPercentage > 90 ? "#ef4444" : loadPercentage > 70 ? "#f59e0b" : "#2678b9";
-
-  return (
-    <section className={`${surface.card} flex min-w-0 flex-col p-4 ${className}`}>
-      <CardHeader
-        icon={<Truck />}
-        title="Vehicle & load"
-        right={
-          <span className="flex min-w-0 items-center gap-2 text-xs">
-            <span className="truncate font-semibold text-[#0b2341]">{plate}</span>
-            <span aria-hidden="true" className="text-slate-300">·</span>
-            <span className="shrink-0 font-semibold text-emerald-600">
-              {valueText(status, "Status unknown").replaceAll("_", " ")}
-            </span>
-          </span>
-        }
-      />
-
-      <div className="mt-3 grid items-center gap-4 sm:grid-cols-2">
-      <div className="relative mx-auto w-full max-w-[320px] overflow-hidden rounded-2xl bg-[#f8fafc] p-1.5">
-        <img src={truckBg} alt="Delivery truck side view" className="h-auto w-full object-contain" />
-        <div className="absolute bottom-[40%] left-[28%] right-[4%] top-[20%] grid grid-cols-6 grid-rows-2 gap-0.5 p-1">
-          {slots.map((item, index) => {
-            const isSelected = Boolean(selectedItem && item && selectedItem.id === item.id);
-            const itemName = item ? valueText(item.product_name ?? item.item_name ?? `Item ${index + 1}`) : "";
-            const itemCbm = item?.cbm;
-            const itemCbmLabel =
-              itemCbm === null || itemCbm === undefined || itemCbm === ""
-                ? "CBM not set"
-                : Number.isFinite(Number(itemCbm))
-                  ? `${formatNumber(Number(itemCbm))} CBM`
-                  : `${String(itemCbm)} CBM`;
-            const base =
-              "relative flex flex-col items-center justify-center rounded-[4px] border text-[9px] font-medium transition-all";
-            if (!item) {
-              return (
-                <div key={index} className={`${base} border-dashed border-slate-300/70 bg-white/60`}>
-                  <span className="text-slate-300">+</span>
-                </div>
-              );
-            }
-            return (
-              <button
-                key={index}
-                type="button"
-                onClick={() => onSelectItem(item)}
-                aria-pressed={isSelected}
-                aria-label={`Select ${itemName}`}
-                title={`${itemName} · ${itemCbmLabel}`}
-                className={`${base} cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9] ${
-                  isSelected
-                    ? "border-blue-500 bg-blue-50 ring-1 ring-blue-400"
-                    : "border-slate-300 bg-white/95 hover:border-slate-400"
-                }`}
-              >
-                <Package aria-hidden="true" className="h-3 w-3 text-[#2678b9]" />
-                <span className="text-[7px] leading-none tabular-nums text-slate-500">
-                  {itemCbm === null || itemCbm === undefined || itemCbm === ""
-                    ? "—"
-                    : Number.isFinite(Number(itemCbm))
-                      ? formatNumber(Number(itemCbm))
-                      : String(itemCbm)}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-        <div className="min-w-0">
-          <div className="flex items-baseline justify-between gap-2">
-            <span className="text-2xl font-bold tabular-nums text-[#0b2341]">{loadPercentage}%</span>
-            <span className="text-[11px] text-slate-500">loaded</span>
-          </div>
-          <div
-            role="progressbar"
-            aria-label="Truck load"
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={loadPercentage}
-            className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-slate-200"
-          >
-            <div
-              className="h-full rounded-full transition-[width] duration-700 ease-out"
-              style={{ width: `${loadPercentage}%`, backgroundColor: barColor }}
-            />
-          </div>
-          <dl className="mt-2.5 grid grid-cols-3 gap-1.5">
-            {[
-              ["Max", truckCapacityCbm !== null ? formatNumber(truckCapacityCbm) : "—"],
-              ["Load", formatNumber(totalCbm)],
-              ["Left", remainingCbm !== null ? formatNumber(remainingCbm) : "—"],
-            ].map(([label, value]) => (
-              <div key={label} className="min-w-0 rounded-lg bg-[#f2f6fa] px-2 py-1 text-center">
-                <dd className="truncate text-xs font-bold tabular-nums text-[#0b2341]">{value}</dd>
-                <dt className="truncate text-[10px] text-slate-400">{label} CBM</dt>
-              </div>
-            ))}
-          </dl>
-      <div className="mt-2.5 rounded-lg bg-[#f2f6fa] px-2.5 py-1.5 text-[11px]">
-        {selectedItem ? (
-          <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5">
-            <p className="min-w-0 truncate font-semibold text-[#0b2341]">
-              {valueText(selectedItem.product_name ?? selectedItem.item_name)}
-            </p>
-            <p className="text-slate-500">
-              Qty {valueText(selectedItem.quantity, "—")} · {valueText(selectedItem.cbm, "—")} CBM
-            </p>
-          </div>
-        ) : (
-          <p className="text-slate-500">
-            {cargoRows.length} cargo line{cargoRows.length === 1 ? "" : "s"}
-            {cargoRows.length > TRUCK_SLOTS && <> (showing {TRUCK_SLOTS})</>} · select a slot for details
-          </p>
-        )}
-      </div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/* Main view                                                           */
-/* ------------------------------------------------------------------ */
 function TripDetailSkeleton({ onBack }: { onBack: () => void }) {
   const block = "animate-pulse rounded-3xl bg-slate-200/80";
 
@@ -638,18 +487,28 @@ export default function TripDetailView({
   const [receiptTick, setReceiptTick] = useState(0);
   const [selectedStop, setSelectedStop] = useState<string | null>(null);
   const [stopSelectionChanged, setStopSelectionChanged] = useState(false);
-  const [selectedCargoItem, setSelectedCargoItem] = useState<Record<string, unknown> | null>(null);
+  const [library,setLibrary]=useState<'records'|'receipts'|'operations'|null>(null);
   const [photoProduct, setPhotoProduct] = useState<{ id: string; name: string } | null>(null);
   const [viewProduct, setViewProduct] = useState<Record<string, unknown> | null>(null);
   const [productPhotoOverrides, setProductPhotoOverrides] = useState<Record<string, string | null>>({});
   const [sidePanel, setSidePanel] = useState<"trucks" | "products" | "stops">("trucks");
+  const openReportSection=(target:TripRecordTarget)=>{
+    if(target==='records'){setSidePanel('products');setLibrary('records');return;}
+    if(target==='receipts'){setLibrary('receipts');return;}
+    if(target==='operations'){setLibrary('operations');return;}
+    const node=document.getElementById(`trip-${tripId}-${target}`);
+    if(!node)return;
+    if(node instanceof HTMLDetailsElement)node.open=true;
+    let parent=node.parentElement;while(parent){if(parent instanceof HTMLDetailsElement)parent.open=true;parent=parent.parentElement;}
+    requestAnimationFrame(()=>{node.scrollIntoView({block:'start',behavior:reduced?'instant':'smooth'});node.focus({preventScroll:true});});
+  };
   const requestKey = `${accessToken ?? "no-session"}:${tripId}:${retry}`;
-  const realtimeGate = useDeferredRealtimeRefresh(() => { invalidateTripCache(tripId); setRetry((value) => value + 1); }, Boolean(selectedCargoItem || photoProduct || viewProduct));
+  const realtimeGate = useDeferredRealtimeRefresh(() => { invalidateTripCache(tripId); setRetry((value) => value + 1); }, Boolean(photoProduct || viewProduct));
 
   useEffect(() => subscribeToAdminRealtime((event) => {
     if (event.kind === "batch") {
       if (event.tables.some((table) => (RECEIPT_TABLES as readonly string[]).includes(table))) setReceiptTick((value) => value + 1);
-      if (event.tables.some((table) => ["trips", "trip_stops", "trip_line_items", "trip_events", "trip_truck_assignments", "billings", "loading_reports", "unloading_reports", "backloads", "offloads", "customers", "customer_stores", "warehouses", "drivers", "trucks", "trucking_companies"].includes(table))) {
+      if (event.tables.some((table) => ["trips", "trip_stops", "trip_line_items", "trip_truck_assignments", "billings", "loading_reports", "unloading_reports", "backloads", "offloads", "report_receipts", "operations_report_conversions", "customers", "customer_stores", "warehouses", "drivers", "trucks", "trucking_companies"].includes(table))) {
         realtimeGate.request();
       }
       return;
@@ -659,7 +518,7 @@ export default function TripDetailView({
 
       return;
     }
-    const tripTables = ["trips", "trip_stops", "trip_line_items", "trip_events", "trip_truck_assignments", "billings", "loading_reports", "unloading_reports", "backloads", "offloads"];
+    const tripTables = ["trips", "trip_stops", "trip_line_items", "trip_truck_assignments", "billings", "loading_reports", "unloading_reports", "backloads", "offloads", "report_receipts", "operations_report_conversions"];
     const receiptTables: readonly string[] = RECEIPT_TABLES;
     if (event.kind === "recovered") {
       if (receiptTables.includes(event.table)) setReceiptTick((value) => value + 1);
@@ -694,13 +553,13 @@ export default function TripDetailView({
         if(!active)return;
         const cached=previousDetail.current.scope===scope?previousDetail.current.value:null;
         // Render authorized core data without waiting for optional section/report reads.
-        setDetailState({scope,value:{stops:[],lineItems:[],assignments:[],events:[],operations:{trips:[],trip_options:[],stops:[],loading:[],unloading:[],backloads:[],offloads:[],event_rows:[]},bookingRows:[],bookingError:null,truckCapacityCbm:null,truckCapacityError:null,sectionErrors:[],...cached,trip:{...tripResponse.trip,warehouse_name:tripResponse.warehouse?.name,warehouse_code:tripResponse.warehouse?.code,trip_type:tripResponse.trip_type?.name}}});
+        setDetailState({scope,value:{stops:[],lineItems:[],assignments:[],events:[],operations:{trips:[],trip_options:[],stops:[],loading:[],unloading:[],backloads:[],offloads:[],event_rows:[]},bookingRows:[],bookingError:null,sectionErrors:[],...cached,trip:{...tripResponse.trip,warehouse_name:tripResponse.warehouse?.name,warehouse_code:tripResponse.warehouse?.code,trip_type:tripResponse.trip_type?.name}}});
         const [stopsResult, itemsResult, assignmentsResult, eventsResult, operationsResult] = await Promise.allSettled([
           fetchTripStops(accessToken, tripId),
           fetchTripLineItems(accessToken, tripId),
           fetchTripAssignments(accessToken, tripId),
           fetchTripEvents(accessToken, tripId),
-          fetchTripOperations(accessToken, tripId),
+          fetchTripOperations(accessToken, tripId, "metadata"),
         ]);
         const childResults = [stopsResult, itemsResult, assignmentsResult, eventsResult, operationsResult];
         const authFailure = childResults.find(
@@ -733,8 +592,6 @@ export default function TripDetailView({
         });
         let bookingRows: Record<string, unknown>[] = previous?.bookingRows??[];
         let bookingError: string | null = null;
-        let truckCapacityCbm: number | null = previous?.truckCapacityCbm??null;
-        let truckCapacityError: string | null = null;
         try {
           const bookingResponse = await apiGetCached<ApiResponse<BookingPage>>(
             `/reports/trip-booking?${params.toString()}`,
@@ -756,27 +613,6 @@ export default function TripDetailView({
           if (cause instanceof ApiError && cause.status === 401) throw cause;
           bookingError = cause instanceof Error ? cause.message : "Trip report enrichment unavailable.";
         }
-        const truckPlate = String(bookingRows.find((row) => row.plate_number)?.plate_number ?? "").trim();
-        if (truckPlate) {
-          try {
-            const truckResponse = await apiGetCached<ApiResponse<TruckLookupRow[]>>(
-              `/lookups/trucks?q=${encodeURIComponent(truckPlate)}`,
-              accessToken,
-            );
-            if (!truckResponse.success || !truckResponse.data) {
-              throw new Error(truckResponse.message ?? "Unable to load truck capacity.");
-            }
-            const matchedTruck = truckResponse.data.find(
-              (row) => row.plate_number?.trim().toLowerCase() === truckPlate.toLowerCase(),
-            );
-            if (typeof matchedTruck?.capacity_cbm === "number" && matchedTruck.capacity_cbm > 0) {
-              truckCapacityCbm = matchedTruck.capacity_cbm;
-            }
-          } catch (cause) {
-            if (cause instanceof ApiError && cause.status === 401) throw cause;
-            truckCapacityError = cause instanceof Error ? cause.message : "Truck capacity is unavailable.";
-          }
-        }
         if (!active) return;
         const nextDetail:DetailState={
           trip: {
@@ -792,8 +628,6 @@ export default function TripDetailView({
           operations,
           bookingRows,
           bookingError,
-          truckCapacityCbm,
-          truckCapacityError,
           sectionErrors,
         };
         cacheApiSnapshot(snapshotEndpoint,accessToken,nextDetail,generation);
@@ -845,8 +679,6 @@ export default function TripDetailView({
   const dispatchNumber = String(trip?.dispatch_number ?? "Trip details");
   const stops = detail?.stops ?? [];
   const assignments = detail?.assignments ?? [];
-  const activeAssignments = assignments.filter((assignment) => !assignment.unassigned_at);
-  const hasMultipleActiveTrucks = activeAssignments.length > 1;
   const initialStopIndex = initialStopId ? stops.findIndex((stop) => String(stop.id ?? "") === initialStopId) : -1;
   const activeStopId = stopSelectionChanged
     ? selectedStop
@@ -899,7 +731,6 @@ export default function TripDetailView({
   // views can repeat a line when other one-to-many relations are joined.
   const totalQty = detail?.lineItems.length ? sumOf(detail.lineItems, "quantity") : sumOf(cargoRows, "quantity");
   const totalCbm = detail?.lineItems.length ? sumOf(detail.lineItems, "cbm") : sumOf(cargoRows, "cbm");
-  const lineItemCount = productRows.length;
   const plate = getBookingValue(reportRows, "plate_number", "No plate recorded");
   const placeholder = isLoading&&!detail ? "…" : undefined;
   const nextStopIndex=stops.findIndex(stop=>!stopIsDone(stop));
@@ -908,8 +739,6 @@ export default function TripDetailView({
     { key: "products" as const, label: "Products", count: productRows.length },
     { key: "stops" as const, label: "Stops", count: stops.length },
   ];
-  const capacity = hasMultipleActiveTrucks ? null : detail?.truckCapacityCbm ?? null;
-  const loadPct = capacity !== null && capacity > 0 ? Math.min(100, Math.round((totalCbm / capacity) * 100)) : 0;
   const photoFor = (row: Record<string, unknown>): string | null => {
     const id = String(row.product_id ?? row._product_id ?? "");
     if (Object.hasOwn(productPhotoOverrides, id)) return productPhotoOverrides[id];
@@ -918,10 +747,11 @@ export default function TripDetailView({
   const stopItemCount = (stopId: string) =>
     productRows.filter((row) => String(row.trip_stop_id ?? row._trip_stop_id ?? "") === stopId).length;
 
+
   return (
-    <motion.div initial={reduced?false:{opacity:0,y:6}} animate={{opacity:1,y:0}} transition={{duration:.25}} className="trip-detail-page space-y-4">
+    <motion.div initial={reduced?false:{opacity:0,y:6}} animate={{opacity:1,y:0}} transition={{duration:.25}} className="trip-detail-page">
       {convoyOpen&&accessToken&&<TripConvoyPanel initialAssignmentId={convoyInitial} token={accessToken} tripId={tripId} onClose={()=>setConvoyOpen(false)}/>}
-      {isLoading&&detail&&<p role="status" className="text-xs text-slate-500">Loading remaining trip details…</p>}
+      {isLoading&&detail&&<p role="status" className="sr-only">Loading remaining trip details…</p>}
       {error&&detail&&<p role="alert" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">{error} Previous trip data is retained. <button type="button" className="underline" onClick={()=>setRetry(value=>value+1)}>Retry</button></p>}
       {/* Top bar */}
       <header className="flex flex-wrap items-center gap-x-4 gap-y-3">
@@ -952,55 +782,11 @@ export default function TripDetailView({
         </p>
       )}
 
-      {trip&&<TripTrackingWorkspace trip={trip} assignments={assignments} stops={stops} events={orderedEvents} origin={originName} destination={destinationText} progress={progress} totalCbm={totalCbm} totalQty={totalQty} onManage={id=>{setConvoyInitial(id);setConvoyOpen(true);}} refreshKey={retry}/>}
-      <section className="trip-operational-section" aria-label="Operational reports"><h2>Loading, deliveries & reports</h2>
-          <section className={`${surface.card} min-w-0 p-5`}>
-      <OperationsTimeline
-        tripId={tripId}
-        loading={detail?.operations.loading ?? []}
-        stops={stops.map((stop, index) => {
-          const stopId = String(stop.id ?? "");
-          const timeline = detail?.operations.stops.find((item) => item.id === stopId);
-          return {
-            id: stopId || String(index),
-            label: `Stop ${String(stop.stop_sequence ?? index + 1)}`,
-            storeName: valueText(rowsForStop(stopId)[0]?.store_name, "Store not recorded"),
-            arrival: timeline?.arrival_time,
-            start: timeline?.start_unloading_time,
-            finish: timeline?.finish_unloading_time,
-            remarks: typeof timeline?.remarks === "string" && timeline.remarks ? timeline.remarks : null,
-          };
-        })}
-        backloads={detail?.operations.backloads ?? []}
-        offloads={detail?.operations.offloads ?? []}
-        stopLabel={(stopId) => stopLabels[stopId] ?? null}
-        error={detail?.sectionErrors.find((message) => message.startsWith("Operational reports:")) ?? null}
-      />
-          </section></section>
-      <details className="trip-load-explorer"><summary>Vehicle load explorer</summary>        {hasMultipleActiveTrucks ? (
-          <section className={`${surface.card} flex min-w-0 flex-col justify-center p-5 xl:col-span-5`}>
-            <CardHeader icon={<Package />} title="Trip cargo summary" />
-            <p className="mt-3 text-2xl font-bold tabular-nums text-[#0b2341]">{formatNumber(totalCbm)} CBM</p>
-            <p className="mt-1 text-xs text-slate-500">{lineItemCount} cargo lines · {formatNumber(totalQty)} units</p>
-            <p className="mt-4 rounded-xl bg-amber-50 px-3 py-2.5 text-xs leading-relaxed text-amber-800">
-              Cargo is shown at trip level. Use Truck assignments and cargo allocations to assign quantities and calculate individual truck utilization.
-            </p>
-          </section>
-        ) : (
-          <VehicleLoadCard
-            className="xl:col-span-5"
-            plate={plate}
-            status={trip?.status}
-            cargoRows={cargoRows}
-            selectedItem={selectedCargoItem}
-            onSelectItem={setSelectedCargoItem}
-            loadPercentage={loadPct}
-            truckCapacityCbm={capacity}
-            totalCbm={totalCbm}
-          />
-        )}</details>
-
+      {trip&&<TripTrackingWorkspace trip={trip} assignments={assignments} stops={stops} events={orderedEvents} origin={originName} destination={destinationText} progress={progress} totalCbm={totalCbm} totalQty={totalQty} onManage={id=>{setConvoyInitial(id);setConvoyOpen(true);}} refreshKey={retry} loading={isLoading} operations={detail?.operations??null} bookingRows={bookingRows} operationsError={detail?.sectionErrors.find(message=>message.startsWith('Operational reports:'))} onOpenReport={openReportSection}/>}
+      {library==='operations'&&<TripWorkspaceDialog title="Operational report management" onClose={()=>setLibrary(null)}><p className="trip-empty-note">Reports are initially searched by this dispatch. Shared historical records retain their original scope.</p><Suspense fallback={<p role="status">Loading reports...</p>}><OperationsReportsView mode="management" initialSearch={dispatchNumber} onOpenTrip={(id,stopId)=>{setLibrary(null);const params=new URLSearchParams(id===tripId?window.location.search:'');params.delete('event');if(stopId)params.set('stop',stopId);navigate(`/trips/${encodeURIComponent(id)}${params.size?`?${params}`:''}`);}}/></Suspense></TripWorkspaceDialog>}
+      {library==='receipts'&&<TripWorkspaceDialog title="Trip-wide POD review" onClose={()=>setLibrary(null)}><ReceiptReviewCard key={tripId} tripId={tripId} accessToken={accessToken} stopLabels={stopLabels} refreshKey={retry + receiptTick}/></TripWorkspaceDialog>}
       {/* Products / stops / activity beside trip photos */}
+      {library==='records'&&<TripWorkspaceDialog title="Manage trip records & photos" onClose={()=>setLibrary(null)}><section id={`trip-${tripId}-records`} className="trip-records-library" tabIndex={-1}>
       <div className="grid grid-cols-1 items-stretch gap-4 xl:grid-cols-12">
         <section className={`${surface.card} flex max-h-[640px] min-w-0 flex-col p-4 xl:col-span-7`}>
           <div role="tablist" aria-label="Trucks, products and stops" className="flex shrink-0 items-center gap-1 overflow-x-auto rounded-full bg-[#eef3f8] p-1">
@@ -1250,7 +1036,8 @@ export default function TripDetailView({
         </div>
       </div>
       {/* Delivery receipts (OCR text for admin review) */}
-      <ReceiptReviewCard tripId={tripId} accessToken={accessToken} stopLabels={stopLabels} refreshKey={retry + receiptTick} />
+
+      </section></TripWorkspaceDialog>}
 
       {accessToken && photoProduct && (
         <ProductPhotoManager

@@ -14,7 +14,7 @@ export async function readTripConvoy(actor:Actor,trip:string){
  if(parent.error)throw new ApiError("Unable to confirm trip access. Please retry.",503);
  if(!parent.data)throw new ApiError("Trip not found.",404);
  const [assignments,stops,cargo,allocations,responsibilities,totals]=await Promise.all([
-  scopedRows("trip_truck_assignments",trip,"*,truck:trucks(id,plate_number,capacity_cbm,trucking_company:trucking_companies(id,name)),driver:drivers(id,first_name,last_name,trucking_company:trucking_companies(id,name)),trucking_company:trucking_companies(id,name)"),
+  scopedRows("trip_truck_assignments",trip,"*,truck:trucks(id,plate_number,truck_type,capacity_cbm,trucking_company:trucking_companies(id,name)),driver:drivers(id,first_name,last_name,trucking_company:trucking_companies(id,name)),trucking_company:trucking_companies(id,name)"),
   scopedRows("trip_stops",trip),scopedRows("trip_line_items",trip,"*,source_quantity:quantity::text,source_cbm:cbm::text,product:products(id,sku,model_code)"),
   scopedRows("trip_cargo_allocations",trip,"*,exact_quantity:quantity::text,exact_cbm:allocated_cbm::text"),scopedRows("trip_assignment_stops",trip),
   db.from("v_trip_cargo_totals").select("trip_id,total_cbm::text,assigned_cbm::text,remaining_cbm::text").eq("trip_id",trip).maybeSingle()

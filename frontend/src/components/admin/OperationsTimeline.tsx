@@ -12,6 +12,8 @@ import {
   Warehouse,
   type LucideIcon,
 } from "lucide-react";
+import type {ReportEvidence} from "../../services/operations-report.service";
+import {cleanActivityNote} from "../../services/activity-presentation";
 import { usePingingTrips } from "./LiveTripAlerts";
 
 /* ------------------------------------------------------------------ */
@@ -27,6 +29,7 @@ export type OpsLoading = {
 
 export type OpsStop = {
   id: string;
+  reportId?: string;
   /** "Stop 2" */
   label: string;
   storeName: string;
@@ -93,8 +96,8 @@ function ago(time: number, now: number): string {
   return hours < 24 ? `${hours} h ago` : new Date(time).toLocaleDateString();
 }
 
-const clock = (time: number) => new Date(time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-const day = (time: number) => new Date(time).toLocaleDateString([], { month: "short", day: "numeric" });
+const clock = (time: number) => new Date(time).toLocaleTimeString("en-PH", { hour: "2-digit", minute: "2-digit", timeZone:"Asia/Manila" });
+const day = (time: number) => new Date(time).toLocaleDateString("en-PH", { month: "short", day: "numeric", timeZone:"Asia/Manila" });
 
 /* ------------------------------------------------------------------ */
 /* Building blocks                                                       */
@@ -131,7 +134,7 @@ function Stepper({ steps, theme, now, activeLabel }: { steps: Step[]; theme: The
             {done ? (
               <span className="mt-0.5 text-[11px] leading-tight text-slate-500">
                 <span className="font-semibold tabular-nums text-slate-700">{clock(step.at as number)}</span>
-                <span className="block text-[10px] text-slate-400">{fresh ? <span className={`font-bold ${theme.text}`}>NEW · {ago(step.at as number, now)}</span> : `${day(step.at as number)} · ${ago(step.at as number, now)}`}</span>
+                <span className="block text-[10px] text-slate-400">{fresh ? <span className={`font-bold ${theme.text}`}>NEW · {ago(step.at as number, now)}</span> : `${day(step.at as number)}`}</span>
               </span>
             ) : (
               <span className={`mt-0.5 text-[10px] font-medium ${current ? theme.text : "text-slate-300"}`}>{current ? activeLabel : "Waiting"}</span>
@@ -170,6 +173,8 @@ export default function OperationsTimeline({
   offloads,
   stopLabel,
   error,
+  expanded = false,
+  evidence = [],
 }: {
   tripId: string;
   loading: OpsLoading[];
@@ -179,6 +184,8 @@ export default function OperationsTimeline({
   /** trip_stop_id → "Stop 2 · Store name" */
   stopLabel: (stopId: string) => string | null;
   error?: string | null;
+  expanded?: boolean;
+  evidence?: ReportEvidence[];
 }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -239,6 +246,13 @@ export default function OperationsTimeline({
     return `${records.length} record${records.length === 1 ? "" : "s"} · ${boxes} box${boxes === 1 ? "" : "es"}`;
   };
 
+  if(expanded)return <div className="trip-operations-overview">
+    {error&&<p role="status" className="trip-empty-note">{error}</p>}
+    <section className="trip-phase-summary"><h3><Warehouse size={16} aria-hidden="true"/>Loading timeline <small>{loadingState.value}</small></h3><CompactMilestones steps={loadingSteps}/><ReportImages recordId={report?.id} evidence={evidence}/>{!report&&<p>No loading record.</p>}</section>
+    <section className="trip-phase-summary trip-unloading-summary"><h3><MapPin size={16} aria-hidden="true"/>Unloading timelines <small>{deliveredStops}/{stops.length} stops</small></h3>{stops.length?stops.map(stop=><article key={stop.id}><header><strong>{stop.label} / {stop.storeName}</strong><span data-complete={toMs(stop.finish)!==null||undefined}>{stopState(stop).label}</span></header><CompactMilestones steps={[{label:'Arrival',at:toMs(stop.arrival),Icon:MapPin},{label:'Started',at:toMs(stop.start),Icon:PackageOpen},{label:'Finished',at:toMs(stop.finish),Icon:PackageCheck}]}/>{stop.remarks&&<p>{cleanActivityNote(stop.remarks)}</p>}<ReportImages recordId={stop.reportId} evidence={evidence}/></article>):<p>No unloading records.</p>}</section>
+    <div className="trip-exceptions-summary">{[{title:'Backload records',records:backloads,Icon:Undo2},{title:'Offload records',records:offloads,Icon:PackageMinus}].map(({title,records,Icon})=><section key={title} className="trip-phase-summary"><h3><Icon size={16} aria-hidden="true"/>{title}<small>{records.length}</small></h3>{records.length?records.map(record=><article key={record.id}><strong>{cleanActivityNote(String(record.reason??'No reason recorded'))}</strong><small>{typeof record.trip_stop_id==='string'?stopLabel(record.trip_stop_id):'Trip-wide'}{typeof record.created_at==='string'?` / ${clock(Date.parse(record.created_at))} ${day(Date.parse(record.created_at))}`:''}</small>{record.comments!=null&&<p>{cleanActivityNote(String(record.comments))}</p>}<ReportImages recordId={record.id} evidence={evidence}/></article>):<p>No records.</p>}</section>)}</div>
+  </div>;
+
   const sections = [
     {
       key: "loading", title: "Loading timeline", subtitle: loadingState.hint, theme: THEME.amber, Icon: Warehouse,
@@ -247,13 +261,13 @@ export default function OperationsTimeline({
         <>
           <div className="p-4">
             {loading.length === 0 ? (
-              <p className="py-6 text-center text-sm text-slate-500">No loading timeline has been recorded.</p>
+              <p className="py-3 text-center text-xs text-slate-500">No loading timeline has been recorded.</p>
             ) : (
               <>
                 {loadStart !== null && loadEnd === null && (
                   <div className="mb-4 overflow-hidden rounded-full bg-amber-100"><div className="ot-stripes h-2 w-full rounded-full bg-amber-400" /></div>
                 )}
-                <Stepper steps={loadingSteps} theme={THEME.amber} now={now} activeLabel="In progress" />
+                <Stepper steps={loadingSteps} theme={THEME.amber} now={now} activeLabel="In progress" /><ReportImages recordId={report?.id} evidence={evidence}/>
                 <div className="mt-4 flex flex-wrap gap-2">
                   {span(arrival, loadStart) && <Chip theme={THEME.slate} icon={<Timer aria-hidden="true" className="h-3.5 w-3.5" />}>Waited {span(arrival, loadStart)} before loading</Chip>}
                   {span(loadStart, loadEnd) && <Chip theme={THEME.amber} icon={<Timer aria-hidden="true" className="h-3.5 w-3.5" />}>Loading took {span(loadStart, loadEnd)}</Chip>}
@@ -270,7 +284,7 @@ export default function OperationsTimeline({
       body: (
         <>
           <div className="space-y-3 p-4">
-            {stops.length === 0 ? <p className="py-6 text-center text-sm text-slate-500">No stops are recorded.</p> : stops.map((stop) => {
+            {stops.length === 0 ? <p className="py-3 text-center text-xs text-slate-500">No stops are recorded.</p> : stops.map((stop) => {
               const state = stopState(stop);
               const arrive = toMs(stop.arrival);
               const start = toMs(stop.start);
@@ -298,7 +312,7 @@ export default function OperationsTimeline({
                       {span(start, finish) && <Chip theme={state.theme} icon={<Timer aria-hidden="true" className="h-3.5 w-3.5" />}>Unloaded in {span(start, finish)}</Chip>}
                     </div>
                   )}
-                  {stop.remarks && <p className="mt-2 rounded-lg bg-white/70 px-3 py-2 text-xs text-slate-600">{stop.remarks}</p>}
+                  <ReportImages recordId={stop.reportId} evidence={evidence}/>{stop.remarks && <p className="mt-2 rounded-lg bg-white/70 px-3 py-2 text-xs text-slate-600">{cleanActivityNote(stop.remarks)}</p>}
                 </div>
               );
             })}
@@ -309,12 +323,12 @@ export default function OperationsTimeline({
     {
       key: "backload", title: "Backload records", subtitle: "Goods sent back to the warehouse", theme: THEME.indigo, Icon: Undo2,
       done: backloads.length > 0 && unloadingDone, hasData: backloads.length > 0, chip: scopeChip(backloads),
-      body: <ScopeBody theme={THEME.indigo} Icon={Undo2} records={backloads} stopLabel={stopLabel} now={now} />,
+      body: <ScopeBody theme={THEME.indigo} Icon={Undo2} records={backloads} stopLabel={stopLabel} now={now} evidence={evidence} />,
     },
     {
       key: "offload", title: "Offload records", subtitle: "Goods taken off the truck", theme: THEME.rose, Icon: PackageMinus,
       done: offloads.length > 0 && unloadingDone, hasData: offloads.length > 0, chip: scopeChip(offloads),
-      body: <ScopeBody theme={THEME.rose} Icon={PackageMinus} records={offloads} stopLabel={stopLabel} now={now} />,
+      body: <ScopeBody theme={THEME.rose} Icon={PackageMinus} records={offloads} stopLabel={stopLabel} now={now} evidence={evidence} />,
     },
   ];
 
@@ -343,10 +357,10 @@ export default function OperationsTimeline({
 
       {error && <p role="status" className="mt-3 rounded-xl bg-amber-50 px-4 py-3 text-xs text-amber-800">{error}</p>}
 
-      <ol className="mt-4 space-y-3">
+      <ol className={expanded?"trip-inline-report-grid":"mt-4 space-y-3"}>
         {sections.map((section) => {
           const state = section.done ? "done" : section.key === activeKey ? "active" : section.hasData ? "recorded" : "empty";
-          const open = overrides[section.key] ?? section.key === activeKey;
+          const open = expanded || (overrides[section.key] ?? section.key === activeKey);
           const chipTheme = state === "done" ? THEME.emerald : state === "empty" ? THEME.slate : section.theme;
           const panelId = `ot-panel-${section.key}`;
           return (
@@ -355,6 +369,7 @@ export default function OperationsTimeline({
                 type="button"
                 aria-expanded={open}
                 aria-controls={panelId}
+                disabled={expanded}
                 onClick={() => setOverrides((current) => ({ ...current, [section.key]: !open }))}
                 className={`flex w-full items-center gap-2.5 px-4 py-3 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2678b9] ${section.theme.soft} ${open ? `border-b ${section.theme.border}` : ""}`}
               >
@@ -367,7 +382,7 @@ export default function OperationsTimeline({
                   <span className="block truncate text-[11px] text-slate-500">{section.subtitle}</span>
                 </span>
                 <Chip theme={chipTheme}>{section.chip}</Chip>
-                <ChevronDown aria-hidden="true" className={`h-4 w-4 shrink-0 text-slate-400 transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
+                {!expanded&&<ChevronDown aria-hidden="true" className={`h-4 w-4 shrink-0 text-slate-400 transition-transform duration-200 ${open ? "rotate-180" : ""}`} />}
               </button>
               <div
                 id={panelId}
@@ -386,16 +401,16 @@ export default function OperationsTimeline({
 }
 
 function ScopeBody({
-  theme, Icon, records, stopLabel, now,
+  theme, Icon, records, stopLabel, now, evidence,
 }: {
   theme: Theme; Icon: LucideIcon; records: OpsScope[];
-  stopLabel: (stopId: string) => string | null; now: number;
+  stopLabel: (stopId: string) => string | null; now: number; evidence:ReportEvidence[];
 }) {
   return (
     <div>
       <div className="p-4">
         {records.length === 0 ? (
-          <div className="flex flex-col items-center gap-2 py-6 text-center">
+          <div className="flex flex-col items-center gap-2 py-2 text-center">
             <span className={`flex h-10 w-10 items-center justify-center rounded-full ${theme.soft} ${theme.text}`}><Icon aria-hidden="true" className="h-5 w-5" /></span>
             <p className="text-sm text-slate-500">No records.</p>
           </div>
@@ -405,7 +420,7 @@ function ScopeBody({
               const stopId = typeof record.trip_stop_id === "string" ? record.trip_stop_id : null;
               const created = toMs(record.created_at);
               const fresh = created !== null && now - created < FRESH_MS;
-              const reason = typeof record.reason === "string" && record.reason.trim() ? record.reason.trim() : "No reason recorded";
+              const reason = typeof record.reason === "string" && record.reason.trim() ? cleanActivityNote(record.reason) : "No reason recorded";
               const boxes = record.number_of_boxes === null || record.number_of_boxes === undefined || record.number_of_boxes === "" ? null : String(record.number_of_boxes);
               const comments = typeof record.comments === "string" && record.comments.trim() ? record.comments.trim() : null;
               return (
@@ -423,7 +438,7 @@ function ScopeBody({
                       {stopId ? stopLabel(stopId) ?? "Delivery stop" : "Whole trip"}
                       {created !== null && ` · ${clock(created)} · ${ago(created, now)}`}
                     </p>
-                    {comments && <p className="mt-1.5 whitespace-pre-wrap text-xs text-slate-600">{comments}</p>}
+                    <ReportImages recordId={record.id} evidence={evidence}/>{comments && <p className="mt-1.5 whitespace-pre-wrap text-xs text-slate-600">{cleanActivityNote(comments)}</p>}
                   </div>
                 </li>
               );
@@ -433,4 +448,13 @@ function ScopeBody({
       </div>
     </div>
   );
+}
+function ReportImages({recordId,evidence}:{recordId?:string;evidence:ReportEvidence[]}){
+ const files=recordId?evidence.filter(file=>[file.loading_report_id,file.unloading_report_id,file.backload_id,file.offload_id].includes(recordId)):[];
+ if(!files.length)return null;
+ return <div className="trip-report-evidence" aria-label="Trip-wide report attachments">{files.map(file=><a key={file.id} href={file.signed_url??undefined} target="_blank" rel="noopener noreferrer" aria-label={`Open report attachment ${file.file_name}`}>{file.signed_url?<img loading="lazy" src={file.signed_url} alt={file.file_name}/>:<span>Image link unavailable</span>}</a>)}</div>;
+}
+
+function CompactMilestones({steps}:{steps:Step[]}){
+ return <ol className="trip-compact-milestones">{steps.map(({label,at,Icon})=><li key={label} data-recorded={at!==null||undefined}><span><Icon size={13} aria-hidden="true"/>{label}</span><strong>{at===null?'Not recorded':clock(at)}</strong>{at!==null&&<time dateTime={new Date(at).toISOString()}>{day(at)}</time>}</li>)}</ol>;
 }

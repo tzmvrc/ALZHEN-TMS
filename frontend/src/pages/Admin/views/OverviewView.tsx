@@ -26,6 +26,8 @@ export default function OverviewView({ onOpenTrip, onMetricNavigate, active = tr
   } | null>(null);
   const [reloadCount, setReloadCount] = useState(0);
   const inactiveChanges = useRef(false);
+  const completedRead=useRef<{key:string;at:number}|null>(null);
+  const snapshotRef=useRef(snapshot);snapshotRef.current=snapshot;
   const requestKey = `${accessToken ?? "no-session"}:${reloadCount}`;
 
   useEffect(() => {
@@ -35,6 +37,7 @@ export default function OverviewView({ onOpenTrip, onMetricNavigate, active = tr
     }
 
     if (!active) return;
+    if(completedRead.current?.key===requestKey&&Date.now()-completedRead.current.at<60000)return;
     let isCurrent = true;
     void (async () => {
       try {
@@ -58,7 +61,7 @@ export default function OverviewView({ onOpenTrip, onMetricNavigate, active = tr
         }));
         setLoadedKey(requestKey);
         // Yield to navigation and rendering before starting nonessential reads.
-        await new Promise(resolve => window.setTimeout(resolve, 1500));
+        await new Promise(resolve => window.setTimeout(resolve, 0));
         if (!isCurrent) return;
         let bookingRows: ReportRow[] = [];
         let bookingUnavailable = false;
@@ -99,6 +102,7 @@ export default function OverviewView({ onOpenTrip, onMetricNavigate, active = tr
         const events=tracks.flatMap(({trip,events})=>events.map(event=>({...event,dispatch_number:String(trip.dispatch_number??trip.id)})));
         const photoUrls:Record<string,string>={};for(const image of batch.images)photoUrls[image.trip_id]=image.signed_url;
         if (!isCurrent) return;
+        completedRead.current={key:requestKey,at:Date.now()};
         setSnapshot({
           recent: allTrips.rows,
           photoUrls,
@@ -152,6 +156,26 @@ export default function OverviewView({ onOpenTrip, onMetricNavigate, active = tr
         setReloadCount((count) => count + 1);
       }, 250);
     };
+    let detailTimer:number|null=null,detailBusy=false,detailAgain=false,disposed=false;
+    const refreshDetails=async()=>{
+      if(detailBusy){detailAgain=true;return;}
+      const before=snapshotRef.current;if(!before||before.detailsLoading)return;
+      detailBusy=true;
+      try{
+        const batch=await fetchHomeTripDetails(accessToken,before.recent.flatMap(trip=>typeof trip.id==='string'?[trip.id]:[]));
+        if(disposed)return;
+        setSnapshot(current=>{
+          if(!current||current.recent!==before.recent)return current;
+          const activeStops=new Set(current.bookingRows.map(row=>textValue(row.trip_stop_id??row._trip_stop_id)).filter(Boolean));
+          const tracks=current.recent.map(trip=>({trip,events:batch.events.filter(event=>event.trip_id===trip.id&&(!event.trip_stop_id||!current.bookingUnavailable&&activeStops.has(event.trip_stop_id)))}));
+          const events=tracks.flatMap(({trip,events})=>events.map(event=>({...event,dispatch_number:String(trip.dispatch_number??trip.id)})));
+          const photoUrls:Record<string,string>={};for(const image of batch.images)photoUrls[image.trip_id]=image.signed_url;
+          return {...current,tracks,events,photoUrls,eventsUnavailable:false};
+        });
+      }catch{if(!disposed)setSnapshot(current=>current?{...current,eventsUnavailable:true}:current);}
+      finally{detailBusy=false;if(!disposed&&detailAgain){detailAgain=false;void refreshDetails();}}
+    };
+    const scheduleDetails=()=>{if(detailTimer!==null||reloadTimer!==null)return;detailTimer=window.setTimeout(()=>{detailTimer=null;void refreshDetails();},250);};
     const relevant = (table: string, payload?: { new?: Record<string, unknown> | null; old?: Record<string, unknown> | null }) => {
       if (["trips", "trip_stops", "warehouses", "customer_stores", "trip_truck_assignments"].includes(table)) return true;
       if (table !== "trip_events" && table !== "trip_images") return false;
@@ -162,7 +186,8 @@ export default function OverviewView({ onOpenTrip, onMetricNavigate, active = tr
     const unsubscribe = subscribeToAdminRealtime((event) => {
       if (event.kind === "batch") {
         if (!event.tables.some((table) => ["trips", "trip_stops", "warehouses", "customer_stores", "trip_truck_assignments", "trip_events", "trip_images"].includes(table))) return;
-        if (active) scheduleReload(); else inactiveChanges.current = true;
+        const structural=event.tables.some(table=>['trips','trip_stops','warehouses','customer_stores','trip_truck_assignments'].includes(table));
+        if(active){if(structural)scheduleReload();else scheduleDetails();}else inactiveChanges.current=true;
         return;
       }
       if (event.kind === "resume") {
@@ -175,7 +200,8 @@ export default function OverviewView({ onOpenTrip, onMetricNavigate, active = tr
       if (event.kind === "recovered") {
         if (!relevant(event.table)) return;
       } else if (!relevant(event.payload.table, event.payload)) return;
-      if (active) scheduleReload();
+      const table=event.kind==='recovered'?event.table:event.payload.table;
+      if(active){if(['trip_events','trip_images'].includes(table))scheduleDetails();else scheduleReload();}
       else inactiveChanges.current = true;
     });
     if (active && inactiveChanges.current) {
@@ -183,7 +209,8 @@ export default function OverviewView({ onOpenTrip, onMetricNavigate, active = tr
       scheduleReload();
     }
     return () => {
-      unsubscribe();
+      disposed=true;unsubscribe();
+      if(detailTimer!==null)window.clearTimeout(detailTimer);
       if (reloadTimer !== null) window.clearTimeout(reloadTimer);
     };
   }, [accessToken, active, snapshot?.recent]);

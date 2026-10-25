@@ -114,10 +114,10 @@ function pendingOffloadItemId(reportId: string, sourceItemId: string | null) {
   }
 }
 
-export default function OperationsReportsView({ mode, onOpenTrip, refreshVersion = 0, toolbarLeading }: { toolbarLeading?: ReactNode; mode: Mode; refreshVersion?: number; onOpenTrip?: (tripId: string, stopId?: string | null) => void }) {
+export default function OperationsReportsView({ mode, onOpenTrip, refreshVersion = 0, toolbarLeading, initialSearch = "" }: { initialSearch?:string; toolbarLeading?: ReactNode; mode: Mode; refreshVersion?: number; onOpenTrip?: (tripId: string, stopId?: string | null) => void }) {
   const { accessToken, profile } = useAuth();
   const [active, setActive] = useState<Kind>("loading");
-  const [pageQuery,setPageQuery]=useState<OperationsPageOptions>({page:1,limit:50,search:"",filter:"All",sortBy:"date",sortOrder:"desc"});
+  const [pageQuery,setPageQuery]=useState<OperationsPageOptions>({page:1,limit:50,search:initialSearch,filter:"All",sortBy:"date",sortOrder:"desc"});
   const pageKey=JSON.stringify(pageQuery);
   const [loadingMore,setLoadingMore]=useState(false);
   const pageWindow=useRef({key:"",page:0});
@@ -542,7 +542,7 @@ function readOperationsColumnLayout(storageKey = OPERATIONS_COLUMN_STORAGE_KEY) 
 
 export function OperationsEventsTable({ rows, loading, hasLoaded, loadError, token, profileId, canManageReports = false, onOpenTrip, onSaved, toolbarActions, toolbarLeading, onInteractionCheck, serverPage }: { toolbarLeading?: ReactNode; rows: OperationsEventRow[]; loading: boolean; hasLoaded: boolean; loadError: string | null; token: string; profileId?: string; canManageReports?: boolean; onOpenTrip?: (tripId: string, stopId?: string | null) => void; onSaved: () => void | Promise<void>; toolbarActions?: ReactNode; onInteractionCheck?: (check: () => boolean) => void; serverPage?: {onLoadMore:()=>Promise<void>;loadingMore:boolean;hasMore:boolean;query:OperationsPageOptions;pagination:OperationsReportData["pagination"];pending:boolean;onChange:(next:OperationsPageOptions)=>void} }) {
   const filter = (serverPage?.query.filter ?? "All") as EventFilter;
-  const [localSearch, setLocalSearch] = useState("");
+  const [localSearch, setLocalSearch] = useState(serverPage?.query.search ?? "");
   const search=localSearch;
   const searchScope=serverPage?.query.search??"";
   const searchAction=useRef(serverPage?.onChange);searchAction.current=serverPage?.onChange;
@@ -917,6 +917,7 @@ export function OperationsEventsTable({ rows, loading, hasLoaded, loadError, tok
     };
   };
   const canEdit = (row: OperationsEventRow, field: EditableEventField) => {
+    if(!canManageReports)return false;
     if (field === "dispatch_number") return true;
     if (field === "plate_number" || field === "driver_name") return Boolean(row.assignment_id);
     if (field === "reported_by") return false; // Original submitter is audit attribution.
@@ -1061,7 +1062,7 @@ export function OperationsEventsTable({ rows, loading, hasLoaded, loadError, tok
   };
 
 
-  return <section aria-label="Unified operations reports" className="min-h-0 space-y-2">
+  return <section aria-label="Unified operations reports" data-unsaved={Boolean(editing||rowEdit||rowEditBusy||formulas.draftPending)||undefined} className="min-h-0 space-y-2">
     <div className={REPORT_TOOLBAR_ROW_CLASS}>
       {toolbarLeading && <div className="shrink-0" data-report-toolbar-leading>{toolbarLeading}</div>}
       <div data-report-toolbar-actions className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2">{sharedWidths.feedback}{sharedDesign.feedback}<ColumnFinder tableKey="operations" rowSearch={{value:search,onSearch:value=>{setSelectedRows(new Set());setSearch(value);},placeholder:"Search rows or columns…"}} columns={OPERATIONS_COLUMNS.map(column=>({key:column.key,title:column.label,hidden:layout.hidden.includes(column.key),index:columns.findIndex(item=>item.key===column.key)}))} viewport={viewportRef} getHeader={key=>viewportRef.current?.querySelector<HTMLElement>(`[data-ops-column="${key}"]`)} onReveal={key=>setLayout(current=>({...current,hidden:current.hidden.filter(item=>item!==key)}))} />{canManageReports && visibleRows.some(row => selectedRows.has(row.id)) && Boolean(selectedTargets?.length) && <><ReportRowActionButton action="edit" disabled={selectedRows.size !== 1 || selectedTargets?.length !== 1 || rowEditBusy || deleteBusy || Boolean(editing)} onClick={editSelectedRow} />{canDeleteSelectedReports && <ReportRowActionButton action="delete" disabled={!selectedTargets?.length || rowEditBusy || deleteBusy || Boolean(editing)} onClick={() => {  setDeleteMessage(null); setDeleteConfirmation(true); }} />}</>}{toolbarActions}<OffloadCleanupNotice key={token} token={token} enabled={canManageReports} version={cleanupVersion} /></div>
@@ -1123,7 +1124,7 @@ export function OperationsEventsTable({ rows, loading, hasLoaded, loadError, tok
         </tbody>
       </table>
     </div>
-    <SpreadsheetFooter label="Operations loading" total={serverPage?.pagination?.total??visibleRows.length} page={1} totalPages={1}><span role="status">{serverPage?.loadingMore?"Loading more reports...":`${visibleRows.length} reports loaded`}</span>{serverPage?.hasMore&&<button type="button" disabled={serverPage.pending||serverPage.loadingMore} onClick={()=>void serverPage.onLoadMore()}>Load more</button>}</SpreadsheetFooter>
+    <SpreadsheetFooter label="Operations loading" total={serverPage?.pagination?.total??visibleRows.length} page={1} totalPages={1}><span role="status">{serverPage?.loadingMore?"Loading more reports...":`${visibleRows.length} reports loaded`}</span>{loadError&&<button type="button" disabled={loading||Boolean(editing||rowEdit||deleteBusy||formulas.draftPending)} onClick={()=>void onSaved()}>Retry loading</button>}</SpreadsheetFooter>
     </div>
     {detailRow && <div className="fixed inset-0 z-[2050] flex items-center justify-center bg-[#0b2341]/45 p-4 backdrop-blur-sm" role="presentation">
       <section role="dialog" aria-modal="true" aria-labelledby="operations-report-details-title" className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">

@@ -6,7 +6,7 @@ import PublicRoute from "./components/PublicRoute";
 import LoginPage from "./pages/Admin/LoginPage";
 import DriverLoginPage from "./pages/Driver/LoginPage";
 const DashboardPage = lazy(() => import("./pages/Admin/DashboardPage"));
-const DriverPortal = lazy(() => import("./pages/Driver/DriverPortal"));
+const DriverPortal = lazy(() => import("./pages/Driver/DeliveryCompanion"));
 const DriverAccountPage = lazy(() => import("./pages/Driver/DriverAccountPage"));
 import NotFoundPage from "./pages/NotFoundPage";
 

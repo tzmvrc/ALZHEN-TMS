@@ -12,7 +12,7 @@ export function SpreadsheetFooter({ total, page = 1, totalPages = 1, children, l
   total: number; page?: number; totalPages?: number; children?: ReactNode; label?: string;
 }) {
   return <footer aria-label={label} className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-slate-100 bg-white px-5 py-3 text-xs text-slate-400">
-    <span>{total.toLocaleString()} rows {"\u00b7"} Page {Math.max(1, page)} of {Math.max(1, totalPages)}</span>
+    <span>{total.toLocaleString()} rows{totalPages>1?` / Page ${Math.max(1,page)} of ${Math.max(1,totalPages)}`:""}</span>
     {children && <div className="flex flex-wrap items-center gap-2">{children}</div>}
   </footer>;
 }
