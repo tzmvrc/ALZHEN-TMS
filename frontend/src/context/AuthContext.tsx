@@ -93,6 +93,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const cacheTokenRef = useRef<string | null>(null);
   const cacheRoleRef=useRef<string|null>(null);
   const retryRefreshTimerRef = useRef<number | undefined>(undefined);
+  const retryRefreshAttemptRef=useRef(0);
   const refreshSessionRef = useRef<AuthContextValue["refreshSession"] | null>(null);
   const authSyncLockedRef = useRef(false);
   const refreshFlight = useRef<Promise<void>|null>(null);
@@ -229,6 +230,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         window.clearTimeout(retryRefreshTimerRef.current);
         retryRefreshTimerRef.current = undefined;
+        retryRefreshAttemptRef.current=0;
 
         if (
           cacheOwnerRef.current !== response.data.profile.id ||
@@ -276,7 +278,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             retryRefreshTimerRef.current = undefined;
             lastRefreshAtRef.current = 0;
             void refreshSessionRef.current?.({ silent: true });
-          }, 5000);
+          }, Math.min(60000,5000*2**Math.min(retryRefreshAttemptRef.current++,4)));
         }
       } finally {
         if (epoch===sessionEpoch.current && !preserveInitialLoading) setLoading(false);

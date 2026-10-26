@@ -1854,18 +1854,16 @@ export async function getTripEvents(id: string) {
     throw new Error("Invalid trip id");
   }
 
-  const { data, error } = await supabaseAdmin
-    .from("trip_events")
-    .select("*,attachments:trip_images!trip_images_delivery_event_id_fkey(id,file_name,kind),actor:profiles!trip_events_recorded_by_fkey(first_name,last_name)")
-    .eq("trip_id", id)
-    .order("event_time", { ascending: true });
-
-  if (error) {
-    console.error("Trip event query error:", { tripId: id, error });
-    throw new Error("Unable to fetch trip events");
+  const rows=new Map<string,any>();let cursor:{id:string;event_time:string}|null=null;
+  for(;;){
+    let query=supabaseAdmin.from('trip_events').select('*,attachments:trip_images!trip_images_delivery_event_id_fkey(id,file_name,kind),actor:profiles!trip_events_recorded_by_fkey(first_name,last_name)').eq('trip_id',id).order('event_time',{ascending:true}).order('id',{ascending:true}).limit(500);
+    if(cursor)query=query.or(`event_time.gt.${cursor.event_time},and(event_time.eq.${cursor.event_time},id.gt.${cursor.id})`);
+    const {data,error}=await query;
+    if(error){console.error('Trip event query error:',{tripId:id,code:error.code});throw new Error('Unable to fetch trip events');}
+    const page=data??[];for(const row of page)rows.set(row.id,row);
+    if(page.length<500)return [...rows.values()];
+    const last=page[page.length-1];cursor={id:last.id,event_time:last.event_time};
   }
-
-  return data ?? [];
 }
 
 export async function updateTripBillingRecord(

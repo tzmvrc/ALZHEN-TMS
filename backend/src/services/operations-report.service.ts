@@ -168,12 +168,12 @@ async function readReportCollections(tripIds?: string[], activeOnly = false, sou
     (!activeOnly || !row.trip_stop_id || visibleStopIds.has(String(row.trip_stop_id)));
   const active = filterConvertedReportSources<Record<string, unknown> & { id: string; trip_id: string }>(loading as any, unloading as any, backloads as any, offloads as any, conversions as any);
   const activeOffloads = (active.offloads as Record<string, unknown>[]).filter(visibleReport);
-  const offloadItems = await readByForeignIds<Record<string, unknown>>(
-    "offload_items",
-    "id, offload_id, trip_line_item_id, quantity, total_cbm, dr_number, customer_model",
-    "offload_id",
-    activeOffloads.map((row) => String(row.id)),
-  );
+  const [backloadItems,offloadItems]=await Promise.all([
+    readByForeignIds<Record<string,unknown>>('backload_items','id,backload_id,trip_line_item_id,quantity,total_cbm,dr_number,customer_model','backload_id',(active.backloads as Record<string,unknown>[]).filter(visibleReport).map(row=>String(row.id))),
+    readByForeignIds<Record<string,unknown>>('offload_items','id,offload_id,trip_line_item_id,quantity,total_cbm,dr_number,customer_model','offload_id',activeOffloads.map(row=>String(row.id))),
+  ]);
+  const itemsByBackloadId=new Map<string,Record<string,unknown>[]>();
+  for(const item of backloadItems){const id=String(item.backload_id);const group=itemsByBackloadId.get(id)??[];group.push(item);itemsByBackloadId.set(id,group);}
   const itemsByOffloadId = new Map<string, Record<string, unknown>[]>();
   for (const item of offloadItems) {
     const id = String(item.offload_id);
@@ -184,7 +184,7 @@ async function readReportCollections(tripIds?: string[], activeOnly = false, sou
     stops: visibleStops.sort((a, b) => a.trip_id.localeCompare(b.trip_id) || (a.stop_sequence ?? 0) - (b.stop_sequence ?? 0) || a.id.localeCompare(b.id)),
     loading: (active.loading as Record<string, unknown>[]).filter(visibleReport),
     unloading: (active.unloading as Record<string, unknown>[]).filter(visibleReport),
-    backloads: (active.backloads as Record<string, unknown>[]).filter(visibleReport),
+    backloads: (active.backloads as Record<string, unknown>[]).filter(visibleReport).map((row):Record<string,unknown>&{items:Record<string,unknown>[]}=>({...row,items:itemsByBackloadId.get(String(row.id))??[]})),
     offloads: activeOffloads.map((row): Record<string, unknown> & { items: Record<string, unknown>[] } => ({ ...row, items: itemsByOffloadId.get(String(row.id)) ?? [] })),
     conversions,
   };
@@ -393,11 +393,19 @@ export async function getAssignedOperations(actor: ReportActor) {
   return { ...collections, ...await buildEventRows(collections) };
 }
 
+async function readTripExceptions(tripId:string){
+ const [incidents,demurrages]=await Promise.all([
+  readPaged<Record<string,any>>('incidents','id,trip_id,trip_stop_id,incident_date,status,description,created_at,reason:incident_reasons(code,name)',q=>q.eq('trip_id',tripId)),
+  readPaged<Record<string,any>>('demurrages','id,trip_id,trip_stop_id,time_in,time_out,waiting_minutes,reason,status,checking_status,remarks,created_at',q=>q.eq('trip_id',tripId)),
+ ]);
+ return [...incidents.map(row=>({...row,report_type:'INCIDENT',reason:row.reason?.name??null,incident_category:row.reason?.name??row.reason?.code??null,comments:row.description,reported_at:row.created_at,source:'incidents'})),...demurrages.map(row=>({...row,report_type:'DEMURRAGE',comments:row.remarks,reported_at:row.time_in??row.created_at,source:'demurrages'}))];
+}
+
 export async function getTripOperations(actor: ReportActor, tripId: string, includeEvidence: boolean | "metadata" = false) {
   const trip = await getTrip(actor, tripId);
   await assertActorTripAccess(actor, trip);
-  const collections = await readReportCollections([trip.id]);
-  const result = { ...collections, ...await buildEventRows(collections) };
+  const [collections,exception_reports]=await Promise.all([readReportCollections([trip.id]),['ADMIN','STAFF'].includes(actor.role)?readTripExceptions(trip.id):Promise.resolve([])]);
+  const result = { ...collections, exception_reports, ...await buildEventRows(collections) };
   if(!includeEvidence||!['ADMIN','STAFF'].includes(actor.role))return result;
   const sources=[['loading_report_id',collections.loading],['unloading_report_id',collections.unloading],['backload_id',collections.backloads],['offload_id',collections.offloads]] as const;
   const filters=sources.flatMap(([field,records])=>records.length?[`${field}.in.(${records.map(record=>record.id).join(',')})`]:[]);

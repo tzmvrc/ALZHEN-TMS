@@ -70,7 +70,7 @@ export async function me(req: Request, res: Response) {
       });
     }
 
-    const profile = await getCurrentUserProfile(req.user.id);
+    const profile = await getCurrentUserProfile(req.user.id,req.profile);
 
     return res.status(200).json({
       success: true,
@@ -139,7 +139,7 @@ export async function bootstrapSession(req: Request, res: Response) {
       return res.status(401).json({ success: false, message: "Authentication required" });
     }
 
-    const profile = await getCurrentUserProfile(session.profileId);
+    const profile = await getCurrentUserProfile(session.profileId,req.profile);
     if (session.role === "TRUCKER") {
       return res.status(200).json({ success: true, data: { authUser: req.user, profile, role: session.role } });
     }

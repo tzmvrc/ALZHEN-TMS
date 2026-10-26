@@ -38,7 +38,7 @@ export function TruckJourneyIllustration({loop=false,wide=false}:{loop?:boolean;
   const truckId=useId(),art=useRef<SVGSVGElement>(null);
   const [roadWidth,setRoadWidth]=useState(600);
   useEffect(()=>{if(!wide||!art.current)return;const node=art.current;const resize=()=>{const {width,height}=node.getBoundingClientRect();if(width&&height)setRoadWidth(Math.round(width*118/height));};resize();const observer=new ResizeObserver(resize);observer.observe(node);return()=>observer.disconnect();},[wide]);
-  return <svg ref={art} className="home-truck-art" style={wide?{'--trip-drive-distance':`${roadWidth}px`} as CSSProperties:undefined} viewBox={wide?`0 0 ${roadWidth} 118`:"0 0 360 118"} fill="none" aria-hidden="true" focusable="false">
+  return <svg ref={art} className="home-truck-art" style={wide?{'--trip-drive-distance':`${roadWidth}px`,'--trip-park-offset':`${roadWidth/2-178}px`,'--trip-wheel-duration':`${28*2*Math.PI*8*1.3/roadWidth}s`} as CSSProperties:undefined} viewBox={wide?`0 0 ${roadWidth} 118`:"0 0 360 118"} fill="none" aria-hidden="true" focusable="false">
     <path d={wide?`M-20 92H${roadWidth+20}`:"M-20 92H390"} stroke="white" strokeOpacity=".1" strokeWidth="25"/>
     <path d={wide?`M-20 92H${roadWidth+20}`:"M-20 92H390"} stroke="#FFD43B" strokeOpacity=".7" strokeWidth="1.5" strokeDasharray="10 12"/>
     <path d="M20 73V45H70V73M29 45V35H62V45M35 55H56M35 62H56" stroke="white" strokeOpacity=".23" strokeWidth="2"/>
@@ -53,9 +53,11 @@ export function TruckJourneyIllustration({loop=false,wide=false}:{loop?:boolean;
       <path d="M193 53H205L215 64H193V53Z" fill="#143858"/>
       <path d="M121 47V66M130 47V66M139 47V66M148 47V66M157 47V66M166 47V66M175 47V66" stroke="#C8D4E1"/>
       <rect x="110" y="72" width="116" height="6" rx="2" fill="#5483A5"/>
-      <circle cx="133" cy="78" r="8" fill="#071B30"/><circle cx="133" cy="78" r="3" fill="#CCDAE7"/>
-      <circle cx="177" cy="78" r="8" fill="#071B30"/><circle cx="177" cy="78" r="3" fill="#CCDAE7"/>
-      <circle cx="210" cy="78" r="8" fill="#071B30"/><circle cx="210" cy="78" r="3" fill="#CCDAE7"/>
+      {[133,177,210].map(x=><g key={x} className={wide?'home-truck-wheel':undefined}>
+        <circle cx={x} cy="78" r="8" fill="#071B30"/>
+        {wide&&<path d={`M${x-4} 78H${x+4}M${x} 74V82`} stroke="#CCDAE7" strokeOpacity=".55" strokeWidth="1.2"/>}
+        <circle cx={x} cy="78" r={wide?2.5:3} fill="#CCDAE7"/>
+      </g>)}
       <rect x="219" y="67" width="5" height="4" rx="1" fill="white"/>
       <path d="M95 52H103M88 61H102" stroke="white" strokeOpacity=".45" strokeLinecap="round"/>
     </g>{loop&&<use href={`#${truckId}`} transform={wide?`translate(${-roadWidth} 0)`:"translate(-360 0)"}/>}</g>

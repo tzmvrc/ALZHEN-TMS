@@ -422,11 +422,6 @@ function TripGallery({
 }
 
 /* ------------------------------------------------------------------ */
-/* Vehicle card                                                        */
-/* ------------------------------------------------------------------ */
-const TRUCK_SLOTS = 12;
-
-/* ------------------------------------------------------------------ */
 /* Bento building blocks                                               */
 /* ------------------------------------------------------------------ */
 function TripDetailSkeleton({ onBack }: { onBack: () => void }) {
@@ -508,7 +503,7 @@ export default function TripDetailView({
   useEffect(() => subscribeToAdminRealtime((event) => {
     if (event.kind === "batch") {
       if (event.tables.some((table) => (RECEIPT_TABLES as readonly string[]).includes(table))) setReceiptTick((value) => value + 1);
-      if (event.tables.some((table) => ["trips", "trip_stops", "trip_line_items", "trip_truck_assignments", "billings", "loading_reports", "unloading_reports", "backloads", "offloads", "report_receipts", "operations_report_conversions", "customers", "customer_stores", "warehouses", "drivers", "trucks", "trucking_companies"].includes(table))) {
+      if (event.tables.some((table) => ["trips", "trip_stops", "trip_line_items", "trip_truck_assignments", "billings", "loading_reports", "unloading_reports", "backloads", "offloads", "incidents", "demurrages", "report_receipts", "operations_report_conversions", "customers", "customer_stores", "warehouses", "drivers", "trucks", "trucking_companies"].includes(table))) {
         realtimeGate.request();
       }
       return;
@@ -518,7 +513,7 @@ export default function TripDetailView({
 
       return;
     }
-    const tripTables = ["trips", "trip_stops", "trip_line_items", "trip_truck_assignments", "billings", "loading_reports", "unloading_reports", "backloads", "offloads", "report_receipts", "operations_report_conversions"];
+    const tripTables = ["trips", "trip_stops", "trip_line_items", "trip_truck_assignments", "billings", "loading_reports", "unloading_reports", "backloads", "offloads", "incidents", "demurrages", "report_receipts", "operations_report_conversions"];
     const receiptTables: readonly string[] = RECEIPT_TABLES;
     if (event.kind === "recovered") {
       if (receiptTables.includes(event.table)) setReceiptTick((value) => value + 1);
@@ -583,36 +578,8 @@ export default function TripDetailView({
           const message = result.reason instanceof Error ? result.reason.message : "Unavailable";
           return [`${sections[index]}: ${message}`];
         });
-        const params = new URLSearchParams({
-          page: "1",
-          limit: "500",
-          trip_id: tripId,
-          sort_by: "loading_date",
-          sort_order: "desc",
-        });
-        let bookingRows: Record<string, unknown>[] = previous?.bookingRows??[];
-        let bookingError: string | null = null;
-        try {
-          const bookingResponse = await apiGetCached<ApiResponse<BookingPage>>(
-            `/reports/trip-booking?${params.toString()}`,
-            accessToken,undefined,undefined,20_000,
-          );
-          if (!bookingResponse.success || !bookingResponse.data) {
-            throw new Error(bookingResponse.message ?? "Trip report enrichment unavailable.");
-          }
-          bookingRows = [...bookingResponse.data.rows];
-          for (let page = 2; page <= bookingResponse.data.pagination.totalPages; page += 1) {
-            params.set("page", String(page));
-            const next = await apiGetCached<ApiResponse<BookingPage>>(
-              `/reports/trip-booking?${params.toString()}`, accessToken,undefined,undefined,20_000,
-            );
-            if (!next.success || !next.data) throw new Error(next.message ?? "Trip report enrichment unavailable.");
-            bookingRows.push(...next.data.rows);
-          }
-        } catch (cause) {
-          if (cause instanceof ApiError && cause.status === 401) throw cause;
-          bookingError = cause instanceof Error ? cause.message : "Trip report enrichment unavailable.";
-        }
+        const bookingRows=previous?.bookingRows??[];
+        const bookingError=null;
         if (!active) return;
         const nextDetail:DetailState={
           trip: {
@@ -657,6 +624,20 @@ export default function TripDetailView({
       active = false;
     };
   }, [accessToken, navigate, refreshSession, requestKey, tripId,snapshotEndpoint,scope]);
+
+  useEffect(()=>{
+    if(!accessToken||library!=='records')return;
+    let active=true;
+    void (async()=>{
+      const params=new URLSearchParams({page:'1',limit:'500',trip_id:tripId,sort_by:'loading_date',sort_order:'desc'});
+      try{
+        const read=async()=>{const result=await apiGetCached<ApiResponse<BookingPage>>(`/reports/trip-booking?${params}`,accessToken,undefined,undefined,20000);if(!result.success||!result.data)throw Error(result.message??'Trip report enrichment unavailable.');return result.data;};
+        const first=await read(),rows=[...first.rows];
+        for(let page=2;page<=first.pagination.totalPages;page++){if(!active)return;params.set('page',String(page));rows.push(...(await read()).rows);}
+        if(active)setDetailState(current=>current.scope===scope&&current.value?{...current,value:{...current.value,bookingRows:rows,bookingError:null}}:current);
+      }catch(error){if(active)setDetailState(current=>current.scope===scope&&current.value?{...current,value:{...current.value,bookingError:error instanceof Error?error.message:'Trip report enrichment unavailable.'}}:current);}
+    })();return()=>{active=false;};
+  },[accessToken,tripId,scope,library,retry]);
 
   const isLoading = Boolean(accessToken) && loadedKey !== requestKey;
   const error = failure?.key === requestKey ? failure.message : null;

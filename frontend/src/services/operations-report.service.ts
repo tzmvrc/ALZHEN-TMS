@@ -24,7 +24,8 @@ export type OperationsReceipt = { id: string; file_name: string; mime_type: stri
 export type OperationsReceiptEventType = "LOADING" | "UNLOADING" | "BACKLOAD" | "OFFLOAD";
 export type OperationsReceiptUpload = { id: string; trip_id: string; trip_stop_id: string | null; file_name: string; mime_type: string; file_size_bytes: number; uploaded_by: string; received_at: string | null; created_at: string | null };
 export type ReportEvidence={id:string;loading_report_id:string|null;unloading_report_id:string|null;backload_id:string|null;offload_id:string|null;file_name:string;mime_type:string;signed_url:string|null;created_at:string};
-export type OperationsReportData = { report_evidence?:ReportEvidence[];evidence_links_pending?:boolean;evidence_limited?:boolean;evidence_error?:string; trips: OperationsTrip[]; trip_options: OperationsTripOption[]; stops: OperationsStop[]; loading: LoadingReport[]; unloading: UnloadingReport[]; backloads: ScopeReport[]; offloads: ScopeReport[]; event_rows: OperationsEventRow[]; pagination?: {page:number;limit:number;total:number;totalPages:number} };
+export type OperationsException=ScopeReport&{report_type:string;source:'incidents'|'demurrages';created_at:string;incident_category?:string|null;waiting_minutes?:number|null;checking_status?:string|null};
+export type OperationsReportData = { exception_reports?:OperationsException[]; report_evidence?:ReportEvidence[];evidence_links_pending?:boolean;evidence_limited?:boolean;evidence_error?:string; trips: OperationsTrip[]; trip_options: OperationsTripOption[]; stops: OperationsStop[]; loading: LoadingReport[]; unloading: UnloadingReport[]; backloads: ScopeReport[]; offloads: ScopeReport[]; event_rows: OperationsEventRow[]; pagination?: {page:number;limit:number;total:number;totalPages:number} };
 
 const ROOT = "/reports/operations";
 export type OperationsReporter = { id: string; name: string; role: string };

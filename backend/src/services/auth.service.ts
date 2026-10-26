@@ -1,6 +1,6 @@
 import { supabaseAdmin, supabaseAuth } from "../config/supabase.js";
 
-import { getProfileByUserId } from "../models/profile.model.js";
+import { getProfileByUserId, type ProfileRow } from "../models/profile.model.js";
 import { createTruckerSession, registerAdminStaffSession, removeCurrentAdminStaffSession, removeCurrentTruckerSession } from "./app-session.service.js";
 import {ApiError} from "../utils/api-response.js";
 
@@ -63,8 +63,8 @@ export async function getCurrentUser(accessToken: string) {
   return user;
 }
 
-export async function getCurrentUserProfile(userId: string) {
-  const profile = await getProfileByUserId(userId);
+export async function getCurrentUserProfile(userId: string, verifiedProfile?:ProfileRow) {
+  const profile = verifiedProfile?.id===userId?verifiedProfile:await getProfileByUserId(userId);
 
   if (!profile) {
     throw new Error("User profile not found.");

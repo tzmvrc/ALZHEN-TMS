@@ -2,6 +2,7 @@ import {captureUserActivity} from "../services/user-activity.service.js";
 import { createHash } from "node:crypto";
 import { createConcurrentReadGate } from "../utils/concurrent-read.js";
 const shareRead=createConcurrentReadGate();
+let lastAvailabilityWarning=0;
 const fingerprint=(value:string)=>createHash("sha256").update(value).digest("hex");
 import { Request, Response, NextFunction } from "express";
 import { supabaseAdmin, supabaseAuth } from "../config/supabase.js";
@@ -33,6 +34,7 @@ async function authenticate(
       error,
     } = await shareRead(`user:${fingerprint(token)}`,()=>supabaseAuth.auth.getUser(token));
     if(error&&(!Number.isFinite(error.status)||Number(error.status)===0||Number(error.status)>=500||/Fetch|Unknown|Timeout|Abort/.test(error.name))){
+      if(Date.now()-lastAvailabilityWarning>=30000){lastAvailabilityWarning=Date.now();const original=(error as any).originalError;console.warn(JSON.stringify({event:'auth_verification_unavailable',status:error.status??null,code:error.code??null,name:error.name,transportCode:original?.cause?.code??null}));}
       // An unavailable identity provider is not evidence of an expired token.
       // Deny the request without destroying a valid browser/app session.
       return res.status(503).json({success:false,code:"AUTH_VERIFICATION_UNAVAILABLE",message:"Account verification is temporarily unavailable. Keep your session and retry."});

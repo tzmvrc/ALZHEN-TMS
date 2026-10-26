@@ -1,3 +1,4 @@
+import type {DeliveryEvent} from './delivery.service';
 import { apiDelete, apiGet, apiGetCached, apiPatch, apiPost, invalidateApiCache, type ApiResponse } from "./api.service";
 import { invalidateReportPageCache } from "./report.service";
 
@@ -91,7 +92,7 @@ export type TripPage = {
 };
 
 export type TripEvent = {
-  delivery_metadata?: {title?:string};
+  delivery_metadata?: DeliveryEvent['delivery_metadata'];
   assignment_id?: string | null;
   id: string;
   trip_id: string;

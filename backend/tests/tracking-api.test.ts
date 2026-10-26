@@ -7,7 +7,7 @@ test("tracking HTTP endpoints enforce JWT/app-session/roles, activation and serv
  const {supabaseAdmin:db,supabaseAuth}=await import("../src/config/supabase.js"),{sha256SessionIdentifier}=await import("../src/utils/session-rules.js");
  const {default:router}=await import("../src/routes/tracking.routes.js");
  const session="s".repeat(43),driver="00000000-0000-4000-8000-000000000002",admin="00000000-0000-4000-8000-000000000001",assignment="00000000-0000-4000-8000-000000000050";
- const original=db.from,rpc=db.rpc,getUser=supabaseAuth.auth.getUser,flag=process.env.TRACKING_ENABLED;
+ const original=db.from,rpc=db.rpc,getUser=supabaseAuth.auth.getUser,flag=process.env.TRACKING_ENABLED,plannedFlag=process.env.PLANNED_ROUTES_ENABLED;
  const calls:Array<{name:string;args:Record<string,unknown>}>=[];
  supabaseAuth.auth.getUser=(async(token:string)=>({data:{user:{id:token==="staff"?admin:driver}},error:null})) as typeof getUser;
  db.from=((table:string)=>{
@@ -18,6 +18,7 @@ test("tracking HTTP endpoints enforce JWT/app-session/roles, activation and serv
  const address=server.address();if(!address||typeof address==="string")throw Error("port");
  const request=(path:string,role="driver",body?:object)=>fetch(`http://127.0.0.1:${address.port}${path}`,{method:body?"POST":"GET",headers:{Authorization:`Bearer ${role}`,"X-App-Session":session,"Content-Type":"application/json"},body:body?JSON.stringify(body):undefined});
  try{
+  process.env.PLANNED_ROUTES_ENABLED="false";
   process.env.TRACKING_ENABLED="false";assert.equal((await fetch(`http://127.0.0.1:${address.port}/active`)).status,401);
   assert.equal((await request(`/roads?trip_ids=${assignment}`)).status,403);
   assert.equal((await request("/roads?trip_ids=invalid","staff")).status,400);
@@ -45,5 +46,5 @@ test("tracking HTTP endpoints enforce JWT/app-session/roles, activation and serv
    delete process.env.TRACKING_TEST_ASSIGNMENT_ID;
    assert.equal((await request("/active","staff")).status,503);
   }finally{for(const [key,value] of Object.entries({TRACKING_TEST_PROFILE_ID:oldProfile,TRACKING_TEST_ASSIGNMENT_ID:oldAssignment})){if(value===undefined)delete process.env[key];else process.env[key]=value;}}
- }finally{await new Promise<void>(resolve=>server.close(()=>resolve()));db.from=original;db.rpc=rpc;supabaseAuth.auth.getUser=getUser;if(flag===undefined)delete process.env.TRACKING_ENABLED;else process.env.TRACKING_ENABLED=flag;}
+ }finally{await new Promise<void>(resolve=>server.close(()=>resolve()));db.from=original;db.rpc=rpc;supabaseAuth.auth.getUser=getUser;if(flag===undefined)delete process.env.TRACKING_ENABLED;else process.env.TRACKING_ENABLED=flag;if(plannedFlag===undefined)delete process.env.PLANNED_ROUTES_ENABLED;else process.env.PLANNED_ROUTES_ENABLED=plannedFlag;}
 });

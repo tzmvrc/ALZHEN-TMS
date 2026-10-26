@@ -16,6 +16,7 @@ type Row=Record<string,any>;
 const ids=(value:unknown)=>typeof value==='string'&&isValidUuid(value);
 const management=(actor:DeliveryActor)=>['ADMIN','STAFF'].includes(actor.role);
 function failure(error:any){
+ if(error?.code==='23505'&&/trip_receipt_content_once_idx/.test(error?.message??''))throw new ApiError('This image is already saved as a POD for this trip. Choose the original receipt for this truck and stop.',409,'POD_ALREADY_SUBMITTED');
  const expected=['22023','23514','23505','P0001','40001','42501'].includes(error?.code);
  throw new ApiError(expected?error.message:'Delivery data could not be confirmed. Your draft is preserved.',error?.code==='42501'?403:error?.code==='40001'||error?.code==='23505'?409:expected?422:503,error?.code==='P0001'?'ARRIVAL_EVIDENCE_REQUIRED':'DELIVERY_UNAVAILABLE');
 }
@@ -97,7 +98,11 @@ export async function setDeliveryGeofence(actor:DeliveryActor,kind:string,locati
 }
 export async function deliveryEventDetails(actor:DeliveryActor,id:string,eventId:string){
  const assignment=await deliveryAssignment(actor,id);
- const event=await db.from('trip_events').select('id,trip_id').eq('id',eventId).eq('trip_id',assignment.trip_id).or(`assignment_id.eq.${id},and(assignment_id.is.null,notes.ilike.*[assignment:${id}]*)`).maybeSingle();if(event.error)failure(event.error);if(!event.data)throw new ApiError('Delivery event not found.',404);
+ if(!ids(eventId))throw new ApiError('Invalid event identity.',400);
+ const event=await db.from('trip_events').select('id,trip_id,assignment_id,notes').eq('id',eventId).eq('trip_id',assignment.trip_id).maybeSingle();if(event.error)failure(event.error);
+ const record=event.data,tag=record?.notes?.match(/\[assignment:([0-9a-f-]{36})\]/i)?.[1];
+ const owned=record&&(record.assignment_id===id||!record.assignment_id&&tag===id),shared=record&&!record.assignment_id&&!tag;
+ if(!record||(!owned&&!(management(actor)&&shared)))throw new ApiError('Delivery event not found.',404);
  const [images,audit,quantities]=await Promise.all([
   db.from('trip_images').select('id,storage_path,file_name,mime_type,kind,dr_number,ocr_text,ocr_confidence,pod_review_status').eq('delivery_event_id',eventId).eq('delivery_upload_state','READY').limit(6),
   db.from('audit_logs').select('id,action,created_at,old_data,new_data,actor:profiles!audit_logs_user_id_fkey(first_name,last_name)').eq('entity_type','trip_events').eq('entity_id',eventId).order('created_at',{ascending:false}).limit(50),

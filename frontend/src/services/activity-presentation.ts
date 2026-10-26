@@ -29,5 +29,5 @@ export function activityDescription(value: string, destination?: string) {
   if(/DETAIL/.test(key))return "Delivery details updated";
   return "Trip update recorded";
 }
-export const cleanActivityNote=(value:string)=>value.replace(/\[(?:ALZHEN_[A-Z0-9_]+|assignment:[0-9a-f-]+)\]\s*/gi,"").replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi,"").trim();
+export const cleanActivityNote=(value:string)=>value.replace(/\[(?:ALZHEN_[A-Z0-9_-]+|assignment:[0-9a-f-]+)\]\s*/gi,"").replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi,"").trim();
 export const assignmentTripUrl=(tripId:string,assignmentId:string)=>`/trips/${encodeURIComponent(tripId)}?assignment=${encodeURIComponent(assignmentId)}`;
