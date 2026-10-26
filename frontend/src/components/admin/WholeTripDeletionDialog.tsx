@@ -13,12 +13,13 @@ export default function WholeTripDeletionDialog(props:Props){
 function Confirmation({token,tripIds,onClose,onDeleted}:Props){
  const toast=useOptionalToast(),inFlight=useRef(false),active=useRef(true),cancelButton=useRef<HTMLButtonElement>(null),dialog=useRef<HTMLElement>(null);
  const [impact,setImpact]=useState<WholeTripImpact|null>(null),[error,setError]=useState(""),[busy,setBusy]=useState(false);
+ const [impactRevision,setImpactRevision]=useState(0);
  const [pendingIds,setPendingIds]=useState(tripIds);
  const identity=pendingIds.join(",");
  const notificationKey=useId();
  const actionLabel=pendingIds.length===1?"Delete Entire Trip":"Delete Selected Trips";
  useEffect(()=>{active.current=true;const previous=document.activeElement as HTMLElement|null;cancelButton.current?.focus();return()=>{active.current=false;previous?.focus();};},[]);
- useEffect(()=>{let current=true;const controller=new AbortController();void fetchWholeTripImpact(token,identity.split(","),controller.signal).then(data=>{if(current)setImpact(data);}).catch(()=>{if(current)setError("Unable to check the selected trips. Please close and try again.");});return()=>{current=false;controller.abort();};},[token,identity]);
+ useEffect(()=>{let current=true;const controller=new AbortController();void fetchWholeTripImpact(token,identity.split(","),controller.signal).then(data=>{if(current)setImpact(data);}).catch(()=>{if(current)setError("Unable to check the selected trips. Please close and try again.");});return()=>{current=false;controller.abort();};},[token,identity,impactRevision]);
  const close=()=>{if(inFlight.current)return;onClose();};
  const remove=async()=>{
   if(inFlight.current||busy||!impact?.can_delete)return;
@@ -31,6 +32,7 @@ function Confirmation({token,tripIds,onClose,onDeleted}:Props){
    const count=result.deleted_trips;
    if(result.remaining_trip_ids.length){
     setPendingIds(result.remaining_trip_ids);setImpact(null);
+    setImpactRevision(value=>value+1);
     const message=wholeTripDeletionErrorMessage(new ApiError(result.stopped_error??"Deletion stopped",result.stopped_status??503));
     setError(`${count} trips deleted. ${result.remaining_trip_ids.length} trips remain unconfirmed. ${message}`);
     toast?.addToast({notificationKey,duration:6000,title:"Trip deletion stopped",description:`${count} deleted; ${result.remaining_trip_ids.length} remain unconfirmed.${result.cleanup_pending?" Image cleanup is pending for completed trips.":""}`,variant:"warning"});

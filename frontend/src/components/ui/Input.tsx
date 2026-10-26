@@ -14,7 +14,7 @@ export function Input({ label, className = "", ...props }: InputProps) {
         </span>
       )}
       <input
-        className={`w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-900 ${className}`}
+        className={`w-full rounded-xl border border-[#e4e9f0] bg-white px-4 py-3 text-sm text-[#0b2343] outline-none transition placeholder:text-[#718096] focus:border-[#0b2343] focus:ring-2 focus:ring-[#0b2343]/15 ${className}`}
         {...props}
       />
     </label>

@@ -290,7 +290,7 @@ export default function OperationsReportsView({ mode, onOpenTrip, refreshVersion
   useSpreadsheetFeedback(notice, notice?.startsWith("Finish or cancel") ? "warning" : "success");
   useSpreadsheetFeedback(mode === "trucker" ? error : null, "error");
   const cargoReports = active === "backloads" ? data.backloads : data.offloads;
-  const addReportButton = <button type="button" onClick={() => void openSubmission()} className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-full bg-[#ffd43b] px-4 text-sm font-semibold text-[#0b2341] transition hover:bg-[#f2c200] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0b2341]/40"><span aria-hidden="true" className="text-base leading-none">+</span>Add Report</button>;
+  const addReportButton = <button type="button" onClick={() => void openSubmission()} className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-full bg-[#0b2343] px-4 text-sm font-semibold text-white transition hover:bg-[#17385f] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0b2343]/40"><span aria-hidden="true" className="text-base leading-none">+</span>Add Report</button>;
 
   return <section className="space-y-2" aria-label="Loading, unloading, backload and offload reports">
     {mode === "trucker" && <div className="flex flex-wrap items-center justify-between gap-3">

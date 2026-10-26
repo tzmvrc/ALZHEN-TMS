@@ -1,17 +1,18 @@
 import {useMemo,useState,type ReactNode} from "react";
-import {ArrowDown,ArrowUp,ArrowUpDown,Search} from "lucide-react";
-import {tableUi} from "../dashboardStyles";
+import {ArrowDown,ArrowUp,ArrowUpDown} from "lucide-react";
 import {REPORT_GRID_BODY_CELL_CLASS,REPORT_GRID_HEADER_CELL_CLASS} from "../ReportSpreadsheetUtils";
 import {SpreadsheetRowNumber,SPREADSHEET_PANEL_CLASS} from "../SpreadsheetPresentation";
+import {useRegisterTopbarFilter} from "../topbarFilters";
 import SpreadsheetRowSelectionHeader from "../SpreadsheetRowSelectionHeader";
 
 export type BillingColumn<R>={key:string;label:string;value:(row:R)=>string|number;render?:(row:R)=>ReactNode;numeric?:boolean;minWidth?:number};
 /** A finite, local sample table; no operational grid services or API hooks. */
-export default function BillingTable<R extends {id:string}>({name,rows,columns,filter,filterValue="",onFilter,selected,onSelect,onOpen,actions,caption}: {
- name:string;rows:R[];columns:BillingColumn<R>[];filter?:{label:string;options:string[]};filterValue?:string;onFilter?:(value:string)=>void;
- selected?:Set<string>;onSelect?:(ids:Set<string>)=>void;onOpen?:(row:R)=>void;actions?:ReactNode;caption?:string;
+export default function BillingTable<R extends {id:string}>({name,rows,columns,filter,filterScope,filterValue="",onFilter,selected,onSelect,onOpen,actions,caption,query=""}: {
+ name:string;rows:R[];columns:BillingColumn<R>[];filter?:{label:string;options:string[]};filterScope?:string;filterValue?:string;onFilter?:(value:string)=>void;
+ selected?:Set<string>;onSelect?:(ids:Set<string>)=>void;onOpen?:(row:R)=>void;actions?:ReactNode;caption?:string;query?:string;
 }){
- const [query,setQuery]=useState(""),[sort,setSort]=useState<{key:string;direction:1|-1}|null>(null),[localSelection,setLocalSelection]=useState(new Set<string>());
+ const [sort,setSort]=useState<{key:string;direction:1|-1}|null>(null),[localSelection,setLocalSelection]=useState(new Set<string>());
+ useRegisterTopbarFilter(filterScope??"",filter&&filterScope&&onFilter?{label:filter.label,value:filterValue,options:[{value:"",label:`All ${filter.label.toLowerCase()}`},...filter.options.map(option=>({value:option,label:option}))],onChange:onFilter}:null);
  const selection=selected??localSelection,choose=onSelect??setLocalSelection;
  const visible=useMemo(()=>{
   const needle=query.trim().toLocaleLowerCase();
@@ -24,8 +25,6 @@ export default function BillingTable<R extends {id:string}>({name,rows,columns,f
  const toggle=(id:string)=>{const next=new Set(currentSelected);if(next.has(id))next.delete(id);else next.add(id);choose(next);};
  return <section className={`${SPREADSHEET_PANEL_CLASS} min-w-0`} aria-label={name}>
   <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 bg-white p-2">
-   <label className="relative min-w-44 flex-1 sm:max-w-80"><Search aria-hidden className="pointer-events-none absolute left-3 top-2 h-4 w-4 text-slate-400"/><input className={`${tableUi.search} !h-8 !border-slate-200 !text-xs !shadow-none`} aria-label={`Search ${name}`} placeholder={`Search ${name.toLowerCase()}…`} value={query} onChange={event=>setQuery(event.target.value)}/></label>
-   {filter&&<select aria-label={filter.label} value={filterValue} onChange={event=>onFilter?.(event.target.value)} className="h-8 max-w-56 rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-700"><option value="">All {filter.label.toLowerCase()}</option>{filter.options.map(option=><option key={option}>{option}</option>)}</select>}
    <div className="ml-auto flex flex-wrap items-center gap-2">{currentSelected.size>0&&<><span className="text-xs text-blue-700">{currentSelected.size} selected</span><button type="button" className="text-xs text-slate-500 underline" onClick={()=>choose(new Set())}>Clear</button></>}{actions}</div>
   </div>
   <div tabIndex={0} aria-label={`${name} spreadsheet, scroll horizontally for more columns`} className="spreadsheet-viewport max-h-[58vh] min-h-52 w-full overflow-auto overscroll-contain bg-white focus-visible:outline-blue-500">

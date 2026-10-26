@@ -1,5 +1,5 @@
 // src/components/admin/TruckCardGrid.tsx
-import { Search, SlidersHorizontal, LayoutGrid } from "lucide-react";
+import { SlidersHorizontal } from "lucide-react";
 import type { DispatchRecord } from "../../types/dashboard";
 
 /* Map status → pill classes + dot */
@@ -274,7 +274,7 @@ export default function TruckCardGrid({
 }) {
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      {/* Header row with search + filters */}
+      {/* Header row with filters */}
       <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
@@ -286,24 +286,11 @@ export default function TruckCardGrid({
         </div>
 
         <div className="flex items-center gap-2">
-          <div className="relative hidden sm:block">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
-            <input
-              placeholder="Search for truck ID"
-              className="w-56 rounded-lg border border-slate-200 bg-white py-1.5 pl-8 pr-3 text-xs outline-none focus:border-slate-900"
-            />
-          </div>
           <button
             type="button"
             className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
           >
             <SlidersHorizontal className="h-3.5 w-3.5" /> Filter
-          </button>
-          <button
-            type="button"
-            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
-          >
-            <LayoutGrid className="h-3.5 w-3.5" /> Grid
           </button>
         </div>
       </div>

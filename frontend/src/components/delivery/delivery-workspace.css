@@ -23,3 +23,16 @@
 .delivery-remarks-preview{display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}.trip-legacy-operations .trip-disclosure-trigger{padding:14px;width:100%;display:flex;align-items:center;justify-content:space-between;font-size:13px}.delivery-timeline>ol>li{padding-bottom:14px}
 
 .delivery-companion .delivery-secondary-actions svg{width:19px;height:19px}.delivery-companion .delivery-brand strong{font-size:15px}.delivery-companion .delivery-brand>svg{width:26px;height:26px}.delivery-companion .delivery-bottom-nav button{font-size:13px;min-height:44px}.delivery-companion .delivery-card>h2{margin-bottom:6px}.delivery-companion .delivery-card>p{font-size:13px}.delivery-companion small{font-size:12px}.delivery-sheet .delivery-sheet-content{line-height:1.45}
+
+/* Keep the field workspace in the same visual family as the admin workspace. */
+.delivery-companion,.delivery-timeline,.delivery-sheet{--delivery-navy:#0b2343;--delivery-blue:#0b2343;--delivery-muted:#718096;--delivery-line:#e4e9f0}
+.delivery-companion{background:#f4f5fc}
+.delivery-card,.delivery-timeline{border-color:var(--delivery-line);border-radius:16px}
+.delivery-current{background:#eaf4ff;color:var(--delivery-navy);border:1px solid #d9eafb}
+.delivery-current small{color:var(--delivery-muted)}
+.delivery-primary,.delivery-current .delivery-primary{background:#0b2343;color:#fff}
+.delivery-primary:hover{background:#17385f}
+.delivery-secondary{border-color:var(--delivery-line);color:var(--delivery-navy)}
+.delivery-companion :is(select,input,textarea),.delivery-sheet :is(input,textarea,select){border-color:#e4eaf2;border-radius:8px}
+.delivery-bottom-nav{border-color:var(--delivery-line)}
+.delivery-bottom-nav button[aria-current=page]{background:#eaf4ff;color:#2678b9}

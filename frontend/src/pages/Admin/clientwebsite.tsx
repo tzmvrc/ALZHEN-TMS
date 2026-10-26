@@ -90,12 +90,10 @@ function PageHeader({
   return (
     <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
       <div className="min-w-0">
-        <h1 className="truncate text-[26px] font-bold leading-tight tracking-tight text-[#0b2341]">
+        <h1 className="sr-only">
           {title}
         </h1>
-        {subtitle ? (
-          <p className="mt-1 text-[13px] text-slate-500">{subtitle}</p>
-        ) : null}
+        {subtitle ? <span className="sr-only">{subtitle}</span> : null}
       </div>
       {right ? <div className="shrink-0">{right}</div> : null}
     </header>
@@ -485,7 +483,7 @@ export default function ClientWebsiteWorkspace({
         <div className="w-full space-y-4">
           <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0">
-              <h1 className="truncate text-[26px] font-bold leading-tight tracking-tight text-[#0b2341]">
+              <h1 className="sr-only">
                 Welcome back, {greetingName}!
               </h1>
               <div className="mt-1 flex items-center gap-2 text-[13px] text-slate-500">

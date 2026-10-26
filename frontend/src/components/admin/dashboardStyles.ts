@@ -77,12 +77,12 @@ export function assignFleetTruckCutouts(
 /* Alzhen brand palette (same navy + yellow as the top navigation) */
 export const accent = {
   navy: "#0b2341",
-  blue: "#2678b9",
-  blueSoft: "#e6f0f9",
+  blue: "#0b2343",
+  blueSoft: "#e9eef5",
   yellow: "#ffd43b",
   yellowDeep: "#f2c200",
-  canvas: "#eef3f8",
-  panel: "#f2f6fa",
+  canvas: "#f4f6fa",
+  panel: "#f4f6fa",
 } as const;
 
 export const toneClasses = {
@@ -93,7 +93,7 @@ export const toneClasses = {
   rose: "bg-rose-50 text-rose-600",
   slate: "bg-slate-100 text-slate-600",
   navy: "bg-[#e6ecf4] text-[#0b2341]",
-  brand: "bg-[#e6f0f9] text-[#1d5f94]",
+  brand: "bg-[#e9eef5] text-[#0b2343]",
 } as const;
 
 export const toneHex = {
@@ -104,7 +104,7 @@ export const toneHex = {
   rose: "#ef4444",
   slate: "#64748b",
   navy: "#0b2341",
-  brand: "#2678b9",
+  brand: "#0b2343",
 } as const;
 
 export const statusColor = (status: string) => {
@@ -118,14 +118,14 @@ export const statusColor = (status: string) => {
 
 /* Shared surface tokens for consistent card styling */
 export const surface = {
-  card: "rounded-[28px] bg-white ring-1 ring-slate-900/[0.04] shadow-[0_1px_2px_rgba(11,35,65,0.03)]",
-  inner: "rounded-2xl bg-[#f5f7fa]",
+  card: "rounded-xl bg-white ring-1 ring-[#e4e9f0]",
+  inner: "rounded-2xl bg-[#f6f7fc]",
   /* Bordered cell used inside a card (e.g. loading-status grid, tab strips) */
-  cell: "rounded-2xl border border-slate-200/70 bg-white",
+  cell: "rounded-2xl border border-[#e9edf4] bg-white",
   pill: "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold",
   eyebrow: "text-[11px] font-medium text-slate-400",
   heading: "text-[17px] font-semibold tracking-tight text-[#0b2341]",
-  /* Page canvas behind the cards (dots come from global CSS in index.css): put this on the dashboard wrapper */
+  /* The workspace shell provides the soft page canvas behind the cards. */
   canvas: "bg-transparent",
   /* Yellow action chip (Check / View buttons) */
   chip: "inline-flex items-center justify-center rounded-full bg-[#ffd43b] px-3.5 py-1.5 text-[11px] font-semibold text-[#0b2341] transition hover:bg-[#f2c200] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0b2341]/40",
@@ -135,20 +135,17 @@ export const surface = {
 
 /* Shared table tokens: every table page (trips, reports, users, database...) uses these */
 export const tableUi = {
-  shell: "overflow-hidden rounded-[28px] bg-white ring-1 ring-slate-900/[0.04] shadow-[0_1px_2px_rgba(11,35,65,0.03)]",
+  shell: "overflow-hidden rounded-[10px] border border-[#e4e9f0] bg-white",
   toolbar: "flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between",
-  search: "h-10 w-full rounded-full border border-transparent bg-white pl-10 pr-4 text-sm text-slate-700 shadow-[0_1px_2px_rgba(11,35,65,0.06)] outline-none placeholder:text-slate-400 focus:border-[#2678b9]/40 focus:ring-2 focus:ring-[#2678b9]/15",
-  select: "h-10 appearance-none rounded-full border border-transparent bg-white pl-4 pr-9 text-sm text-slate-600 shadow-[0_1px_2px_rgba(11,35,65,0.06)] outline-none transition focus:border-[#2678b9]/40 focus:ring-2 focus:ring-[#2678b9]/15",
-  segment: "inline-flex items-center rounded-full bg-white p-1 shadow-[0_1px_2px_rgba(11,35,65,0.06)]",
-  segmentBtn: "rounded-full px-3.5 py-1.5 text-xs font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9]",
-  segmentOn: "bg-[#0b2341] text-white",
-  segmentOff: "text-slate-500 hover:text-[#0b2341]",
-  iconBtn: "inline-flex h-10 w-10 items-center justify-center rounded-full bg-white text-slate-500 shadow-[0_1px_2px_rgba(11,35,65,0.06)] transition hover:text-[#0b2341] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9]",
+  search: "h-10 w-full rounded-full border border-[#e4e9f0] bg-white pl-10 pr-4 text-sm text-slate-700 outline-none placeholder:text-slate-400 focus:border-[#0b2343]/60 focus:ring-2 focus:ring-[#0b2343]/15",
+  select: "h-10 appearance-none rounded-full border border-[#e4e9f0] bg-white pl-4 pr-9 text-sm text-slate-600 outline-none transition focus:border-[#0b2343]/60 focus:ring-2 focus:ring-[#0b2343]/15",
+  segmentBtn: "rounded-full px-3.5 py-1.5 text-xs font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0b2343]",
+  iconBtn: "inline-flex h-10 w-10 items-center justify-center rounded-full bg-white text-slate-500 shadow-[0_1px_2px_rgba(11,35,65,0.06)] transition hover:text-[#0b2341] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0b2343]",
   thead: "bg-white",
   th: REPORT_GRID_HEADER_CELL_CLASS,
   td: REPORT_GRID_BODY_CELL_CLASS,
   tdStrong: `${REPORT_GRID_BODY_CELL_CLASS} font-medium text-[#0b2341]`,
-  row: "border-b border-slate-100/80 transition-colors last:border-0 hover:bg-[#f2f6fa]/70",
+  row: "border-b border-[#edf0f5] transition-colors last:border-0 hover:bg-[#f0f5fc]",
   footer: "flex items-center justify-between border-t border-slate-100 px-5 py-3 text-xs text-slate-400",
   pageBtn: "inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-500 transition hover:bg-[#f2f6fa] hover:text-[#0b2341] disabled:cursor-not-allowed disabled:opacity-30",
   empty: "px-4 py-16 text-center text-sm text-slate-400",

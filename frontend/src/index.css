@@ -61,7 +61,7 @@
 body {
   min-height: 100dvh;
   overflow-x: hidden;
-  background: transparent;
+  background: #dde1e7;
 }
 
 #root {
@@ -70,10 +70,8 @@ body {
 }
 
 .dotted-surface {
-  background-color: #f4f5f5;
-  background-image: url("./assets/dotted.svg");
-  background-repeat: repeat;
-  background-size: 20px 20px;
+  background-color: #f4f5fc;
+  background-image: none;
 }
 
 /* Search controls share the pill shape across Admin and Staff workspaces. */
@@ -82,13 +80,8 @@ body {
 }
 
 .min-h-screen.bg-slate-50 {
-  background-color: #f4f5f5;
-  background-image: radial-gradient(
-    circle,
-    rgba(11, 35, 65, 0.1) 0.8px,
-    transparent 0.9px
-  );
-  background-size: 18px 18px;
+  background-color: #f4f5fc;
+  background-image: none;
 }
 
 button:focus-visible,
@@ -536,7 +529,7 @@ input[type="checkbox"] { width: 14px; height: 14px; min-width: 14px; min-height:
 /* Combined Report is the shared header reference: 24px controls plus 4px padding. */
 .spreadsheet-grid > thead > tr > th { padding-top: 4px; padding-bottom: 4px; font-size: 12px; line-height: 1.333333; text-align: center; }
 .spreadsheet-grid > thead > tr > th [data-spreadsheet-header-title] { padding-block: 0; line-height: inherit; text-align: inherit; white-space: normal; overflow-wrap: anywhere; }
-.spreadsheet-grid th[data-header-selected="true"] { outline: 2px solid #2678b9; outline-offset: -2px; }
+.spreadsheet-grid th[data-header-selected="true"] { outline: 2px solid #0b2343; outline-offset: -2px; }
 
 .spreadsheet-grid > thead > tr > th > .spreadsheet-header-content { min-height: 24px; }
 .report-toolbar-row [data-report-toolbar-leading] { max-width: 100%; }
@@ -544,7 +537,7 @@ input[type="checkbox"] { width: 14px; height: 14px; min-width: 14px; min-height:
 
 /* Subtle vertical separators only; horizontal rules and selection outlines stay intact. */
 .spreadsheet-grid > :is(thead, tbody) > tr > :is(th, td) {
-  border-right-color: #cbd5e1;
+  border-right-color: #e8ecf1;
 }
 /* Clean spreadsheet dropdowns; form/navigation dropdowns keep their own affordances. */
 .spreadsheet-grid .spreadsheet-dropdown-editor > button > svg,
@@ -559,8 +552,8 @@ input[type="checkbox"] { width: 14px; height: 14px; min-width: 14px; min-height:
 .spreadsheet-grid th.spreadsheet-gutter,.spreadsheet-grid td.spreadsheet-gutter { text-align: center; }
 
 /* Operational calculated overlays keep physical source records and normal grid geometry. */
-.spreadsheet-grid td[data-formula-selected="true"] { outline:2px solid #2678b9; outline-offset:-2px; }
-.spreadsheet-grid td[data-formula-fill="true"] { box-shadow:inset 0 0 0 2px #60a5fa; }
+.spreadsheet-grid td[data-formula-selected="true"] { outline:2px solid #0b2343; outline-offset:-2px; }
+.spreadsheet-grid td[data-formula-fill="true"] { box-shadow:inset 0 0 0 2px #718096; }
 
 /* Trips keeps compact padding while headings wrap naturally at narrower widths. */
 .spreadsheet-grid[data-compact-headers="true"] > thead > tr > th { padding-block:4px; line-height:1.333333; vertical-align:middle; }
@@ -665,8 +658,12 @@ input[type="checkbox"] { width: 14px; height: 14px; min-width: 14px; min-height:
   .spreadsheet-footer-hidden { padding-inline: 4px; }
   .sheet-horizontal-scrollbar-control > button { display: none; }
 }
-@container sheet-footer (max-width: 360px) {
-  .spreadsheet-footer-layout { grid-template-columns: minmax(0, 1fr) max-content max-content minmax(0, 24%); }
+@container sheet-footer (max-width: 480px) {
+  .spreadsheet-footer-layout { grid-template-columns: max-content max-content minmax(0, 1fr); }
+  .spreadsheet-footer-tabs { grid-column: 1 / -1; border-bottom: 1px solid #e4e9f0; }
+  .spreadsheet-footer-hidden { grid-column: 1; }
+  .spreadsheet-footer-layout > button { grid-column: 2; }
+  .sheet-horizontal-scrollbar-control { grid-column: 3; }
 }
 
 /* Explicit shared row heights clip content instead of letting wrapped text grow the row.
@@ -691,7 +688,7 @@ input[type="checkbox"] { width: 14px; height: 14px; min-width: 14px; min-height:
   position: fixed;
   z-index: 10000;
   height: 0;
-  border-top: 2px solid #2678b9;
+  border-top: 2px solid #0b2343;
   pointer-events: none;
 }
 

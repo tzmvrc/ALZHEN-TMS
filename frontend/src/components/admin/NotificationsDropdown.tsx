@@ -16,7 +16,7 @@ function timeAgo(iso: string) {
   return days < 7 ? `${days}d ago` : new Date(iso).toLocaleDateString();
 }
 
-/** Facebook-style panel that drops down under the bell, on the same page. */
+/** Shared notification panel positioned beside the active bell. */
 export default function NotificationsDropdown({
   items,
   loading,
@@ -26,6 +26,7 @@ export default function NotificationsDropdown({
   onMarkAllRead,
   onOpenItem,
   onViewAll,
+  placement,
 }: {
   items: AdminNotification[];
   loading: boolean;
@@ -35,6 +36,7 @@ export default function NotificationsDropdown({
   onMarkAllRead?: () => void;
   onOpenItem: (item: AdminNotification) => void;
   onViewAll: () => void;
+  placement?: { left: number; top: number };
 }) {
   const { accessToken } = useAuth();
   const [filter, setFilter] = useState<"all" | "unread">("all");
@@ -65,7 +67,8 @@ export default function NotificationsDropdown({
     <div
       role="dialog"
       aria-label="Notifications"
-      className="absolute right-0 top-full z-50 mt-3 w-[min(380px,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-[0_24px_48px_-12px_rgba(15,23,42,0.22)]">
+      style={placement}
+      className={`${placement ? "fixed z-[1200]" : "absolute right-0 top-full z-50 mt-3"} w-[min(380px,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-[0_24px_48px_-12px_rgba(15,23,42,0.22)]`}>
       <div className="px-4 pb-2 pt-4">
         <h2 className="text-[17px] font-semibold tracking-tight text-[#0b2341]">
           Notifications

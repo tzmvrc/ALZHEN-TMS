@@ -20,7 +20,9 @@ function ownedObject(job: Job, object: { bucket: string; path: string }) {
   const prefix = object.bucket === "trip-images" ? `trips/${job.trip_id}/` : object.bucket === "report-receipts" ? `operations/${job.trip_id}/` : null;
   if (!prefix || !object.path.startsWith(prefix)) return false;
   const tail = object.path.slice(prefix.length);
-  return (object.bucket === "trip-images" ? /^[a-f0-9-]{36}\.(jpg|jpeg|png|webp)$/ : /^(loading|unloading|backload|offload)\/[a-f0-9-]{36}\/[a-f0-9-]{36}\.(jpg|jpeg|png|webp)$/).test(tail);
+  return (object.bucket === "trip-images"
+    ? /^(?:[a-f0-9-]{36}\.(?:jpg|jpeg|png|webp)|delivery\/[a-f0-9-]{36}\/[a-f0-9-]{36})$/
+    : /^(loading|unloading|backload|offload)\/[a-f0-9-]{36}\/[a-f0-9-]{36}\.(jpg|jpeg|png|webp)$/).test(tail);
 }
 async function clean(job: Job, actor: Actor) {
   if (job.state === "COMPLETE") return result(job);

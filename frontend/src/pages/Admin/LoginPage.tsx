@@ -96,9 +96,9 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex min-h-screen w-full bg-[#f2f4f5] p-0 sm:p-4 lg:p-6">
+    <div className="flex min-h-screen w-full bg-[#dde1e7] p-0 sm:p-4 lg:p-6">
       {/* ───────── Left: Photo Panel ───────── */}
-      <div className="relative hidden overflow-hidden rounded-l-2xl lg:flex lg:w-1/2 lg:flex-col">
+      <div className="relative hidden overflow-hidden rounded-l-[28px] lg:flex lg:w-1/2 lg:flex-col">
         <img
           src={loginBackground}
           alt=""
@@ -143,14 +143,14 @@ export default function LoginPage() {
       </div>
 
       {/* ───────── Right: Login Form ───────── */}
-      <div className="dotted-surface relative flex w-full flex-col justify-start border border-[#dbe2e9] px-6 py-12 sm:rounded-2xl sm:px-12 lg:w-1/2 lg:rounded-l-none lg:px-16 lg:pt-20 xl:px-24 xl:pt-24">
+      <div className="dotted-surface relative flex w-full flex-col justify-start border border-[#e9edf4] px-6 py-12 shadow-[0_22px_52px_-34px_rgba(23,36,59,0.32)] sm:rounded-[28px] sm:px-12 lg:w-1/2 lg:rounded-l-none lg:px-16 lg:pt-20 xl:px-24 xl:pt-24">
         <div className="relative z-10 mx-auto flex w-full max-w-sm flex-col">
           {/* Header */}
           <div className="text-center">
             <img
               src={logo}
               alt="Alzhen Trucking Services"
-              className="mx-auto mb-6 h-34 w-34 rounded-xl object-contain"
+              className="mx-auto mb-6 h-24 w-24 rounded-full object-contain"
             />
 
             <h1 className="text-[1.75rem] font-black tracking-tight text-slate-900 sm:text-3xl">
@@ -180,7 +180,7 @@ export default function LoginPage() {
                 placeholder="name@example.com"
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
-                className="w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-900 focus:ring-1 focus:ring-slate-900"
+                className="w-full rounded-lg border border-[#e9edf4] bg-white px-4 py-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-[#0b2343] focus:ring-2 focus:ring-[#0b2343]/15"
               />
             </div>
 
@@ -201,7 +201,7 @@ export default function LoginPage() {
                   placeholder="••••••••"
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
-                  className="w-full rounded-lg border border-slate-200 bg-white px-4 py-3 pr-11 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-900 focus:ring-1 focus:ring-slate-900"
+                  className="w-full rounded-lg border border-[#e9edf4] bg-white px-4 py-3 pr-11 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-[#0b2343] focus:ring-2 focus:ring-[#0b2343]/15"
                 />
                 <button
                   type="button"
@@ -221,7 +221,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={submitting}
-              className="mt-2 w-full cursor-pointer rounded-lg bg-slate-900 py-3.5 text-sm font-semibold text-white transition hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-70">
+              className="mt-2 w-full cursor-pointer rounded-full bg-[#0b2343] py-3.5 text-sm font-semibold text-white transition hover:bg-[#17385f] focus:outline-none focus:ring-2 focus:ring-[#0b2343] focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-70">
               {submitting ? "Signing in…" : "Access Dashboard"}
             </button>
           </form>

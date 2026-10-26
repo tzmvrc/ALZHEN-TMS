@@ -1,11 +1,12 @@
-import {Activity,useRef,useState} from "react";
-import {Plus,Search} from "lucide-react";
+import {Activity,useEffect,useRef,useState} from "react";
 import {useAuth} from "../../../context/AuthContext";
-import {tableUi} from "../../../components/admin/dashboardStyles";
 import {SPREADSHEET_PANEL_CLASS} from "../../../components/admin/SpreadsheetPresentation";
 import DatabaseSpreadsheet from "../../../components/admin/DatabaseSpreadsheet";
 import DatabaseRecordDialog from "../../../components/admin/DatabaseRecordDialog";
 import {SpreadsheetSheetHeader,SpreadsheetBottomToolbar} from "../../../components/admin/SpreadsheetWorkspace";
+import {setPageSection} from "../../../components/admin/pageSection";
+import {useRegisterTopbarSearch} from "../../../components/admin/topbarSearch";
+import {useRegisterTopbarAction} from "../../../components/admin/topbarActions";
 import TruckImageManager from "../../../components/admin/TruckImageManager";
 import ProductPhotoManager from "../../../components/admin/ProductPhotoManager";
 import type {MasterDataKey,MasterDataRow} from "../../../services/master-data.service";
@@ -21,14 +22,15 @@ export default function MasterDataView(){
  const [confirmed,setConfirmed]=useState<{resource:MasterDataKey;row:MasterDataRow;sequence:number}|null>(null);
  const [imagesTruck,setImagesTruck]=useState<MasterDataRow|null>(null),[photoProduct,setPhotoProduct]=useState<MasterDataRow|null>(null);
  const config=databaseResources.find(resource=>resource.key===section)!;
+ useEffect(()=>setPageSection("database",config.label),[config.label]);
+ useRegisterTopbarSearch(`database:${config.label}`,{kind:"field",value:searches[section]??"",placeholder:`Search ${config.label.toLowerCase()}...`,label:`Search ${config.label.toLowerCase()}`,onChange:value=>setSearches(current=>({...current,[section]:value}))});
  const formConfig=recordDialog?databaseResources.find(resource=>resource.key===recordDialog.resource):null;
  const canEdit=["ADMIN","STAFF"].includes(profile?.role??"");
  const openForm=(resource:MasterDataKey,row:MasterDataRow|null=null)=>setRecordDialog({resource,row,key:++saveSequence.current});
+ useRegisterTopbarAction(`database:${config.label}`,"add",canEdit?{label:`Add ${singular[section]}`,onClick:()=>openForm(section)}:null);
  if(!accessToken||!canEdit)return null;
  return <div ref={workspace} data-database-workspace className="database-workspace flex min-h-0 min-w-0 flex-1 flex-col gap-2">
-  <SpreadsheetSheetHeader title={config.label} description="Manage shared records and reviewed locations">
-   <div className="flex w-full min-w-0 flex-wrap items-center justify-end gap-2 sm:w-auto"><label className="relative min-w-0 flex-1 sm:w-72 sm:flex-none"><Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"/><input className={`${tableUi.search}`} value={searches[section]??""} onChange={event=>setSearches(current=>({...current,[section]:event.target.value}))} placeholder="Search records" aria-label="Search database records"/></label>{canEdit&&<button type="button" onClick={()=>openForm(section)} className="inline-flex h-9 items-center gap-2 rounded-full bg-[#ffd43b] px-4 text-xs font-semibold text-[#0b2341] hover:bg-[#f2c200]"><Plus className="h-4 w-4"/>Add {singular[section]}</button>}</div>
-  </SpreadsheetSheetHeader>
+  <SpreadsheetSheetHeader title={config.label} description="Manage shared records and reviewed locations"/>
   <section className={`${SPREADSHEET_PANEL_CLASS} database-sheet-panel flex min-h-0 flex-1 flex-col`}>
    {databaseResources.filter(resource=>visited.has(resource.key)).map(resource=><Activity key={resource.key} mode={section===resource.key?"visible":"hidden"}><DatabaseSpreadsheet resource={resource.key} fields={resource.fields} hiddenColumnsTarget={hiddenColumnsTarget} token={accessToken??""} profileId={profile?.id} canEdit={canEdit} active={section===resource.key} search={searches[resource.key]??""} revision={0} confirmedRecord={confirmed?.resource===resource.key?confirmed:undefined} onEdit={row=>openForm(resource.key,row)} onMetadata={supported=>setMetadata(current=>current[resource.key]===supported?current:{...current,[resource.key]:supported})} onImage={resource.key==="trucks"?setImagesTruck:resource.key==="products"?setPhotoProduct:undefined}/></Activity>)}
    <SpreadsheetBottomToolbar workspace={workspace} sheet={`db-${section}`} onHiddenColumnsTarget={setHiddenColumnsTarget}>

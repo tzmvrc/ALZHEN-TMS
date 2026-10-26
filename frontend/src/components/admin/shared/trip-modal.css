@@ -1,16 +1,16 @@
 /* Layout rules are scoped to trip creation/import. Only the body scrolls vertically. */
-.trip-flow { --trip-brand:#0b2341; --trip-accent:#2678b9; --trip-line:#e5e9f0; width:100%; max-width:960px; height:90dvh; max-height:1080px; border-radius:16px; font-family:"Plus Jakarta Sans","Inter",ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; font-size:13px; line-height:1.5; box-shadow:0 24px 72px #020d1d40; animation:trip-dialog-in 180ms ease-out both; isolation:isolate; }
+.trip-flow { --trip-brand:#0b2343; --trip-accent:#0b2343; --trip-line:#e4e9f0; width:100%; max-width:960px; height:90dvh; max-height:1080px; border-radius:16px; font-family:"Plus Jakarta Sans","Inter",ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; font-size:13px; line-height:1.5; box-shadow:0 24px 72px #17243b2b; animation:trip-dialog-in 180ms ease-out both; isolation:isolate; }
 .trip-flow *, .trip-flow *::before, .trip-flow *::after { box-sizing:border-box; }
 .trip-flow :is(button,input,select) { font:revert-layer; }
 .trip-flow :is(section,article,fieldset,label,header,aside,td,th), .trip-flow [class*="grid"] > * { min-width:0; }
 .trip-flow :is(section,article,fieldset) { overflow:visible; }
 .trip-flow :is(section,article,fieldset,button,input,select,textarea) { box-shadow:none; }
-.trip-flow :is(section,article,fieldset) { border-radius:12px; }
+.trip-flow :is(section,article,fieldset) { border-radius:14px; }
 .trip-flow h3, .trip-flow h4 { font-size:14px; font-weight:600; }
 .trip-flow section[aria-label] > header { padding:16px; background:white; }
 .trip-flow section[aria-label] > header + div { padding:16px; }
 .trip-flow section section { border:0; border-radius:0; background:transparent; }
-.trip-flow :is(button,input,select,textarea) { border-radius:8px; }
+.trip-flow :is(button,input,select,textarea) { border-radius:10px; }
 .trip-flow :is(button,input,select,textarea,summary,a):focus-visible { outline:2px solid var(--trip-accent); outline-offset:2px; }
 .trip-flow :is(input,select,textarea):not([type="checkbox"]):not([type="radio"]):not([type="file"]) { min-width:0; width:100%; min-height:40px; padding:8px 12px; border:1px solid var(--trip-line); font-size:13px; line-height:22px; transition:border-color 140ms ease; }
 .trip-flow input:not([type="checkbox"]):not([type="radio"]):not([type="file"]), .trip-flow select { height:40px; }
@@ -53,7 +53,7 @@
 .trip-footer-actions { justify-content:flex-end; }
 .trip-footer-hint { color:#946200; font-size:12px; text-decoration:underline; text-underline-offset:3px; text-align:left; }
 .trip-footer-draft { max-width:200px; font-size:11px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.trip-summary-bar { display:flex; flex-wrap:wrap; align-items:center; gap:12px; min-height:36px; padding:6px 20px; border-bottom:1px solid var(--trip-line); background:#f8fafc; color:#475569; font-size:11px; }
+.trip-summary-bar { display:flex; flex-wrap:wrap; align-items:center; gap:12px; min-height:36px; padding:6px 20px; border-bottom:1px solid var(--trip-line); background:#f7f9fc; color:#475569; font-size:11px; }
 .trip-summary-bar dl { display:flex; flex-wrap:wrap; gap:12px; }
 .trip-summary-bar dl > div { display:flex; gap:4px; }
 .trip-summary-bar dt { color:#64748b; }
@@ -457,7 +457,7 @@
 .row-color-menu{position:fixed;z-index:12000;width:280px;max-width:calc(100vw - 16px);padding:6px;border:1px solid #e5e9f0;border-radius:10px;background:#fff;box-shadow:0 8px 28px #0b23411f;font-family:inherit;font-size:12px;color:#0b2341}
 .row-color-menu>small{display:block;padding:8px;color:#64748b;font-size:10px}
 .row-color-menu button{display:flex;align-items:center;gap:8px;width:100%;min-height:32px;padding:6px 8px;border-radius:6px;text-align:left;font-size:12px}
-.row-color-menu button:hover,.row-color-menu button:focus-visible{background:#eff6ff;outline:2px solid #2678b9;outline-offset:-2px}
+.row-color-menu button:hover,.row-color-menu button:focus-visible{background:#e9eef5;outline:2px solid #0b2343;outline-offset:-2px}
 .row-color-menu>[role="group"]{display:grid;grid-template-columns:1fr 1fr;gap:2px;padding:4px 8px;border-top:1px solid #e5e9f0;border-bottom:1px solid #e5e9f0}
 .review-color-swatch{width:12px;height:12px;flex-shrink:0;border:1px solid #94a3b8;border-radius:3px;background:#fff}
 .review-color-swatch.is-yellow{background:#fde68a}.review-color-swatch.is-red{background:#fca5a5}.review-color-swatch.is-green{background:#86efac}.review-color-swatch.is-blue{background:#93c5fd}

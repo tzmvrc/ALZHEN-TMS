@@ -1,5 +1,7 @@
 import {invalidateApiCache} from "../../../services/api.service";
 import {useSpreadsheetInfiniteScroll} from "../../../components/admin/useSpreadsheetInfiniteScroll";
+import {useRegisterTopbarSearch} from "../../../components/admin/topbarSearch";
+import {useRegisterTopbarAction} from "../../../components/admin/topbarActions";
 import VirtualSpreadsheetRows from "../../../components/admin/VirtualSpreadsheetRows";
 import {appendSpreadsheetRows} from "../../../services/spreadsheet-pages";
 import {useSharedTableDesign} from "../../../components/admin/useSharedTableDesign";
@@ -65,7 +67,7 @@ const panel = "rounded-2xl border border-slate-200 bg-white shadow-sm";
 const inputClass = "mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#2678b9] focus:ring-2 focus:ring-[#2678b9]/10";
 const buttonClass = "inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50";
 
-type Props = { accessToken: string | null; role: string; embeddedTableId?: string; onExit?: () => void };
+type Props = { accessToken: string | null; role: string; embeddedTableId?: string; onExit?: () => void; searchScope?: string; searchValue?: string; onSearchChange?: (value: string) => void };
 
 function messageOf(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
@@ -79,7 +81,7 @@ function cellInputValue(value: unknown) {
   return value === null || value === undefined ? "" : typeof value === "object" ? JSON.stringify(value) : String(value);
 }
 
-export default function FlexibleTablesView({ accessToken, role, embeddedTableId, onExit }: Props) {
+export default function FlexibleTablesView({ accessToken, role, embeddedTableId, onExit, searchScope, searchValue, onSearchChange }: Props) {
   const [tables, setTables] = useState<FlexTable[]>([]);
   const [tableData, setTableData] = useState<FlexTableData | null>(null);
   const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
@@ -93,7 +95,9 @@ export default function FlexibleTablesView({ accessToken, role, embeddedTableId,
   const [appearanceColumn,setAppearanceColumn]=useState<string|null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [search, setSearch] = useState("");
+  const [localSearch, setLocalSearch] = useState("");
+  const search = searchValue ?? localSearch;
+  const setSearch = onSearchChange ?? setLocalSearch;
   const [serverSearch,setServerSearch]=useState("");
   const [loadingMore,setLoadingMore]=useState(false);
   const pageWindow=useRef({key:"",page:0});
@@ -114,6 +118,7 @@ export default function FlexibleTablesView({ accessToken, role, embeddedTableId,
   useEffect(()=>()=>{fillCleanup.current?.();},[accessToken,selectedTableId]);
   const [fillPreview,setFillPreview]=useState<{columnId:string;from:number;to:number}|null>(null);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
+  useRegisterTopbarSearch(searchScope??"flexible-tables",tableData?{kind:"field",value:search,placeholder:`Search ${tableData.table.name.toLowerCase()}...`,label:`Search ${tableData.table.name}`,disabled:saving||Object.keys(drafts).length>0,onChange:setSearch}:null);
   const [columnEditor, setColumnEditor] = useState<FlexColumn | "new" | null>(null);
   const [columnForm, setColumnForm] = useState({ name: "", value_type: "TEXT" as FlexValueType, input_mode: "TEXT" as FlexInputMode });
   const [optionsColumn, setOptionsColumn] = useState<FlexColumn | null>(null);
@@ -478,6 +483,7 @@ export default function FlexibleTablesView({ accessToken, role, embeddedTableId,
     const row = await createFlexRow(accessToken!, tableData.table.id).catch((cause) => { setError(messageOf(cause, "Unable to add row.")); return null; });
     if (row) { setTableData((current) => current ? { ...current, rows: [...current.rows, row] } : current); setNotice("Row added."); }
   };
+  useRegisterTopbarAction(searchScope??"flexible-tables", "add", tableData ? { label: "Add row", priority: 10, disabled: !tableData.access.canEdit || saving, onClick: () => void addRow() } : null);
 
   const archiveRowAction = async (row: FlexRow) => {
     if (!window.confirm("Archive this custom row?")) return;
@@ -501,7 +507,7 @@ export default function FlexibleTablesView({ accessToken, role, embeddedTableId,
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           {tableData && !embeddedTableId && <button type="button" className={buttonClass} onClick={() => { setTableData(null); setSelectedTableId(null); setError(""); setNotice(""); void loadTables(); }}><ArrowLeft className="h-4 w-4" />Tables</button>}
-          {!embeddedTableId && <div><h1 className="text-xl font-bold text-[#0b2341]">Flexible Tables</h1><p className="mt-0.5 text-xs text-slate-500">Custom operational workspaces, separate from trip records.</p></div>}
+          {!embeddedTableId && <h1 className="sr-only">Flexible Tables</h1>}
         </div>
         {tableData?.access.canManage && <div className="flex flex-wrap gap-2"><button type="button" className={buttonClass} onClick={() => void renameTable()}><Settings2 className="h-4 w-4" />Rename</button><button type="button" className={buttonClass} onClick={() => void openPermissions()}><Users className="h-4 w-4" />Permissions</button><button type="button" className={`${buttonClass} text-rose-700`} onClick={() => void archiveTable()}><Archive className="h-4 w-4" />Archive</button></div>}
       </header>
@@ -521,7 +527,7 @@ export default function FlexibleTablesView({ accessToken, role, embeddedTableId,
         <div className={`${panel} overflow-hidden`}>
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 p-3 sm:px-4">
             <div className="min-w-0"><h2 className="truncate font-semibold text-[#0b2341]">{tableData.table.name}</h2><p className="text-[11px] text-slate-500">{tableData.rows.length} rows · {tableData.columns.length} columns</p></div>
-            <div className="flex flex-wrap items-center gap-2">{columnControls}<label className="sr-only" htmlFor="flex-search">Search rows</label><input id="flex-search" disabled={saving||Object.keys(drafts).length>0} className="w-40 rounded-full border border-slate-200 px-3 py-2 text-xs sm:w-56" value={search} placeholder="Filter rows…" onChange={(event) => setSearch(event.target.value)} /><button type="button" onClick={() => setShowHidden((shown) => !shown)} className={buttonClass}>{showHidden ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}{showHidden ? "Hide hidden" : "Show hidden"}</button><button type="button" className={buttonClass} onClick={() => void addRow()} disabled={!tableData.access.canEdit || saving}><Plus className="h-4 w-4" />Add row</button><button type="button" className={buttonClass} onClick={() => openColumn("new")} disabled={!tableData.access.canManage || saving}><Columns3 className="h-4 w-4" />Add column</button></div>
+            <div className="flex flex-wrap items-center gap-2">{columnControls}<button type="button" onClick={() => setShowHidden((shown) => !shown)} className={buttonClass}>{showHidden ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}{showHidden ? "Hide hidden" : "Show hidden"}</button><button type="button" className={buttonClass} onClick={() => openColumn("new")} disabled={!tableData.access.canManage || saving}><Columns3 className="h-4 w-4" />Add column</button></div>
           </div>
           <ReportCellFormattingToolbar selectedFontSize={selectedFormat.fontSize ?? 12} formulaBar={<SpreadsheetFormulaBar address={selectedFormulaRow&&selectedFormulaColumn&&tableData?`${columnLetters([...tableData.columns].sort((a,b)=>a.position-b.position).findIndex(column=>column.id===selectedFormulaColumn.id))}${tableData.rows.findIndex(row=>row.id===selectedFormulaRow.id)+1}`:undefined} inputRef={formulaInput} value={formulaBarValue} readOnly={!sourceValueEditable||saving||Boolean(headerFormatting.key)} readOnlyReason={saving?"Wait for the current save to finish.":headerFormatting.key?"Select a custom data cell; column headers do not support formulas.":"Select an editable custom cell. Dates, dropdowns and booleans accept normal values; expressions require text or number cells."} onFocus={()=>{activeFormulaInput.current=formulaInput.current;formulaCancelled.current=false;formulaPicking.current=formulaEligible&&!saving&&!headerFormatting.key;}} onBlur={event=>{if((event.relatedTarget as Element|null)?.closest("[data-formula-bar],[data-formula-help]"))return;formulaPicking.current=false;if(formulaCancelled.current){formulaCancelled.current=false;return;}if(sourceValueEditable&&!saving&&!headerFormatting.key&&selectedFormulaRow&&selectedFormulaColumn&&formulaBarValue!==(selectedFormulaCell?.formula?.expression??cellInputValue(selectedFormulaCell?.value)))void saveCellValue(selectedFormulaRow,selectedFormulaColumn,formulaBarValue,selectedFormulaCell);}} onChange={value=>{formulaCancelled.current=false;formulaPicking.current=true;setDrafts(current=>({...current,[selectedFormulaKey]:value}));}} onCommit={()=>{if(selectedFormulaRow&&selectedFormulaColumn){formulaPicking.current=false;void saveCellValue(selectedFormulaRow,selectedFormulaColumn,formulaBarValue,selectedFormulaCell);}}} onCancel={()=>{formulaCancelled.current=true;formulaPicking.current=false;pickedFormulaRefs.current={key:"",references:{}};setDrafts(current=>{const next={...current};delete next[selectedFormulaKey];return next;});}}/>} selectedCellCount={tableData.access.canManage && formatColumn && !saving && !formatSaving ? 1 : 0} selectionIsBold={Boolean(selectedFormat.bold)} selectionIsItalic={Boolean(selectedFormat.italic)} selectionIsUnderlined={Boolean(selectedFormat.underline)} selectedTextColor={selectedFormat.color ?? null} selectedBackgroundColor={selectedFormat.backgroundColor ?? null} onApply={patch => void applyCellFormat(patch)} {...headerFormatting.toolbarProps} />
           <div ref={element => { spreadsheetViewport.current = element; attachViewport(element); }} {...viewportProps} className="spreadsheet-viewport relative min-h-0 min-w-0 overflow-auto overscroll-contain">

@@ -174,7 +174,8 @@ export default function DashboardPage({
   );
 
   useEffect(() => {
-    if (!(["ADMIN", "STAFF"] as unknown[]).includes(profile?.role) || !accessToken || !profile.id) {
+    const notificationProfileId = profile?.id;
+    if (!(["ADMIN", "STAFF"] as unknown[]).includes(profile?.role) || !accessToken || !notificationProfileId) {
       notificationReload.current = () => {};
       notificationOwner.current = null;
       notificationItemsRef.current = [];
@@ -186,8 +187,8 @@ export default function DashboardPage({
       setNotificationError("");
       return;
     }
-    if (notificationOwner.current !== profile.id) {
-      notificationOwner.current = profile.id;
+    if (notificationOwner.current !== notificationProfileId) {
+      notificationOwner.current = notificationProfileId;
       notificationItemsRef.current = [];
       seenNotificationIds.current.clear();
       setNotificationItems([]);
@@ -241,12 +242,12 @@ export default function DashboardPage({
     const onNotificationEvent = (event: RealtimePayload) => {
       if (event.eventType !== "INSERT") {
         const changedRecipient = event.new?.recipient_profile_id ?? event.old?.recipient_profile_id;
-        if (changedRecipient === profile.id) void load();
+        if (changedRecipient === notificationProfileId) void load();
         return;
       }
       if (
         !event.new ||
-        event.new.recipient_profile_id !== profile.id
+        event.new.recipient_profile_id !== notificationProfileId
       )
         return;
       const row = event.new;
@@ -581,7 +582,7 @@ export default function DashboardPage({
 
   return (
     <LiveTripPingsProvider>
-    <div className="dotted-surface relative min-h-screen overflow-x-hidden text-slate-900">
+    <div className="al-workspace relative min-h-screen overflow-x-hidden text-slate-900">
       <RequestReviewModal/>
       {(["ADMIN", "STAFF"] as unknown[]).includes(profile?.role) && newNotification && (
         newNotification.metadata?.event_kind === "driver_update" ? (
@@ -623,7 +624,7 @@ export default function DashboardPage({
         )
       )}
 
-      <div data-delivery-workspace={route.tripId?true:undefined} className="relative z-10 w-full">
+      <div data-delivery-workspace={route.tripId?true:undefined} className="al-workspace-grid relative z-10 w-full">
         <SidebarNav
           entries={currentNavEntries}
           activeId={currentActiveId}
@@ -645,6 +646,7 @@ export default function DashboardPage({
           onNotificationRetry={() => notificationReload.current()}
           onNotificationRead={markNotificationReadLocally}
           workspace={workspace}
+          canAccessClientWebsite={profile?.role === "ADMIN" || profile?.role === "STAFF"}
           onWorkspaceChange={setWorkspace}
           userName={displayName}
           userRole={
@@ -656,8 +658,8 @@ export default function DashboardPage({
           userPictureUrl={personalProfile && personalProfile.id===profile?.id?personalProfile.profile_picture_url:profile?.profile_picture_url}
         />
 
-        <main className="min-h-screen w-full px-4 pb-4 pt-20 sm:px-6">
-          <Suspense fallback={<div role="status" aria-label="Opening page" className="min-h-40 animate-pulse bg-slate-50" />}><div className="min-h-[calc(100vh-6rem)] w-full min-w-0">
+        <main className="al-workspace-main w-full min-w-0">
+          <Suspense fallback={<div role="status" aria-label="Opening page" className="min-h-40 animate-pulse bg-slate-50" />}><div className="w-full min-w-0">
             <RetainedFeature key={`home:${profile?.id}:${profile?.role}`} active={showOverview}><div
               className={showOverview ? "page-enter" : "hidden"}
             >

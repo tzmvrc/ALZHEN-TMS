@@ -4,7 +4,7 @@ import type {TrackerSelectionRow} from "../../services/transmittal-tracker.servi
 import SpreadsheetRowSelectionHeader from "./SpreadsheetRowSelectionHeader";
 import {useSpreadsheetDragSelection} from "./useSpreadsheetDragSelection";
 import {useSpreadsheetSelectAll} from "./useSpreadsheetSelectAll";
-import SpreadsheetQuickFilters from "./SpreadsheetQuickFilters";
+import {useRegisterTopbarFilter} from "./topbarFilters";
 import {matchesSpreadsheetSearch} from "../../services/spreadsheet-display";
 import { useSheetAutoFit } from "./useSheetAutoFit";
 import { scrollToTableColumn } from "./scrollToTableColumn";
@@ -53,7 +53,8 @@ import { useSharedTableWidths } from "./useSharedTableWidths";
 import {useSharedTableDesign} from "./useSharedTableDesign";
 import {designLayout,designChanges} from "../../services/shared-table-design";
 import ColumnFinder from "./ColumnFinder";
-import TableViewers from "./TableViewers";
+import {TopbarSearchRegistration} from "./topbarSearch";
+import {useRegisterTopbarAction} from "./topbarActions";
 import {SpreadsheetHiddenColumns} from "./SpreadsheetWorkspace";
 
 const trackerFormulaIdentity=(row:Record<string,unknown>)=>typeof row.trip_stop_id==="string"?`stop:${row.trip_stop_id}${row.assignment_id?`:assignment:${row.assignment_id}`:""}`:null;
@@ -1118,6 +1119,7 @@ export default function TransmittalTrackerView({toolbarLeading,onDataReady}:{too
       const link = document.createElement("a"); link.href = url; link.download = `Transmittal ${safeFilenamePart(exportViewName, "Tracker")}.xlsx`; link.click(); window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (exportFailure) { setExportError(exportFailure instanceof Error ? exportFailure.message : "Export failed."); }
   };
+  useRegisterTopbarAction("trips:Transmittal Tracker", "export", { label: "Export filtered", disabled: legacyConflictCount > 0, onClick: () => void exportFiltered() });
 
   const exportSheet = async () => {
     if (!selectedReference) return;
@@ -1302,20 +1304,24 @@ export default function TransmittalTrackerView({toolbarLeading,onDataReady}:{too
       onCancel={() => { const next = { ...draftsRef.current }; delete next[key]; draftsRef.current = next; setDrafts(next); }} /></CollaborativeCell>;
   };
 
+  useRegisterTopbarFilter("trips:Transmittal Tracker", {
+    label: "Tracker status filters",
+    value: quickStatus,
+    options: [{value:"",label:"All"},...dropdownChoices,...(quickStatus&&!dropdownChoices.some(option=>option.value===quickStatus)?[{value:quickStatus,label:quickStatus}]:[])],
+    disabled: pageNavigationBlocked,
+    onChange: setQuickStatus,
+  });
   return <section className="space-y-2">
     {resetRows&&accessToken&&<TrackerResetDialog token={accessToken} rows={resetRows} onClose={()=>setResetRows(null)} onReset={ids=>{setSelectedRows(current=>new Set([...current].filter(id=>!ids.includes(id.split("~")[0]))));void load(true);}}/>}
     <div className={REPORT_TOOLBAR_ROW_CLASS} aria-label="Transmittal report toolbar">
-      <SpreadsheetQuickFilters label="Tracker status filters" value={quickStatus} options={[{value:"",label:"All"},...dropdownChoices,...(quickStatus&&!dropdownChoices.some(option=>option.value===quickStatus)?[{value:quickStatus,label:quickStatus}]:[])]} disabled={pageNavigationBlocked} onChange={setQuickStatus}/>
       <div className="flex shrink-0 items-center gap-2" data-report-toolbar-leading>{toolbarLeading}</div>
       <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2" data-report-toolbar-actions>
         {sharedWidths.feedback}{sharedDesign.feedback}
         {error && <button type="button" onClick={() => void load(false)} disabled={loading} className="h-9 rounded border border-slate-200 px-3 text-xs text-slate-600 disabled:opacity-40">Retry loading</button>}
-        <TableViewers table="transmittal-tracker" />
-        <ColumnFinder rowSearch={{value:query,onSearch:setQuery,placeholder:"Search rows or columns…"}} columns={TRACKER_COLUMNS.map(column=>({key:column.key,title:headerFormatting.title(column.key,column.title),hidden:columnLayout.hidden.includes(column.key),index:renderedColumns.findIndex(item=>item.key===column.key)}))} viewport={viewportRef} getHeader={key=>headerRefs.current.get(key)} onReveal={restoreColumn} />
+        <TopbarSearchRegistration scope="trips:Transmittal Tracker"><ColumnFinder rowSearch={{value:query,onSearch:setQuery,placeholder:"Search rows or columns…"}} columns={TRACKER_COLUMNS.map(column=>({key:column.key,title:headerFormatting.title(column.key,column.title),hidden:columnLayout.hidden.includes(column.key),index:renderedColumns.findIndex(item=>item.key===column.key)}))} viewport={viewportRef} getHeader={key=>headerRefs.current.get(key)} onReveal={restoreColumn} /></TopbarSearchRegistration>
         <button type="button" onClick={openPrepareDialog} className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#12365a] px-3 text-sm font-medium text-[#12365a] hover:bg-blue-50"><FileSpreadsheet className="h-4 w-4"/>Prepare Sheet</button>
         {hasSelectedDataRows&&data?.access.canEdit&&<ReportRowActionButton action="edit" disabled={selectedRows.size!==1||pageNavigationBlocked||selectAllRequest.busy} onClick={openSelectedRowEditor}/>}
         {hasSelectedDataRows&&data?.access.canEdit&&<ReportRowActionButton action="restore" label="Reset selected transmittal overrides" disabled={selectedStopCount>20||pageNavigationBlocked||loading||selectAllRequest.busy||selectedPhysicalRows.some(row=>!row)} onClick={()=>setResetRows(selectedPhysicalRows.filter((row):row is TrackerSelectionRow=>Boolean(row)))}/>}
-        <button disabled={legacyConflictCount>0} onClick={()=>void exportFiltered()} className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#12365a] px-3 text-sm font-medium text-white hover:bg-[#0d2945] disabled:cursor-not-allowed disabled:opacity-50"><Download className="h-4 w-4"/>Export filtered</button>
       </div>
     </div>
     {columnFilter && <div className="flex flex-wrap items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600"><span className="font-semibold">Filter {TRACKER_COLUMNS.find((column) => column.key === columnFilter.key)?.title}</span><input autoFocus value={columnFilter.value} onChange={(event) => setColumnFilter({ ...columnFilter, value: event.target.value })} aria-label={`Filter ${TRACKER_COLUMNS.find((column) => column.key === columnFilter.key)?.title}`} className="h-8 min-w-48 rounded border border-slate-300 bg-white px-2 text-xs outline-none focus:border-blue-400" /><button type="button" onClick={() => setColumnFilter(null)} className="rounded px-2 py-1 text-slate-500 hover:bg-white">Clear filter</button></div>}
@@ -1443,7 +1449,7 @@ export default function TransmittalTrackerView({toolbarLeading,onDataReady}:{too
               })}</tbody>
             </table>
           </div>
-          <div className="mt-4 flex justify-end print:hidden"><button onClick={() => void exportSheet()} disabled={sheetRows.length === 0} className="inline-flex items-center gap-2 rounded-lg bg-[#12365a] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"><Download className="h-4 w-4" />Export Transmittal Sheet</button></div>
+          <div className="mt-4 flex justify-end print:hidden"><button onClick={() => void exportSheet()} disabled={sheetRows.length === 0} className="inline-flex items-center gap-2 rounded-lg bg-[#0b2343] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#17385f] disabled:opacity-50"><Download className="h-4 w-4" />Export Transmittal Sheet</button></div>
           {exportError && <p role="alert" className="mt-3 text-sm text-red-700 print:hidden">{exportError}</p>}
         </article>
       </div>

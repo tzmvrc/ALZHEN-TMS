@@ -19,14 +19,16 @@ type Props = {
   role: string;
   children: ReactNode;
   hideSectionTab?: boolean;
+  searchScope?: string;
 };
 
 const tabClass = "max-w-[15rem] shrink-0 truncate border-b-2 px-3 py-1.5 text-xs font-semibold transition";
 
-export default function FlexibleTableSectionTabs({ sectionKey, sectionLabel, accessToken, role, children, hideSectionTab = false }: Props) {
+export default function FlexibleTableSectionTabs({ sectionKey, sectionLabel, accessToken, role, children, hideSectionTab = false, searchScope }: Props) {
   const cached=accessToken?getCachedSectionFlexibleTables(accessToken,sectionKey):null;
   const [connected, setConnected] = useState<FlexTable[]>(cached??[]);
   const [activeTableId, setActiveTableId] = useState<string | null>(null);
+  const [tableSearches,setTableSearches]=useState<Record<string,string>>({});
   const [loading, setLoading] = useState(!cached);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -74,8 +76,8 @@ export default function FlexibleTableSectionTabs({ sectionKey, sectionLabel, acc
   return <div className="space-y-2">
     {(!hideSectionTab || connected.length > 0) && <div className="flex min-w-0 items-center gap-1 border-b border-slate-200">
       <div role="tablist" aria-label={`${sectionLabel} tables`} className="flex min-w-0 flex-1 items-end gap-1 overflow-x-auto">
-        <button role="tab" aria-selected={!activeTableId} type="button" title={hideSectionTab ? `Show ${sectionLabel} table` : undefined} aria-label={hideSectionTab ? `Show ${sectionLabel} table` : undefined} className={`${tabClass} ${!activeTableId ? "border-[#2678b9] text-[#0b2341]" : "border-transparent text-slate-500 hover:text-slate-800"}`} onClick={() => setActiveTableId(null)}>{hideSectionTab ? <Table2 aria-hidden="true" className="mx-auto h-4 w-4" /> : sectionLabel}</button>
-        {connected.map((table) => <div key={table.id} className="flex max-w-[18rem] shrink-0 items-center border-b-2" style={{ borderColor: activeTableId === table.id ? "#2678b9" : "transparent" }}>
+        <button role="tab" aria-selected={!activeTableId} type="button" title={hideSectionTab ? `Show ${sectionLabel} table` : undefined} aria-label={hideSectionTab ? `Show ${sectionLabel} table` : undefined} className={`${tabClass} ${!activeTableId ? "border-[#0b2343] text-[#0b2343]" : "border-transparent text-slate-500 hover:text-slate-800"}`} onClick={() => setActiveTableId(null)}>{hideSectionTab ? <Table2 aria-hidden="true" className="mx-auto h-4 w-4" /> : sectionLabel}</button>
+        {connected.map((table) => <div key={table.id} className="flex max-w-[18rem] shrink-0 items-center border-b-2" style={{ borderColor: activeTableId === table.id ? "#0b2343" : "transparent" }}>
           <button role="tab" aria-selected={activeTableId === table.id} type="button" className={`${tabClass} border-0 ${activeTableId === table.id ? "text-[#0b2341]" : "text-slate-500 hover:text-slate-800"}`} title={table.name} onClick={() => setActiveTableId(table.id)}><span className="inline-flex items-center gap-1.5"><Table2 aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />{table.name}</span></button>
           <button type="button" title={`Disconnect ${table.name} from ${sectionLabel}; keep the table and its data`} aria-label={`Disconnect ${table.name} from ${sectionLabel}`} disabled={busy} onClick={() => void disconnect(table)} className="mr-1 rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-rose-600 disabled:opacity-40"><Link2Off className="h-3 w-3" /></button>
         </div>)}
@@ -83,7 +85,7 @@ export default function FlexibleTableSectionTabs({ sectionKey, sectionLabel, acc
     </div>}
     {loading && !hideSectionTab && <div aria-label="Loading connected table tabs" className="h-8 w-40 animate-pulse rounded bg-slate-100" />}
     {error && <button type="button" onClick={() => void reload()} className="text-xs font-semibold text-blue-700 underline">Retry loading tables</button>}
-    {activeTableId ? <Suspense fallback={<div className="h-24 animate-pulse bg-slate-50"/>}><FlexibleTablesView key={activeTableId} accessToken={accessToken} role={role} embeddedTableId={activeTableId} onExit={() => { setActiveTableId(null); void reload(); }} /></Suspense> : children}
+    {activeTableId ? <Suspense fallback={<div className="h-24 animate-pulse bg-slate-50"/>}><FlexibleTablesView key={activeTableId} accessToken={accessToken} role={role} embeddedTableId={activeTableId} searchScope={searchScope??sectionKey} searchValue={tableSearches[activeTableId]??""} onSearchChange={value=>setTableSearches(current=>({...current,[activeTableId]:value}))} onExit={() => { setActiveTableId(null); void reload(); }} /></Suspense> : children}
 
   </div>;
 }

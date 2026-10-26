@@ -4,18 +4,17 @@ import {
   CalendarDays,
   Check,
   ChevronRight,
-  LayoutGrid,
   MessageSquare,
-  Search,
-  Table2,
   X,
 } from "lucide-react";
 import type { DispatchRequest, RequestStatus } from "../../../types/requests";
 import { useRequests } from "../../../components/admin/requestsStore";
 import { senderInitials } from "../../../components/admin/requestFormat";
-import { tableUi } from "../../../components/admin/dashboardStyles";
+import { useRegisterTopbarSearch } from "../../../components/admin/topbarSearch";
+import { useRegisterTopbarView, useStoredPageView } from "../../../components/admin/topbarView";
 
 type ViewMode = "board" | "list";
+const REQUEST_VIEW_MODES: readonly ViewMode[] = ["board", "list"];
 
 const COLUMNS: {
   id: RequestStatus;
@@ -298,8 +297,10 @@ function RequestRow({
 
 export default function RequestsView() {
   const { requests, select } = useRequests();
-  const [view, setView] = useState<ViewMode>("list");
+  const [view, setView] = useStoredPageView("requests", "list", REQUEST_VIEW_MODES);
   const [query, setQuery] = useState("");
+  useRegisterTopbarSearch("requests", { kind: "field", value: query, placeholder: "Search requests...", label: "Search requests", onChange: setQuery });
+  useRegisterTopbarView("requests", {value:view==="board"?"grid":"table",gridLabel:"Board view",tableLabel:"List view",onChange:mode=>setView(mode==="grid"?"board":"list")});
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
     if (!needle) return requests;
@@ -316,47 +317,7 @@ export default function RequestsView() {
 
   return (
     <div className="w-full space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="text-xl font-bold leading-tight tracking-tight text-[#0b2341]">Requests</h1>
-          <p className="mt-1 text-xs leading-snug text-slate-600">Sample email requests / session-only demo review; no trips are created</p>
-        </div>
-        <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
-          <label className="relative block w-full sm:w-72">
-            <Search
-              aria-hidden="true"
-              className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
-            />
-            <input
-              aria-label="Search requests"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search reference, sender or courier"
-              className="h-10 w-full rounded-full border border-slate-200 bg-white pl-10 pr-4 text-sm text-slate-700 outline-none placeholder:text-slate-400 focus:border-[#2678b9]/50 focus:ring-2 focus:ring-[#2678b9]/15"
-            />
-          </label>
-          <div role="group" aria-label="Request display mode" className={tableUi.segment}>
-            <button
-              type="button"
-              title="Board view"
-              aria-label="Board view"
-              aria-pressed={view === "board"}
-              onClick={() => setView("board")}
-              className={`inline-flex h-8 w-9 items-center justify-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9] ${view === "board" ? tableUi.segmentOn : tableUi.segmentOff}`}>
-              <LayoutGrid aria-hidden="true" className="h-3.5 w-3.5" />
-            </button>
-            <button
-              type="button"
-              title="List view"
-              aria-label="List view"
-              aria-pressed={view === "list"}
-              onClick={() => setView("list")}
-              className={`inline-flex h-8 w-9 items-center justify-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9] ${view === "list" ? tableUi.segmentOn : tableUi.segmentOff}`}>
-              <Table2 aria-hidden="true" className="h-3.5 w-3.5" />
-            </button>
-          </div>
-        </div>
-      </div>
+      <h1 className="sr-only">Requests</h1>
 
       <div className="w-full rounded-3xl bg-white ring-1 ring-slate-900/[0.05] shadow-[0_1px_2px_rgba(11,35,65,0.03)]">
       {view === "board" ? (

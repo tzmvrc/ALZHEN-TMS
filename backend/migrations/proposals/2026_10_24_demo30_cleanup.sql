@@ -1,4 +1,5 @@
--- PREPARED ONLY: not executed. Removes only the exact ALZHEN_DEMO30_V1 graph.
+-- EXECUTED 2026-10-26 against the connected ALZHEN TMS Supabase project.
+-- Removes only the exact ALZHEN_DEMO30_V1 graph; re-running is idempotent.
 -- Existing whole-trip deletion guards remain enabled. New dependencies/attachments abort.
 -- Review impact before execution. Ordinary deletion audit/journals are retained.
 BEGIN;
@@ -19,6 +20,12 @@ BEGIN
  IF EXISTS(SELECT 1 FROM public.trips WHERE id=ANY(trip_ids) AND (coalesce(remarks,'') NOT LIKE '%[ALZHEN_DEMO30_V1]%' OR dispatch_number NOT LIKE 'DEMO30-20261024-%')) THEN RAISE EXCEPTION 'Demo identity changed'; END IF;
  IF EXISTS(SELECT 1 FROM public.driver_trip_updates WHERE driver_id=ANY(owned) AND (NOT id=ANY(owned) OR coalesce(notes,'') NOT LIKE '%[ALZHEN_DEMO30_V1]%' OR pod_image_path IS NOT NULL OR pod_image_url IS NOT NULL)) THEN RAISE EXCEPTION 'New/attached driver activity; cleanup blocked'; END IF;
  IF EXISTS(SELECT 1 FROM public.products WHERE id=ANY(owned) AND photo_path IS NOT NULL) THEN RAISE EXCEPTION 'A demo product now has an image; review attachments before cleanup'; END IF;
+ -- Preserve this separate test account while removing its exact demo-truck link.
+ UPDATE public.drivers d SET assigned_truck_id=NULL
+ WHERE d.id='f4993df0-12b1-4451-bb80-27f5cfb44ef4'::uuid
+   AND d.notes='This is a test account'
+   AND d.assigned_truck_id='e6301024-0020-4000-9000-000000000003'::uuid
+   AND EXISTS(SELECT 1 FROM public.trucks t WHERE t.id=d.assigned_truck_id AND t.notes LIKE '%[ALZHEN_DEMO30_V1]%');
  -- Includes SET NULL references: cleanup must never change real operational rows.
  FOR relation IN
   SELECT cn.nspname child_schema,cc.relname child_table,ca.attname child_column,pn.nspname parent_schema,pc.relname parent_table,pa.attname parent_column
@@ -26,7 +33,7 @@ BEGIN
   JOIN pg_attribute ca ON ca.attrelid=cc.oid AND ca.attnum=c.conkey[1] JOIN pg_attribute pa ON pa.attrelid=pc.oid AND pa.attnum=c.confkey[1]
   WHERE c.contype='f' AND pn.nspname='public' AND pc.relname=ANY(master_tables) AND array_length(c.conkey,1)=1
  LOOP
-  IF NOT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=relation.child_schema AND table_name=relation.child_table AND column_name='id') THEN RAISE EXCEPTION 'Unknown referencing table % requires review',relation.child_table; END IF;
+  IF NOT EXISTS(SELECT 1 FROM information_schema.columns columns WHERE columns.table_schema=relation.child_schema AND columns.table_name=relation.child_table AND columns.column_name='id') THEN RAISE EXCEPTION 'Unknown referencing table % requires review',relation.child_table; END IF;
   EXECUTE format('SELECT EXISTS(SELECT 1 FROM %I.%I child JOIN %I.%I parent ON child.%I=parent.%I WHERE parent.id=ANY($1) AND NOT(child.id::text=ANY($2)))',relation.child_schema,relation.child_table,relation.parent_schema,relation.parent_table,relation.child_column,relation.parent_column) INTO unexpected USING owned,owned::text[];
   IF unexpected THEN RAISE EXCEPTION 'A non-demo record in % uses demo references',relation.child_table; END IF;
  END LOOP;

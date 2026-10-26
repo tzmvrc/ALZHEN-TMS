@@ -1,9 +1,10 @@
-import { lazy, memo, useCallback, useMemo, useRef, useState, type ComponentProps, type ReactNode } from "react";
+import { lazy, memo, useCallback, useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from "react";
 import {SpreadsheetSheetHeader,SpreadsheetBottomToolbar,SpreadsheetBottomControlsContext} from "./SpreadsheetWorkspace";
 import type ReportDataView from "./ReportDataView";
 import RetainedFeature from "./RetainedFeature";
 import { useAuth } from "../../context/AuthContext";
 import { workspaceSheet, WORKSPACE_SHEETS, type WorkspaceSheet } from "../../services/trips-workspace";
+import { setPageSection } from "./pageSection";
 
 type Props = ComponentProps<typeof ReportDataView>;
 // Active-tab changes should not rerender every previously visited grid. Activity
@@ -44,12 +45,14 @@ export default function ReportsWorkspace(props: Props) {
   };
 
   const footerContext=useMemo(()=>({activeSheet:active,registerHiddenColumns}),[active,registerHiddenColumns]);
+  const activeTitle=SHEET_TABS.find(sheet=>sheet.key===active)!.title;
+  useEffect(()=>setPageSection("trips",activeTitle),[activeTitle]);
   return <section ref={workspaceRef} data-trips-workspace aria-label="Trips spreadsheet workspace" className="min-w-0">
-    <div className="mb-2"><SpreadsheetSheetHeader title={SHEET_TABS.find(sheet=>sheet.key===active)!.title} description={SHEET_TABS.find(sheet=>sheet.key===active)!.description} /></div>
+    <SpreadsheetSheetHeader title={activeTitle} />
     <SpreadsheetBottomControlsContext.Provider value={footerContext}>
     {WORKSPACE_SHEETS.map(sheet => <RetainedFeature key={sheet.key} active={active === sheet.key}>
       <div role="tabpanel" id={`trip-sheet-${sheet.key}`} aria-labelledby={`trip-tab-${sheet.key}`}>
-        <WorkspaceReport {...props} initialReport={sheet.report} pageTitle={undefined} pageSubtitle={undefined}
+        <WorkspaceReport {...props} initialReport={sheet.report} pageTitle={undefined} pageSubtitle={undefined} topbarSearchScope={`trips:${sheet.title}`}
           transactionView={sheet.key === "trips"} allTripRecords={sheet.key === "trips"} ongoingOnly={sheet.key === "trips" ? false : props.ongoingOnly} showReportPicker={false} showExport
           notificationTarget={props.notificationTarget?.reportKey === sheet.report || sheet.key === "trips" && props.notificationTarget?.reportKey === "combined" ? {...props.notificationTarget!,reportKey:sheet.report} : null}
           onReportScopeChange={undefined} toolbarLeading={undefined}
@@ -66,7 +69,7 @@ export default function ReportsWorkspace(props: Props) {
         event.preventDefault(); const index = SHEET_TABS.findIndex(item => item.key === sheet.key);
         const next = event.key === "Home" ? 0 : event.key === "End" ? SHEET_TABS.length - 1 : (index + (event.key === "ArrowRight" ? 1 : -1) + SHEET_TABS.length) % SHEET_TABS.length;
         choose(SHEET_TABS[next].key); document.getElementById(`trip-tab-${SHEET_TABS[next].key}`)?.focus();
-      }} className={`relative flex-none whitespace-nowrap border-r border-t border-slate-200 px-3 py-1 text-[11px] leading-5 focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-blue-500 ${active === sheet.key ? "border-t-white bg-white font-semibold text-blue-800 before:absolute before:-top-px before:left-0 before:right-0 before:h-px before:bg-white" : "bg-slate-100 text-slate-500 hover:bg-slate-50"}`}>{sheet.title}</button>)}
+      }} className={`relative flex-none whitespace-nowrap border-b-2 px-3 py-1 text-[11px] leading-5 focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-[#0b2343] ${active === sheet.key ? "border-[#0b2343] bg-white font-semibold text-[#0b2343]" : "border-transparent bg-[#f3f5f8] text-slate-500 hover:bg-white"}`}>{sheet.title}</button>)}
     </nav>
     </SpreadsheetBottomToolbar>
   </section>;

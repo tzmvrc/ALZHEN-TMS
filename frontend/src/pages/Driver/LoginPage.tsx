@@ -83,9 +83,9 @@ export default function DriverLoginPage() {
   };
 
   return (
-    <div className="w-full bg-[#f2f4f5] sm:h-dvh sm:p-4">
+    <div className="w-full bg-[#dde1e7] sm:h-dvh sm:p-4">
       {/* ───────── Full-viewport dotted panel ───────── */}
-      <div className="dotted-surface relative flex min-h-dvh w-full flex-col border border-[#dbe2e9] px-4 pb-4 pt-4 sm:h-full sm:min-h-0 sm:rounded-2xl sm:px-10 sm:py-8">
+      <div className="dotted-surface relative flex min-h-dvh w-full flex-col border border-[#e9edf4] px-4 pb-4 pt-4 sm:h-full sm:min-h-0 sm:rounded-[28px] sm:px-10 sm:py-8">
         <div className="relative z-10 mx-auto flex w-full max-w-sm flex-col pt-1 sm:pt-0">
           {/* Header */}
           <div className="text-center">
@@ -148,7 +148,7 @@ export default function DriverLoginPage() {
                 placeholder="name@example.com"
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
-                className="w-full rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-900 focus:ring-1 focus:ring-slate-900"
+                className="w-full rounded-lg border border-[#e9edf4] bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-[#0b2343] focus:ring-2 focus:ring-[#0b2343]/15"
               />
             </div>
 
@@ -169,7 +169,7 @@ export default function DriverLoginPage() {
                   placeholder="••••••••"
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
-                  className="w-full rounded-lg border border-slate-200 bg-white px-4 py-2.5 pr-11 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-900 focus:ring-1 focus:ring-slate-900"
+                  className="w-full rounded-lg border border-[#e9edf4] bg-white px-4 py-2.5 pr-11 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-[#0b2343] focus:ring-2 focus:ring-[#0b2343]/15"
                 />
                 <button
                   type="button"
@@ -189,7 +189,7 @@ export default function DriverLoginPage() {
             <button
               type="submit"
               disabled={submitting}
-              className="mt-1 w-full cursor-pointer rounded-lg bg-slate-900 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-70 sm:py-3.5">
+              className="mt-1 w-full cursor-pointer rounded-full bg-[#0b2343] py-2.5 text-sm font-semibold text-white transition hover:bg-[#17385f] focus:outline-none focus:ring-2 focus:ring-[#0b2343] focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-70 sm:py-3.5">
               {submitting ? "Signing in…" : "Login to Portal"}
             </button>
           </form>

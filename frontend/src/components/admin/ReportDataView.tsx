@@ -3,7 +3,7 @@ import SpreadsheetRowSelectionHeader from "./SpreadsheetRowSelectionHeader";
 import {useSpreadsheetDragSelection} from "./useSpreadsheetDragSelection";
 import {useSpreadsheetSelectAll} from "./useSpreadsheetSelectAll";
 import {fetchReportSelection} from "../../services/report.service";
-import SpreadsheetQuickFilters from "./SpreadsheetQuickFilters";
+import {useRegisterTopbarFilter} from "./topbarFilters";
 import {spreadsheetColumnLabel, matchesSpreadsheetSearch} from "../../services/spreadsheet-display";
 import { useSheetAutoFit } from "./useSheetAutoFit";
 import { cbmDisplay, isCbmField } from "../../services/cbm-display";
@@ -46,6 +46,9 @@ import { useNavigate } from "react-router-dom";
 import { useSharedTableWidths } from "./useSharedTableWidths";
 import { useSharedTableDesign } from "./useSharedTableDesign";
 import ColumnFinder from "./ColumnFinder";
+import {TopbarSearchRegistration} from "./topbarSearch";
+import {useRegisterTopbarView,useStoredPageView} from "./topbarView";
+import {useRegisterTopbarAction} from "./topbarActions";
 import {SpreadsheetHiddenColumns} from "./SpreadsheetWorkspace";
 import TransactionCleanupNotice from "./TransactionCleanupNotice";
 import {
@@ -53,15 +56,12 @@ import {
   CalendarDays,
   ArrowUpRight,
   ChevronDown,
-  LayoutGrid,
   Package,
   ArrowDown,
   ArrowUp,
   ArrowUpDown,
-  Table2,
   Truck,
   UserRound,
-  Download,
   GripVertical,
 } from "lucide-react";
 import type ExcelJS from "exceljs";
@@ -141,6 +141,7 @@ import type { AdminNotificationTarget } from "../../services/notification.servic
 import { StatusBadge } from "./TablePrimitives";
 
 const reportKeys = Object.keys(REPORTS) as ReportKey[];
+const REPORT_VIEW_MODES = ["visual", "table"] as const;
 type ExportMode = "all-workbook" | "separate-zip" | "current-report";
 const FLEX_SECTION_BY_REPORT: Record<ReportKey, FlexSectionKey> = {
   combined: "combined_report",
@@ -1009,7 +1010,6 @@ export default function ReportDataView({
   showExport = true,
   onDataReady,
   pageTitle,
-  pageSubtitle,
   onOpenTrip,
   onReportScopeChange,
   toolbarLeading,
@@ -1018,6 +1018,7 @@ export default function ReportDataView({
   ongoingOnly = false,
   transactionView = false,
   allTripRecords = false,
+  topbarSearchScope,
 }: {
   initialReport?: ReportKey;
   notificationTarget?: AdminNotificationTarget | null;
@@ -1042,6 +1043,7 @@ export default function ReportDataView({
   ongoingOnly?: boolean;
   transactionView?: boolean;
   allTripRecords?: boolean;
+  topbarSearchScope?: string;
 }) {
   const { accessToken, refreshSession, profile } = useAuth();
   const [reportSelection] = useState(createReportSelection);
@@ -1056,7 +1058,8 @@ export default function ReportDataView({
       development: import.meta.env.DEV,
     });
   }, []);
-  const [viewMode, setViewMode] = useState<"visual" | "table">("table");
+  const [viewMode, setViewMode] = useStoredPageView(topbarSearchScope??`reports:${reportKey}`, "table", REPORT_VIEW_MODES);
+  useRegisterTopbarView(topbarSearchScope??"reports", {value:viewMode==="visual"?"grid":"table",gridLabel:"Visual view",tableLabel:"Table view",onChange:mode=>setViewMode(mode==="grid"?"visual":"table")});
   const [rows, setRows] = useState<ReportRow[]>([]);
   const [selectionRecords,setSelectionRecords]=useState<ReportRow[]>([]),[selectionError,setSelectionError]=useState("");
   useSpreadsheetFeedback(selectionError,"error");
@@ -1241,6 +1244,7 @@ export default function ReportDataView({
   const [exportMode, setExportMode] = useState<ExportMode>("current-report");
   const [exportBusy, setExportBusy] = useState(false);
   const [exportError, setExportError] = useState("");
+  useRegisterTopbarAction(topbarSearchScope??"reports", "export", showExport ? { label: "Export", onClick: () => { setExportError(""); setExportModalOpen(true); } } : null);
   const [mentionOptions, setMentionOptions] = useState<RelationshipOption[]>([]);
   const [mentionLoading, setMentionLoading] = useState(false);
   const [cellSaveState, setCellSaveState] = useState<{
@@ -1565,7 +1569,6 @@ export default function ReportDataView({
     initializedSheet.current=owner;
     setReportKey(initialReport);
     setColumnLayout(readReportColumnLayout(`alzhen:report-column-layout:${profile?.id ?? "user"}:${initialReport}`));
-    setViewMode("table");
     setPage(1);
     setSearch("");
     setAppliedSearch("");
@@ -1921,7 +1924,6 @@ export default function ReportDataView({
     setPage(1);
     setReportKey(nextReport);
     setColumnLayout(readReportColumnLayout(`alzhen:report-column-layout:${profile?.id ?? "user"}:${nextReport}`));
-    setViewMode("table");
     setSearch("");
     setAppliedSearch("");
     setColumns([]);
@@ -3207,23 +3209,26 @@ export default function ReportDataView({
     }
   }
 
+  useRegisterTopbarFilter(topbarSearchScope??"reports", quickFilterConfig ? {
+    label: quickFilterConfig.label,
+    options: quickFilterOptions,
+    value: quickFilterValue,
+    disabled: Boolean(editingCell||editModalOpen||fillGesture||formulas.draftPending),
+    onChange: value => { setAppliedFilters(current => ({...current,[quickFilterConfig.field]:value})); setPage(1); },
+  } : null);
   return (
     <TripIssuesProvider token={accessToken} enabled={Boolean(transactionView&&accessToken)} tripIds={issueTripIds} onChanged={()=>{if(appliedFilters.issue_filter && appliedFilters.issue_filter !== "All")scheduleRealtimeRefreshRef.current();}}>
     <div className="space-y-2">
       <div className={REPORT_TOOLBAR_ROW_CLASS}>
         {pageTitle && (
-          <div className="min-w-0 w-full">
-            <h1 className="truncate text-xl font-bold leading-tight tracking-tight text-[#0b2341]">{pageTitle}</h1>
-            {pageSubtitle && <p className="mt-1 text-xs leading-snug text-slate-600">{pageSubtitle}</p>}
-          </div>
+          <h1 className="sr-only">{pageTitle}</h1>
         )}
         {toolbarLeading && <div className="shrink-0" data-report-toolbar-leading>{toolbarLeading}</div>}
-      {quickFilterConfig&&<SpreadsheetQuickFilters label={quickFilterConfig.label} options={quickFilterOptions} value={quickFilterValue} disabled={Boolean(editingCell||editModalOpen||fillGesture||formulas.draftPending)} onChange={value=>{setAppliedFilters(current=>({...current,[quickFilterConfig.field]:value}));setPage(1);}}/>}
 
         {/* Collaboration outcomes use deduplicated toasts; drafts and recovery stay in the hook. */}
         <div data-report-toolbar-actions className="flex w-full min-w-0 flex-wrap items-center justify-end gap-2 lg:flex-[1_1_36rem] lg:flex-nowrap">
           {sharedWidths.feedback}{sharedDesign.feedback}
-          <ColumnFinder tableKey={transactionView?"trips":reportKey} key={reportKey} rowSearch={{value:search,placeholder:"Search rows or columns...",onSearch:value=>{setSearch(value);setAppliedSearch(value);setPage(1);}}} columns={columns.filter((column) => !(transactionView && !allTripRecords && column.key === "warehouse_code")).map((column) => ({ ...column, title:headerFormatting.title(column.key,column.title), hidden: hiddenColumnKeys.has(column.key), index: renderedGridColumns.findIndex((item) => item.key === column.key) }))} viewport={tableViewportRef} getHeader={(key) => headerCellRefs.current.get(key)} onReveal={restoreReportColumn} />
+          <TopbarSearchRegistration scope={topbarSearchScope??"reports"}><ColumnFinder key={reportKey} rowSearch={{value:search,placeholder:transactionView?"Search trips or columns...":"Search records or columns...",onSearch:value=>{setSearch(value);setAppliedSearch(value);setPage(1);}}} columns={columns.filter((column) => !(transactionView && !allTripRecords && column.key === "warehouse_code")).map((column) => ({ ...column, title:headerFormatting.title(column.key,column.title), hidden: hiddenColumnKeys.has(column.key), index: renderedGridColumns.findIndex((item) => item.key === column.key) }))} viewport={tableViewportRef} getHeader={(key) => headerCellRefs.current.get(key)} onReveal={restoreReportColumn} /></TopbarSearchRegistration>
           {showReportPicker && (
             <label className="sr-only" htmlFor="report-select">
               Select report
@@ -3302,24 +3307,6 @@ export default function ReportDataView({
             </>
           )}
           <div className="flex shrink-0 items-center gap-1.5">
-            <div role="group" aria-label="Report display mode" className={tableUi.segment}>
-              <button type="button" title="Visual view" aria-label="Visual view" aria-pressed={viewMode === "visual"} onClick={() => setViewMode("visual")} className={`inline-flex h-8 w-9 items-center justify-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9] ${viewMode === "visual" ? tableUi.segmentOn : tableUi.segmentOff}`}>
-                <LayoutGrid aria-hidden="true" className="h-3.5 w-3.5" />
-              </button>
-              <button type="button" title="Table view" aria-label="Table view" aria-pressed={viewMode === "table"} onClick={() => setViewMode("table")} className={`inline-flex h-8 w-9 items-center justify-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9] ${viewMode === "table" ? tableUi.segmentOn : tableUi.segmentOff}`}>
-                <Table2 aria-hidden="true" className="h-3.5 w-3.5" />
-              </button>
-            </div>
-            {showExport && (
-              <button
-                type="button"
-                title="Export reports"
-                aria-label="Export reports"
-                onClick={() => { setExportError(""); setExportModalOpen(true); }}
-                className={`${tableUi.iconBtn} !bg-[#ffd43b] !text-[#0b2341] hover:!bg-[#f2c200]`}>
-                <Download aria-hidden="true" className="h-4 w-4" />
-              </button>
-            )}
           </div>
           {toolbarActions}
         </div>
@@ -3346,7 +3333,7 @@ export default function ReportDataView({
             {exportError && <p role="alert" className="mt-3 text-sm text-rose-700">{exportError}</p>}
             <div className="mt-5 flex justify-end gap-2">
               <button type="button" disabled={exportBusy} onClick={() => setExportModalOpen(false)} className="rounded-full border border-slate-200 px-4 py-2 text-sm text-slate-700 disabled:opacity-50">Cancel</button>
-              <button type="button" disabled={exportBusy} onClick={() => void runReportExport()} className="rounded-full bg-[#ffd43b] px-4 py-2 text-sm font-semibold text-[#0b2341] disabled:opacity-50">{exportBusy ? "Preparingâ€¦" : "Export"}</button>
+              <button type="button" disabled={exportBusy} onClick={() => void runReportExport()} className="rounded-full bg-[#0b2343] px-4 py-2 text-sm font-semibold text-white hover:bg-[#17385f] disabled:opacity-50">{exportBusy ? "Preparingâ€¦" : "Export"}</button>
             </div>
           </section>
         </div>
@@ -3443,6 +3430,7 @@ export default function ReportDataView({
         key={reportKey}
         sectionKey={FLEX_SECTION_BY_REPORT[reportKey]}
         sectionLabel={REPORTS[reportKey].title}
+        searchScope={topbarSearchScope}
         hideSectionTab
         accessToken={accessToken}
         role={profile?.role ?? ""}>

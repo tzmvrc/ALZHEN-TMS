@@ -152,23 +152,6 @@ function CardShell({
   );
 }
 
-export function PageIntro({
-  title,
-  subtitle,
-}: {
-  title: string;
-  subtitle: string;
-}) {
-  return (
-    <div className="mb-2">
-      <h1 className="text-xl font-bold leading-tight tracking-tight text-[#0b2341]">
-        {title}
-      </h1>
-      <p className="mt-0.5 text-xs leading-snug text-slate-600">{subtitle}</p>
-    </div>
-  );
-}
-
 export function PageSkeleton() {
   return (
     <div className="min-h-screen bg-slate-50 p-6">
@@ -1548,7 +1531,7 @@ export function DispatchTable({
 }) {
   return (
     <CardShell className="p-5">
-      <SectionHeader eyebrow="Trips" title={title} action="Export" />
+      <SectionHeader eyebrow="Trips" title={title} />
       <div className="overflow-x-auto">
         <table className="w-full min-w-[720px] text-left text-sm">
           <thead>

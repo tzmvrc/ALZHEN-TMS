@@ -2,12 +2,16 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   Bell,
   CalendarDays,
-  Check,
-  ChevronDown,
+  Download,
+  Globe2,
   HelpCircle,
+  LayoutGrid,
   LogOut,
   Menu,
+  Plus,
+  Search,
   Settings,
+  Table2,
   UserCircle2,
   X,
 } from "lucide-react";
@@ -15,45 +19,13 @@ import logo from "../../assets/logo.png";
 import type { NavItem } from "../../types/dashboard";
 import type { AdminNotification } from "../../services/notification.service";
 import NotificationsDropdown from "./NotificationsDropdown";
+import { usePageSection } from "./pageSection";
+import { useTopbarSearch } from "./topbarSearch";
+import { useTopbarView } from "./topbarView";
+import TopbarFilterButton from "./TopbarFilterButton";
+import { useTopbarActions } from "./topbarActions";
 
 export type WorkspaceName = "Operational Admin" | "Client Website";
-
-export function WorkspaceSwitcher({
-  workspace,
-  onChange,
-}: {
-  workspace: WorkspaceName;
-  onChange: (workspace: WorkspaceName) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen((value) => !value)}
-        aria-expanded={open}
-        aria-haspopup="menu"
-        className="flex h-11 items-center gap-2 rounded-lg px-1 text-left text-sm font-semibold text-[#0b2341] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9]"
-      >
-        <img src={logo} alt="" className="h-7 w-7 rounded-full object-cover" />
-        <span>{workspace}</span>
-        <ChevronDown className="h-4 w-4 text-slate-500" />
-      </button>
-      {open && (
-        <div role="menu" className="absolute left-0 top-full z-50 mt-2 min-w-52 rounded-2xl border border-slate-200 bg-white p-1.5 shadow-lg">
-          {(["Operational Admin", "Client Website"] as WorkspaceName[]).map((option) => (
-            <button key={option} type="button" role="menuitemradio" aria-checked={workspace === option}
-              onClick={() => { onChange(option); setOpen(false); }}
-              className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9]"
-            >
-              {option}{workspace === option && <Check className="h-4 w-4" />}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
 
 export interface NavItemWithBadge extends NavItem {
   badge?: number;
@@ -91,6 +63,7 @@ export interface SidebarNavProps {
   notificationCount?: number;
   canAccessNotifications?: boolean;
   workspace?: WorkspaceName;
+  canAccessClientWebsite?: boolean;
   onWorkspaceChange?: (workspace: WorkspaceName) => void;
   userName?: string;
   userRole?: string;
@@ -98,7 +71,7 @@ export interface SidebarNavProps {
   userPictureUrl?: string | null;
 }
 
-const focusRing = "focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9] focus-visible:ring-offset-2";
+const focusRing = "focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0b2343] focus-visible:ring-offset-2";
 const iconButton = `relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-colors ${focusRing}`;
 
 export default function SidebarNav({
@@ -120,6 +93,7 @@ export default function SidebarNav({
   notificationCount = 0,
   canAccessNotifications = false,
   workspace = "Operational Admin",
+  canAccessClientWebsite = false,
   onWorkspaceChange = () => {},
   userName,
   userRole,
@@ -129,36 +103,40 @@ export default function SidebarNav({
   const flatEntries = entries.flatMap((entry) => entry.children ?? [entry]);
   const hasCalendar = flatEntries.some((entry) => entry.id === "calendar");
   const navItems = flatEntries.filter((entry) => entry.id !== "calendar");
-  const [workspaceOpen, setWorkspaceOpen] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
+  const [profileAnchor, setProfileAnchor] = useState<"sidebar" | "topbar">("topbar");
+  const [profilePosition, setProfilePosition] = useState({ left: 80, bottom: 14 });
+  const [notifPosition, setNotifPosition] = useState({ left: 80, top: 80 });
   const [failedAvatarUrl, setFailedAvatarUrl] = useState<string | null>(null);
-  const workspaceRef = useRef<HTMLDivElement>(null);
   const mobileNavRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
+  const sidebarProfileRef = useRef<HTMLDivElement>(null);
+  const topbarSearchRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const closeOutside = (event: PointerEvent) => {
       const target = event.target as Node;
-      if (!workspaceRef.current?.contains(target)) setWorkspaceOpen(false);
       if (!mobileNavRef.current?.contains(target)) setMobileNavOpen(false);
-      if (!profileRef.current?.contains(target)) setProfileOpen(false);
+      if (!profileRef.current?.contains(target) && !sidebarProfileRef.current?.contains(target)) setProfileOpen(false);
       if (!notifRef.current?.contains(target)) setNotifOpen(false);
     };
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
-      setWorkspaceOpen(false);
       setMobileNavOpen(false);
       setProfileOpen(false);
       setNotifOpen(false);
     };
+    const closeOnResize = () => { setProfileOpen(false); setNotifOpen(false); };
     document.addEventListener("pointerdown", closeOutside);
     document.addEventListener("keydown", closeOnEscape);
+    window.addEventListener("resize", closeOnResize);
     return () => {
       document.removeEventListener("pointerdown", closeOutside);
       document.removeEventListener("keydown", closeOnEscape);
+      window.removeEventListener("resize", closeOnResize);
     };
   }, []);
 
@@ -169,49 +147,122 @@ export default function SidebarNav({
 
   const navigate = (id: string) => {
     setMobileNavOpen(false);
-    setWorkspaceOpen(false);
     setNotifOpen(false);
     setProfileOpen(false);
     onNavigate(id);
   };
+  const pageTitle = activeId.startsWith("trip-detail:") ? "Trip details"
+    : activeId.startsWith("profile:") ? "Profile"
+    : ({ settings: "Settings", pod: "POD & Documents", notifications: "Notifications", reports: "Reports" } as Record<string, string>)[activeId]
+      ?? flatEntries.find((entry) => entry.id === activeId)?.label
+      ?? "Workspace";
+  const tripSection = usePageSection("trips");
+  const databaseSection = usePageSection("database");
+  const usersSection = usePageSection("truckers");
+  const billingSection = usePageSection("billing");
+  const pageSection = activeId === "trips" ? tripSection : activeId === "database" ? databaseSection : activeId === "truckers" ? usersSection : activeId === "billing" ? billingSection : "";
+  const searchScope = activeId === "trips" ? `trips:${tripSection || "Master List"}`
+    : activeId === "database" ? `database:${databaseSection || "Warehouses"}`
+    : activeId === "truckers" ? `users:${usersSection || "Admin & Staff"}`
+    : activeId === "billing" ? `billing:${billingSection || "Invoices"}` : activeId;
+  const searchConfig = useTopbarSearch(searchScope);
+  const viewConfig = useTopbarView(searchScope);
+  const topbarActions = useTopbarActions(searchScope);
+  useEffect(() => {
+    if (!searchConfig) return;
+    const focusSearch = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "k" || document.querySelector('[role="dialog"][aria-modal="true"]')) return;
+      event.preventDefault();
+      topbarSearchRef.current?.querySelector<HTMLInputElement>("input")?.focus();
+    };
+    document.addEventListener("keydown", focusSearch);
+    return () => document.removeEventListener("keydown", focusSearch);
+  }, [Boolean(searchConfig)]);
+
+  const toggleNotifications = () => {
+    const width = Math.min(380, window.innerWidth - 32);
+    const headerBottom = document.querySelector(".al-topbar")?.getBoundingClientRect().bottom ?? 60;
+    setNotifPosition({ left: Math.max(8, window.innerWidth - width - 8), top: headerBottom + 4 });
+    setProfileOpen(false);
+    setMobileNavOpen(false);
+    if (!notifOpen) onNotificationBellOpen();
+    setNotifOpen(!notifOpen);
+  };
+  const toggleProfile = (anchor: "sidebar" | "topbar") => {
+    if (anchor === "sidebar") {
+      const rect = sidebarProfileRef.current?.getBoundingClientRect();
+      if (rect) setProfilePosition({ left: Math.max(84, rect.right + 12), bottom: Math.max(12, window.innerHeight - rect.bottom) });
+    }
+    setNotifOpen(false);
+    setMobileNavOpen(false);
+    setProfileAnchor(anchor);
+    setProfileOpen(!(profileOpen && profileAnchor === anchor));
+  };
+  const renderNotifications = () => notifOpen ? (
+    <NotificationsDropdown items={notificationItems} loading={notificationLoading} error={notificationError}
+      placement={notifPosition}
+      onRetry={onNotificationRetry} onNotificationRead={onNotificationRead}
+      onMarkAllRead={onMarkAllNotificationsRead}
+      onOpenItem={(item) => { setNotifOpen(false); onNotificationOpen(item); }}
+      onViewAll={() => { setNotifOpen(false); onNotificationsClick(); }}
+    />
+  ) : null;
+  const renderProfileMenu = (anchor: "sidebar" | "topbar") => profileOpen && profileAnchor === anchor ? (
+    <div role="menu" style={anchor === "sidebar" ? profilePosition : undefined} className={`${anchor === "sidebar" ? "fixed z-[1200]" : "absolute right-0 top-full z-50 mt-3"} w-60 rounded-2xl border border-slate-200 bg-white p-1.5 shadow-lg`}>
+      <div className="border-b border-slate-100 px-3 py-2.5">
+        <span className="block truncate text-sm font-semibold text-[#0b2341]">{userName ?? "Profile"}</span>
+        {userRole && <span className="block truncate text-xs text-slate-500">{userRole}</span>}
+      </div>
+      <button type="button" role="menuitem" onClick={() => navigate("profile")} className={`mt-1 flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-100 ${focusRing}`}><UserCircle2 className="h-4 w-4" />My Profile</button>
+      <button type="button" role="menuitem" onClick={() => { setProfileOpen(false); onSettingsClick ? onSettingsClick() : navigate("settings"); }} className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-100 ${focusRing}`}><Settings className="h-4 w-4" />Settings</button>
+      {canAccessClientWebsite && <button type="button" role="menuitem" onClick={() => { setProfileOpen(false); onWorkspaceChange(workspace === "Client Website" ? "Operational Admin" : "Client Website"); }} className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-100 ${focusRing}`}><Globe2 className="h-4 w-4" />{workspace === "Client Website" ? "Operational Admin" : "Client Website"}</button>}
+      <button type="button" role="menuitem" onClick={() => { setProfileOpen(false); onHelpClick(); }} className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-100 ${focusRing}`}><HelpCircle className="h-4 w-4" />Help</button>
+    </div>
+  ) : null;
 
   return (
-    <header aria-label="Application header" className="fixed inset-x-4 top-3 z-[1101] h-14 rounded-full border border-white/80 bg-white/95 shadow-[0_8px_24px_-8px_rgba(15,23,42,0.12)] backdrop-blur-lg sm:inset-x-6">
-      <div className="grid h-full w-full grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 px-2 sm:px-3">
-        <div ref={workspaceRef} className="relative flex min-w-0 justify-self-start">
-          <button type="button" onClick={() => setWorkspaceOpen((value) => !value)}
-            aria-expanded={workspaceOpen} aria-haspopup="menu" aria-label={`ALZHEN TMS, switch workspace. Current: ${workspace}`}
-            className={`flex h-11 min-w-0 items-center gap-2 rounded-full pr-2 text-[#0b2341] ${focusRing}`}>
-            <img src={logo} alt="" className="h-7 w-7 shrink-0 rounded-full object-cover" />
-            <span className="hidden truncate text-sm font-bold tracking-tight sm:inline">ALZHEN TMS</span>
-            <ChevronDown className="hidden h-3.5 w-3.5 shrink-0 text-slate-500 sm:block" />
-          </button>
-          {workspaceOpen && (
-            <div role="menu" aria-label="Switch workspace" className="absolute left-0 top-full z-50 mt-2 min-w-52 rounded-2xl border border-slate-200 bg-white p-1.5 shadow-lg">
-              {(["Operational Admin", "Client Website"] as WorkspaceName[]).map((option) => (
-                <button key={option} type="button" role="menuitemradio" aria-checked={workspace === option}
-                  onClick={() => { onWorkspaceChange(option); setWorkspaceOpen(false); }}
-                  className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm hover:bg-slate-100 ${focusRing} ${workspace === option ? "font-semibold text-[#0b2341]" : "text-slate-600"}`}>
-                  {option}{workspace === option && <Check className="h-4 w-4" />}
-                </button>
-              ))}
-            </div>
-          )}
+    <>
+    <aside className="al-sidebar" aria-label="Primary navigation">
+      <div className="al-sidebar-brand"><img src={logo} alt="ALZHEN TMS" /></div>
+      <nav aria-label="Primary" className="al-sidebar-group">
+        {navItems.slice(0, 3).map((entry) => <button key={entry.id} type="button" onClick={() => navigate(entry.id)} aria-current={entry.id === activeId ? "page" : undefined} aria-label={entry.label} title={entry.label} className={`al-sidebar-item ${entry.id === activeId ? "al-sidebar-item-active" : ""}`}><span>{entry.icon}</span>{!!entry.badge && <span className="al-sidebar-badge">{entry.badge}</span>}</button>)}
+      </nav>
+      {(navItems.length > 3 || hasCalendar) && <nav aria-label="Management" className="al-sidebar-group">
+        {/* {hasCalendar && <button type="button" onClick={() => navigate("calendar")} aria-label="Calendar" title="Calendar" aria-current={activeId === "calendar" ? "page" : undefined} className={`al-sidebar-item ${activeId === "calendar" ? "al-sidebar-item-active" : ""}`}><CalendarDays aria-hidden="true" size={18}/></button>} */}
+        {navItems.slice(3).map((entry) => <button key={entry.id} type="button" onClick={() => navigate(entry.id)} aria-current={entry.id === activeId ? "page" : undefined} aria-label={entry.label} title={entry.label} className={`al-sidebar-item ${entry.id === activeId ? "al-sidebar-item-active" : ""}`}><span>{entry.icon}</span>{!!entry.badge && <span className="al-sidebar-badge">{entry.badge}</span>}</button>)}
+      </nav>}
+      <div className="al-sidebar-profile">
+        <div ref={sidebarProfileRef} className="relative">
+          <button type="button" aria-label="User menu" aria-expanded={profileOpen} aria-haspopup="menu" onClick={() => toggleProfile("sidebar")} className={focusRing}><span className="al-profile-avatar flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-[#0b2341] text-xs font-semibold text-white">{avatarContent}</span></button>
+          {renderProfileMenu("sidebar")}
+        </div>
+        <button type="button" aria-label="Logout" title="Logout" onClick={() => { setProfileOpen(false); onLogout(); }} className={`al-sidebar-logout ${focusRing}`}><LogOut aria-hidden="true" size={18}/></button>
+      </div>
+    </aside>
+    <header aria-label="Application header" className="al-topbar">
+      <div className="grid h-full w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-3">
+        <div className="al-topbar-leading">
+          <nav className="al-breadcrumb" aria-label="Current page">
+            <span className="al-page-title">{pageTitle}</span>
+            {pageSection && <><span className="al-breadcrumb-separator" aria-hidden="true">/</span><span className="al-breadcrumb-section" aria-current="page">{pageSection}</span></>}
+          </nav>
         </div>
 
-        <nav aria-label="Primary" className="hidden items-center justify-center gap-3 xl:gap-4 lg:flex">
-          {navItems.map((entry) => {
-            const active = entry.id === activeId;
-            return (
-              <button key={entry.id} type="button" onClick={() => navigate(entry.id)}
-                aria-current={active ? "page" : undefined} aria-label={entry.label} title={entry.label}
-                className={`${iconButton} ${active ? "bg-[#0b2341] text-white" : "text-slate-500 hover:bg-slate-100 hover:text-[#0b2341]"}`}>
-                <span className="[&>svg]:h-[19px] [&>svg]:w-[19px] [&>svg]:stroke-[1.7]">{entry.icon}</span>
-                {!!entry.badge && <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-semibold text-white">{entry.badge}</span>}
-              </button>
-            );
-          })}
-        </nav>
+        <div ref={topbarSearchRef} className="al-topbar-center">
+          {searchConfig?.kind === "field" && <div className="al-quick-search">
+            <Search aria-hidden="true" className="h-4 w-4 shrink-0" />
+            <input type="search" aria-label={searchConfig.label} placeholder={searchConfig.placeholder} value={searchConfig.value} disabled={searchConfig.disabled} onChange={event => searchConfig.onChange(event.target.value)} />
+            {searchConfig.value && <button type="button" aria-label="Clear search" onClick={() => searchConfig.onChange("")} className="rounded-full p-1 text-slate-500 hover:bg-slate-100"><X className="h-3.5 w-3.5" /></button>}
+            <TopbarFilterButton scope={searchScope}/>
+          </div>}
+          {searchConfig?.kind === "custom" && <div key={searchScope} className="al-topbar-search-custom">{searchConfig.content}</div>}
+          {viewConfig && <div role="group" aria-label="Display mode" className="al-topbar-view-toggle">
+            <button type="button" title={viewConfig.gridLabel ?? "Grid view"} aria-label={viewConfig.gridLabel ?? "Grid view"} aria-pressed={viewConfig.value === "grid"} onClick={() => viewConfig.onChange("grid")}><LayoutGrid aria-hidden="true" size={16}/></button>
+            <button type="button" title={viewConfig.tableLabel ?? "Table view"} aria-label={viewConfig.tableLabel ?? "Table view"} aria-pressed={viewConfig.value === "table"} onClick={() => viewConfig.onChange("table")}><Table2 aria-hidden="true" size={16}/></button>
+          </div>}
+          {topbarActions?.export && <button type="button" className="al-topbar-primary-action" title={topbarActions.export.label} aria-label={topbarActions.export.label} disabled={topbarActions.export.disabled} onClick={topbarActions.export.onClick}><Download aria-hidden="true" size={16}/><span>{topbarActions.export.label}</span></button>}
+          {topbarActions?.add && <button type="button" className="al-topbar-primary-action" title={topbarActions.add.label} aria-label={topbarActions.add.label} disabled={topbarActions.add.disabled} onClick={topbarActions.add.onClick}><Plus aria-hidden="true" size={17}/><span>{topbarActions.add.label}</span></button>}
+        </div>
         <div ref={mobileNavRef} className="relative justify-self-center lg:hidden">
           <button type="button" aria-label="Navigation" aria-expanded={mobileNavOpen} aria-haspopup="menu"
             onClick={() => setMobileNavOpen((value) => !value)}
@@ -229,15 +280,16 @@ export default function SidebarNav({
                   {!!entry.badge && <span className="rounded-full bg-rose-500 px-1.5 text-xs font-semibold text-white">{entry.badge}</span>}
                 </button>
               ))}
+              <button type="button" onClick={() => { setMobileNavOpen(false); onLogout(); }} className={`mt-1 flex w-full items-center gap-3 border-t border-slate-100 px-3 py-2 text-left text-sm text-rose-600 hover:bg-rose-50 ${focusRing}`}><LogOut aria-hidden="true" className="h-[18px] w-[18px]" />Logout</button>
             </nav>
           )}
         </div>
 
-        <div className="flex min-w-0 items-center justify-self-end gap-1 sm:gap-2">
+        <div className="al-topbar-actions flex min-w-0 items-center justify-self-end gap-1 sm:gap-2">
           {hasCalendar && (
             <button type="button" onClick={() => navigate("calendar")} aria-label="Calendar" title="Calendar"
               aria-current={activeId === "calendar" ? "page" : undefined}
-              className={`${iconButton} ${activeId === "calendar" ? "bg-[#0b2341] text-white" : "text-slate-600 hover:bg-slate-100"}`}>
+              className={`al-topbar-mobile-only ${iconButton} ${activeId === "calendar" ? "bg-[#0b2341] text-white" : "text-slate-600 hover:bg-slate-100"}`}>
               <CalendarDays className="h-[19px] w-[19px] stroke-[1.7]" />
             </button>
           )}
@@ -246,49 +298,27 @@ export default function SidebarNav({
               <button type="button" aria-expanded={notifOpen} aria-haspopup="dialog"
                 aria-label={notificationCount ? `Notifications, ${notificationCount} unread` : "Notifications"}
                 title="Notifications"
-                onClick={() => {
-                  setProfileOpen(false);
-                  setMobileNavOpen(false);
-                  if (!notifOpen) onNotificationBellOpen();
-                  setNotifOpen((value) => !value);
-                }}
+                onClick={toggleNotifications}
                 className={`${iconButton} text-slate-600 hover:bg-slate-100`}>
                 <Bell className="h-[19px] w-[19px] stroke-[1.7]" />
                 {notificationCount > 0 && <span className="absolute -right-1 -top-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-semibold text-white">{notificationCount > 99 ? "99+" : notificationCount}</span>}
               </button>
-              {notifOpen && (
-                <NotificationsDropdown items={notificationItems} loading={notificationLoading} error={notificationError}
-                  onRetry={onNotificationRetry} onNotificationRead={onNotificationRead}
-                  onMarkAllRead={onMarkAllNotificationsRead}
-                  onOpenItem={(item) => { setNotifOpen(false); onNotificationOpen(item); }}
-                  onViewAll={() => { setNotifOpen(false); onNotificationsClick(); }}
-                />
-              )}
+              {renderNotifications()}
             </div>
           )}
-          <div ref={profileRef} className="relative">
+          <div ref={profileRef} className="al-topbar-mobile-only relative">
             <button type="button" aria-label="User menu" aria-expanded={profileOpen} aria-haspopup="menu"
-              onClick={() => { setNotifOpen(false); setMobileNavOpen(false); setProfileOpen((value) => !value); }}
+              onClick={() => toggleProfile("topbar")}
               className={`flex h-10 w-10 items-center justify-center rounded-full transition-colors hover:bg-slate-100 ${focusRing}`}>
-              <span className="flex h-7 w-7 items-center justify-center overflow-hidden rounded-full bg-[#0b2341] text-xs font-semibold text-white">
+              <span className="al-profile-avatar flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-[#0b2341] text-xs font-semibold text-white">
                 {avatarContent}
               </span>
             </button>
-            {profileOpen && (
-              <div role="menu" className="absolute right-0 top-full z-50 mt-3 w-60 rounded-2xl border border-slate-200 bg-white p-1.5 shadow-lg">
-                <div className="border-b border-slate-100 px-3 py-2.5">
-                  <span className="block truncate text-sm font-semibold text-[#0b2341]">{userName ?? "Profile"}</span>
-                  {userRole && <span className="block truncate text-xs text-slate-500">{userRole}</span>}
-                </div>
-                <button type="button" role="menuitem" onClick={() => navigate("profile")} className={`mt-1 flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-100 ${focusRing}`}><UserCircle2 className="h-4 w-4" />My Profile</button>
-                <button type="button" role="menuitem" onClick={() => { setProfileOpen(false); onSettingsClick ? onSettingsClick() : navigate("settings"); }} className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-100 ${focusRing}`}><Settings className="h-4 w-4" />Settings</button>
-                <button type="button" role="menuitem" onClick={() => { setProfileOpen(false); onHelpClick(); }} className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-100 ${focusRing}`}><HelpCircle className="h-4 w-4" />Help</button>
-                <button type="button" role="menuitem" onClick={() => { setProfileOpen(false); onLogout(); }} className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm text-rose-600 hover:bg-rose-50 ${focusRing}`}><LogOut className="h-4 w-4" />Logout</button>
-              </div>
-            )}
+            {renderProfileMenu("topbar")}
           </div>
         </div>
       </div>
     </header>
+    </>
   );
 }

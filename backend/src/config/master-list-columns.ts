@@ -54,11 +54,11 @@ export const MASTER_LIST_COLUMNS: ReportColumnDefinition[] = [
  * shades. Assignments never depend on a field's responsibility or name prefix.
  */
 const MASTER_HEADER_GROUPS = {
-  CYAN: { group: "source-cyan", label: "Cyan · Incident / Backload", sourceColor: "#0B77A0", background: "#CEF3FA", color: "#24384A" },
-  TEAL: { group: "source-teal", label: "Teal · Booking / Geography", sourceColor: "#156082", background: "#D3EFE2", color: "#24384A" },
-  PURPLE: { group: "source-purple", label: "Purple · Warehouse / Order / Cargo", sourceColor: "#78206E", background: "#EFE4EE", color: "#24384A" },
-  ORANGE: { group: "source-orange", label: "Orange · Offload", sourceColor: "#C04F15", background: "#F7EAE3", color: "#24384A" },
-  NAVY: { group: "source-navy", label: "Navy · Delivery / POD / Billing", sourceColor: "#002060", background: "#D2DCF5", color: "#24384A" },
+  CYAN: { group: "source-cyan", label: "Cyan · Incident / Backload", sourceColor: "#0B77A0", background: "#E7F6FC", color: "#24384A" },
+  TEAL: { group: "source-teal", label: "Teal · Booking / Geography", sourceColor: "#156082", background: "#E7F5F1", color: "#24384A" },
+  PURPLE: { group: "source-purple", label: "Purple · Warehouse / Order / Cargo", sourceColor: "#78206E", background: "#F1ECFA", color: "#24384A" },
+  ORANGE: { group: "source-orange", label: "Orange · Offload", sourceColor: "#C04F15", background: "#FFF2E7", color: "#24384A" },
+  NAVY: { group: "source-navy", label: "Navy · Delivery / POD / Billing", sourceColor: "#002060", background: "#EAF0FA", color: "#24384A" },
 } as const;
 const MASTER_HEADER_ASSIGNMENTS: Record<string, keyof typeof MASTER_HEADER_GROUPS> = {
   // B1:K1 (table-style accent1; cell fill 0 does not mean a white header).

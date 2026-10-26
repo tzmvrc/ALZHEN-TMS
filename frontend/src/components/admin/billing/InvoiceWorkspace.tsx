@@ -1,5 +1,5 @@
 import {useState} from "react";
-import {ArrowLeft,Check,Download,FilePenLine,Send,Undo2,X} from "lucide-react";
+import {ArrowLeft,Check,FilePenLine,Send,Undo2,X} from "lucide-react";
 import {customers,invoiceTotal,money,paidFor,shortDate,type MockInvoice,type MockPayment,type BillingTrip} from "../../../pages/Admin/data/billingPrototype";
 import BillingTable,{type BillingColumn} from "./BillingTable";
 import {BillingField,BillingStatus,billingButton,billingInput,billingPrimary} from "./BillingUi";
@@ -34,7 +34,6 @@ export default function InvoiceWorkspace({invoice,trips,payments,canPrepare,canA
     {canEdit&&<button type="button" className={billingPrimary} disabled={missing>0} title={missing?"Enter the missing transportation rates before review":""} onClick={()=>onAction("submit")}><Send className="h-3.5 w-3.5"/>Submit for Review</button>}
     {invoice.status==="For Review"&&canApprove&&<><button type="button" className={billingPrimary} onClick={()=>onAction("approve")}><Check className="h-3.5 w-3.5"/>Approve Invoice</button><button type="button" className={billingButton} onClick={()=>onAction("return")}><Undo2 className="h-3.5 w-3.5"/>Return for Revision</button></>}
     {canPrepare&&invoice.status!=="Cancelled"&&paid===0&&<button type="button" className={`${billingButton} !text-rose-700`} onClick={()=>onAction("cancel")}><X className="h-3.5 w-3.5"/>Cancel Invoice</button>}
-    <button type="button" className={billingButton} onClick={()=>onAction("export")}><Download className="h-3.5 w-3.5"/>Export Invoice</button>
    </>}
   </div></div>
   <section className="rounded-md border border-slate-200 bg-white p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><div className="flex items-center gap-3"><h2 className="text-lg font-bold text-[#0b2341]">{invoice.number}</h2><BillingStatus value={invoice.status}/></div><p className="mt-1 text-xs text-slate-500">{invoice.type} · {shown.tripIds.length} trips · Sample invoice</p></div><div className="text-right"><p className="text-xs text-slate-500">Invoice total {missing>0&&"· incomplete"}</p><p className="text-xl font-bold tabular-nums text-[#0b2341]">{money(total)}</p></div></div>

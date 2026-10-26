@@ -4,7 +4,6 @@ import { useAuth } from "../../../context/AuthContext";
 import type { DashboardData } from "../../../types/dashboard";
 const IncidentPanel=lazy(()=>import("../../../components/admin/DashboardPrimitives").then(module=>({default:module.IncidentPanel})));
 const SectionHeader=lazy(()=>import("../../../components/admin/DashboardPrimitives").then(module=>({default:module.SectionHeader})));
-const PageIntro=lazy(()=>import("../../../components/admin/DashboardPrimitives").then(module=>({default:module.PageIntro})));
 const ChecklistPanel=lazy(()=>import("../../../components/admin/DashboardPrimitives").then(module=>({default:module.ChecklistPanel})));
 const SettingsPanel=lazy(()=>import("../../Account/SettingsPage"));
 const PodWorkflowPanel=lazy(()=>import("../../../components/admin/DashboardPrimitives").then(module=>({default:module.PodWorkflowPanel})));
@@ -20,6 +19,7 @@ const TripDetailView=lazy(()=>import("./TripDetailView"));
 const TruckersView=lazy(()=>import("./TruckersView"));
 import { createTrip } from "../../../services/trip.service";
 import { useToast } from "../../../components/ui/Toast";
+import { useRegisterTopbarAction } from "../../../components/admin/topbarActions";
 import type {NewTripPayload} from "../../../components/admin/AddTripForm";
 const AddTripForm=lazy(()=>import("../../../components/admin/AddTripForm"));
 import type { AdminNotificationTarget } from "../../../services/notification.service";
@@ -184,20 +184,12 @@ function GenericResourceTable({
     <div className="space-y-4">
       <div className={`${tableUi.toolbar} flex-wrap`}>
         <div className="flex w-full flex-wrap items-center justify-end gap-2">
-        <input
-          placeholder={`Search ${headings[0].toLowerCase()} records`}
-          aria-label={`Search ${headings[0].toLowerCase()} records`}
-          className={`${tableUi.search} pl-4 sm:w-72`}
-        />
         <div className="flex flex-wrap items-center justify-end gap-2">
           <button type="button" className={`${tableUi.segmentBtn} bg-white text-slate-600 shadow-[0_1px_2px_rgba(11,35,65,0.06)] hover:text-[#0b2341]`}>
             Filter
           </button>
           <button type="button" className={`${tableUi.segmentBtn} bg-white text-slate-600 shadow-[0_1px_2px_rgba(11,35,65,0.06)] hover:text-[#0b2341]`}>
             Sort
-          </button>
-          <button type="button" className="rounded-full bg-[#ffd43b] px-4 py-1.5 text-xs font-semibold text-[#0b2341] transition hover:bg-[#f2c200]">
-            Export
           </button>
         </div>
         </div>
@@ -250,16 +242,8 @@ const TABLE_PAGE_IDS = new Set([
   "calendar",
 ]);
 
-/* Heading under the top bar, left aligned like the Home page. */
-function PageHeading({ title, subtitle }: { title: string; subtitle?: string }) {
-  return (
-    <header className="mb-2 min-w-0">
-      <h1 className="truncate text-xl font-bold leading-tight tracking-tight text-[#0b2341]">
-        {title}
-      </h1>
-      {subtitle && <p className="mt-1 text-xs leading-snug text-slate-600">{subtitle}</p>}
-    </header>
-  );
+function PageHeading({ title }: { title: string; subtitle?: string }) {
+  return <h1 className="sr-only">{title}</h1>;
 }
 
 /* ---------------------------------------------------------------- */
@@ -377,7 +361,7 @@ function ResourceView({
       <div className={layoutClass}>
       <div hidden={showLocalTrip}>
       {isTablePage && !showInlineTableHeading && <PageHeading title={barTitle} subtitle={barSubtitle} />}
-      {showPageIntro && <PageIntro title={title} subtitle={subtitle} />}
+      {showPageIntro && <h1 className="sr-only">{title}</h1>}
       {isPrototype && <PrototypeNotice />}
 
       {/* ============ REQUESTS (prototype workflow) ============ */}
@@ -393,7 +377,6 @@ function ResourceView({
           <SectionHeader
             eyebrow="Fleet Management"
             title="Active Vehicle Board"
-            action="Add Vehicle"
           />
           <TruckCardGrid rows={data.operations.dispatches} />
           <FlexibleTableSectionTabs sectionKey="fleet" sectionLabel="Fleet" accessToken={accessToken} role={profile?.role ?? ""}>
@@ -408,6 +391,7 @@ function ResourceView({
         <>
           <ReportDataView
             initialReport="dispatch-monitoring"
+            topbarSearchScope="deliveries"
             pageTitle={barTitle}
             pageSubtitle={barSubtitle}
             notificationTarget={notificationTarget}
@@ -421,6 +405,7 @@ function ResourceView({
         <>
           <ReportDataView
             initialReport="dispatch-monitoring"
+            topbarSearchScope="monitoring"
             pageTitle={barTitle}
             pageSubtitle={barSubtitle}
             notificationTarget={notificationTarget}
@@ -519,6 +504,7 @@ export default memo(ResourceView);
 
 function AddTripButton({ onCreated }: { onCreated: (reference: string) => void }) {
   const [open, setOpen] = useState(false);
+  useRegisterTopbarAction("trips:Master List", "add", { label: "Add Trip", onClick: () => setOpen(true) });
   const { addToast } = useToast();
 
   const { accessToken } = useAuth();
@@ -536,16 +522,6 @@ function AddTripButton({ onCreated }: { onCreated: (reference: string) => void }
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="inline-flex min-h-10 items-center gap-2 rounded-full bg-[#ffd43b] px-4 text-sm font-semibold text-[#0b2341] transition hover:bg-[#f2c200] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0b2341]/40">
-        <span aria-hidden="true" className="text-base leading-none">
-          +
-        </span>
-        Add trip
-      </button>
-
       {open && <Suspense fallback={<div role="status" aria-label="Opening trip form" className="fixed inset-0 z-50 bg-slate-900/10"/>}><AddTripForm onClose={() => setOpen(false)} onSubmit={createTripHandler} onImported={() => window.dispatchEvent(new Event("alzhen:trip-imported"))} /></Suspense>}
     </>
   );
