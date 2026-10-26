@@ -1,5 +1,5 @@
 /** Cache schema availability only, never operational records or permissions. */
-export function schemaCapability(check: () => Promise<boolean>) {
+export function schemaCapability(check: () => Promise<boolean>, positiveTtlMs = 60_000) {
   let cached: { value: boolean; expiresAt: number } | undefined;
   let pending: Promise<boolean> | undefined;
   return async () => {
@@ -7,7 +7,7 @@ export function schemaCapability(check: () => Promise<boolean>) {
     if (pending) return pending;
     const request = check().then(value => {
       // Missing migrations are rechecked promptly after an approved deployment.
-      cached = { value, expiresAt: Date.now() + (value ? 60_000 : 5_000) };
+      cached = { value, expiresAt: Date.now() + (value ? positiveTtlMs : 5_000) };
       return value;
     });
     pending = request;

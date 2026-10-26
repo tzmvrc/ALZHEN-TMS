@@ -1,3 +1,4 @@
+import {signStoragePaths} from "./storage-links.service.js";
 import {assertPicturePermission,commitAccountPicture} from "./account-picture.service.js";
 import { supabaseAdmin } from "../config/supabase.js";
 import { randomUUID } from "node:crypto";
@@ -298,15 +299,10 @@ export async function listManagedUsers(): Promise<ManagedUser[]> {
   if (driverError || authResult.error) throw new UserServiceError("Unable to load managed user details.", 502);
   const driverByProfile = new Map((driverRows ?? []).map((driver) => [driver.profile_id, driver]));
   const emailById = new Map((authResult.data.users ?? []).map((user) => [user.id, user.email ?? null]));
-  return Promise.all(profiles.map(async (profile) => {
+  const pictureUrls=await signStoragePaths("profile-pictures",profiles.flatMap(profile=>typeof profile.profile_picture_path==="string"&&!/^https?:\/\//i.test(profile.profile_picture_path)?[profile.profile_picture_path]:[]),60*60);
+  return profiles.map(profile => {
     const path = profile.profile_picture_path;
-    let profilePictureUrl = typeof path === "string" && /^https?:\/\//i.test(path) ? path : null;
-    if (path && !profilePictureUrl) {
-      try {
-        const { data } = await supabaseAdmin.storage.from("profile-pictures").createSignedUrl(path, 60 * 60);
-        profilePictureUrl = data?.signedUrl ?? null;
-      } catch { /* the user row remains available if its private image is unavailable */ }
-    }
+    const profilePictureUrl=typeof path==="string"&&/^https?:\/\//i.test(path)?path:path?pictureUrls.get(path)??null:null;
     return {
       ...profile,
       role: profile.role as ManagedUser["role"],
@@ -316,7 +312,7 @@ export async function listManagedUsers(): Promise<ManagedUser[]> {
       email: emailById.get(profile.id) ?? null,
       driver: driverByProfile.get(profile.id) ?? null,
     };
-  }));
+  });
 }
 
 export async function updateManagedUser(id: string, input: Record<string, unknown>, actorId: string) {

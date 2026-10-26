@@ -35,7 +35,7 @@ app.disable("x-powered-by");
 app.set("trust proxy",httpConfig.trustProxy);
 app.use(cors(httpConfig.cors));
 // The import routes parse their bounded payloads themselves; normal API limits stay unchanged.
-app.use((req, res, next) => req.path.startsWith("/api/trips/import/") ? next() : express.json()(req, res, next));
+app.use((req, res, next) => req.path.startsWith("/api/trips/import/") || req.path.startsWith("/api/trips/whole-delete/bulk") ? next() : express.json()(req, res, next));
 app.use(reportReadTiming);
 app.use(collaborationResponseMiddleware);
 app.use("/api/website", websiteContentRoutes);

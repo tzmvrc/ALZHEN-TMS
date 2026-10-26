@@ -20,6 +20,15 @@ export type RelationshipOption = {
 };
 
 type LookupRow = Record<string, unknown>;
+// The API cache owns freshness/session isolation. Reuse only the projection of
+// that exact response array; WeakMap entries disappear when it is evicted.
+const projectedOptions=new WeakMap<LookupRow[],Map<RelationshipKind,RelationshipOption[]>>();
+function relationshipOptions(kind:RelationshipKind,rows:LookupRow[]){
+ let kinds=projectedOptions.get(rows);if(!kinds){kinds=new Map();projectedOptions.set(rows,kinds);}
+ const cached=kinds.get(kind);if(cached)return cached;
+ const options=[...new Map(rows.map(row=>toRelationshipOption(kind,row)).filter((option):option is RelationshipOption=>Boolean(option?.label)).map(option=>[option.id,option])).values()];
+ kinds.set(kind,options);return options;
+}
 
 function stringValue(row: LookupRow, key: string) {
   return typeof row[key] === "string" ? (row[key] as string) : "";
@@ -225,7 +234,7 @@ function relationshipEndpoint(kind:RelationshipKind,query:string,filters:{storeI
 }
 export function getCachedRelationshipOptions(token:string,kind:RelationshipKind,query="",filters:{storeId?:string;customerId?:string}={}){
  const cached=getCachedApiResponse<ApiResponse<LookupRow[]>>(relationshipEndpoint(kind,query,filters),token,30000);
- return cached?.success&&cached.data?cached.data.map(row=>toRelationshipOption(kind,row)).filter((option):option is RelationshipOption=>Boolean(option?.label)):null;
+ return cached?.success&&cached.data?relationshipOptions(kind,cached.data):null;
 }
 export async function searchRelationshipOptions(
   token: string,
@@ -242,10 +251,7 @@ export async function searchRelationshipOptions(
   if (!response.success || !response.data) {
     throw new Error(response.message ?? "Unable to load relationship options.");
   }
-  return [...new Map(response.data
-    .map((row) => toRelationshipOption(kind, row))
-    .filter((option): option is RelationshipOption => Boolean(option?.label))
-    .map((option) => [option.id, option])).values()];
+  return relationshipOptions(kind,response.data);
 }
 export type TruckAvailability={id:string;plate_number:string;truck_type:string|null;capacity_cbm:number|null;available_cbm:number|null;availability:"AVAILABLE"|"CONFLICT"|"REVIEW";reason:string};
 export type DriverAvailability={id:string;availability:"AVAILABLE"|"CONFLICT"|"REVIEW";reason:string};

@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { Bell } from "lucide-react";
+import NotificationActivityIcon from "./NotificationActivityIcon";
 import { useAuth } from "../../context/AuthContext";
 import {
   markNotificationAsRead,
@@ -23,6 +23,7 @@ export default function NotificationsDropdown({
   error,
   onRetry,
   onNotificationRead,
+  onMarkAllRead,
   onOpenItem,
   onViewAll,
 }: {
@@ -31,6 +32,7 @@ export default function NotificationsDropdown({
   error: string;
   onRetry: () => void;
   onNotificationRead: (id: string, readAt: string) => void;
+  onMarkAllRead?: () => void;
   onOpenItem: (item: AdminNotification) => void;
   onViewAll: () => void;
 }) {
@@ -68,6 +70,9 @@ export default function NotificationsDropdown({
         <h2 className="text-[17px] font-semibold tracking-tight text-[#0b2341]">
           Notifications
         </h2>
+        {items.some(item => !item.read_at) && onMarkAllRead && (
+          <button type="button" onClick={onMarkAllRead} className="mt-1 text-xs font-medium text-[#2678b9] hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#2678b9]">Mark all read</button>
+        )}
         <div className="mt-3 flex gap-1.5">
           {(["all", "unread"] as const).map((value) => (
             <button
@@ -111,9 +116,7 @@ export default function NotificationsDropdown({
                   type="button"
                   onClick={() => void openItem(item)}
                   className="flex w-full items-start gap-3 rounded-xl px-2.5 py-2.5 text-left transition-colors hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0b2341]/40">
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#e6f0f9] text-[#2678b9]">
-                    <Bell className="h-4 w-4" />
-                  </span>
+                  <NotificationActivityIcon item={item} />
                   <span className="min-w-0 flex-1">
                     <span
                       className={`line-clamp-2 block text-[13px] ${
@@ -121,6 +124,7 @@ export default function NotificationsDropdown({
                       }`}>
                       {item.message}
                     </span>
+                    {item.metadata?.event_kind === "driver_update" && <span className="mt-0.5 block text-[11px] font-medium text-[#2678b9]">Driver update</span>}
                     <time
                       className={`mt-0.5 block text-[11px] ${
                         item.read_at ? "text-slate-400" : "font-medium text-[#2678b9]"

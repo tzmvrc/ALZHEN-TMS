@@ -15,7 +15,7 @@ import { configuredCellValue } from "../../services/configured-cell-input";
 import { confirmedColumnDesign } from "../../services/shared-table-design";
 import { dropdownStoredValue } from "../../services/dropdown-option.service";
 import { SpreadsheetCellContextMenu } from "./SpreadsheetCellContextMenu";
-import { useVirtualSpreadsheetRows } from "./useVirtualSpreadsheetRows";
+import VirtualSpreadsheetRows from "./VirtualSpreadsheetRows";
 import { useOperationalFormulas } from "./useOperationalFormulas";
 import { REPORT_TOOLBAR_ROW_CLASS } from "./ReportSpreadsheetUtils";
 import { useSpreadsheetHeaderFormatting } from "./useSpreadsheetHeaderFormatting";
@@ -481,7 +481,7 @@ export default function TransmittalTrackerView({toolbarLeading,onDataReady}:{too
     return rowA < 0 || rowB < 0 || columnA < 0 || columnB < 0 ? null : { minRow: Math.min(rowA, rowB), maxRow: Math.max(rowA, rowB), minColumn: Math.min(columnA, columnB), maxColumn: Math.max(columnA, columnB) };
   }, [cellSelection, trackerSelectionRowKeys, renderedColumns]);
   const selectedFormatCellKeys = useMemo(() => {
-    if(formatSelection?.mode==="row"){const keys=formatSelection.keys.length>1000?trackerSelectionRowKeys.filter(id=>formatSelection.keys.includes(id)):formatSelection.keys;return new Set(keys.flatMap(id=>renderedColumns.map(column=>reportCellFormatKey(id,column.key))));}
+    if(formatSelection?.mode==="row"){const selected=new Set(formatSelection.keys);const keys=formatSelection.keys.length>1000?trackerSelectionRowKeys.filter(id=>selected.has(id)):formatSelection.keys;return new Set(keys.flatMap(id=>renderedColumns.map(column=>reportCellFormatKey(id,column.key))));}
     if(formatSelection?.mode==="column")return new Set([...filteredRows.map(row=>trackerRowKey(row)),...virtualTrackerRows.map(row=>row.id)].flatMap(id=>formatSelection.keys.map(column=>reportCellFormatKey(id,column))));
     if (!selectedRange) return new Set<string>();
     const selected = new Set<string>();
@@ -862,7 +862,7 @@ export default function TransmittalTrackerView({toolbarLeading,onDataReady}:{too
     if(id)formulas.selectCell(id,column,true);
     requestAnimationFrame(()=>viewportRef.current?.querySelector<HTMLElement>(`td[data-range-row="${CSS.escape(key)}"][data-range-column="${CSS.escape(column)}"]`)?.focus({preventScroll:true}));
   }});
-  const trackerItems=useVirtualSpreadsheetRows(viewportRef,trackerRowKeys,true,editingCellKey?trackerRowKeys.findIndex(key=>editingCellKey.startsWith(key+":")):trackerRowKeys.indexOf(formulas.selectedIdentity?.replace(/^stop:/,"").replace(":assignment:","~")??""),rowHeights.heights);
+
   const saveSelectedTrackerRow = async () => {
     if (rowEditSaving.current || !rowEdit || rowEdit.profileId !== (profile?.id ?? null) || !data?.access.canEdit) return;
     const row = data.rows.find((candidate) => trackerRowKey(candidate) === rowEdit.stopId);
@@ -1336,9 +1336,7 @@ export default function TransmittalTrackerView({toolbarLeading,onDataReady}:{too
             <span role="separator" aria-label={`Resize ${column.title} column`} aria-orientation="vertical" onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); autoFit.clearWidth(column.key); setColumnLayout((current) => ({ ...current, widths: { ...(sharedWidths.loaded ? {} : current.widths), ...sharedWidths.widths } })); setResizeState({ key: column.key, startX: event.clientX, startWidth: headerRefs.current.get(column.key)?.getBoundingClientRect().width ?? width }); }} className="absolute right-0 top-0 z-[60] h-full w-1.5 cursor-col-resize touch-none hover:bg-blue-400/60" />
           </th>;
         })}</tr></thead>
-        <tbody>{trackerItems.map(item=>{
-        if(item.spacer!==undefined)return <tr key={`gap-${item.index}`} data-virtual-spacer aria-hidden="true" style={{height:item.spacer}}><td colSpan={renderedColumns.length+1} style={{height:item.spacer,padding:0,border:0}}/></tr>;
-        const rowIndex=item.index,row=filteredRows[rowIndex];return <tr data-virtual-index={rowIndex} key={trackerRowKey(row)} style={rowHeights.style(trackerRowKey(row))} className={`group report-data-row ${REPORT_GRID_ROW_CLASS} ${selectedRows.has(trackerRowKey(row)) ? "bg-blue-50/50" : ""}`}><td data-cell-hover-disabled="true" style={{ width: SPREADSHEET_GUTTER_WIDTH, minWidth: SPREADSHEET_GUTTER_WIDTH, height: "var(--spreadsheet-row-height, 30px)" }} className={`spreadsheet-gutter sticky left-0 z-30 whitespace-nowrap border-r border-slate-100 text-center align-middle !px-1 ${REPORT_GRID_BODY_CELL_CLASS} ${selectedRows.has(trackerRowKey(row)) ? "!bg-blue-50" : "bg-slate-50"}`}>{formatSelection?.mode==="row"?<input type="checkbox" className="spreadsheet-row-checkbox" aria-label={`Select row ${(page - 1) * navigation.limit + rowIndex + 1}`} checked={formatSelection.keys.includes(trackerRowKey(row))} onChange={()=>selectTrackerRow(trackerRowKey(row),true)}/>:<button type="button" aria-label={`Select row ${(page - 1) * navigation.limit + rowIndex + 1}`} onClick={event=>selectTrackerRow(trackerRowKey(row),event.ctrlKey||event.metaKey,event.shiftKey)}><SpreadsheetRowNumber value={(page - 1) * navigation.limit + rowIndex + 1}/></button>}<div className="spreadsheet-row-resize-hit-area">{rowHeights.handle(trackerRowKey(row))}</div></td>{renderedColumns.map((column, columnIndex) => {
+        <tbody><VirtualSpreadsheetRows viewport={viewportRef} keys={trackerRowKeys} keepAlive={editingCellKey?trackerRowKeys.findIndex(key=>editingCellKey.startsWith(key+":")):trackerRowKeys.indexOf(formulas.selectedIdentity?.replace(/^stop:/,"").replace(":assignment:","~")??"")} heights={rowHeights.heights} columnCount={renderedColumns.length+1} renderRow={index=>{const rowIndex=index,row=filteredRows[rowIndex];return <tr data-virtual-index={rowIndex} key={trackerRowKey(row)} style={rowHeights.style(trackerRowKey(row))} className={`group report-data-row ${REPORT_GRID_ROW_CLASS} ${selectedRows.has(trackerRowKey(row)) ? "bg-blue-50/50" : ""}`}><td data-cell-hover-disabled="true" style={{ width: SPREADSHEET_GUTTER_WIDTH, minWidth: SPREADSHEET_GUTTER_WIDTH, height: "var(--spreadsheet-row-height, 30px)" }} className={`spreadsheet-gutter sticky left-0 z-30 whitespace-nowrap border-r border-slate-100 text-center align-middle !px-1 ${REPORT_GRID_BODY_CELL_CLASS} ${selectedRows.has(trackerRowKey(row)) ? "!bg-blue-50" : "bg-slate-50"}`}>{formatSelection?.mode==="row"?<input type="checkbox" className="spreadsheet-row-checkbox" aria-label={`Select row ${(page - 1) * navigation.limit + rowIndex + 1}`} checked={formatSelection.keys.includes(trackerRowKey(row))} onChange={()=>selectTrackerRow(trackerRowKey(row),true)}/>:<button type="button" aria-label={`Select row ${(page - 1) * navigation.limit + rowIndex + 1}`} onClick={event=>selectTrackerRow(trackerRowKey(row),event.ctrlKey||event.metaKey,event.shiftKey)}><SpreadsheetRowNumber value={(page - 1) * navigation.limit + rowIndex + 1}/></button>}<div className="spreadsheet-row-resize-hit-area">{rowHeights.handle(trackerRowKey(row))}</div></td>{renderedColumns.map((column, columnIndex) => {
           const width = columnLayout.widths[column.key] ?? defaultTrackerColumnWidth(column);
           const pin = columnLayout.pins[column.key];
           const formatColor = columnLayout.colors[column.key];
@@ -1356,7 +1354,8 @@ export default function TransmittalTrackerView({toolbarLeading,onDataReady}:{too
             <CollaborativeCell target={liveTrackerTarget(row,column.field)}>{formulas.render(row,String(column.key),renderEditableCell(row, column.field, column.editor, column))}</CollaborativeCell>
             {data?.access.canEdit && !["relationship","readonly"].includes(column.editor) && !editing && !formulas.has(row,String(column.key)) && <button type="button" data-spreadsheet-fill-handle title={`Drag to fill from ${column.title}`} aria-label={`Drag to fill from ${column.title}`} onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); beginFillGesture(row, column); }} onClick={(event) => event.stopPropagation()} className="absolute bottom-0 right-0 z-10 flex h-4 w-4 touch-none items-center justify-center rounded-sm border border-blue-300 bg-white text-blue-600 opacity-0 shadow-sm transition group-hover/cell:opacity-100 focus:opacity-100"><GripVertical aria-hidden="true" className="h-3 w-3 rotate-90" /></button>}
           </td>;
-        })}</tr>;})}<SpreadsheetBlankRows count={spreadsheetPadding.count} height={spreadsheetPadding.height} start={(page - 1) * navigation.limit + filteredRows.length + 1} loading={loading && !data}
+        })}</tr>;}}/>
+     <SpreadsheetBlankRows count={spreadsheetPadding.count} height={spreadsheetPadding.height} start={(page - 1) * navigation.limit + filteredRows.length + 1} loading={loading && !data}
           rowSelection={formatSelection?.mode==="row"?new Set(formatSelection.keys.map(key=>Number(key.split(":").at(-1)))):undefined}
           onRowSelect={(number,event)=>selectTrackerRow(`virtual:transmittal-tracker:slot:${number}`,formatSelection?.mode==="row"||event.ctrlKey||event.metaKey,event.shiftKey)}
           cellProps={(number,column)=>{const id=`virtual:transmittal-tracker:slot:${number}`,key=reportCellFormatKey(id,column);return {...formulas.virtualCellProps(id,column),...rangeDrag.cell(id,column),onContextMenu:event=>trackerContext(event,id,column),"data-spreadsheet-selected":selectedFormatCellKeys.has(key)?"true":undefined,style:reportColumnAppearance(sharedColumns[column],cellFormats[key],columnLayout.colors[column])};}}

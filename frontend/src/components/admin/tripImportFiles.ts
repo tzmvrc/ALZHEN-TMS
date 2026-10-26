@@ -85,6 +85,23 @@ export function regroupImportFile(file: ImportFile, field: "file" | "ph_truck_re
   }) };
 }
 export async function readImportFile(file: File): Promise<ImportFile[]> {
+  // Keep the existing parser/mapping rules; move CPU-heavy CSV/XLSX work off
+  // the UI thread for large files. Each worker is released on success/error.
+  if(file.size<256*1024||typeof Worker==="undefined")return readImportFileOnThread(file);
+  return new Promise((resolve,reject)=>{
+    const worker=new Worker(new URL("./tripImportFile.worker.ts",import.meta.url),{type:"module"});
+    worker.onmessage=(event:MessageEvent<{files?:ImportFile[];error?:string}>)=>{
+      worker.terminate();
+      if(event.data.error)reject(new Error(event.data.error));
+      else if(event.data.files)resolve(event.data.files);
+      else reject(new Error(`${file.name}: the file could not be read.`));
+    };
+    worker.onerror=()=>{worker.terminate();reject(new Error(`${file.name}: unable to read the file. Try again.`));};
+    worker.onmessageerror=()=>{worker.terminate();reject(new Error(`${file.name}: unable to receive parsed rows. Try again.`));};
+    worker.postMessage(file);
+  });
+}
+export async function readImportFileOnThread(file: File): Promise<ImportFile[]> {
   if (/\.csv$/i.test(file.name)) {
     const lines: number[] = [];
     const grid = parseCsv(await file.text(), line => lines.push(line));
@@ -118,10 +135,10 @@ export async function readImportFile(file: File): Promise<ImportFile[]> {
   return files;
 }
 export function importPayload(files: ImportFile[]) {
-  return files.map(file => ({ name: file.name, headers: file.headers, column_mapping: sourceAssignments(file), mapping_errors: importMappingProblems(file), rows: file.rows.map(row => ({ line: row.line, group: row.group,
+  return files.map(file => {const mappedColumns=new Set(Object.values(file.mapping));return ({ name: file.name, headers: file.headers, column_mapping: sourceAssignments(file), mapping_errors: importMappingProblems(file), rows: file.rows.map(row => ({ line: row.line, group: row.group,
     original_values: Object.fromEntries((file.originalHeaders ?? file.headers).map((header,index)=>[`${header || "Column"} [${index+1}]`,(row.originalCells??row.cells)[index]??""])),
 
-    unmapped: Object.fromEntries(file.headers.flatMap((header, index) => !Object.values(file.mapping).includes(index) && row.cells[index]?.trim() ? [[`${header || "Column"} [${index + 1}]`, row.cells[index]]] : [])),
+    unmapped: Object.fromEntries(file.headers.flatMap((header, index) => !mappedColumns.has(index) && row.cells[index]?.trim() ? [[`${header || "Column"} [${index + 1}]`, row.cells[index]]] : [])),
     values: Object.fromEntries(importFields.map(([key]) => [key, file.mapping[key] < 0 ? null : row.cells[file.mapping[key]]?.trim() || null])),
-  })) }));
+  })) });});
 }

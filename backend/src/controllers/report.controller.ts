@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import {withServerTiming} from "../utils/server-timing.js";
 import {
   getCombinedReport as getCombinedReportData,
   getDispatchMonitoringReport as getDispatchMonitoringReportData,
@@ -61,9 +62,9 @@ export async function getDispatchReport(req: Request, res: Response) {
 
 export async function getDispatchMonitoringReport(req: Request, res: Response) {
   try {
-    const result = await getDispatchMonitoringReportData(
+    const result = await withServerTiming(res,"data",()=>getDispatchMonitoringReportData(
       req.query as Record<string, unknown>,
-    );
+    ));
     return sendSuccess(
       res,
       200,

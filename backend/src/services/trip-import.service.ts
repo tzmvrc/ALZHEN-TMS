@@ -49,8 +49,8 @@ export async function previewTripImport(files: SourceFile[]) {
   if (!await importWorkflowAvailable()) setupRequired = true;
   const rowsByDelivery = new Map<string, ImportRow[]>();
   for (const row of rows) if (row.values.dr_number) {
-    const candidates = rowsByDelivery.get(row.values.dr_number) ?? [];
-    candidates.push(row); rowsByDelivery.set(row.values.dr_number, candidates);
+    const candidates = rowsByDelivery.get(JSON.stringify([row.values.dr_number,row.values.customer_model])) ?? [];
+    candidates.push(row); rowsByDelivery.set(JSON.stringify([row.values.dr_number,row.values.customer_model]), candidates);
   }
   // Supabase's page limit is not an import limit. Read every matching provenance page.
   const hashes = [...new Set(rows.map(row => row.fingerprint))];
@@ -79,7 +79,7 @@ export async function previewTripImport(files: SourceFile[]) {
         .in("dr_number", deliveryRefs.slice(offset, offset + 100)).order("id").range(page * 500, page * 500 + 499);
       if (missingImportSchema(error)) { setupRequired = true; break; }
       if (error) schemaError(error);
-      for (const item of data ?? []) for (const row of rowsByDelivery.get(item.dr_number) ?? []) {
+      for (const item of data ?? []) for (const row of rowsByDelivery.get(JSON.stringify([item.dr_number,item.customer_model])) ?? []) {
         if (item.dr_number === row.values.dr_number && item.customer_model === row.values.customer_model
           && (!item.source_province || storeIdentityText(item.source_province) === storeIdentityText(row.values.province))
           && (!item.source_city || storeIdentityText(item.source_city) === storeIdentityText(row.values.city))

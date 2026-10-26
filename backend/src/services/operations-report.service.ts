@@ -1,3 +1,4 @@
+import {signStoragePaths} from "./storage-links.service.js";
 import { collaborationEvents } from "./collaboration-events.js";
 import { withCurrentUserSession, type DeletionCredentials } from "./deletion-password.service.js";
 import { operationsPageRequest, parseOperationsPageQuery } from "./operations-pagination.js";
@@ -703,24 +704,25 @@ export async function listOperationsReceipts(actor: ReportActor, eventTypeValue:
     .eq(target.receiptColumn, report.id)
     .order("created_at", { ascending: true });
   if (error) throwDb(error, "read report images");
-  const existing = await Promise.all((data ?? []).map(async (receipt) => {
+  const receiptLinks=await signStoragePaths(RECEIPT_BUCKET,(data??[]).filter(receipt=>receipt.upload_status!=="PENDING").map(receipt=>receipt.storage_path),60*60);
+  const existing = (data ?? []).map(receipt => {
     if (receipt.upload_status === "PENDING") {
       const { storage_path: _path, upload_request_id, ...pending } = receipt;
       return { ...pending, signed_url: "", ...(receipt.uploaded_by === actor.profileId ? { upload_request_id } : {}) };
     }
-    const { data: signed, error: signedError } = await supabaseAdmin.storage.from(RECEIPT_BUCKET)
-      .createSignedUrl(receipt.storage_path, 60 * 60);
-    if (signedError || !signed?.signedUrl) throw new ApiError("Unable to create a secure report image link.", 502, "REPORT_IMAGE_LINK_FAILED");
+    const signedUrl=receiptLinks.get(receipt.storage_path);
+    if (!signedUrl) throw new ApiError("Unable to create a secure report image link.", 502, "REPORT_IMAGE_LINK_FAILED");
     const { storage_path: _privatePath, upload_request_id: _requestId, ...safeReceipt } = receipt;
-    return { ...safeReceipt, signed_url: signed.signedUrl };
-  }));
+    return { ...safeReceipt, signed_url: signedUrl };
+  });
   if(eventType!=="BACKLOAD"&&eventType!=="OFFLOAD")return existing;
   const events=await supabaseAdmin.from("trip_events").select("id").eq(eventType==="BACKLOAD"?"backload_id":"offload_id",report.id).limit(10);
   if(events.error)throwDb(events.error,"read delivery report evidence");
   if(!events.data?.length)return existing;
   const images=await supabaseAdmin.from("trip_images").select("id,storage_path,file_name,mime_type,uploaded_by,created_at").in("delivery_event_id",events.data.map(e=>e.id)).eq("delivery_upload_state","READY").limit(60);
   if(images.error)throwDb(images.error,"read delivery evidence images");
-  const linked=await Promise.all((images.data??[]).map(async({storage_path,...image})=>{const signed=await supabaseAdmin.storage.from("trip-images").createSignedUrl(storage_path,600);if(signed.error)throw new ApiError("Evidence link unavailable. Retry to refresh it.",503);return {...image,signed_url:signed.data!.signedUrl,upload_status:"READY",file_size_bytes:null,received_at:image.created_at};}));
+  const imageLinks=await signStoragePaths("trip-images",(images.data??[]).map(image=>image.storage_path),600);
+  const linked=(images.data??[]).map(({storage_path,...image})=>{const signedUrl=imageLinks.get(storage_path);if(!signedUrl)throw new ApiError("Evidence link unavailable. Retry to refresh it.",503);return {...image,signed_url:signedUrl,upload_status:"READY",file_size_bytes:null,received_at:image.created_at};});
   return [...existing,...linked];
 }
 

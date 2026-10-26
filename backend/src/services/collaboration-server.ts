@@ -15,6 +15,7 @@ import { attachCellDrafts } from "./cell-draft-server.js";
 import { authorizeCellDraft } from "./cell-draft-authorization.js";
 import type { DraftTarget } from "./cell-draft.logic.js";
 import { authorizeTrackerDraftView } from "./transmittal-tracker.service.js";
+import { notifyDriverActivity } from "./driver-notification.service.js";
 
 type Options={authenticate?:typeof authenticateCollaboration;canTrip?:typeof canJoinTrip;authorizeCell?:(target:ReturnType<typeof parseCellTarget>)=>Promise<void>;authorizeDraft?:(target:DraftTarget)=>Promise<void>;draftTtl?:number;bridge?:boolean;presenceTtl?:number;viewTtl?:number;sessionCheckMs?:number;redisUrl?:string};
 export async function attachCollaborationServer(http:HttpServer,options:Options={}){
@@ -153,6 +154,7 @@ export async function attachCollaborationServer(http:HttpServer,options:Options=
    const record=(payload.eventType==="DELETE"?payload.old:payload.new) as Record<string,unknown>;
    if(typeof record.id!=="string"||typeof record.trip_id!=="string")return;
    emitCommit({source:"trip_events",recordId:record.id,tripId:record.trip_id,fields:[],actorId:null,version:null,operation:payload.eventType,eventId:`delivery:${record.id}:${record.delivery_version??0}`});
+   if(payload.eventType==="INSERT")void notifyDriverActivity("trip_events",record.id).catch(error=>console.warn("Driver event notification deferred:",error instanceof Error?error.message:error));
   });
   for(const source of Object.keys(SOURCE_FIELDS))channel.on("postgres_changes",{schema:"public",table:source,event:"*"},payload=>{
    const record=(payload.eventType==="DELETE"?payload.old:payload.new) as Record<string,unknown>;

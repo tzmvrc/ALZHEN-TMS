@@ -28,7 +28,8 @@ import type { DashboardData } from "../../types/dashboard";
 const UserProfilePage = lazy(() => import("./views/UserProfilePage"));
 const OverviewView = lazy(() => import("./views/OverviewView"));
 import RequestReviewModal from "../../components/admin/RequestDetail";
-import LiveTripAlerts from "../../components/admin/LiveTripAlerts";
+import LiveTripPingsProvider from "../../components/admin/LiveTripPingsProvider";
+import DriverUpdateToast from "../../components/admin/DriverUpdateToast";
 const ResourceView = lazy(() => import("./views/ResourceView"));
 const BillingView = lazy(() => import("./views/BillingView"));
 const ClientWebsiteWorkspace = lazy(() => import("./clientwebsite"));
@@ -97,10 +98,11 @@ const normalizeMainSection = (value: string) => {
   return "overview";
 };
 
+const noopNavigate=()=>{};
 export default function DashboardPage({
   data = defaultDashboardData,
   loading = false,
-  onNavigate = () => {},
+  onNavigate = noopNavigate,
   onLogout,
 }: DashboardPageProps) {
   const { logout, profile, user, accessToken } = useAuth();
@@ -120,7 +122,6 @@ export default function DashboardPage({
   const [workspace, setWorkspace] =
     useState<WorkspaceName>("Operational Admin");
   const [clientTab, setClientTab] = useState<ClientTab>("website-preview");
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [logoutLoading, setLogoutLoading] = useState(false);
   const location=useLocation();
@@ -173,7 +174,7 @@ export default function DashboardPage({
   );
 
   useEffect(() => {
-    if (profile?.role !== "ADMIN" || !accessToken || !profile.id) {
+    if (!(["ADMIN", "STAFF"] as unknown[]).includes(profile?.role) || !accessToken || !profile.id) {
       notificationReload.current = () => {};
       notificationOwner.current = null;
       notificationItemsRef.current = [];
@@ -289,7 +290,7 @@ export default function DashboardPage({
       setNotificationItems(next);
       if (initialLoaded && !item.read_at)
         setNotificationCount((count) => count + 1);
-      setNewNotification(item);
+      if (!item.metadata?.recovered && !item.read_at) setNewNotification(item);
     };
 
     const unsubscribe = subscribeToTable(
@@ -327,7 +328,12 @@ export default function DashboardPage({
   };
 
   const handleNotificationBellOpen = async () => {
-    if (!accessToken || profile?.role !== "ADMIN") return;
+    if (!accessToken || !(["ADMIN", "STAFF"] as unknown[]).includes(profile?.role)) return;
+    notificationReload.current();
+  };
+
+  const handleMarkAllNotificationsRead = async () => {
+    if (!accessToken || !(["ADMIN", "STAFF"] as unknown[]).includes(profile?.role)) return;
     const optimisticReadAt = new Date().toISOString();
     const next = notificationItemsRef.current.map((item) =>
       item.read_at ? item : { ...item, read_at: optimisticReadAt },
@@ -368,6 +374,16 @@ export default function DashboardPage({
   };
 
   const handleNotificationOpen = async (item: AdminNotification) => {
+    if (item.metadata?.event_kind === "driver_update") {
+      const stopId = typeof item.metadata.stop_id === "string" ? item.metadata.stop_id : null;
+      const params = new URLSearchParams();
+      if (stopId) params.set("stop", stopId);
+      if (item.metadata.source === "trip_events" && typeof item.metadata.source_id === "string") params.set("event", item.metadata.source_id);
+      if (typeof item.metadata.assignment_id === "string") params.set("assignment", item.metadata.assignment_id);
+      setNotificationTarget(null); setWorkspace("Operational Admin");
+      navigate(`/trips/${encodeURIComponent(item.reference_id)}${params.size ? `?${params}` : ""}`);
+      return;
+    }
     const source=String(item.reference_type??"").replace(/s$/i,"").toUpperCase();
     if(["OFFLOAD","BACKLOAD","DEMURRAGE","INCIDENT"].includes(source)&&accessToken){
       try{
@@ -519,14 +535,14 @@ export default function DashboardPage({
     };
   }, [data, searchQuery]);
 
-  const handleNavigate = (id: string) => {
+  const handleNavigate = useCallback((id: string) => {
     const nextSection = normalizeMainSection(id);
-    if (nextSection === "notifications" && profile?.role !== "ADMIN") return;
+    if (nextSection === "notifications" && !(["ADMIN", "STAFF"] as unknown[]).includes(profile?.role)) return;
     if (["combined","dispatch-monitoring","dispatch","trip-booking","store-calling"].includes(id)) setReportView(id as typeof reportView);
     else if (id === "reports") setReportView("combined");
     setActiveId(nextSection);
     onNavigate(nextSection);
-  };
+  },[profile?.role,setActiveId,onNavigate]);
 
   const handleMetricNavigate = (id: string) => {
     const nextSection = normalizeMainSection(id);
@@ -558,23 +574,27 @@ export default function DashboardPage({
   const isClientWebsite = workspace === "Client Website";
   const showOverview = !isClientWebsite && (
     activeId === "overview" ||
-    (activeId === "notifications" && profile?.role !== "ADMIN")
+    (activeId === "notifications" && !(["ADMIN", "STAFF"] as unknown[]).includes(profile?.role))
   );
   const currentNavEntries = isClientWebsite ? clientNavEntries : navEntries;
   const currentActiveId = isClientWebsite ? clientTab : activeId;
 
   return (
-    <LiveTripAlerts key={profile?.id ?? "no-profile"} onOpenTrip={(tripId, stopId) => {
-      setWorkspace("Operational Admin");
-      setActiveId(`trip-detail:${tripId}:overview${stopId ? `:stop:${stopId}` : ""}`);
-    }}>
+    <LiveTripPingsProvider>
     <div className="dotted-surface relative min-h-screen overflow-x-hidden text-slate-900">
       <RequestReviewModal/>
-      {profile?.role === "ADMIN" && newNotification && (
+      {(["ADMIN", "STAFF"] as unknown[]).includes(profile?.role) && newNotification && (
+        newNotification.metadata?.event_kind === "driver_update" ? (
+          <DriverUpdateToast
+            item={newNotification}
+            onOpen={() => void openToastNotification(newNotification)}
+            onDismiss={() => setNewNotification(null)}
+          />
+        ) : (
         <div
           role="status"
           aria-live="polite"
-          className="fixed right-4 top-20 z-[90] w-[min(25rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-blue-200 shadow-xl"
+          className="fixed right-4 top-20 z-[90] w-[min(25rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-blue-200 bg-white shadow-xl"
         >
           <div className="flex items-start gap-3 p-3.5">
             <span className="mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full" />
@@ -600,13 +620,10 @@ export default function DashboardPage({
             </button>
           </div>
         </div>
+        )
       )}
 
-      <div data-delivery-workspace={route.tripId?true:undefined}
-        className={`relative z-10 pl-[5.5rem] pr-4 transition-[padding-left] duration-300 motion-reduce:transition-none ${
-          sidebarCollapsed ? "" : "lg:pl-[17rem]"
-        }`}
-      >
+      <div data-delivery-workspace={route.tripId?true:undefined} className="relative z-10 w-full">
         <SidebarNav
           entries={currentNavEntries}
           activeId={currentActiveId}
@@ -618,9 +635,10 @@ export default function DashboardPage({
           onLogout={() => setShowLogoutConfirm(true)}
           onNotificationsClick={() => handleNavigate("notifications")}
           onNotificationBellOpen={() => void handleNotificationBellOpen()}
+          onMarkAllNotificationsRead={() => void handleMarkAllNotificationsRead()}
           onNotificationOpen={handleNotificationOpen}
-          notificationCount={profile?.role === "ADMIN" ? notificationCount : 0}
-          canAccessNotifications={profile?.role === "ADMIN"}
+          notificationCount={(["ADMIN", "STAFF"] as unknown[]).includes(profile?.role) ? notificationCount : 0}
+          canAccessNotifications={(["ADMIN", "STAFF"] as unknown[]).includes(profile?.role)}
           notificationItems={notificationItems}
           notificationLoading={notificationLoading}
           notificationError={notificationError}
@@ -636,11 +654,10 @@ export default function DashboardPage({
           }
           userInitial={displayName.charAt(0).toUpperCase()}
           userPictureUrl={personalProfile && personalProfile.id===profile?.id?personalProfile.profile_picture_url:profile?.profile_picture_url}
-          onCollapseChange={setSidebarCollapsed}
         />
 
-        <main className="min-h-[calc(100vh-5.5rem)] w-full px-2 pb-0 pt-2 sm:px-4 lg:px-6">
-          <Suspense fallback={<div role="status" aria-label="Opening page" className="min-h-40 animate-pulse bg-slate-50" />}><div className="mx-auto min-h-[calc(100vh-7rem)] w-full max-w-[1680px] rounded-[1.75rem] px-0 py-1 sm:px-1 lg:px-2">
+        <main className="min-h-screen w-full px-4 pb-4 pt-20 sm:px-6">
+          <Suspense fallback={<div role="status" aria-label="Opening page" className="min-h-40 animate-pulse bg-slate-50" />}><div className="min-h-[calc(100vh-6rem)] w-full min-w-0">
             <RetainedFeature key={`home:${profile?.id}:${profile?.role}`} active={showOverview}><div
               className={showOverview ? "page-enter" : "hidden"}
             >
@@ -655,6 +672,8 @@ export default function DashboardPage({
             </div></RetainedFeature>
             <RetainedFeature key={`trips:${profile?.id}:${profile?.role}`} active={!isClientWebsite&&activeId==="trips"}><ResourceView id="dispatches" workspaceReport={reportView} data={filteredData} onNavigate={handleNavigate} notificationTarget={notificationTarget} onReportScopeChange={setReportView}/></RetainedFeature>
             <RetainedFeature key={`billing:${profile?.id}:${profile?.role}`} active={!isClientWebsite&&activeId==="billing"}><BillingView/></RetainedFeature>
+            <RetainedFeature key={`database:${profile?.id}:${profile?.role}`} active={!isClientWebsite&&activeId==="database"}><ResourceView id="database" data={filteredData} onNavigate={handleNavigate}/></RetainedFeature>
+            <RetainedFeature key={`users:${profile?.id}:${profile?.role}`} active={!isClientWebsite&&activeId==="truckers"}><ResourceView id="truckers" data={filteredData} onNavigate={handleNavigate}/></RetainedFeature>
             <div key={`${workspace}:${activeId.startsWith("trip-detail:")?`trip-detail:${activeId.split(":")[1]}`:activeId}:${clientTab}`} className="page-enter" hidden={showOverview}>
               {isClientWebsite ? (
                 <ClientWebsiteWorkspace
@@ -669,8 +688,8 @@ export default function DashboardPage({
                       void handleNotificationBellOpen(),
                     onNotificationOpen: handleNotificationOpen,
                     notificationCount:
-                      profile?.role === "ADMIN" ? notificationCount : 0,
-                    canAccessNotifications: profile?.role === "ADMIN",
+                      (["ADMIN", "STAFF"] as unknown[]).includes(profile?.role) ? notificationCount : 0,
+                    canAccessNotifications: (["ADMIN", "STAFF"] as unknown[]).includes(profile?.role),
                     notificationItems,
                     notificationLoading,
                     notificationError,
@@ -681,7 +700,7 @@ export default function DashboardPage({
               ) : activeId === "overview" ? (
                 null
               ) : activeId === "notifications" ? (
-                profile?.role === "ADMIN" ? (
+                (["ADMIN", "STAFF"] as unknown[]).includes(profile?.role) ? (
                   <NotificationsView
                     items={notificationItems}
                     loading={notificationLoading}
@@ -693,12 +712,8 @@ export default function DashboardPage({
                 ) : null
               ) : activeId === "trips" ? (
                 null
-              ) : activeId.startsWith("profile:") ? (<UserProfilePage key={activeId} userId={activeId.slice(8)} />) : activeId === "truckers" ? (
-                <ResourceView
-                  id="truckers"
-                  data={filteredData}
-                  onNavigate={handleNavigate}
-                />
+              ) : activeId.startsWith("profile:") ? (<UserProfilePage key={activeId} userId={activeId.slice(8)} />) : activeId === "truckers" || activeId === "database" ? (
+                null
               ) : activeId === "pod" ? (
                 <ResourceView
                   id="pod"
@@ -738,6 +753,6 @@ export default function DashboardPage({
         />
       </div>
     </div>
-    </LiveTripAlerts>
+    </LiveTripPingsProvider>
   );
 }

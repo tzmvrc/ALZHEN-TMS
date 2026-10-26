@@ -5,6 +5,7 @@ import { deleteTripImage, uploadTripImage } from "./trip-image.service.js";
 import { storeDriverReceiptText } from "./trip-receipt.service.js";
 import { collectDriverDrNumbers } from "./driver-dr.logic.js";
 import { tripReferenceAvailable } from "./trip-reference.schema.js";
+import { notifyDriverActivity } from "./driver-notification.service.js";
 
 export type TruckerListItem = {
   id: string;
@@ -888,7 +889,7 @@ export async function updateDriverTripStatus(
     }
   }
 
-  const { error: auditError } = await supabaseAdmin
+  const { data: savedUpdate, error: auditError } = await supabaseAdmin
     .from("driver_trip_updates")
     .insert({
       trip_id: tripId,
@@ -905,7 +906,7 @@ export async function updateDriverTripStatus(
           ? input.notes.trim()
           : null,
       updated_at: timestamp,
-    });
+    }).select("id").single();
 
   if (auditError) {
     console.error("Driver trip update could not be recorded:", auditError);
@@ -913,6 +914,8 @@ export async function updateDriverTripStatus(
       "Trip progress was updated, but the driver details could not be recorded. Check the driver_trip_updates Supabase migration.",
     );
   }
+  if (savedUpdate?.id) void notifyDriverActivity("driver_trip_updates", savedUpdate.id).catch(error =>
+    console.warn("Saved driver update notification deferred:", error instanceof Error ? error.message : error));
 
   return {
     trip_id: tripId,

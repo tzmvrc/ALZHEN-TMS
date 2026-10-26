@@ -1,6 +1,8 @@
 const fields=new Set(["loading_start_at","loading_finished_at","start_unloading_time","finish_unloading_time"]);
 export const isTripTimeField=(key:string)=>fields.has(key);
-const parts=(value:string)=>new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Manila",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).formatToParts(new Date(value));
+const dateTimeFormat=new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Manila",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hourCycle:"h23"});
+const timeFormat=new Intl.DateTimeFormat("en-US",{timeZone:"Asia/Manila",hour:"numeric",minute:"2-digit",hour12:true});
+const parts=(value:string)=>dateTimeFormat.formatToParts(new Date(value));
 export function manilaDateTime(value:string){
  if(!value||!Number.isFinite(Date.parse(value)))return "";
  const p=Object.fromEntries(parts(value).map(p=>[p.type,p.value]));return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`;
@@ -8,7 +10,7 @@ export function manilaDateTime(value:string){
 export function tripTimeDisplay(value:unknown){
  if(value===null||value===undefined||value==="")return "";
  const date=new Date(String(value));if(!Number.isFinite(date.getTime()))return String(value);
- return new Intl.DateTimeFormat("en-US",{timeZone:"Asia/Manila",hour:"numeric",minute:"2-digit",hour12:true}).format(date);
+ return timeFormat.format(date);
 }
 /** Time-only edits retain the event's Manila calendar date, seconds and milliseconds.
  * A blank timestamp requires an explicit date, never today's guessed date. */

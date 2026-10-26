@@ -3,6 +3,7 @@ import {ApiError} from "./api.service";
 /** Compact UI feedback only. Never decides whether deletion is authorized. */
 export function wholeTripBlockerMessage(reasons: readonly string[]): string {
   const reason = reasons.join(" ");
+  if (/parent deletion was not confirmed|previous deletion cleanup is pending/i.test(reason)) return "A previous deletion record is preventing this trip from being removed. Reload and contact an administrator if it persists.";
   if (/disabled|activation|unavailable|migration/i.test(reason)) return "Trip deletion is currently unavailable.";
   if (/upload.*(incomplete|pending)|pending.*upload/i.test(reason)) return "A receipt upload is incomplete. Please finish or recover it first.";
   if (/billing|payable|receivable|financial|accounting/i.test(reason)) return "This trip has financial records that must be retained.";

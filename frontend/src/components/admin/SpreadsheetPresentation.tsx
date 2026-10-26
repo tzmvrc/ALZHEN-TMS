@@ -42,7 +42,7 @@ export function SpreadsheetRowNumber({ value }: { value: number | "#" }) {
 export function SpreadsheetDetailsAction({ href, label = "View trip details", onClick }: {
   href?: string; label?: string; onClick?: (event: MouseEvent<HTMLElement>) => void;
 }) {
-  const className = "spreadsheet-details-action inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-inherit hover:bg-blue-100/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500";
+  const className = "spreadsheet-details-action inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-inherit hover:bg-blue-100/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500";
   const icon = <ArrowUpRight aria-hidden="true" className="h-4 w-4" />;
   return href ? <a href={href} title={label} aria-label={label} className={className} onClick={onClick}>{icon}</a> : <button type="button" title={label} aria-label={label} className={className} onClick={onClick}>{icon}</button>;
 }

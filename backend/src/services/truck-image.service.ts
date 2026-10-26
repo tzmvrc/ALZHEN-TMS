@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { supabaseAdmin } from "../config/supabase.js";
 import { imageMime } from "../models/clientwebsite.validation.js";
+import {signStoragePaths} from "./storage-links.service.js";
 
 export const TRUCK_IMAGE_BUCKET = "truck-images";
 const bucket = TRUCK_IMAGE_BUCKET;
@@ -36,6 +37,21 @@ export async function listTruckImages(truckId: string) {
   const { data, error } = await supabaseAdmin.from("truck_images").select("id, truck_id, storage_path, file_name, display_order, created_at, updated_at").eq("truck_id", truckId).order("display_order", { ascending: true }).order("created_at", { ascending: true });
   if (error) throw new TruckImageError("Unable to load truck images.", 502);
   return Promise.all((data ?? []).map((row) => withSignedUrl(row as Record<string, unknown>)));
+}
+
+/** Same authorized image listing, bounded across the currently rendered trucks. */
+export async function listTruckImageBatch(input:unknown){
+ if(!Array.isArray(input)||!input.length||input.length>50||input.some(id=>typeof id!=="string"||!uuidPattern.test(id)))throw new TruckImageError("Choose up to 50 valid truck records.");
+ const ids=[...new Set(input as string[])];
+ const trucks=await supabaseAdmin.from("trucks").select("id").in("id",ids);
+ if(trucks.error)throw new TruckImageError("Unable to verify truck records.",502);
+ if(trucks.data?.length!==ids.length)throw new TruckImageError("Truck not found.",404);
+ const images=await supabaseAdmin.from("truck_images").select("id, truck_id, storage_path, file_name, display_order, created_at, updated_at").in("truck_id",ids).order("display_order").order("created_at");
+ if(images.error)throw new TruckImageError("Unable to load truck images.",502);
+ const links=await signStoragePaths(bucket,(images.data??[]).map(row=>row.storage_path),60*60);
+ const result:Record<string,Array<Record<string,unknown>>> = Object.fromEntries(ids.map(id=>[id,[]]));
+ for(const row of images.data??[]){const signed_url=links.get(row.storage_path);if(!signed_url)throw new TruckImageError("Unable to create a secure image link.",502);result[row.truck_id].push({...row,signed_url});}
+ return result;
 }
 
 export async function uploadTruckImage(truckId: string, bytes: Buffer, contentType: string, originalName: string) {

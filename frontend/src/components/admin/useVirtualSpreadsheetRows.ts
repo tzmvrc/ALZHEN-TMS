@@ -4,8 +4,9 @@ type Item = {index:number; spacer?:never} | {index:number;spacer:number};
 /** Variable-height windowing. Gaps keep the real scroll geometry and source indexes. */
 export function useVirtualSpreadsheetRows(ref:RefObject<HTMLDivElement|null>, keys:string[], enabled:boolean, keepAlive=-1, configuredHeights?:Readonly<Record<string,number>>) {
  const heights=useRef(new Map<string,{height:number;configured:number|undefined}>());
- const [window,setWindow]=useState({start:0,end:60,revision:0,active:-1});
+ const [window,setWindow]=useState({start:0,end:32,revision:0,active:-1});
  const signature=useMemo(()=>keys.join("|"),[keys]);
+ useLayoutEffect(()=>{const retained=new Set(keys);for(const key of heights.current.keys())if(!retained.has(key))heights.current.delete(key);},[signature]);
  const offsets=useMemo(()=>{const values=[0];for(const key of keys){const configured=configuredHeights?.[key],measured=heights.current.get(key);values.push(values[values.length-1]+((measured?.configured===configured?measured?.height:undefined)??configured??30));}return values;},[signature,window.revision,configuredHeights]);
  useLayoutEffect(()=>{
   const viewport=ref.current;if(!viewport||!enabled)return;
@@ -20,7 +21,7 @@ export function useVirtualSpreadsheetRows(ref:RefObject<HTMLDivElement|null>, ke
     const previous=heights.current.get(key),configured=configuredHeights?.[key];
     if(key&&height>0&&(!previous||previous.configured!==configured||Math.abs(previous.height-height)>.5)){heights.current.set(key,{height,configured});changed=true;}
    }
-   const start=Math.max(0,find(viewport.scrollTop)-15),end=Math.min(keys.length,find(viewport.scrollTop+viewport.clientHeight)+15);
+   const start=Math.max(0,find(viewport.scrollTop)-6),end=Math.min(keys.length,find(viewport.scrollTop+viewport.clientHeight)+6);
    const activeRow=document.activeElement?.closest<HTMLTableRowElement>("tr[data-virtual-index],tr[data-virtual-extra]");
    const active=activeRow&&viewport.contains(activeRow)?Number(activeRow.dataset.virtualIndex??activeRow.dataset.virtualExtra):-1;
    setWindow(previous=>previous.start===start&&previous.end===end&&!changed&&previous.active===active?previous:{start,end,active,revision:previous.revision+(changed?1:0)});
@@ -34,7 +35,9 @@ export function useVirtualSpreadsheetRows(ref:RefObject<HTMLDivElement|null>, ke
   return()=>{cancelAnimationFrame(frame);observer.disconnect();viewport.removeEventListener("scroll",onScroll);viewport.removeEventListener("focusin",schedule);viewport.removeEventListener("focusout",schedule);};
  },[ref,enabled,signature,offsets,window.start,window.end]);
  return useMemo<Item[]>(()=>{
-  if(!enabled||keys.length<=60)return keys.map((_,index)=>({index}));
+  // Disabling measurements for a hidden sheet must not expand its DOM to every
+  // loaded row. Retain the last window, focused row and real spacer geometry.
+  if(keys.length<=24)return keys.map((_,index)=>({index}));
   const visible=new Set<number>();for(let index=Math.min(window.start,keys.length);index<Math.min(keys.length,Math.max(window.end,window.start+1));index++)visible.add(index);
   if(window.active>=0&&window.active<keys.length)visible.add(window.active);
   if(keepAlive>=0&&keepAlive<keys.length)visible.add(keepAlive);

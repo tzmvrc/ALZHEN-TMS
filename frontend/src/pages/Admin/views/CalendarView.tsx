@@ -68,7 +68,7 @@ export default function CalendarView() {
   }, {}), [selectedEvents]);
   const today = dateKey(new Date());
 
-  return <div className="mx-auto w-full max-w-6xl">
+  return <div className="w-full min-w-0">
     <section className={`${tableUi.shell} overflow-hidden`}>
       <header className="flex flex-col gap-3 border-b border-slate-100 p-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
         <div className="flex items-center gap-3">

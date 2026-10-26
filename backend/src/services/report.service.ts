@@ -1,3 +1,4 @@
+import {signStoragePaths} from "./storage-links.service.js";
 import {REPORT_PROJECTIONS} from "../config/report-projections.js";
 import { supabaseAdmin } from "../config/supabase.js";
 import { REPORT_DEFINITIONS, REPORT_KEYS } from "../config/reports.js";
@@ -332,23 +333,8 @@ async function attachOperationalRecordIds(
     if (error) {
       console.error("Report product photo enrichment failed:", error);
     } else {
-      const photoUrls = await Promise.all(
-        (products ?? []).map(async (product) => {
-          if (!product.photo_path) return [String(product.id), null] as const;
-          const { data, error: photoError } = await supabaseAdmin.storage
-            .from("product-photos")
-            .createSignedUrl(product.photo_path, 60 * 60);
-          if (photoError || !data?.signedUrl) {
-            console.error("Report product photo URL failed:", {
-              productId: product.id,
-              error: photoError,
-            });
-            return [String(product.id), null] as const;
-          }
-          return [String(product.id), data.signedUrl] as const;
-        }),
-      );
-      const photoByProductId = new Map(photoUrls);
+      const photoUrls=await signStoragePaths("product-photos",(products??[]).map(product=>product.photo_path),60*60);
+      const photoByProductId=new Map((products??[]).map(product=>[String(product.id),photoUrls.get(product.photo_path)??null]));
       for (const row of rows) {
         if (typeof row.product_id === "string") {
           row.product_photo_url = photoByProductId.get(row.product_id) ?? null;
@@ -724,6 +710,9 @@ export async function getReportData(
   const sortOrder = normalizeSortOrder(getQueryString(query.sort_order), definition.defaultSortOrder);
   const ongoingOnly = key === "dispatch-monitoring" && getQueryString(query.ongoing_only) === "true";
   const issueFilter=getQueryString(query.issue_filter)??"All";
+  const tripIdsRaw=getQueryString(query.trip_ids);
+  const requestedTripIds=tripIdsRaw?.split(",").map(id=>id.trim())??[];
+  if(requestedTripIds.length>100||requestedTripIds.some(id=>!isValidUuid(id)))throw new ApiError("Invalid report trip scope.",400);
   const issueFields:Record<string,string>={"In Progress":"_filter_in_progress",Completed:"_filter_completed",Offload:"_filter_offload",Backload:"_filter_backload",Demurrage:"_filter_demurrage"};
   if(issueFilter!=="All"&&!Object.hasOwn(issueFields,issueFilter))throw new ApiError("Invalid trip issue filter.",400);
   let matchingTripIds: string[] = [];
@@ -733,6 +722,25 @@ export async function getReportData(
   let scopedCalls:string[]|undefined;
   if(key==="store-calling"&&tripId){scopedCalls=[];for(let offset=0;;offset+=1000){const result=await supabaseAdmin.from("store_calls").select("id").eq("trip_id",tripId).order("id").range(offset,offset+999);if(result.error)throw new ApiError("Unable to read trip store calls.",503);scopedCalls.push(...(result.data??[]).map(row=>row.id));if((result.data?.length??0)<1000)break;}if(!scopedCalls.length)return {rows:[],pagination:buildPaginationMeta(page,limit,0)};}
   let lastError: Error | null = null;
+  // For the default Master List page, constrain the wide view to the leading
+  // trips first. Each trip contributes at least one row and the view's loading
+  // date is the trips table value, so this preserves the global row order.
+  // Search and filtered views continue through the unrestricted query.
+  let leadingTripIds: string[] | undefined;
+  const useLeadingTrips = csvMaster && sortBy === "loading_date" && !search && !tripId && !scope?.tripIds
+    && !requestedTripIds.length
+    && !ongoingOnly && issueFilter === "All"
+    && !definition.filters.some(filter => Boolean(getQueryString(query[filter.key])))
+    && page * limit <= 500;
+  if (useLeadingTrips) {
+    let leadingQuery = supabaseAdmin.from("trips").select("id");
+    if (getQueryString(query.active_transactions) === "true") leadingQuery = getQueryString(query.archive_scope) === "archived"
+      ? leadingQuery.not("archived_at", "is", null) : leadingQuery.is("archived_at", null);
+    const leading = await leadingQuery.order("loading_date", { ascending: sortOrder === "asc" })
+      .order("id", { ascending: true }).range(0, page * limit - 1);
+    if (!leading.error) leadingTripIds = (leading.data ?? []).map(trip => trip.id);
+  }
+  if (leadingTripIds?.length === 0) return { rows: [], pagination: buildPaginationMeta(page, limit, 0) };
   for (const viewName of viewNames) {
     const projection=csvMaster
       ? [...new Set([...(REPORT_PROJECTIONS[viewName]??[]),...MASTER_LIST_READ_COLUMNS.split(",")])].join(",")
@@ -740,10 +748,12 @@ export async function getReportData(
     const rowProjection=requestedSourceLines&&!legacySourceLines?`${projection},_source_quantity_text:quantity::text,_source_cbm_text:cbm::text,_source_unit_cbm_text:unit_cbm::text,_source_stock_quantity_text:stock_quantity::text`:projection;
     const mapField=(field:string)=>key==="trip-exceptions"?({backload_reason:"backload_reasons",offload_reason:"offload_reasons"} as Record<string,string>)[field]??field:key!=="store-calling"?field:viewName==="vw_store_calling_tracker"?({status:"contact_status",assigned_to:"assigned_to_id"} as Record<string,string>)[field]??field:field==="ship_to"?"store_name":field;
     const readQuery=(head=false)=>{
-    // Combining a wide nested view and its exact count duplicates its expanded
-    // plan in PostgREST. Read rows first; only full pages need a separate count.
+    // Counting this nested view in the row request repeats its expanded plan.
+    // Read the page first; request the exact count only when a full page needs it.
     let builder = supabaseAdmin.from(viewName).select(head ? "trip_id" : rowProjection, head ? {count:"exact",head:true} : csvMaster ? {} : {count:"exact"});
     if (tripId && key!=="store-calling") builder = builder.eq(tripIdField, tripId);
+    if(requestedTripIds.length)builder=builder.in(tripIdField,requestedTripIds);
+    if (!head && leadingTripIds?.length) builder = builder.in("trip_id", leadingTripIds);
     if(scopedCalls)builder=builder.in("store_call_id",scopedCalls);
     if(scope?.tripIds)builder=builder.in(tripIdField,scope.tripIds);
     if(scope?.storeCallIds)builder=builder.in("store_call_id",scope.storeCallIds);
@@ -800,9 +810,17 @@ export async function getReportData(
     const result = await readQuery();
     const data=result.data;
     let {error,count}=result;
-    if(csvMaster&&!error){
+    if(csvMaster&&!error&&count==null){
       if((data?.length??0)<limit&&(page===1||(data?.length??0)>0))count=from+(data?.length??0);
-      else {const total=await readQuery(true);error=total.error;count=total.count;}
+      else if(useLeadingTrips){
+        // Master CSV adds only one-to-one enrichment to the source rows. Count
+        // the source view so pagination does not execute the expensive nested
+        // presentation view a second time.
+        let totalQuery=supabaseAdmin.from("v_trip_source_master").select("trip_id",{count:"exact",head:true});
+        if(getQueryString(query.active_transactions)==="true")totalQuery=getQueryString(query.archive_scope)==="archived"
+          ? totalQuery.not("transaction_archived_at","is",null) : totalQuery.is("transaction_archived_at",null);
+        const total=await totalQuery;error=total.error;count=total.count;
+      }else {const total=await readQuery(true);error=total.error;count=total.count;}
     }
     if (!error) {
       // The projection is assembled from validated column definitions at runtime.

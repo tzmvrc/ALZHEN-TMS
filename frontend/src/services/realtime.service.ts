@@ -155,49 +155,63 @@ function emitAdminRealtime(event: AdminRealtimeEvent) {
   [...adminRealtimeListeners].forEach((listener) => listener(event));
 }
 
-function invalidateForTable(table: string, payload?: RealtimePayload) {
+// Invalidate actual reference dependencies, not every master/lookup response
+// for each imported product line or stop. Operational projections are handled
+// separately below, and unknown/recovery signals still use their table topics.
+const lookupDependencies:Record<string,readonly string[]>={
+ profiles:["profiles","assignees"],drivers:["drivers","trucks"],trucks:["trucks","drivers"],
+ customers:["customers","stores"],customer_stores:["stores","store-contacts"],store_contacts:["store-contacts"],
+ warehouses:["warehouses"],products:["products"],trucking_companies:["trucking-companies","trucks","drivers"],trip_types:["trip-types"],incident_reasons:["incident-reasons"],
+};
+const masterDependencies:Record<string,readonly string[]>={
+ drivers:["drivers","trucks"],trucks:["trucks","drivers"],truck_images:["trucks"],customers:["customers","stores"],customer_stores:["stores","store-contacts"],
+ store_contacts:["store-contacts"],warehouses:["warehouses"],products:["products"],trucking_companies:["trucking-companies","trucks","drivers"],
+};
+function invalidateForTable(table: string, payload?: RealtimePayload, invalidated=new Set<string>()) {
+  const invalidate=(prefix:string)=>{if(invalidated.has(prefix))return;invalidated.add(prefix);invalidateApiCache(prefix);};
+  const invalidateReport=(report?:ReportKey)=>{const key=`report:${report??"*"}`;if(invalidated.has("report:*")||invalidated.has(key))return;invalidated.add(key);invalidateReportPageCache(report);};
   if(payload?.eventType==="DELETE"&&typeof payload.old?.id==="string")removeCachedReportRecord(table,payload.old.id);
-  if(["profiles","drivers"].includes(table))invalidateApiCache("/users");
-  if (["trips", "trip_stops", "trip_line_items", "trip_truck_assignments", "drivers", "trucks", "customers", "customer_stores", "warehouses", "products", "trucking_companies", "trip_types", "profiles", "tms_route_options"].includes(table)) invalidateApiCache("/lookups/");
-  if (["tms_dropdown_options", "flex_dropdown_options"].includes(table)) invalidateApiCache("/dropdown-options");
-  if (table.startsWith("flex_")) invalidateApiCache("/flexible-tables");
-  if (["pod_records", "pod_drive_files", "driver_trip_updates", "flex_cell_mentions", "flex_table_permissions", "flex_dropdown_options"].includes(table)) invalidateApiCache(TRANSMITTAL_TRACKER_ENDPOINT);
+  if(["profiles","drivers"].includes(table))invalidate("/users");
+  for(const kind of lookupDependencies[table]??[])invalidate(`/lookups/${kind}`);
+  if (["tms_dropdown_options", "flex_dropdown_options"].includes(table)) invalidate("/dropdown-options");
+  if (table.startsWith("flex_")) invalidate("/flexible-tables");
+  if (["pod_records", "pod_drive_files", "driver_trip_updates", "flex_cell_mentions", "flex_table_permissions", "flex_dropdown_options"].includes(table)) invalidate(TRANSMITTAL_TRACKER_ENDPOINT);
   if (["transaction_deletion_jobs", "offload_deletion_jobs"].includes(table)) {
-    invalidateApiCache("/trips"); invalidateApiCache("/reports"); invalidateReportPageCache();
-    if(table==="transaction_deletion_jobs")for(const prefix of [TRANSMITTAL_TRACKER_ENDPOINT,"/truckers","/tracking","/dashboard","/flexible-tables","/calendar/events","/documents"])invalidateApiCache(prefix);
+    invalidate("/trips"); invalidate("/reports"); invalidateReport();
+    if(table==="transaction_deletion_jobs")for(const prefix of [TRANSMITTAL_TRACKER_ENDPOINT,"/truckers","/tracking","/dashboard","/flexible-tables","/calendar/events","/documents"])invalidate(prefix);
   }
-  if (["incidents", "incident_reasons", "demurrages", "pod_records", "pod_drive_files", "backload_items", "driver_trip_updates", "tms_route_options"].includes(table)) invalidateApiCache("/reports/operations/");
-  if (table === "admin_notifications") invalidateApiCache("/notifications");
-  if (ADMIN_CHANGE_TOPICS.includes(table as typeof ADMIN_CHANGE_TOPICS[number])) invalidateApiCache("/dashboard");
+  if (["incidents", "incident_reasons", "demurrages", "pod_records", "pod_drive_files", "backload_items", "driver_trip_updates", "tms_route_options"].includes(table)) invalidate("/reports/operations/");
+  if (table === "admin_notifications") invalidate("/notifications");
+  if (ADMIN_CHANGE_TOPICS.includes(table as typeof ADMIN_CHANGE_TOPICS[number])) invalidate("/dashboard");
   if (["loading_reports", "unloading_reports", "backloads", "offloads", "offload_items", "report_receipts", "operations_report_conversions", "trip_stops", "trips", "trip_truck_assignments", "drivers", "trucks", "profiles", "warehouses", "customers", "customer_stores"].includes(table)) {
-    invalidateApiCache("/reports/operations/");
+    invalidate("/reports/operations/");
   }
   if ((TRANSMITTAL_TRACKER_REALTIME_TABLES as readonly string[]).includes(table)) {
-    invalidateApiCache(TRANSMITTAL_TRACKER_ENDPOINT);
+    invalidate(TRANSMITTAL_TRACKER_ENDPOINT);
   }
   const affectedReports = Object.entries(REPORT_REALTIME_TABLES)
     .filter(([, tables]) => tables.includes(table))
     .map(([key]) => key as ReportKey);
   for (const key of affectedReports) {
-    invalidateApiCache(REPORTS[key].endpoint);
-    invalidateReportPageCache(key);
+    invalidate(REPORTS[key].endpoint);
+    invalidateReport(key);
   }
 
-  if(["trip_cargo_allocations","trip_assignment_stops"].includes(table))invalidateApiCache("/trips/");
-  if (table === "trips") invalidateApiCache("/trips");
+  if(["trip_cargo_allocations","trip_assignment_stops"].includes(table))invalidate("/trips/");
+  if (table === "trips") invalidate("/trips");
   // Loading reports also project milestones onto the cached trip detail.
   if (["loading_reports", "unloading_reports", "driver_trip_updates"].includes(table)) {
     const ids = [payload?.new?.trip_id, payload?.old?.trip_id].filter((id): id is string => typeof id === "string");
-    if (!payload) invalidateApiCache("/trips");
-    else for (const id of ids) invalidateApiCache(`/trips/${encodeURIComponent(id)}`);
+    if (!payload) invalidate("/trips");
+    else for (const id of ids) invalidate(`/trips/${encodeURIComponent(id)}`);
   }
   // Signals intentionally contain no trip IDs. Clear child-resource caches too.
-  if (!payload && ["trip_stops", "trip_line_items", "trip_truck_assignments", "trip_events", "trip_images", "loading_reports", "unloading_reports", "backloads", "offloads", "billings"].includes(table)) invalidateApiCache("/trips/");
+  if (!payload && ["trip_stops", "trip_line_items", "trip_truck_assignments", "trip_events", "trip_images", "loading_reports", "unloading_reports", "backloads", "offloads", "billings"].includes(table)) invalidate("/trips/");
 
   // Active trip lists depend on whether their delivery stops are archived.
-  if (table === "trip_stops") invalidateApiCache("/trips?");
+  if (table === "trip_stops") invalidate("/trips?");
   if (["trips", "trip_events", "trip_stops", "store_calls", "customer_stores", "warehouses"].includes(table)) {
-    invalidateApiCache("/calendar/events");
+    invalidate("/calendar/events");
   }
   if (["trip_events", "trip_images", "trip_stops", "trip_line_items", "trip_truck_assignments"].includes(table)) {
     const resource = table === "trip_events" ? "events" : table === "trip_images" ? "images" : table === "trip_stops" ? "stops" : table === "trip_line_items" ? "line-items" : null;
@@ -207,22 +221,20 @@ function invalidateForTable(table: string, payload?: RealtimePayload) {
       ),
     );
     for (const tripId of tripIds) {
-      if (resource) invalidateApiCache(`/trips/${encodeURIComponent(tripId)}/${resource}`);
-      if (table === "trip_truck_assignments") invalidateApiCache(`/trips/${encodeURIComponent(tripId)}`);
+      if (resource) invalidate(`/trips/${encodeURIComponent(tripId)}/${resource}`);
+      if (table === "trip_truck_assignments") invalidate(`/trips/${encodeURIComponent(tripId)}`);
     }
   }
   if (table === "profiles" || table === "drivers") {
-    invalidateApiCache("/users");
-    invalidateApiCache("/lookups/profiles");
-    invalidateApiCache("/truckers");
+    invalidate("/users");
+    invalidate("/lookups/profiles");
+    invalidate("/truckers");
   }
   if (["trips","trip_stops","trip_line_items","trip_truck_assignments","trucks"].includes(table)) {
-    invalidateApiCache("/truckers");
+    invalidate("/truckers");
   }
-  if (table === "documents") invalidateApiCache("/documents");
-  if (["trucks", "truck_images", "warehouses", "customer_stores", "store_contacts", "products", "drivers", "customers", "trucking_companies", "trip_types", "incident_reasons", "rate_cards", "store_exceptions"].includes(table)) {
-    invalidateApiCache("/master-data/");
-  }
+  if (table === "documents") invalidate("/documents");
+  for(const resource of masterDependencies[table]??[])invalidate(`/master-data/${resource}`);
 }
 
 /** Keep one authenticated table-channel set for the admin session, independent
@@ -248,7 +260,8 @@ export function startAdminRealtime(
   const feed = createAdminChangeFeed({
     changed: (tables) => {
       if (!active || adminRealtimeSession !== sessionKey) return;
-      tables.forEach((table) => invalidateForTable(table));
+      const invalidated=new Set<string>();
+      tables.forEach((table) => invalidateForTable(table,undefined,invalidated));
       emitAdminRealtime({ kind: "batch", tables });
       if (tables.includes("admin_notifications")) channels.get("admin_notifications")?.listeners.forEach((recovered) => recovered());
     },

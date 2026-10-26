@@ -46,3 +46,48 @@ export function createWholeTripDeleter(verify=withDeletionSession){return async 
 }
 }
 export const deleteWholeTrips=createWholeTripDeleter();
+
+const bulkLimit=100_000;
+// Keep each atomic RPC comfortably below the database statement timeout.
+const bulkDeleteBatchSize=5;
+export function wholeTripBulkIds(actor:{id:string;role:string},input:unknown):string[]{
+ if(actor.role!=="ADMIN"||!isValidUuid(actor.id))throw new ApiError("Only ADMIN may delete whole trips.",403,"WHOLE_TRIP_FORBIDDEN");
+ if(!Array.isArray(input)||!input.length||input.length>bulkLimit||input.some(id=>typeof id!=="string"||!isValidUuid(id)))throw new ApiError("Select valid physical trip IDs (up to 100,000 per confirmation).",400,"WHOLE_TRIP_IDS");
+ return [...new Set(input.map(id=>(id as string).toLowerCase()))].sort();
+}
+export async function wholeTripBulkImpact(actor:{id:string;role:string},input:unknown,shouldContinue=()=>true){
+ const ids=wholeTripBulkIds(actor,input);
+ const merged:{trips:Array<{id:string;dispatch_number:string|null}>;counts:Record<string,number>;blockers:string[];can_delete:boolean}={trips:[],counts:{},blockers:[],can_delete:true};
+ for(let offset=0;offset<ids.length;offset+=20){
+  if(!shouldContinue())throw new ApiError("Impact check cancelled.",499);
+  const impact=await wholeTripImpact(actor,ids.slice(offset,offset+20));
+  merged.trips.push(...impact.trips);
+  for(const [key,count] of Object.entries(impact.counts))merged.counts[key]=(merged.counts[key]??0)+(count as number);
+  merged.blockers.push(...impact.blockers);
+ }
+ merged.blockers=[...new Set(merged.blockers)];merged.can_delete=merged.blockers.length===0;
+ return merged;
+}
+/** One Admin confirmation/rate-limit lease, existing atomic SQL checks per batch.
+ * Stop on the first failed or unconfirmed batch; never replay confirmed deletes. */
+export function createWholeTripBulkDeleter(verify=withDeletionSession,deleteBatch=createWholeTripDeleter(async(_actor,_credentials,commit)=>commit())){
+ return async(actor:{id:string;role:string},input:unknown,credentials:DeletionCredentials,shouldContinue=()=>true)=>{
+  const admin=Object.freeze({...actor}),ids=Object.freeze(wholeTripBulkIds(admin,input));
+  if(process.env.WHOLE_TRIP_DELETE_ENABLED!=="true")throw new ApiError("Whole-trip deletion is disabled.",503,"WHOLE_TRIP_DISABLED");
+  return verify(admin,credentials,async()=>{
+   const deleted:string[]=[];let cleanupPending=false;
+   for(let offset=0;offset<ids.length;offset+=bulkDeleteBatchSize){
+    let result;
+    try{
+     if(!shouldContinue())throw new ApiError("Deletion stopped because the connection closed. Reload to check completed trips.",409);
+     result=await deleteBatch(admin,ids.slice(offset,offset+bulkDeleteBatchSize),credentials);
+    }catch(error){
+     return {deleted_trip_ids:deleted,remaining_trip_ids:ids.slice(offset),deleted_trips:deleted.length,cleanup_pending:cleanupPending,stopped_error:error instanceof ApiError?error.message:"The last batch could not be confirmed. Reload before retrying.",stopped_status:error instanceof ApiError?error.statusCode:503};
+    }
+    deleted.push(...ids.slice(offset,offset+bulkDeleteBatchSize));cleanupPending ||= result.cleanup_pending;
+   }
+   return {deleted_trip_ids:deleted,remaining_trip_ids:[],deleted_trips:deleted.length,cleanup_pending:cleanupPending};
+  });
+ };
+}
+export const deleteWholeTripsBulk=createWholeTripBulkDeleter();

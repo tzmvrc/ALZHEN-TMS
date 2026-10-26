@@ -30,7 +30,8 @@ async function main(){
  const {getReportData}=await import("../src/services/report.service.js");
  const start=performance.now();
  try {
-  const result=await getReportData("dispatch-monitoring",{page:"1",limit:"200",sort_by:"loading_date",sort_order:"desc",source_lines:"true"});
+  const requestedLimit=process.argv.find(arg=>arg.startsWith("--limit="))?.split("=")[1]??"200";
+  const result=await getReportData("dispatch-monitoring",{page:"1",limit:requestedLimit,sort_by:"loading_date",sort_order:"desc",source_lines:"true"});
   console.log(JSON.stringify({readOnly:true,ms:Math.round(performance.now()-start),rows:result.rows.length,pagination:result.pagination}));
   if(process.argv.includes("--formula-rows")){
    const {physicalRowIdentity}=await import("../../packages/spreadsheet-formula/index.js");

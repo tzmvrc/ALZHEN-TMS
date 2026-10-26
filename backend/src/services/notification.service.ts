@@ -1,5 +1,6 @@
 import { supabaseAdmin } from "../config/supabase.js";
 import { ApiError } from "../utils/api-response.js";
+import { backfillDriverNotifications } from "./driver-notification.service.js";
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -17,7 +18,11 @@ async function getStoreCallDispatchNumber(storeCallId: string) {
   return typeof data?.dispatch_number === "string" ? data.dispatch_number : "";
 }
 
-export async function listNotifications(recipientId: string) {
+export async function listNotifications(recipientId: string, role?: string) {
+  if (role === "ADMIN" || role === "STAFF") {
+    try { await backfillDriverNotifications(recipientId); }
+    catch (error) { console.warn("Driver notification recovery unavailable:", error instanceof Error ? error.message : error); }
+  }
   const [{ data, error }, { count, error: countError }] = await Promise.all([
     supabaseAdmin.from("admin_notifications").select("id, actor_profile_id, notification_type, reference_type, reference_id, message, metadata, read_at, created_at").eq("recipient_profile_id", recipientId).order("created_at", { ascending: false }).limit(100),
     supabaseAdmin.from("admin_notifications").select("id", { count: "exact", head: true }).eq("recipient_profile_id", recipientId).is("read_at", null),

@@ -1,9 +1,11 @@
+import {signStoragePaths} from "./storage-links.service.js";
 import {createHash} from 'node:crypto';
 import {supabaseAdmin as db} from '../config/supabase.js';
 import {ApiError} from '../utils/api-response.js';
 import {isValidUuid} from '../utils/validation.js';
 import {validatePodDocument} from './pod-document.logic.js';
 import {collaborationEvents} from './collaboration-events.js';
+import {notifyDriverActivity} from './driver-notification.service.js';
 
 export type DeliveryActor={id:string;role:string};
 export async function deliveryNotification(actor:DeliveryActor,id:string){
@@ -85,7 +87,9 @@ export async function submitDelivery(actor:DeliveryActor,id:string,key:string,in
  if(body.quantities!=null&&(!Array.isArray(body.quantities)||body.quantities.length>100||body.quantities.some((v:Row)=>!v||!ids(v.allocation_id)||!/^\d+(\.\d{1,6})?$/.test(String(v.quantity))||Number(v.quantity)<=0)))throw new ApiError('Enter positive unloaded quantities with up to six decimal places.',400);
  if(body.gps!=null&&(typeof body.gps!=='object'||!['latitude','longitude','accuracy_meters'].every(k=>typeof body.gps[k]==='number'&&Number.isFinite(body.gps[k]))||!Number.isFinite(Date.parse(body.gps.captured_at))))throw new ApiError('Invalid GPS capture.',400);
  if(body.ocr_confidence!=null&&(typeof body.ocr_confidence!=='number'||!Number.isFinite(body.ocr_confidence)||body.ocr_confidence<0||body.ocr_confidence>100))throw new ApiError('Invalid OCR confidence.',400);
- const {data,error}=await db.rpc('submit_delivery_event_v1',{p_actor:actor.id,p_assignment:id,p_key:key,p_input:input});if(error)failure(error);announce(actor,data);return data;
+ const {data,error}=await db.rpc('submit_delivery_event_v1',{p_actor:actor.id,p_assignment:id,p_key:key,p_input:input});if(error)failure(error);announce(actor,data);
+ void notifyDriverActivity('trip_events',data.id).catch(error=>console.warn('Saved delivery update notification deferred:',error instanceof Error?error.message:error));
+ return data;
 }
 export async function reviewDelivery(actor:DeliveryActor,id:string,eventId:string,input:Row){
  await deliveryAssignment(actor,id);if(actor.role!=='ADMIN')throw new ApiError('Only Admin can review delivery evidence or correct timestamps.',403);
@@ -108,7 +112,8 @@ export async function deliveryEventDetails(actor:DeliveryActor,id:string,eventId
   db.from('audit_logs').select('id,action,created_at,old_data,new_data,actor:profiles!audit_logs_user_id_fkey(first_name,last_name)').eq('entity_type','trip_events').eq('entity_id',eventId).order('created_at',{ascending:false}).limit(50),
   db.from('trip_delivery_quantities').select('id,quantity,allocation:trip_cargo_allocations(trip_line_item_id,line:trip_line_items(customer_model,dr_number))').eq('event_id',eventId).limit(100),
  ]);if(images.error||audit.error||quantities.error)failure(images.error??audit.error??quantities.error);
- const attachments=await Promise.all((images.data??[]).map(async({storage_path,...image})=>{const link=await db.storage.from('trip-images').createSignedUrl(storage_path,600);if(link.error)throw new ApiError('Evidence image could not load. Retry to refresh its secure link.',503);return {...image,url:link.data.signedUrl};}));
+ const imageLinks=await signStoragePaths('trip-images',(images.data??[]).map(image=>image.storage_path),600);
+ const attachments=(images.data??[]).map(({storage_path,...image})=>{const url=imageLinks.get(storage_path);if(!url)throw new ApiError('Evidence image could not load. Retry to refresh its secure link.',503);return {...image,url};});
  return {attachments,audit:audit.data??[],quantities:quantities.data??[]};
 }
 export async function uploadDeliveryEvidence(actor:DeliveryActor,id:string,key:string,stop:string|null,bytes:Buffer,name:string,mime:string){

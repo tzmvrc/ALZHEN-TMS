@@ -1,3 +1,4 @@
+import {signStoragePaths} from "./storage-links.service.js";
 import { supabaseAdmin } from "../config/supabase.js";
 import { ApiError } from "../utils/api-response.js";
 import { normalizeSortOrder, normalizeText } from "../utils/validation.js";
@@ -551,18 +552,14 @@ export async function getProfiles(
     throw new ApiError("Unable to fetch profiles", 500, "LOOKUP_QUERY_FAILED");
   }
 
-  return Promise.all(((data ?? []) as Record<string, unknown>[]).map(async (row) => {
+  const profileRows=(data??[]) as Record<string,unknown>[];
+  const pictureUrls=await signStoragePaths("profile-pictures",profileRows.flatMap(row=>typeof row.profile_picture_path==="string"&&!/^https?:\/\//i.test(row.profile_picture_path)?[row.profile_picture_path]:[]),60*60);
+  return profileRows.map(row => {
     const fullName =
       [row.first_name, row.last_name].filter(Boolean).join(" ").trim() ||
       "Unnamed profile";
     const picturePath = typeof row.profile_picture_path === "string" ? row.profile_picture_path : null;
-    let profilePictureUrl = picturePath && /^https?:\/\//i.test(picturePath) ? picturePath : null;
-    if (picturePath && !profilePictureUrl) {
-      try {
-        const { data: signed } = await supabaseAdmin.storage.from("profile-pictures").createSignedUrl(picturePath, 60 * 60);
-        profilePictureUrl = signed?.signedUrl ?? null;
-      } catch { /* retain the profile listing if its private image is unavailable */ }
-    }
+    const profilePictureUrl=picturePath&&/^https?:\/\//i.test(picturePath)?picturePath:picturePath?pictureUrls.get(picturePath)??null:null;
     return {
       id: String(row.id),
       first_name: typeof row.first_name === "string" ? row.first_name : null,
@@ -572,7 +569,7 @@ export async function getProfiles(
       is_admin: typeof row.is_admin === "boolean" ? row.is_admin : null,
       profile_picture_url: profilePictureUrl,
     } as ProfileOption;
-  }));
+  });
 }
 
 export async function getEligibleAssignees(
@@ -601,9 +598,18 @@ export async function getEligibleAssignees(
     );
   }
 
+  if(!profiles?.length)return [];
   const activeAuthIds = new Set<string>();
+  const eligibility=await supabaseAdmin.rpc("eligible_assignment_profile_ids_v1",{p_ids:profiles.map(profile=>profile.id)});
+  if(eligibility.error&&!["PGRST202","42883"].includes(eligibility.error.code))throw new ApiError("Unable to verify assignee accounts",500,"LOOKUP_QUERY_FAILED");
+  if(!eligibility.error){
+    if(!Array.isArray(eligibility.data))throw new ApiError("Unable to verify assignee accounts",500,"LOOKUP_QUERY_FAILED");
+    for(const row of eligibility.data)if(typeof row.id==="string")activeAuthIds.add(row.id);
+  }
+  // Compatibility for environments that have not deployed the additive RPC.
+  // Save-time eligibility checks below remain authoritative and are not cached.
   let page = 1;
-  while (true) {
+  while (eligibility.error) {
     const { data, error: authError } = await supabaseAdmin.auth.admin.listUsers(
       { page, perPage: 1000 },
     );

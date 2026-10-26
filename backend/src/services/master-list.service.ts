@@ -9,7 +9,7 @@ export const masterListAvailable = schemaCapability(async () => {
   if(error&&(error.code==="57014"||/timeout|AbortError|operation was aborted/i.test(error.message??"")))throw new ApiError("The report query took too long. Your records are unchanged. Retry loading in a moment.",503,"REPORT_READ_TIMEOUT");
   if (error && !["42P01", "42703", "PGRST204", "PGRST205"].includes(error.code)) throw new ApiError("Unable to load Master List layout.", 503);
   return !error;
-});
+}, 5 * 60_000);
 
 export async function saveMasterListCell(actor: string, trip: string, input: Record<string, unknown>) {
   if (!isValidUuid(trip) || typeof input.field !== "string" || !MASTER_RELATED_FIELDS.includes(input.field)) throw new ApiError("Invalid Master List field.", 400);

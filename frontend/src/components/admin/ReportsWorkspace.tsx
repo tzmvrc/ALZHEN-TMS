@@ -1,8 +1,6 @@
-import { useWorkspacePreload } from "./useWorkspacePreload";
-import { memo, useCallback, useRef, useState, type ComponentProps, type ReactNode } from "react";
+import { lazy, memo, useCallback, useMemo, useRef, useState, type ComponentProps, type ReactNode } from "react";
 import {SpreadsheetSheetHeader,SpreadsheetBottomToolbar,SpreadsheetBottomControlsContext} from "./SpreadsheetWorkspace";
-import ReportDataView from "./ReportDataView";
-import TransmittalTrackerView from "./TransmittalTrackerView";
+import type ReportDataView from "./ReportDataView";
 import RetainedFeature from "./RetainedFeature";
 import { useAuth } from "../../context/AuthContext";
 import { workspaceSheet, WORKSPACE_SHEETS, type WorkspaceSheet } from "../../services/trips-workspace";
@@ -10,8 +8,8 @@ import { workspaceSheet, WORKSPACE_SHEETS, type WorkspaceSheet } from "../../ser
 type Props = ComponentProps<typeof ReportDataView>;
 // Active-tab changes should not rerender every previously visited grid. Activity
 // still resumes subscriptions and measurements for the newly visible sheet.
-const WorkspaceReport = memo(ReportDataView);
-const WorkspaceTracker = memo(TransmittalTrackerView);
+const WorkspaceReport = memo(lazy(()=>import("./ReportDataView")));
+const WorkspaceTracker = memo(lazy(()=>import("./TransmittalTrackerView")));
 const SHEET_TABS = [...WORKSPACE_SHEETS, {key:"transmittal" as const,title:"Transmittal Tracker",description:"Monitor delivery documents, transmittal references, and shipping progress."}];
 
 /** One retained physical report instance per sheet; no data/model merging. */
@@ -23,15 +21,12 @@ export default function ReportsWorkspace(props: Props) {
     return()=>setFooterHiddenColumns(current=>current?.owner===owner?null:current);
   },[]);
   const workspaceRef = useRef<HTMLElement>(null);
-  const { profile, accessToken } = useAuth();
+  const { profile } = useAuth();
   const preference = `alzhen:trip-sheets:${profile?.id ?? "guest"}:${profile?.role ?? ""}`;
   const [active, setActive] = useState<WorkspaceSheet | "transmittal">(() => {
     if (props.initialReport && props.initialReport !== "combined") return workspaceSheet(props.initialReport);
     try { const saved=sessionStorage.getItem(preference); return saved==="transmittal"?saved:workspaceSheet(saved ?? "trips"); } catch { return "trips"; }
   });
-  const [ready,setReady]=useState({token:accessToken,sheet:""});
-  const markReady=useCallback((sheet:string)=>setReady(current=>current.token===accessToken&&current.sheet===sheet?current:{token:accessToken,sheet}),[accessToken]);
-  useWorkspacePreload(accessToken,active,ready.token===accessToken&&ready.sheet===active);
   const notificationKey=props.notificationTarget?.navigationKey;
   const [incoming,setIncoming]=useState({report:props.initialReport,notificationKey});
   // Reconcile explicit navigation before rendering a sheet, without an effect-driven extra frame.
@@ -48,12 +43,13 @@ export default function ReportsWorkspace(props: Props) {
     }
   };
 
+  const footerContext=useMemo(()=>({activeSheet:active,registerHiddenColumns}),[active,registerHiddenColumns]);
   return <section ref={workspaceRef} data-trips-workspace aria-label="Trips spreadsheet workspace" className="min-w-0">
     <div className="mb-2"><SpreadsheetSheetHeader title={SHEET_TABS.find(sheet=>sheet.key===active)!.title} description={SHEET_TABS.find(sheet=>sheet.key===active)!.description} /></div>
-    <SpreadsheetBottomControlsContext.Provider value={{activeSheet:active,registerHiddenColumns}}>
+    <SpreadsheetBottomControlsContext.Provider value={footerContext}>
     {WORKSPACE_SHEETS.map(sheet => <RetainedFeature key={sheet.key} active={active === sheet.key}>
       <div role="tabpanel" id={`trip-sheet-${sheet.key}`} aria-labelledby={`trip-tab-${sheet.key}`}>
-        <WorkspaceReport {...props} onDataReady={markReady} initialReport={sheet.report} pageTitle={undefined} pageSubtitle={undefined}
+        <WorkspaceReport {...props} initialReport={sheet.report} pageTitle={undefined} pageSubtitle={undefined}
           transactionView={sheet.key === "trips"} allTripRecords={sheet.key === "trips"} ongoingOnly={sheet.key === "trips" ? false : props.ongoingOnly} showReportPicker={false} showExport
           notificationTarget={props.notificationTarget?.reportKey === sheet.report || sheet.key === "trips" && props.notificationTarget?.reportKey === "combined" ? {...props.notificationTarget!,reportKey:sheet.report} : null}
           onReportScopeChange={undefined} toolbarLeading={undefined}
@@ -61,7 +57,7 @@ export default function ReportsWorkspace(props: Props) {
           createdTripReference={sheet.key === "trips" ? props.createdTripReference : undefined} />
       </div>
     </RetainedFeature>)}
-    <RetainedFeature active={active === "transmittal"}><div role="tabpanel" id="trip-sheet-transmittal" aria-labelledby="trip-tab-transmittal"><WorkspaceTracker onDataReady={markReady} /></div></RetainedFeature>
+    <RetainedFeature active={active === "transmittal"}><div role="tabpanel" id="trip-sheet-transmittal" aria-labelledby="trip-tab-transmittal"><WorkspaceTracker /></div></RetainedFeature>
     </SpreadsheetBottomControlsContext.Provider>
     <SpreadsheetBottomToolbar workspace={workspaceRef} sheet={active} hiddenColumnsControl={footerHiddenColumns?.sheet===active?footerHiddenColumns.control:null}>
     <nav data-sheet-tabs role="tablist" aria-label="Trip workspace sheets" className="flex min-w-0 flex-1 flex-nowrap items-stretch overflow-x-auto overflow-y-hidden whitespace-nowrap">

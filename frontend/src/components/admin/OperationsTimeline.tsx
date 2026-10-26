@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import type {ReportEvidence} from "../../services/operations-report.service";
 import {cleanActivityNote} from "../../services/activity-presentation";
-import { usePingingTrips } from "./LiveTripAlerts";
+import { usePingingTrips } from "./live-trip-pings";
 
 /* ------------------------------------------------------------------ */
 /* Types: loose on purpose so the report records pass straight in.       */

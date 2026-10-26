@@ -1,4 +1,4 @@
-import { apiGet, type ApiResponse } from "./api.service";
+import { apiGet, apiGetCached, type ApiResponse } from "./api.service";
 
 export type DatabaseSource = {
   name: string;
@@ -28,7 +28,7 @@ function unwrap<T>(response: ApiResponse<T>, fallback: string): T {
 export async function fetchDatabaseSources(
   token: string,
 ): Promise<DatabaseSource[]> {
-  const response = await apiGet<ApiResponse<DatabaseSource[]>>(
+  const response = await apiGetCached<ApiResponse<DatabaseSource[]>>(
     "/database/sources",
     token,
   );

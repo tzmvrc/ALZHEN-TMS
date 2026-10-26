@@ -6,8 +6,10 @@ import {
   ChevronDown,
   HelpCircle,
   LogOut,
+  Menu,
   Settings,
   UserCircle2,
+  X,
 } from "lucide-react";
 import logo from "../../assets/logo.png";
 import type { NavItem } from "../../types/dashboard";
@@ -16,7 +18,6 @@ import NotificationsDropdown from "./NotificationsDropdown";
 
 export type WorkspaceName = "Operational Admin" | "Client Website";
 
-/* Kept as-is so any other file importing it keeps working. */
 export function WorkspaceSwitcher({
   workspace,
   onChange,
@@ -25,61 +26,29 @@ export function WorkspaceSwitcher({
   onChange: (workspace: WorkspaceName) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const options: WorkspaceName[] = ["Operational Admin", "Client Website"];
-
   return (
     <div className="relative">
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
         aria-expanded={open}
-        aria-haspopup="listbox"
-        className={`group flex items-center gap-2.5 rounded-full py-1 pl-1 pr-3 text-left transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900/20 ${
-          open ? "bg-slate-100" : "hover:bg-slate-100/80"
-        }`}>
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white p-1.5 shadow-[0_1px_2px_rgba(15,23,42,0.08)] ring-1 ring-slate-900/5">
-          <img
-            src={logo}
-            alt="Alzhen logo"
-            className="h-full w-full object-contain"
-          />
-        </span>
-        <span className="min-w-0 truncate text-[13px] font-semibold tracking-tight text-slate-900">
-          {workspace}
-        </span>
-        <ChevronDown
-          className={`h-3.5 w-3.5 shrink-0 text-slate-400 transition-transform duration-200 group-hover:text-slate-600 ${
-            open ? "rotate-180" : ""
-          }`}
-        />
+        aria-haspopup="menu"
+        className="flex h-11 items-center gap-2 rounded-lg px-1 text-left text-sm font-semibold text-[#0b2341] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9]"
+      >
+        <img src={logo} alt="" className="h-7 w-7 rounded-full object-cover" />
+        <span>{workspace}</span>
+        <ChevronDown className="h-4 w-4 text-slate-500" />
       </button>
-
       {open && (
-        <div
-          role="listbox"
-          className="absolute left-0 top-full z-50 mt-3 w-56 overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-1.5 shadow-[0_24px_48px_-12px_rgba(15,23,42,0.22)]">
-          {options.map((option) => {
-            const selected = option === workspace;
-            return (
-              <button
-                key={option}
-                role="option"
-                aria-selected={selected}
-                type="button"
-                onClick={() => {
-                  onChange(option);
-                  setOpen(false);
-                }}
-                className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-[13px] transition-colors duration-150 ${
-                  selected
-                    ? "bg-slate-100 font-semibold text-slate-900"
-                    : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-                }`}>
-                <span className="flex-1">{option}</span>
-                {selected && <Check className="h-3.5 w-3.5 text-slate-900" />}
-              </button>
-            );
-          })}
+        <div role="menu" className="absolute left-0 top-full z-50 mt-2 min-w-52 rounded-2xl border border-slate-200 bg-white p-1.5 shadow-lg">
+          {(["Operational Admin", "Client Website"] as WorkspaceName[]).map((option) => (
+            <button key={option} type="button" role="menuitemradio" aria-checked={workspace === option}
+              onClick={() => { onChange(option); setOpen(false); }}
+              className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9]"
+            >
+              {option}{workspace === option && <Check className="h-4 w-4" />}
+            </button>
+          ))}
         </div>
       )}
     </div>
@@ -110,11 +79,9 @@ export interface SidebarNavProps {
   onLogout?: () => void;
   onSettingsClick?: () => void;
   onHelpClick?: () => void;
-  /** "See all" in the notifications dropdown. */
   onNotificationsClick?: () => void;
-  /** Called once when the notification panel is opened. */
   onNotificationBellOpen?: () => void;
-  /** Called when a notification in the dropdown is opened (same handler NotificationsView uses). */
+  onMarkAllNotificationsRead?: () => void;
   onNotificationOpen?: (item: AdminNotification) => void;
   notificationItems?: AdminNotification[];
   notificationLoading?: boolean;
@@ -129,158 +96,21 @@ export interface SidebarNavProps {
   userRole?: string;
   userInitial?: string;
   userPictureUrl?: string | null;
-  /** Called with `true` when the sidebar is collapsed, `false` when open. The rail is always slim now, so this reports `true`. */
-  onCollapseChange?: (collapsed: boolean) => void;
 }
 
-const workspaceOptions: WorkspaceName[] = ["Operational Admin", "Client Website"];
-const workspaceShortLabel: Record<WorkspaceName, string> = {
-  "Operational Admin": "Operational",
-  "Client Website": "Client Side",
-};
-
-const pillSurface =
-  "border border-white/80 bg-white/80 shadow-[0_8px_24px_-8px_rgba(15,23,42,0.12)] backdrop-blur-xl";
-const focusRing =
-  "focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900/30";
-
-/* ───────── Liquid / water-drop hover ─────────
-   One glassy droplet per rail. It glides to whichever icon is hovered,
-   overshoots slightly (like a bead of water settling), and its shape
-   gently morphs while it rests. */
-const liquidCss = `
-.liquid-drop {
-  position: absolute;
-  width: 40px;
-  height: 40px;
-  pointer-events: none;
-  z-index: 0;
-  opacity: 0;
-  transform: scale(0.55);
-  border-radius: 50%;
-  background: linear-gradient(165deg, #ffffff 0%, rgba(255,255,255,0.92) 100%);
-  box-shadow:
-    inset 0 1px 1px rgba(255,255,255,1),
-    0 6px 16px -6px rgba(15,23,42,0.22);
-  transition:
-    top 0.6s cubic-bezier(0.34, 1.5, 0.5, 1),
-    left 0.6s cubic-bezier(0.34, 1.5, 0.5, 1),
-    opacity 0.3s ease,
-    transform 0.55s cubic-bezier(0.34, 1.56, 0.64, 1);
-  animation: liquid-morph 3.2s ease-in-out infinite alternate;
-}
-.liquid-drop[data-visible="true"] {
-  opacity: 1;
-  transform: scale(1);
-}
-.sidebar-tip {
-  position: fixed;
-  left: 44px;
-  z-index: 1200;
-  pointer-events: none;
-  transform: translateY(-50%);
-  /* Cut everything left of the rail's edge (x = 72px) so the shape only
-     shows where it leaves the sidebar. */
-  clip-path: inset(-40px -40px -40px 28px);
-  transition: top 0.5s cubic-bezier(0.34, 1.4, 0.5, 1);
-}
-.sidebar-tip-goo {
-  position: relative;
-  padding: 20px;
-  filter: url(#sidebar-goo);
-}
-/* Bead on the rail's edge. The gap to the pill is bridged by the goo filter
-   into a thin neck, like a drop of water pulling apart. */
-.sidebar-tip-anchor {
-  position: absolute;
-  left: 10px;
-  top: 50%;
-  width: 22px;
-  height: 30px;
-  margin-top: -15px;
-  border-radius: 9999px;
-  background: #fdfdfe;
-  transform-origin: left center;
-  transform: scale(0.3, 0.6);
-  opacity: 0;
-  transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.2s ease;
-}
-.sidebar-tip-pill {
-  display: block;
-  margin-left: 19px;
-  padding: 9px 18px;
-  border-radius: 9999px;
-  background: #fdfdfe;
-  color: transparent;
-  font-size: 12px;
-  font-weight: 600;
-  white-space: nowrap;
-  transform: translateX(-30px) scaleX(0.35);
-  transform-origin: left center;
-  opacity: 0;
-  transition: transform 0.55s cubic-bezier(0.34, 1.5, 0.5, 1), opacity 0.2s ease;
-}
-.sidebar-tip-text {
-  position: absolute;
-  left: 39px;
-  top: 20px;
-  bottom: 20px;
-  padding: 0 18px;
-  display: flex;
-  align-items: center;
-  font-size: 12px;
-  font-weight: 600;
-  white-space: nowrap;
-  color: #0b2341;
-  opacity: 0;
-  transform: translateX(-10px);
-  transition: opacity 0.2s ease, transform 0.45s cubic-bezier(0.34, 1.4, 0.5, 1);
-}
-.sidebar-tip[data-visible="true"] .sidebar-tip-anchor { transform: none; opacity: 1; }
-.sidebar-tip[data-visible="true"] .sidebar-tip-pill { transform: none; opacity: 1; }
-.sidebar-tip[data-visible="true"] .sidebar-tip-text { opacity: 1; transform: none; transition-delay: 0.1s; }
-@keyframes liquid-morph {
-  0%   { border-radius: 50% 50% 50% 50% / 50% 50% 50% 50%; }
-  33%  { border-radius: 54% 46% 52% 48% / 46% 54% 46% 54%; }
-  66%  { border-radius: 47% 53% 46% 54% / 53% 47% 55% 45%; }
-  100% { border-radius: 52% 48% 55% 45% / 48% 52% 48% 52%; }
-}
-.liquid-icon {
-  transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1), color 0.25s ease;
-}
-.liquid-btn:hover .liquid-icon,
-.liquid-btn:focus-visible .liquid-icon {
-  transform: translateY(-1px) scale(1.12);
-}
-@media (prefers-reduced-motion: reduce) {
-  .liquid-drop { animation: none; transition: opacity 0.2s ease; }
-  .liquid-btn:hover .liquid-icon, .liquid-btn:focus-visible .liquid-icon { transform: none; }
-}
-`;
-
-type LiquidState = { top: number; left: number; tone: "water" | "rose"; visible: boolean };
-
-function LiquidDrop({ state }: { state: LiquidState | null }) {
-  if (!state) return null;
-  return (
-    <span
-      aria-hidden="true"
-      className="liquid-drop"
-      data-visible={state.visible}
-      data-tone={state.tone}
-      style={{ top: state.top, left: state.left }}
-    />
-  );
-}
+const focusRing = "focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2678b9] focus-visible:ring-offset-2";
+const iconButton = `relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-colors ${focusRing}`;
 
 export default function SidebarNav({
-  entries,
+  entries = [],
   activeId,
   onNavigate,
   onLogout = () => {},
+  onSettingsClick,
   onHelpClick = () => {},
   onNotificationsClick = () => {},
   onNotificationBellOpen = () => {},
+  onMarkAllNotificationsRead = () => {},
   onNotificationOpen = () => {},
   notificationItems = [],
   notificationLoading = false,
@@ -295,466 +125,170 @@ export default function SidebarNav({
   userRole,
   userInitial,
   userPictureUrl,
-  onCollapseChange,
 }: SidebarNavProps) {
-  const allEntries: NavEntry[] = entries ?? [];
-  /* Calendar lives in the top bar now, so it is pulled out of the rail. */
-  const hasCalendar = allEntries.some((entry) => entry.id === "calendar");
-  const items: NavEntry[] = allEntries.filter((entry) => entry.id !== "calendar");
-  const calendarActive = activeId === "calendar";
-
-  const profileRef = useRef<HTMLDivElement>(null);
-  const notifRef = useRef<HTMLDivElement>(null);
-  const workspaceRef = useRef<HTMLDivElement>(null);
-
+  const flatEntries = entries.flatMap((entry) => entry.children ?? [entry]);
+  const hasCalendar = flatEntries.some((entry) => entry.id === "calendar");
+  const navItems = flatEntries.filter((entry) => entry.id !== "calendar");
   const [workspaceOpen, setWorkspaceOpen] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const [failedAvatarUrl, setFailedAvatarUrl] = useState<string | null>(null);
-  const [navTooltip, setNavTooltip] = useState<{
-    label: string;
-    left: number;
-    top: number;
-    visible: boolean;
-  } | null>(null);
-  const [navDrop, setNavDrop] = useState<LiquidState | null>(null);
-  const [utilDrop, setUtilDrop] = useState<LiquidState | null>(null);
+  const workspaceRef = useRef<HTMLDivElement>(null);
+  const mobileNavRef = useRef<HTMLDivElement>(null);
+  const profileRef = useRef<HTMLDivElement>(null);
+  const notifRef = useRef<HTMLDivElement>(null);
 
-  function showNavTooltip(label: string, target: HTMLButtonElement) {
-    const rect = target.getBoundingClientRect();
-    setNavTooltip({ label, left: rect.right + 8, top: rect.top + rect.height / 2, visible: true });
-  }
-
-  function hideNavTooltip() {
-    setNavTooltip((current) => (current ? { ...current, visible: false } : null));
-  }
-
-  function glide(
-    setter: (updater: (prev: LiquidState | null) => LiquidState | null) => void,
-    target: HTMLButtonElement,
-    tone: "water" | "rose" = "water",
-    hidden = false,
-  ) {
-    setter(() => ({
-      top: target.offsetTop,
-      left: target.offsetLeft,
-      tone,
-      visible: !hidden,
-    }));
-  }
-
-  function hideDrop(setter: (updater: (prev: LiquidState | null) => LiquidState | null) => void) {
-    setter((prev) => (prev ? { ...prev, visible: false } : null));
-  }
-
-  // The rail is always slim; report that once so the parent layout can reserve room.
-  const collapseCallback = useRef(onCollapseChange);
   useEffect(() => {
-    collapseCallback.current = onCollapseChange;
-  }, [onCollapseChange]);
-  useEffect(() => {
-    collapseCallback.current?.(true);
-  }, []);
-
-  /* Outside click + Escape close the popovers */
-  useEffect(() => {
-    function onPointerDown(event: PointerEvent) {
+    const closeOutside = (event: PointerEvent) => {
       const target = event.target as Node;
+      if (!workspaceRef.current?.contains(target)) setWorkspaceOpen(false);
+      if (!mobileNavRef.current?.contains(target)) setMobileNavOpen(false);
       if (!profileRef.current?.contains(target)) setProfileOpen(false);
       if (!notifRef.current?.contains(target)) setNotifOpen(false);
-      if (!workspaceRef.current?.contains(target)) setWorkspaceOpen(false);
-    }
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        setProfileOpen(false);
-        setNotifOpen(false);
-        setWorkspaceOpen(false);
-      }
-    }
-    document.addEventListener("pointerdown", onPointerDown);
-    document.addEventListener("keydown", onKeyDown);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setWorkspaceOpen(false);
+      setMobileNavOpen(false);
+      setProfileOpen(false);
+      setNotifOpen(false);
+    };
+    document.addEventListener("pointerdown", closeOutside);
+    document.addEventListener("keydown", closeOnEscape);
     return () => {
-      document.removeEventListener("pointerdown", onPointerDown);
-      document.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("pointerdown", closeOutside);
+      document.removeEventListener("keydown", closeOnEscape);
     };
   }, []);
 
-  /* ---- derived ---- */
   const avatarLabel = userInitial ?? userName?.charAt(0)?.toUpperCase() ?? "A";
-  const avatarContent =
-    userPictureUrl && userPictureUrl !== failedAvatarUrl ? (
-      <img
-        src={userPictureUrl}
-        alt=""
-        onError={() => setFailedAvatarUrl(userPictureUrl)}
-        className="h-full w-full object-cover"
-      />
-    ) : userName ? (
-      avatarLabel
-    ) : (
-      <UserCircle2 className="h-5 w-5" />
-    );
-  const hasNotifications = notificationCount > 0;
-  const notificationText = notificationCount > 99 ? "99+" : notificationCount;
+  const avatarContent = userPictureUrl && userPictureUrl !== failedAvatarUrl
+    ? <img src={userPictureUrl} alt="" onError={() => setFailedAvatarUrl(userPictureUrl)} className="h-full w-full rounded-full object-cover" />
+    : userName ? avatarLabel : <UserCircle2 className="h-5 w-5" />;
 
-  /* ---- icon-only nav button (labels kept as title + aria-label) ---- */
-  const renderItem = (entry: NavItemWithBadge) => {
-    const active = entry.id === activeId;
-    const enter = (target: HTMLButtonElement) => {
-      showNavTooltip(entry.label, target);
-      glide(setNavDrop, target, "water", active);
-    };
-    return (
-      <button
-        key={entry.id}
-        type="button"
-        onClick={() => onNavigate(entry.id)}
-        aria-current={active ? "page" : undefined}
-        aria-label={entry.label}
-        onPointerEnter={(event) => enter(event.currentTarget)}
-        onPointerLeave={hideNavTooltip}
-        onFocus={(event) => enter(event.currentTarget)}
-        onBlur={() => {
-          hideNavTooltip();
-          hideDrop(setNavDrop);
-        }}
-        className={`liquid-btn relative z-10 flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-colors duration-300 ${focusRing} ${
-          active
-            ? "bg-[#0b2341] text-white shadow-[0_6px_14px_-4px_rgba(11,35,65,0.55)]"
-            : "text-slate-400 hover:text-sky-800"
-        }`}>
-        <span className="liquid-icon pointer-events-none flex items-center [&>svg]:h-[18px] [&>svg]:w-[18px] [&>svg]:stroke-[1.6]">
-          {entry.icon}
-        </span>
-        {entry.badge ? (
-          <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-semibold leading-none text-white ring-2 ring-white">
-            {entry.badge}
-          </span>
-        ) : null}
-      </button>
-    );
+  const navigate = (id: string) => {
+    setMobileNavOpen(false);
+    setWorkspaceOpen(false);
+    setNotifOpen(false);
+    setProfileOpen(false);
+    onNavigate(id);
   };
 
-  const utilityButton = `liquid-btn relative z-10 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-400 transition-colors duration-300 hover:text-sky-800 ${focusRing}`;
-
   return (
-    <>
-      <style>{liquidCss}</style>
-
-      {/* Reserves room at the top of the page for the floating top bar. */}
-      <div aria-hidden="true" className="h-[3.75rem]" />
-
-      {/* ───────── Logo: expands into the workspace tabs when clicked ───────── */}
-      <div ref={workspaceRef} className="fixed left-4 top-4 z-[1102]">
-        <div
-          className={`grid h-11 items-center overflow-hidden rounded-full p-1 transition-[grid-template-columns,box-shadow] duration-300 ease-out motion-reduce:transition-none ${pillSurface} ${
-            workspaceOpen ? "grid-cols-[auto_1fr]" : "grid-cols-[auto_0fr]"
-          }`}>
-          <button
-            type="button"
-            onClick={() => setWorkspaceOpen((value) => !value)}
-            aria-expanded={workspaceOpen}
-            aria-label={`Workspace: ${workspace}. ${workspaceOpen ? "Close" : "Switch"} workspace`}
-            title={workspace}
-            className={`flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white ${focusRing}`}>
-            <img src={logo} alt="Alzhen logo" className="h-full w-full rounded-full object-cover" />
+    <header aria-label="Application header" className="fixed inset-x-4 top-3 z-[1101] h-14 rounded-full border border-white/80 bg-white/95 shadow-[0_8px_24px_-8px_rgba(15,23,42,0.12)] backdrop-blur-lg sm:inset-x-6">
+      <div className="grid h-full w-full grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 px-2 sm:px-3">
+        <div ref={workspaceRef} className="relative flex min-w-0 justify-self-start">
+          <button type="button" onClick={() => setWorkspaceOpen((value) => !value)}
+            aria-expanded={workspaceOpen} aria-haspopup="menu" aria-label={`ALZHEN TMS, switch workspace. Current: ${workspace}`}
+            className={`flex h-11 min-w-0 items-center gap-2 rounded-full pr-2 text-[#0b2341] ${focusRing}`}>
+            <img src={logo} alt="" className="h-7 w-7 shrink-0 rounded-full object-cover" />
+            <span className="hidden truncate text-sm font-bold tracking-tight sm:inline">ALZHEN TMS</span>
+            <ChevronDown className="hidden h-3.5 w-3.5 shrink-0 text-slate-500 sm:block" />
           </button>
-          <div className="min-w-0 overflow-hidden">
-          <div
-            role="group"
-            aria-label="Switch workspace"
-            aria-hidden={!workspaceOpen}
-            className={`flex items-center gap-1 pl-1 pr-1 transition-opacity duration-200 ${
-              workspaceOpen ? "opacity-100 delay-100" : "pointer-events-none opacity-0"
-            }`}>
-            {workspaceOptions.map((option) => {
-              const selected = option === workspace;
-              return (
-                <button
-                  key={option}
-                  type="button"
-                  aria-pressed={selected}
-                  tabIndex={workspaceOpen ? 0 : -1}
-                  title={option}
-                  onClick={() => {
-                    onWorkspaceChange(option);
-                    setWorkspaceOpen(false);
-                  }}
-                  className={`h-8 shrink-0 whitespace-nowrap rounded-full px-4 text-[12px] transition-colors duration-150 ${focusRing} ${
-                    selected
-                      ? "bg-[#0b2341] font-semibold text-white"
-                      : "font-medium text-slate-500 hover:text-slate-900"
-                  }`}>
-                  {workspaceShortLabel[option]}
+          {workspaceOpen && (
+            <div role="menu" aria-label="Switch workspace" className="absolute left-0 top-full z-50 mt-2 min-w-52 rounded-2xl border border-slate-200 bg-white p-1.5 shadow-lg">
+              {(["Operational Admin", "Client Website"] as WorkspaceName[]).map((option) => (
+                <button key={option} type="button" role="menuitemradio" aria-checked={workspace === option}
+                  onClick={() => { onWorkspaceChange(option); setWorkspaceOpen(false); }}
+                  className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm hover:bg-slate-100 ${focusRing} ${workspace === option ? "font-semibold text-[#0b2341]" : "text-slate-600"}`}>
+                  {option}{workspace === option && <Check className="h-4 w-4" />}
                 </button>
-              );
-            })}
-          </div>
-          </div>
-        </div>
-      </div>
-
-      {/* ───────── Left: logo + slim rail ───────── */}
-      <aside
-        aria-label="Main navigation"
-        className="fixed bottom-4 left-4 top-4 z-[1100] flex w-14 flex-col items-center gap-3">
-        {/* Space held for the logo (rendered separately so it can expand) */}
-        <div aria-hidden="true" className="h-11 w-11 shrink-0" />
-
-        {/* Primary navigation: fits its content and sits vertically centred */}
-        <div className="flex min-h-0 w-full flex-1 items-center">
-          <nav
-            aria-label="Primary"
-            onPointerLeave={() => hideDrop(setNavDrop)}
-            className={`admin-island-nav relative flex max-h-full w-full flex-col items-center gap-1 overflow-y-auto overflow-x-hidden rounded-full px-2 py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${pillSurface}`}>
-            <LiquidDrop state={navDrop} />
-            {items.map((entry, index) =>
-              entry.children ? (
-                <div
-                  key={entry.id}
-                  role="group"
-                  aria-label={entry.label}
-                  className={`flex flex-col items-center gap-1 ${
-                    index > 0 ? "mt-1 border-t border-slate-900/10 pt-2" : ""
-                  }`}>
-                  {entry.children.map(renderItem)}
-                </div>
-              ) : (
-                renderItem(entry)
-              ),
-            )}
-          </nav>
-        </div>
-
-        {/* Bottom group: help and logout only */}
-        <div
-          onPointerLeave={() => hideDrop(setUtilDrop)}
-          className={`relative flex w-full shrink-0 flex-col items-center gap-1 rounded-full px-2 py-2 ${pillSurface}`}>
-          <LiquidDrop state={utilDrop} />
-          <button
-            type="button"
-            onClick={onHelpClick}
-            aria-label="Help"
-            onPointerEnter={(event) => {
-              showNavTooltip("Help", event.currentTarget);
-              glide(setUtilDrop, event.currentTarget, "water");
-            }}
-            onPointerLeave={hideNavTooltip}
-            onFocus={(event) => {
-              showNavTooltip("Help", event.currentTarget);
-              glide(setUtilDrop, event.currentTarget, "water");
-            }}
-            onBlur={() => {
-              hideNavTooltip();
-              hideDrop(setUtilDrop);
-            }}
-            className={utilityButton}>
-            <HelpCircle className="liquid-icon h-[18px] w-[18px] stroke-[1.6]" />
-          </button>
-          <button
-            type="button"
-            onClick={onLogout}
-            aria-label="Logout"
-            onPointerEnter={(event) => {
-              showNavTooltip("Logout", event.currentTarget);
-              glide(setUtilDrop, event.currentTarget, "rose");
-            }}
-            onPointerLeave={hideNavTooltip}
-            onFocus={(event) => {
-              showNavTooltip("Logout", event.currentTarget);
-              glide(setUtilDrop, event.currentTarget, "rose");
-            }}
-            onBlur={() => {
-              hideNavTooltip();
-              hideDrop(setUtilDrop);
-            }}
-            className={`${utilityButton} hover:!text-rose-600`}>
-            <LogOut className="liquid-icon h-[18px] w-[18px] stroke-[1.6]" />
-          </button>
-        </div>
-      </aside>
-
-      {/* Gooey filter: merges the white anchor + label pill into one liquid shape */}
-      <svg width="0" height="0" aria-hidden="true" className="pointer-events-none absolute">
-        <defs>
-          <filter id="sidebar-goo" x="-20%" y="-60%" width="140%" height="220%">
-            <feGaussianBlur in="SourceGraphic" stdDeviation="7" result="blur" />
-            <feColorMatrix
-              in="blur"
-              mode="matrix"
-              values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 22 -9"
-            />
-          </filter>
-        </defs>
-      </svg>
-
-      {navTooltip && (
-        <div
-          role="tooltip"
-          aria-hidden={!navTooltip.visible}
-          className="sidebar-tip"
-          data-visible={navTooltip.visible}
-          style={{ top: navTooltip.top }}>
-          <div style={{ filter: "drop-shadow(0 6px 10px rgba(15,23,42,0.10))" }}>
-            <div className="sidebar-tip-goo">
-              <span className="sidebar-tip-anchor" />
-              <span className="sidebar-tip-pill">{navTooltip.label}</span>
-            </div>
-          </div>
-          <span className="sidebar-tip-text">{navTooltip.label}</span>
-        </div>
-      )}
-
-      {/* ───────── Top bar: starts beside the rail, one row ───────── */}
-      <header
-        aria-label="Top bar"
-        className="pointer-events-none fixed left-[5.5rem] right-4 top-4 z-[1101] flex h-11 items-center gap-2 [&>*]:pointer-events-auto">
-        <div className="flex-1" />
-
-        {/* Calendar: its own circle, beside notifications */}
-        {hasCalendar && (
-          <button
-            type="button"
-            onClick={() => {
-              setProfileOpen(false);
-              setNotifOpen(false);
-              onNavigate("calendar");
-            }}
-            aria-label="Calendar"
-            aria-current={calendarActive ? "page" : undefined}
-            title="Calendar"
-            className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-colors duration-200 ${pillSurface} ${focusRing} ${
-              calendarActive
-                ? "!border-[#0b2341] !bg-[#0b2341] text-white"
-                : "text-slate-600 hover:text-slate-900"
-            }`}>
-            <CalendarDays className="h-[18px] w-[18px] stroke-[1.6]" />
-          </button>
-        )}
-
-        {/* Notifications */}
-        {canAccessNotifications && (
-          <div ref={notifRef} className="relative shrink-0">
-            <button
-              type="button"
-              onClick={() => {
-                setProfileOpen(false);
-                if (!notifOpen) onNotificationBellOpen();
-                setNotifOpen(!notifOpen);
-              }}
-              aria-expanded={notifOpen}
-              aria-haspopup="dialog"
-              aria-label={
-                hasNotifications
-                  ? `Notifications, ${notificationCount} unread`
-                  : "Notifications"
-              }
-              className={`relative flex h-11 w-11 items-center justify-center rounded-full text-slate-600 transition-colors duration-200 hover:text-slate-900 ${pillSurface} ${focusRing} ${
-                notifOpen ? "!bg-white text-slate-900" : ""
-              }`}>
-              <Bell className="h-[18px] w-[18px] stroke-[1.6]" />
-              {hasNotifications && (
-                <span className="absolute -right-0.5 -top-0.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-semibold leading-none text-white ring-2 ring-white">
-                  {notificationText}
-                </span>
-              )}
-            </button>
-
-            {notifOpen && (
-              <NotificationsDropdown
-                items={notificationItems}
-                loading={notificationLoading}
-                error={notificationError}
-                onRetry={onNotificationRetry}
-                onNotificationRead={onNotificationRead}
-                onOpenItem={(item) => {
-                  setNotifOpen(false);
-                  onNotificationOpen(item);
-                }}
-                onViewAll={() => {
-                  setNotifOpen(false);
-                  onNotificationsClick();
-                }}
-              />
-            )}
-          </div>
-        )}
-
-        {/* Profile pill */}
-        <div ref={profileRef} className="relative shrink-0">
-          <button
-            type="button"
-            onClick={() => {
-              setNotifOpen(false);
-              setProfileOpen((value) => !value);
-            }}
-            aria-expanded={profileOpen}
-            aria-haspopup="menu"
-            aria-label="User menu"
-            className={`flex h-11 items-center gap-2 rounded-full py-1 pl-1 pr-1 text-left transition-colors duration-200 sm:pr-4 ${pillSurface} ${focusRing} ${
-              profileOpen ? "!bg-white" : ""
-            }`}>
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-slate-950 text-[12px] font-semibold text-white">
-              {avatarContent}
-            </span>
-            <span className="hidden min-w-0 sm:block">
-              <span className="block max-w-[9rem] truncate text-[12px] font-semibold leading-tight text-slate-900">
-                {userName ?? "Profile"}
-              </span>
-              {userRole && (
-                <span className="block max-w-[9rem] truncate text-[10px] leading-tight text-slate-500">
-                  {userRole}
-                </span>
-              )}
-            </span>
-          </button>
-
-          {profileOpen && (
-            <div
-              role="menu"
-              className="absolute right-0 top-full z-50 mt-3 w-60 overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-1.5 shadow-[0_24px_48px_-12px_rgba(15,23,42,0.22)]">
-              <div className="mb-1 flex items-center gap-2.5 rounded-xl bg-slate-50 px-3 py-2.5">
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-slate-950 text-[11px] font-semibold text-white">
-                  {avatarContent}
-                </span>
-                <span className="min-w-0">
-                  <span className="block truncate text-[13px] font-semibold text-slate-900">
-                    {userName ?? "Profile"}
-                  </span>
-                  {userRole && (
-                    <span className="block truncate text-[11px] text-slate-500">
-                      {userRole}
-                    </span>
-                  )}
-                </span>
-              </div>
-              <button type="button" role="menuitem" onClick={()=>{setProfileOpen(false);onNavigate("profile");}} className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-[13px] text-slate-600 hover:bg-slate-100 hover:text-slate-900"><UserCircle2 className="h-4 w-4"/>My Profile</button>
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setProfileOpen(false);
-                  onNavigate("settings");
-                }}
-                className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-[13px] text-slate-600 transition-colors duration-150 hover:bg-slate-100 hover:text-slate-900">
-                <Settings className="h-4 w-4" />
-                Settings
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setProfileOpen(false);
-                  onLogout();
-                }}
-                className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-[13px] text-rose-600 transition-colors duration-150 hover:bg-rose-50 hover:text-rose-700">
-                <LogOut className="h-4 w-4" />
-                Logout
-              </button>
+              ))}
             </div>
           )}
         </div>
-      </header>
-    </>
+
+        <nav aria-label="Primary" className="hidden items-center justify-center gap-3 xl:gap-4 lg:flex">
+          {navItems.map((entry) => {
+            const active = entry.id === activeId;
+            return (
+              <button key={entry.id} type="button" onClick={() => navigate(entry.id)}
+                aria-current={active ? "page" : undefined} aria-label={entry.label} title={entry.label}
+                className={`${iconButton} ${active ? "bg-[#0b2341] text-white" : "text-slate-500 hover:bg-slate-100 hover:text-[#0b2341]"}`}>
+                <span className="[&>svg]:h-[19px] [&>svg]:w-[19px] [&>svg]:stroke-[1.7]">{entry.icon}</span>
+                {!!entry.badge && <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-semibold text-white">{entry.badge}</span>}
+              </button>
+            );
+          })}
+        </nav>
+        <div ref={mobileNavRef} className="relative justify-self-center lg:hidden">
+          <button type="button" aria-label="Navigation" aria-expanded={mobileNavOpen} aria-haspopup="menu"
+            onClick={() => setMobileNavOpen((value) => !value)}
+            className={`${iconButton} text-[#0b2341] hover:bg-slate-100`}>
+            {mobileNavOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          </button>
+          {mobileNavOpen && (
+            <nav aria-label="Primary" className="absolute left-1/2 top-full z-50 mt-3 w-56 -translate-x-1/2 rounded-2xl border border-slate-200 bg-white p-1.5 shadow-lg">
+              {navItems.map((entry) => (
+                <button key={entry.id} type="button" aria-current={entry.id === activeId ? "page" : undefined}
+                  onClick={() => navigate(entry.id)}
+                  className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm ${focusRing} ${entry.id === activeId ? "bg-[#0b2341] font-semibold text-white" : "text-slate-700 hover:bg-slate-100"}`}>
+                  <span className="[&>svg]:h-[18px] [&>svg]:w-[18px]">{entry.icon}</span>
+                  <span className="flex-1">{entry.label}</span>
+                  {!!entry.badge && <span className="rounded-full bg-rose-500 px-1.5 text-xs font-semibold text-white">{entry.badge}</span>}
+                </button>
+              ))}
+            </nav>
+          )}
+        </div>
+
+        <div className="flex min-w-0 items-center justify-self-end gap-1 sm:gap-2">
+          {hasCalendar && (
+            <button type="button" onClick={() => navigate("calendar")} aria-label="Calendar" title="Calendar"
+              aria-current={activeId === "calendar" ? "page" : undefined}
+              className={`${iconButton} ${activeId === "calendar" ? "bg-[#0b2341] text-white" : "text-slate-600 hover:bg-slate-100"}`}>
+              <CalendarDays className="h-[19px] w-[19px] stroke-[1.7]" />
+            </button>
+          )}
+          {canAccessNotifications && (
+            <div ref={notifRef} className="relative">
+              <button type="button" aria-expanded={notifOpen} aria-haspopup="dialog"
+                aria-label={notificationCount ? `Notifications, ${notificationCount} unread` : "Notifications"}
+                title="Notifications"
+                onClick={() => {
+                  setProfileOpen(false);
+                  setMobileNavOpen(false);
+                  if (!notifOpen) onNotificationBellOpen();
+                  setNotifOpen((value) => !value);
+                }}
+                className={`${iconButton} text-slate-600 hover:bg-slate-100`}>
+                <Bell className="h-[19px] w-[19px] stroke-[1.7]" />
+                {notificationCount > 0 && <span className="absolute -right-1 -top-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-semibold text-white">{notificationCount > 99 ? "99+" : notificationCount}</span>}
+              </button>
+              {notifOpen && (
+                <NotificationsDropdown items={notificationItems} loading={notificationLoading} error={notificationError}
+                  onRetry={onNotificationRetry} onNotificationRead={onNotificationRead}
+                  onMarkAllRead={onMarkAllNotificationsRead}
+                  onOpenItem={(item) => { setNotifOpen(false); onNotificationOpen(item); }}
+                  onViewAll={() => { setNotifOpen(false); onNotificationsClick(); }}
+                />
+              )}
+            </div>
+          )}
+          <div ref={profileRef} className="relative">
+            <button type="button" aria-label="User menu" aria-expanded={profileOpen} aria-haspopup="menu"
+              onClick={() => { setNotifOpen(false); setMobileNavOpen(false); setProfileOpen((value) => !value); }}
+              className={`flex h-10 w-10 items-center justify-center rounded-full transition-colors hover:bg-slate-100 ${focusRing}`}>
+              <span className="flex h-7 w-7 items-center justify-center overflow-hidden rounded-full bg-[#0b2341] text-xs font-semibold text-white">
+                {avatarContent}
+              </span>
+            </button>
+            {profileOpen && (
+              <div role="menu" className="absolute right-0 top-full z-50 mt-3 w-60 rounded-2xl border border-slate-200 bg-white p-1.5 shadow-lg">
+                <div className="border-b border-slate-100 px-3 py-2.5">
+                  <span className="block truncate text-sm font-semibold text-[#0b2341]">{userName ?? "Profile"}</span>
+                  {userRole && <span className="block truncate text-xs text-slate-500">{userRole}</span>}
+                </div>
+                <button type="button" role="menuitem" onClick={() => navigate("profile")} className={`mt-1 flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-100 ${focusRing}`}><UserCircle2 className="h-4 w-4" />My Profile</button>
+                <button type="button" role="menuitem" onClick={() => { setProfileOpen(false); onSettingsClick ? onSettingsClick() : navigate("settings"); }} className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-100 ${focusRing}`}><Settings className="h-4 w-4" />Settings</button>
+                <button type="button" role="menuitem" onClick={() => { setProfileOpen(false); onHelpClick(); }} className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-100 ${focusRing}`}><HelpCircle className="h-4 w-4" />Help</button>
+                <button type="button" role="menuitem" onClick={() => { setProfileOpen(false); onLogout(); }} className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm text-rose-600 hover:bg-rose-50 ${focusRing}`}><LogOut className="h-4 w-4" />Logout</button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </header>
   );
 }

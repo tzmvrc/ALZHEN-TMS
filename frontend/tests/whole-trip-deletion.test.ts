@@ -7,9 +7,9 @@ test("Combined and Tracker selections resolve unique exact parents, rejecting mi
  assert.deepEqual(selectedParentTripIds([{trip_id:one},{trip_id:one},{trip_id:two}]),[one,two]);
  for(const rows of [[],[undefined],[{trip_id:"DR-333"}],[{trip_id:one},undefined]])assert.equal(selectedParentTripIds(rows),null);
 });
-test("bulk scope reports exact unique parents and never silently truncates a batch exceeding the atomic RPC limit",()=>{
+test("bulk selection keeps every unique parent while the single-request RPC limit stays twenty",()=>{
  const rows=Array.from({length:21},(_,i)=>({trip_id:`123e4567-e89b-42d3-a456-${String(i+1).padStart(12,"0")}`}));
- assert.equal(selectedParentTripCount(rows),21);assert.equal(selectedParentTripIds(rows),null);
+ assert.equal(selectedParentTripCount(rows),21);assert.equal(selectedParentTripIds(rows)?.length,21);
  assert.equal(selectedParentTripCount([rows[0],rows[0],rows[1]]),2);
  assert.equal(selectedParentTripIds(rows.slice(0,20))?.length,20);
 });

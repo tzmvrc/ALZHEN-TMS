@@ -76,6 +76,11 @@ body {
   background-size: 20px 20px;
 }
 
+/* Search controls share the pill shape across Admin and Staff workspaces. */
+.dotted-surface input:is([type="search"], [aria-label^="Search"], [aria-label^="Find"]) {
+  border-radius: 9999px;
+}
+
 .min-h-screen.bg-slate-50 {
   background-color: #f4f5f5;
   background-image: radial-gradient(

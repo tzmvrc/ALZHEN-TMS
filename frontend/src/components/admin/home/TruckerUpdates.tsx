@@ -4,6 +4,7 @@ import { ArrowUpRight, Truck, AlertTriangle, Check, MapPin, Package, Camera } fr
 import { useAuth } from "../../../context/AuthContext";
 import { apiGetCached, invalidateApiCache, type ApiResponse } from "../../../services/api.service";
 import { subscribeCollaborationEvents } from "../../../services/collaboration.service";
+import { subscribeToAdminRealtime } from "../../../services/realtime.service";
 import {useNavigate} from "react-router-dom";
 import {activityDescription,cleanActivityNote} from "../../../services/activity-presentation";
 import type { RoadTrip } from "../../../services/road-routing";
@@ -49,7 +50,10 @@ export default function TruckerUpdates({ snapshot, trips, roads, selected, activ
     const unsubscribe=subscribeCollaborationEvents(event=>{
       if(event.kind==="connected"||event.kind==="signal"&&["trip_events","driver_trip_updates","loading_reports","unloading_reports","backloads","offloads","incidents","trip_stops"].includes(event.topic)||event.kind==="commit"&&["trip_events","driver_trip_updates","loading_reports","unloading_reports","backloads","offloads","incidents","trip_stops"].includes(event.commit.source)&&(!event.commit.tripId||identity.split(',').includes(event.commit.tripId)))schedule();
     });
-    return()=>{current=false;clearTimeout(timer);document.removeEventListener('visibilitychange',resume);unsubscribe();};
+    const stopAdmin=subscribeToAdminRealtime(event=>{
+      if(event.kind==='resume'||event.kind==='batch'&&event.tables.some(table=>["trip_events","driver_trip_updates","loading_reports","unloading_reports","backloads","offloads","incidents","trip_stops"].includes(table)))schedule();
+    });
+    return()=>{current=false;clearTimeout(timer);document.removeEventListener('visibilitychange',resume);unsubscribe();stopAdmin();};
   },[accessToken,identity,active]);
   const submissions=read?.identity===identity&&read.token===accessToken?read.data.rows:[];
   const updates:Update[]=[];

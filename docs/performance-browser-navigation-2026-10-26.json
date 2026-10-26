@@ -1,0 +1,1055 @@
+[
+  {
+    "name": "Master List",
+    "actionMs": 866,
+    "observationMs": 4325,
+    "pendingReads": 0,
+    "settleMs": 2200,
+    "longTaskMs": 1123,
+    "maxTaskMs": 285,
+    "delayedFrames": 10,
+    "maxFrameGapMs": 350,
+    "domNodes": 5866,
+    "renderedRows": 23,
+    "heapBytes": 146115277,
+    "requests": [
+      {
+        "path": "/api/reports/dispatch-monitoring/columns",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 705.734,
+        "encodedBytes": 9095
+      },
+      {
+        "path": "/api/table-layouts/trips/design",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 955.457,
+        "encodedBytes": 21134
+      },
+      {
+        "path": "/api/trips/transaction-cleanup",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 962.18,
+        "encodedBytes": 77
+      },
+      {
+        "path": "/api/flexible-tables/sections/dispatch_monitoring/tables",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 864.46,
+        "encodedBytes": 85
+      },
+      {
+        "path": "/api/dropdown-options",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 1344.172,
+        "encodedBytes": 3148
+      },
+      {
+        "path": "/api/reports/dispatch-monitoring",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 1986.035,
+        "encodedBytes": 201704
+      },
+      {
+        "path": "/api/reports/trip-issues",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 965.488,
+        "encodedBytes": 60
+      },
+      {
+        "path": "/api/reports/formulas/read",
+        "method": "POST",
+        "status": 200,
+        "durationMs": 1542.653,
+        "encodedBytes": 90
+      }
+    ]
+  },
+  {
+    "name": "Dispatch Monitoring",
+    "actionMs": 530,
+    "observationMs": 6305,
+    "pendingReads": 1,
+    "settleMs": 2200,
+    "longTaskMs": 809,
+    "maxTaskMs": 224,
+    "delayedFrames": 8,
+    "maxFrameGapMs": 233.40000000000146,
+    "domNodes": 10842,
+    "renderedRows": 28,
+    "heapBytes": 184884712,
+    "requests": [
+      {
+        "path": "/api/table-layouts/report%3Adispatch-monitoring/design",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 750.457,
+        "encodedBytes": 28426
+      },
+      {
+        "path": "/api/realtime/draft-tracker-columns",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 922.409,
+        "encodedBytes": 867
+      },
+      {
+        "path": "/api/store-calls/deletion-capabilities",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 5593.926,
+        "encodedBytes": 104
+      },
+      {
+        "path": "/api/reports/dispatch-monitoring",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 5872.293,
+        "encodedBytes": 150390
+      }
+    ]
+  },
+  {
+    "name": "Dispatch Report",
+    "actionMs": 199,
+    "observationMs": 4085,
+    "pendingReads": 1,
+    "settleMs": 2200,
+    "longTaskMs": 498,
+    "maxTaskMs": 331,
+    "delayedFrames": 4,
+    "maxFrameGapMs": 433.1999999999971,
+    "domNodes": 16006,
+    "renderedRows": 32,
+    "heapBytes": 173957923,
+    "requests": [
+      {
+        "path": "/api/table-layouts/report%3Adispatch/design",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 890.129,
+        "encodedBytes": 59
+      },
+      {
+        "path": "/api/reports/formulas/read",
+        "method": "POST",
+        "status": 200,
+        "durationMs": 1858.632,
+        "encodedBytes": 90
+      },
+      {
+        "path": "/api/reports/dispatch/columns",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 2116.482,
+        "encodedBytes": 6514
+      },
+      {
+        "path": "/api/flexible-tables/sections/dispatch_report/tables",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 3347.758,
+        "encodedBytes": 85
+      },
+      {
+        "path": "/api/reports/dispatch",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 3407.44,
+        "encodedBytes": 189918
+      }
+    ]
+  },
+  {
+    "name": "Trip Booking",
+    "actionMs": 118,
+    "observationMs": 3583,
+    "pendingReads": 1,
+    "settleMs": 2200,
+    "longTaskMs": 385,
+    "maxTaskMs": 289,
+    "delayedFrames": 4,
+    "maxFrameGapMs": 366.59999999999854,
+    "domNodes": 18548,
+    "renderedRows": 32,
+    "heapBytes": 220418329,
+    "requests": [
+      {
+        "path": "/api/reports/trip-booking/columns",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 453.896,
+        "encodedBytes": 5472
+      },
+      {
+        "path": "/api/table-layouts/report%3Atrip-booking/design",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 567.099,
+        "encodedBytes": 59
+      },
+      {
+        "path": "/api/flexible-tables/sections/trip_booking/tables",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 571.943,
+        "encodedBytes": 85
+      },
+      {
+        "path": "/api/reports/formulas/read",
+        "method": "POST",
+        "status": 200,
+        "durationMs": 1051.818,
+        "encodedBytes": 90
+      },
+      {
+        "path": "/api/reports/trip-booking",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 2982.768,
+        "encodedBytes": 180196
+      }
+    ]
+  },
+  {
+    "name": "Store Calling",
+    "actionMs": 151,
+    "observationMs": 2512,
+    "pendingReads": 0,
+    "settleMs": 2200,
+    "longTaskMs": 195,
+    "maxTaskMs": 99,
+    "delayedFrames": 2,
+    "maxFrameGapMs": 116.69999999999709,
+    "domNodes": 15981,
+    "renderedRows": 0,
+    "heapBytes": 226268646,
+    "requests": [
+      {
+        "path": "/api/reports/store-calling/columns",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 423.024,
+        "encodedBytes": 957
+      },
+      {
+        "path": "/api/reports/formulas/read",
+        "method": "POST",
+        "status": 200,
+        "durationMs": 734.158,
+        "encodedBytes": 90
+      },
+      {
+        "path": "/api/table-layouts/report%3Astore-calling/design",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 542.061,
+        "encodedBytes": 274
+      },
+      {
+        "path": "/api/flexible-tables/sections/store_calling/tables",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 553.03,
+        "encodedBytes": 85
+      },
+      {
+        "path": "/api/reports/store-calling",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 625.165,
+        "encodedBytes": 151
+      }
+    ]
+  },
+  {
+    "name": "Transmittal Tracker",
+    "actionMs": 220,
+    "observationMs": 2920,
+    "pendingReads": 0,
+    "settleMs": 2200,
+    "longTaskMs": 446,
+    "maxTaskMs": 165,
+    "delayedFrames": 4,
+    "maxFrameGapMs": 166.59999999999127,
+    "domNodes": 18657,
+    "renderedRows": 19,
+    "heapBytes": 171155425,
+    "requests": [
+      {
+        "path": "/api/realtime/changes",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 509.535,
+        "encodedBytes": 3477
+      },
+      {
+        "path": "/api/table-layouts/transmittal-tracker/design",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 686.853,
+        "encodedBytes": 2282
+      },
+      {
+        "path": "/api/reports/transmittal-tracker/page",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 1922.914,
+        "encodedBytes": 26378
+      },
+      {
+        "path": "/api/reports/formulas/read",
+        "method": "POST",
+        "status": 200,
+        "durationMs": 487.124,
+        "encodedBytes": 90
+      }
+    ]
+  },
+  {
+    "name": "Trips vertical scroll",
+    "actionMs": 1300,
+    "observationMs": 6683,
+    "pendingReads": 1,
+    "settleMs": 600,
+    "longTaskMs": 409,
+    "maxTaskMs": 160,
+    "delayedFrames": 3,
+    "maxFrameGapMs": 133.39999999999418,
+    "domNodes": 20191,
+    "renderedRows": 32,
+    "heapBytes": 182548034,
+    "requests": [
+      {
+        "path": "/api/trips/transaction-cleanup",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 866.84,
+        "encodedBytes": 77
+      },
+      {
+        "path": "/api/reports/trip-issues",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 930.444,
+        "encodedBytes": 60
+      },
+      {
+        "path": "/api/table-layouts/trips/design",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 930.844,
+        "encodedBytes": 21134
+      },
+      {
+        "path": "/api/reports/dispatch-monitoring",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 6001.184,
+        "encodedBytes": 204759
+      }
+    ]
+  },
+  {
+    "name": "Trips horizontal scroll",
+    "actionMs": 1369,
+    "observationMs": 2027,
+    "pendingReads": 0,
+    "settleMs": 500,
+    "longTaskMs": 402,
+    "maxTaskMs": 170,
+    "delayedFrames": 5,
+    "maxFrameGapMs": 183.39999999999418,
+    "domNodes": 17434,
+    "renderedRows": 15,
+    "heapBytes": 194832593,
+    "requests": [
+      {
+        "path": "/api/reports/trip-issues",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 787.018,
+        "encodedBytes": 1367
+      },
+      {
+        "path": "/api/reports/formulas/read",
+        "method": "POST",
+        "status": 200,
+        "durationMs": 751.671,
+        "encodedBytes": 90
+      }
+    ]
+  },
+  {
+    "name": "Warehouses",
+    "actionMs": 619,
+    "observationMs": 2985,
+    "pendingReads": 0,
+    "settleMs": 2200,
+    "longTaskMs": 54,
+    "maxTaskMs": 54,
+    "delayedFrames": 2,
+    "maxFrameGapMs": 83.19999999999709,
+    "domNodes": 18096,
+    "renderedRows": 9,
+    "heapBytes": 199857603,
+    "requests": [
+      {
+        "path": "/api/table-layouts/master%3Awarehouses/design",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 491.998,
+        "encodedBytes": 5556
+      },
+      {
+        "path": "/api/master-data/warehouses",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 624.97,
+        "encodedBytes": 5513
+      }
+    ]
+  },
+  {
+    "name": "Trucks",
+    "actionMs": 142,
+    "observationMs": 6393,
+    "pendingReads": 0,
+    "settleMs": 2200,
+    "longTaskMs": 133,
+    "maxTaskMs": 68,
+    "delayedFrames": 3,
+    "maxFrameGapMs": 66.69999999999709,
+    "domNodes": 19177,
+    "renderedRows": 30,
+    "heapBytes": 226909990,
+    "requests": [
+      {
+        "path": "/api/table-layouts/master%3Atrucks/design",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 527.049,
+        "encodedBytes": 1566
+      },
+      {
+        "path": "/api/master-data/trucks",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 586.451,
+        "encodedBytes": 13884
+      },
+      {
+        "path": "/api/master-data/trucks/:id/images",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 628.282,
+        "encodedBytes": 26
+      },
+      {
+        "path": "/api/master-data/trucks/:id/images",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 752.009,
+        "encodedBytes": 26
+      },
+      {
+        "path": "/api/master-data/trucks/:id/images",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 845.993,
+        "encodedBytes": 26
+      },
+      {
+        "path": "/api/master-data/trucks/:id/images",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 621.096,
+        "encodedBytes": 26
+      },
+      {
+        "path": "/api/master-data/trucks/:id/images",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 1338.537,
+        "encodedBytes": 969
+      },
+      {
+        "path": "/api/master-data/trucks/:id/images",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 1106.827,
+        "encodedBytes": 26
+      },
+      {
+        "path": "/api/master-data/trucks/:id/images",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 669.602,
+        "encodedBytes": 26
+      },
+      {
+        "path": "/api/master-data/trucks/:id/images",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 1272.622,
+        "encodedBytes": 26
+      },
+      {
+        "path": "/api/master-data/trucks/:id/images",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 833.345,
+        "encodedBytes": 26
+      },
+      {
+        "path": "/api/master-data/trucks/:id/images",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 642.472,
+        "encodedBytes": 26
+      },
+      {
+        "path": "/api/master-data/trucks/:id/images",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 601.754,
+        "encodedBytes": 26
+      },
+      {
+        "path": "/api/master-data/trucks/:id/images",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 585.644,
+        "encodedBytes": 26
+      },
+      {
+        "path": "/api/master-data/trucks/:id/images",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 562.818,
+        "encodedBytes": 26
+      },
+      {
+        "path": "/api/master-data/trucks/:id/images",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 574.204,
+        "encodedBytes": 26
+      },
+      {
+        "path": "/api/master-data/trucks/:id/images",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 589.242,
+        "encodedBytes": 26
+      },
+      {
+        "path": "/api/master-data/trucks/:id/images",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 625.669,
+        "encodedBytes": 26
+      },
+      {
+        "path": "/api/master-data/trucks/:id/images",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 698.702,
+        "encodedBytes": 26
+      },
+      {
+        "path": "/api/master-data/trucks/:id/images",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 591.884,
+        "encodedBytes": 26
+      },
+      {
+        "path": "/api/master-data/trucks/:id/images",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 557.393,
+        "encodedBytes": 26
+      },
+      {
+        "path": "/api/master-data/trucks/:id/images",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 563.901,
+        "encodedBytes": 26
+      },
+      {
+        "path": "/api/master-data/trucks/:id/images",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 563.638,
+        "encodedBytes": 26
+      },
+      {
+        "path": "/api/master-data/trucks/:id/images",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 581.382,
+        "encodedBytes": 26
+      },
+      {
+        "path": "/api/master-data/trucks/:id/images",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 587.537,
+        "encodedBytes": 26
+      },
+      {
+        "path": "/api/master-data/trucks/:id/images",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 603.573,
+        "encodedBytes": 26
+      },
+      {
+        "path": "/api/master-data/trucks/:id/images",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 658.861,
+        "encodedBytes": 26
+      },
+      {
+        "path": "/api/master-data/trucks/:id/images",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 569.696,
+        "encodedBytes": 26
+      },
+      {
+        "path": "/api/master-data/trucks/:id/images",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 584.504,
+        "encodedBytes": 26
+      },
+      {
+        "path": "/api/master-data/trucks/:id/images",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 604.348,
+        "encodedBytes": 26
+      },
+      {
+        "path": "/api/master-data/trucks/:id/images",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 621.266,
+        "encodedBytes": 26
+      },
+      {
+        "path": "/api/master-data/trucks/:id/images",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 598.61,
+        "encodedBytes": 26
+      }
+    ]
+  },
+  {
+    "name": "Trucking Companies",
+    "actionMs": 171,
+    "observationMs": 2536,
+    "pendingReads": 0,
+    "settleMs": 2200,
+    "longTaskMs": 64,
+    "maxTaskMs": 64,
+    "delayedFrames": 1,
+    "maxFrameGapMs": 50,
+    "domNodes": 19599,
+    "renderedRows": 7,
+    "heapBytes": 179954362,
+    "requests": [
+      {
+        "path": "/api/table-layouts/master%3Atrucking-companies/design",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 538.318,
+        "encodedBytes": 1537
+      },
+      {
+        "path": "/api/master-data/trucking-companies",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 542.519,
+        "encodedBytes": 2547
+      }
+    ]
+  },
+  {
+    "name": "Stores",
+    "actionMs": 185,
+    "observationMs": 2554,
+    "pendingReads": 0,
+    "settleMs": 2200,
+    "longTaskMs": 301,
+    "maxTaskMs": 144,
+    "delayedFrames": 2,
+    "maxFrameGapMs": 166.6999999999971,
+    "domNodes": 21082,
+    "renderedRows": 30,
+    "heapBytes": 193681241,
+    "requests": [
+      {
+        "path": "/api/table-layouts/master%3Astores/design",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 1008.429,
+        "encodedBytes": 3530
+      },
+      {
+        "path": "/api/master-data/stores",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 1008.589,
+        "encodedBytes": 24378
+      }
+    ]
+  },
+  {
+    "name": "Store Contacts",
+    "actionMs": 157,
+    "observationMs": 2537,
+    "pendingReads": 0,
+    "settleMs": 2200,
+    "longTaskMs": 65,
+    "maxTaskMs": 65,
+    "delayedFrames": 1,
+    "maxFrameGapMs": 49.90000000000873,
+    "domNodes": 21509,
+    "renderedRows": 8,
+    "heapBytes": 185236521,
+    "requests": [
+      {
+        "path": "/api/table-layouts/master%3Astore-contacts/design",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 512.134,
+        "encodedBytes": 59
+      },
+      {
+        "path": "/api/master-data/store-contacts",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 657.355,
+        "encodedBytes": 4267
+      }
+    ]
+  },
+  {
+    "name": "Products",
+    "actionMs": 158,
+    "observationMs": 2517,
+    "pendingReads": 0,
+    "settleMs": 2200,
+    "longTaskMs": 154,
+    "maxTaskMs": 82,
+    "delayedFrames": 3,
+    "maxFrameGapMs": 66.69999999999709,
+    "domNodes": 22364,
+    "renderedRows": 32,
+    "heapBytes": 202744424,
+    "requests": [
+      {
+        "path": "/api/table-layouts/master%3Aproducts/design",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 947.661,
+        "encodedBytes": 1627
+      },
+      {
+        "path": "/api/master-data/products",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 1086.79,
+        "encodedBytes": 9717
+      },
+      {
+        "path": "/api/master-data/products",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 515.446,
+        "encodedBytes": 3785
+      }
+    ]
+  },
+  {
+    "name": "Admin & Staff",
+    "actionMs": 545,
+    "observationMs": 2904,
+    "pendingReads": 0,
+    "settleMs": 2200,
+    "longTaskMs": 0,
+    "maxTaskMs": 0,
+    "delayedFrames": 3,
+    "maxFrameGapMs": 99.90000000000873,
+    "domNodes": 22742,
+    "renderedRows": 2,
+    "heapBytes": 210904592,
+    "requests": [
+      {
+        "path": "/api/table-layouts/users%3Astaff/design",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 473.508,
+        "encodedBytes": 2067
+      },
+      {
+        "path": "/api/users/directory",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 898.65,
+        "encodedBytes": 1174
+      }
+    ]
+  },
+  {
+    "name": "Truckers",
+    "actionMs": 175,
+    "observationMs": 2544,
+    "pendingReads": 0,
+    "settleMs": 2200,
+    "longTaskMs": 143,
+    "maxTaskMs": 90,
+    "delayedFrames": 3,
+    "maxFrameGapMs": 83.29999999998836,
+    "domNodes": 23241,
+    "renderedRows": 8,
+    "heapBytes": 205639487,
+    "requests": [
+      {
+        "path": "/api/table-layouts/users%3Atruckers/design",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 502.13,
+        "encodedBytes": 3528
+      },
+      {
+        "path": "/api/users/directory",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 603.279,
+        "encodedBytes": 5801
+      }
+    ]
+  },
+  {
+    "name": "Repeat 1: Trips",
+    "actionMs": 575,
+    "observationMs": 1312,
+    "pendingReads": 0,
+    "settleMs": 350,
+    "longTaskMs": 448,
+    "maxTaskMs": 285,
+    "delayedFrames": 5,
+    "maxFrameGapMs": 300.1000000000058,
+    "domNodes": 23245,
+    "renderedRows": 15,
+    "heapBytes": 175335144,
+    "requests": [
+      {
+        "path": "/api/trips/transaction-cleanup",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 712.351,
+        "encodedBytes": 77
+      },
+      {
+        "path": "/api/table-layouts/trips/design",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 829.677,
+        "encodedBytes": 21134
+      },
+      {
+        "path": "/api/reports/trip-issues",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 840.609,
+        "encodedBytes": 1367
+      },
+      {
+        "path": "/api/flexible-tables/sections/dispatch_monitoring/tables",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 558.191,
+        "encodedBytes": 85
+      },
+      {
+        "path": "/api/reports/formulas/read",
+        "method": "POST",
+        "status": 200,
+        "durationMs": 957.326,
+        "encodedBytes": 90
+      }
+    ]
+  },
+  {
+    "name": "Repeat 1: Database",
+    "actionMs": 197,
+    "observationMs": 717,
+    "pendingReads": 0,
+    "settleMs": 350,
+    "longTaskMs": 79,
+    "maxTaskMs": 79,
+    "delayedFrames": 2,
+    "maxFrameGapMs": 66.69999999999709,
+    "domNodes": 23243,
+    "renderedRows": 32,
+    "heapBytes": 196320324,
+    "requests": []
+  },
+  {
+    "name": "Repeat 1: Users",
+    "actionMs": 189,
+    "observationMs": 706,
+    "pendingReads": 0,
+    "settleMs": 350,
+    "longTaskMs": 71,
+    "maxTaskMs": 71,
+    "delayedFrames": 2,
+    "maxFrameGapMs": 50.20000000001164,
+    "domNodes": 23241,
+    "renderedRows": 8,
+    "heapBytes": 195930807,
+    "requests": []
+  },
+  {
+    "name": "Repeat 2: Trips",
+    "actionMs": 355,
+    "observationMs": 989,
+    "pendingReads": 0,
+    "settleMs": 350,
+    "longTaskMs": 259,
+    "maxTaskMs": 143,
+    "delayedFrames": 4,
+    "maxFrameGapMs": 150,
+    "domNodes": 23245,
+    "renderedRows": 15,
+    "heapBytes": 198319273,
+    "requests": [
+      {
+        "path": "/api/trips/transaction-cleanup",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 556.58,
+        "encodedBytes": 77
+      },
+      {
+        "path": "/api/reports/formulas/read",
+        "method": "POST",
+        "status": 200,
+        "durationMs": 679.855,
+        "encodedBytes": 90
+      }
+    ]
+  },
+  {
+    "name": "Repeat 2: Database",
+    "actionMs": 198,
+    "observationMs": 916,
+    "pendingReads": 0,
+    "settleMs": 350,
+    "longTaskMs": 77,
+    "maxTaskMs": 77,
+    "delayedFrames": 2,
+    "maxFrameGapMs": 66.80000000000291,
+    "domNodes": 23243,
+    "renderedRows": 32,
+    "heapBytes": 218891632,
+    "requests": [
+      {
+        "path": "/api/table-layouts/master%3Aproducts/design",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 540.722,
+        "encodedBytes": 1627
+      }
+    ]
+  },
+  {
+    "name": "Repeat 2: Users",
+    "actionMs": 203,
+    "observationMs": 722,
+    "pendingReads": 0,
+    "settleMs": 350,
+    "longTaskMs": 81,
+    "maxTaskMs": 81,
+    "delayedFrames": 2,
+    "maxFrameGapMs": 66.79999999998836,
+    "domNodes": 23241,
+    "renderedRows": 8,
+    "heapBytes": 218221452,
+    "requests": []
+  },
+  {
+    "name": "Repeat 3: Trips",
+    "actionMs": 390,
+    "observationMs": 1342,
+    "pendingReads": 0,
+    "settleMs": 350,
+    "longTaskMs": 255,
+    "maxTaskMs": 173,
+    "delayedFrames": 3,
+    "maxFrameGapMs": 183.40000000000873,
+    "domNodes": 23245,
+    "renderedRows": 15,
+    "heapBytes": 239033850,
+    "requests": [
+      {
+        "path": "/api/trips/transaction-cleanup",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 620.311,
+        "encodedBytes": 77
+      },
+      {
+        "path": "/api/dropdown-options",
+        "method": "GET",
+        "status": 200,
+        "durationMs": 944.105,
+        "encodedBytes": 3148
+      }
+    ]
+  },
+  {
+    "name": "Repeat 3: Database",
+    "actionMs": 223,
+    "observationMs": 733,
+    "pendingReads": 0,
+    "settleMs": 350,
+    "longTaskMs": 96,
+    "maxTaskMs": 96,
+    "delayedFrames": 2,
+    "maxFrameGapMs": 83.30000000000291,
+    "domNodes": 23243,
+    "renderedRows": 32,
+    "heapBytes": 229957994,
+    "requests": []
+  },
+  {
+    "name": "Repeat 3: Users",
+    "actionMs": 152,
+    "observationMs": 674,
+    "pendingReads": 0,
+    "settleMs": 350,
+    "longTaskMs": 0,
+    "maxTaskMs": 0,
+    "delayedFrames": 1,
+    "maxFrameGapMs": 49.89999999999418,
+    "domNodes": 23241,
+    "renderedRows": 8,
+    "heapBytes": 234038330,
+    "requests": []
+  }
+]

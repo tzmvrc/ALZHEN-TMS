@@ -21,7 +21,8 @@ import { reportLineItemDeletionTargets } from "../../services/report-row-actions
 import { dropdownStoredValue } from "../../services/dropdown-option.service";
 import { SpreadsheetRowDeletionDialog } from "./SpreadsheetRowDeletionDialog";
 import { type LineItemDeletionTarget } from "../../services/trip.service";
-import { useVirtualSpreadsheetRows } from "./useVirtualSpreadsheetRows";
+import VirtualSpreadsheetRows from "./VirtualSpreadsheetRows";
+import {useSpreadsheetColumnWindow} from "./useSpreadsheetColumnWindow";
 import { SpreadsheetCellContextMenu } from "./SpreadsheetCellContextMenu";
 import { useOperationalFormulas } from "./useOperationalFormulas";
 import { physicalRowIdentity } from "../../services/spreadsheet-formula";
@@ -255,16 +256,14 @@ function downloadBlob(blob: Blob, filename: string) {
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+const reportDateFormat=new Intl.DateTimeFormat("en-US",{month:"short",day:"numeric",year:"numeric"});
+const reportNumberFormat=new Intl.NumberFormat(undefined,{maximumFractionDigits:2});
 function displayValue(value: unknown, type: string,field=""): string {
   if (isCbmField(field)) return cbmDisplay(value);
   if (field === "so_approval_date") return value == null ? "" : String(value).replace("T", " ");
   if(isTripTimeField(field))return tripTimeDisplay(value);
   if (value === null || value === undefined || value === "") return "";
-  const formatDate = (date: Date) => new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }).format(date);
+  const formatDate = (date: Date) => reportDateFormat.format(date);
   if (type === "date" && typeof value === "string") {
     const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
     const parsed = dateOnly
@@ -273,9 +272,7 @@ function displayValue(value: unknown, type: string,field=""): string {
     return Number.isNaN(parsed.getTime()) ? value : formatDate(parsed);
   }
   if (typeof value === "number") {
-    return new Intl.NumberFormat(undefined, {
-      maximumFractionDigits: 2,
-    }).format(value);
+    return reportNumberFormat.format(value);
   }
   if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}T/.test(value)) {
     const date = new Date(value);
@@ -294,9 +291,7 @@ function rowKey(reportKey: ReportKey, row: ReportRow, index: number): string {
 }
 
 function reportEditDiagnostic(event: string, details: Record<string, unknown>) {
-  if (import.meta.env.DEV) {
-    // info is visible with the browser console's standard Info level; debug
-    // messages may be hidden when Verbose logging is filtered out.
+  if (import.meta.env.DEV && import.meta.env.VITE_REPORT_EDIT_DIAGNOSTICS === "true") {
     console.info(`[report-edit-diagnostic] ${event}`, details);
   }
 }
@@ -430,12 +425,13 @@ const ReportSelectionToolbar = memo(function ReportSelectionToolbar({
 }) {
   useSyncExternalStore(reportSelection.subscribe, reportSelection.revision, reportSelection.revision);
   const keys = reportSelection.getKeys(reportKey);
+  const rowsByKey=useMemo(()=>new Map(rows.flatMap(row=>{const key=getReportRowKey(reportKey,row);return key?[[key,row] as const]:[];})),[rows,reportKey]);
   if (!canManage) return null;
-  if (!keys.length || !rows.some(candidate => keys.includes(getReportRowKey(reportKey, candidate) ?? ""))) return null;
-  const row = rows.find((candidate) => getReportRowKey(reportKey, candidate) === keys[0]);
+  if (!keys.length || !keys.some(key=>rowsByKey.has(key))) return null;
+  const row = rowsByKey.get(keys[0]);
   const hasEditableFields = Boolean(row && columns.some((column) => getEditableCellTarget(row, column.key, reportKey)));
   const canEdit = !disabled && keys.length === 1 && Boolean(row) && hasEditableFields;
-  const selected=keys.map(key=>rows.find(candidate=>getReportRowKey(reportKey,candidate)===key));
+  const selected=keys.map(key=>rowsByKey.get(key));
   const tripIds = selectedParentTripIds(selected);
   const physicalRows=selected.filter((candidate):candidate is ReportRow=>Boolean(candidate));
   // Store Calling rows represent calls, not their trip's cargo. Operational
@@ -446,7 +442,7 @@ const ReportSelectionToolbar = memo(function ReportSelectionToolbar({
   return <>{canEdit&&<ReportRowActionButton action="edit" onClick={onEdit} />}
     {physicalTargets&&onDeletePhysical&&<ReportRowActionButton action="delete" disabled={disabled} label={reportKey==="store-calling"?"Delete selected store calls only":"Delete selected empty stops only"} onClick={()=>onDeletePhysical(physicalTargets)}/>}
     {targets&&onDeleteRows&&<ReportRowActionButton action="delete" disabled={disabled} label="Delete selected line items only" onClick={()=>onDeleteRows(targets)}/>}
-    {onDeleteTrips&&tripIds?.length===1&&<ReportRowActionButton action="delete" disabled={disabled} label="Delete Entire Trip" onClick={()=>onDeleteTrips(physicalRows)}/>}
+    {onDeleteTrips&&tripIds&&tripIds.length>0&&<ReportRowActionButton action="delete" disabled={disabled} label={tripIds.length===1?"Delete Entire Trip":"Delete Selected Trips"} onClick={()=>onDeleteTrips(physicalRows)}/>}
   </>;
 
 });
@@ -1090,7 +1086,8 @@ export default function ReportDataView({
   const [cellSelection, setCellSelection] = useState<CellSelection | null>(null);
   const [physicalDeletion,setPhysicalDeletion]=useState<PhysicalDeletionTarget[]|null>(null);
   const [deletionCapabilities,setDeletionCapabilities]=useState({storeCalls:false,emptyStops:false});
-  useEffect(()=>{if(!accessToken||transactionView)return;let live=true;void readRecordDeletionCapabilities(accessToken).then(result=>{if(live)setDeletionCapabilities(result);}).catch(()=>{if(live)setDeletionCapabilities({storeCalls:false,emptyStops:false});});return()=>{live=false;};},[accessToken,transactionView]);
+  const [deletionCapabilitiesReady,setDeletionCapabilitiesReady]=useState(false);
+  useEffect(()=>{if(!accessToken||transactionView)return;let live=true;setDeletionCapabilitiesReady(false);void readRecordDeletionCapabilities(accessToken).then(result=>{if(live){setDeletionCapabilities(result);setDeletionCapabilitiesReady(true);}}).catch(()=>{if(live){setDeletionCapabilities({storeCalls:false,emptyStops:false});setDeletionCapabilitiesReady(true);}});return()=>{live=false;};},[accessToken,transactionView]);
   const [rowDeletion,setRowDeletion]=useState<LineItemDeletionTarget[]|null>(null);
   const [cellContextMenu,setCellContextMenu]=useState<{x:number;y:number;row:string;field:string}|null>(null);
   useEffect(()=>()=>setCellContextMenu(null),[reportKey,accessToken]);
@@ -1100,7 +1097,6 @@ export default function ReportDataView({
   const [fillGesture, setFillGesture] = useState<FillGesture | null>(null);
   const fillGestureRef = useRef<FillGesture | null>(null);
   const deletedTripIds = useRef(new Set<string>());
-  const deletionRowKeys = useRef<string[]>([]);
   useEffect(() => { deletedTripIds.current.clear(); }, [accessToken]);
   const [localPinnedColumnSides, setPinnedColumnSides] = useState<Record<string, "left" | "right">>({});
   const [leftPinOffsets, setLeftPinOffsets] = useState<Record<string, number>>({});
@@ -1157,7 +1153,6 @@ export default function ReportDataView({
   const [editModalRecord, setEditModalRecord] = useState<ReportRow | null>(null);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const {tripIds:wholeTripIds,setTripIds:setWholeTripIds}=useWholeTripSelection(`${profile?.id??""}:${profile?.role??""}:${accessToken??""}`);
-  const [wholeTripRowCount,setWholeTripRowCount]=useState(0);
   const editSteps=transactionView?TRIP_EDIT_STEPS:REPORT_EDIT_STEPS;
   const [editModalBusy, setEditModalBusy] = useState(false);
   const [editModalError, setEditModalError] = useState("");
@@ -1330,7 +1325,8 @@ export default function ReportDataView({
     const columnStart=presentationColumns.findIndex(column=>column.key===cellSelection.anchorField),columnEnd=presentationColumns.findIndex(column=>column.key===cellSelection.focusField);
     if((cellSelection.mode!=="row"&&[rowStart,rowEnd].some(index=>index<0))||[columnStart,columnEnd].some(index=>index<0))return new Set<string>();
     const selectedRows=cellSelection.mode==="column"?selectionRowKeys:cellSelection.mode==="row"?(cellSelection.rows??[cellSelection.anchorRowKey]):selectionRowKeys.slice(Math.min(rowStart,rowEnd),Math.max(rowStart,rowEnd)+1);
-    const formatRows=cellSelection.mode==="row"&&selectedRows.length>1000?selectionRowKeys.filter(key=>selectedRows.includes(key)):selectedRows;
+    const selectedRowSet=new Set(selectedRows);
+    const formatRows=cellSelection.mode==="row"&&selectedRows.length>1000?selectionRowKeys.filter(key=>selectedRowSet.has(key)):selectedRows;
     const selectedColumns=cellSelection.mode==="row"?presentationColumns:presentationColumns.slice(Math.min(columnStart,columnEnd),Math.max(columnStart,columnEnd)+1);
     return new Set(formatRows.flatMap(row=>selectedColumns.map(column=>reportCellFormatKey(row,column.key))));
   }, [cellSelection, selectionRowKeys, presentationColumns]);
@@ -1353,11 +1349,12 @@ export default function ReportDataView({
     sortBy: activeSortBy,
     sortOrder,
     filters: queryFilters,
-  }), [activeSortBy, queryFilters, effectiveSearch, page, sortOrder, allTripRecords]);
+  }), [activeSortBy, queryFilters, effectiveSearch, page, sortOrder]);
   const formulas=useOperationalFormulas({viewport:tableViewportRef,token:accessToken,table:transactionView?"trips":`report:${reportKey}`,rows:displayedRows,columns:formulaColumns,identity:physicalRowIdentity,sourceEditor:prepareFormulaSource,virtualRows:virtualGridRows,onSelect:syncGridCellSelection,rowOffset:sheetRowOffset,canEdit:["ADMIN","STAFF"].includes(profile?.role??"")&&!headerFormatting.key,paused:Boolean(editingCell||editModalOpen||fillGesture)});
   const formulaFocusIndex=useMemo(()=>formulas.selectedIdentity?(formulaRowLookup.get(formulas.selectedIdentity)?.index??-1):-1,[formulas.selectedIdentity,formulaRowLookup]);
-  const virtualItems = useVirtualSpreadsheetRows(tableViewportRef, physicalGridKeys, viewMode === "table", editingCell?physicalGridKeys.indexOf(editingCell.rowKey):formulaFocusIndex,rowHeights.heights);
-  useEffect(()=>accessToken&&infiniteRows?retainReportCollection(reportKey,accessToken,pageOptions):undefined,[accessToken,reportKey,snapshotKey,infiniteRows]);
+  const windowColumns=useMemo(()=>renderedGridColumns.map(column=>({key:column.key,width:columnLayout.widths?.[column.key]??defaultReportColumnWidth(column)})),[renderedGridColumns,columnLayout.widths]);
+  const mountedColumns=useSpreadsheetColumnWindow(tableViewportRef,windowColumns,pinnedColumnSides,[editingCell?.field,formulas.selectedColumn]);
+  useEffect(()=>accessToken&&infiniteRows?retainReportCollection(reportKey,accessToken,pageOptions):undefined,[accessToken,reportKey,pageOptions,infiniteRows]);
   const snapshotKeyRef = useRef(snapshotKey);
   const loadedSnapshotKeyRef = useRef<string | null>(null);
   const reportKeyRef = useRef(reportKey);
@@ -1641,6 +1638,7 @@ export default function ReportDataView({
       navigate("/login", { replace: true });
       return;
     }
+    if (!transactionView && !deletionCapabilitiesReady) return;
 
     let active = true;
     const collectionAbort = new AbortController();
@@ -1807,6 +1805,7 @@ export default function ReportDataView({
     page,
     pageOptions,
     allTripRecords,
+    deletionCapabilitiesReady,
     infiniteRows,
     queryKey,
     reportKey,
@@ -3259,7 +3258,7 @@ export default function ReportDataView({
             rows={selectionRows}
             disabled={selectAllRequest.busy}
             columns={columns}
-            onDeleteTrips={(transactionView||reportKey==="combined")&&profile?.role==="ADMIN"?selected=>{const ids=selectedParentTripIds(selected);if(ids){deletionRowKeys.current=reportSelection.getKeys(reportKey);setWholeTripRowCount(selected.length);setWholeTripIds(ids);}}:undefined}
+            onDeleteTrips={(transactionView||reportKey==="combined")&&profile?.role==="ADMIN"?selected=>{const ids=selectedParentTripIds(selected);if(ids)setWholeTripIds(ids);}:undefined}
             onDeleteRows={!transactionView&&reportKey!=="combined"?setRowDeletion:undefined}
             onEdit={openSelectedRowEditor} />
 
@@ -3353,7 +3352,7 @@ export default function ReportDataView({
         </div>
       )}
 
-      {wholeTripIds&&accessToken&&<WholeTripDeletionDialog token={accessToken} tripIds={wholeTripIds} selectedRowCount={wholeTripRowCount} onClose={()=>setWholeTripIds(null)} onDeleted={(ids)=>{ids.forEach(id=>deletedTripIds.current.add(id));const retain=(current:ReportRow[])=>current.filter(row=>!deletedTripIds.current.has(String(row.trip_id)));setRows(retain);reportSelection.setVisible(deletionRowKeys.current,false);if(!retain(displayedRows).length&&page>1)setPage(page-1);setRetryVersion(v=>v+1);}}/>}
+      {wholeTripIds&&accessToken&&<WholeTripDeletionDialog token={accessToken} tripIds={wholeTripIds} onClose={()=>setWholeTripIds(null)} onDeleted={(ids)=>{ids.forEach(id=>deletedTripIds.current.add(id));const retain=(current:ReportRow[])=>current.filter(row=>!deletedTripIds.current.has(String(row.trip_id)));setRows(retain);setSelectionRecords(retain);const removedKeys=selectionRows.filter(row=>deletedTripIds.current.has(String(row.trip_id))).flatMap(row=>{const key=getReportRowKey(reportKey,row);return key?[key]:[];});reportSelection.setVisible(removedKeys,false);if(!retain(displayedRows).length&&page>1)setPage(page-1);setRetryVersion(v=>v+1);}}/>}
       {transactionView && accessToken && <TransactionCleanupNotice key={accessToken} token={accessToken} version={retryVersion} />}
       {editModalOpen && editModalRecord && (
         <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-slate-900/20 p-4 backdrop-blur-[2px]" onMouseDown={(event) => {
@@ -3544,9 +3543,8 @@ export default function ReportDataView({
                   </tr>
                 </thead>
                 <tbody>
-                  {virtualItems.map(item => {
-                    if(item.spacer!==undefined)return <tr key={`gap-${item.index}`} data-virtual-spacer aria-hidden="true" style={{height:item.spacer}}><td colSpan={renderedGridColumns.length+1} style={{height:item.spacer,padding:0,border:0}} /></tr>;
-                    const index=item.index,row=displayedRows[index];
+                  <VirtualSpreadsheetRows viewport={tableViewportRef} keys={physicalGridKeys} enabled={viewMode==="table"} keepAlive={editingCell?physicalGridKeys.indexOf(editingCell.rowKey):formulaFocusIndex} heights={rowHeights.heights} columnCount={renderedGridColumns.length+1} renderRow={index => {
+                    const row=displayedRows[index];
                     const currentRowKey = rowKey(reportKey, row, index);
                     const selectionKey = getReportRowKey(reportKey, row);
                     return (
@@ -3562,6 +3560,7 @@ export default function ReportDataView({
                         </td>
                         {renderedGridColumns.map((column, visibleColumnIndex) => {
                           const columnWidth = columnLayout.widths?.[column.key] ?? defaultReportColumnWidth(column);
+                          if(!mountedColumns.has(column.key))return <td key={column.key} {...formulas.cellProps(row,column.key)} {...rangeDrag.cell(selectionKey??selectionRowKeys[index],column.key)} data-report-column-key={column.key} data-column-placeholder="true" style={{width:columnWidth,minWidth:columnWidth,maxWidth:columnWidth,...reportColumnAppearance(sharedDesign.columns[column.key],reportCellFormatFor(cellFormats,reportCellFormatKey(selectionKey??selectionRowKeys[index],column.key)),columnLayout.colors?.[column.key])}} className={`${REPORT_GRID_BODY_CELL_CLASS} border-r border-slate-100/70`}><span className={/remarks|comment|notes/i.test(column.key)?"whitespace-pre-wrap break-words":"block truncate"}>{displayValue(row[column.key],column.type,column.key)}</span></td>;
                           const editableTarget = getEditableCellTarget(
                             row,
                             column.key,
@@ -3861,7 +3860,7 @@ export default function ReportDataView({
 
                       </tr>
                     );
-                  })}
+                  }}/>
                   <SpreadsheetBlankRows count={spreadsheetPadding.count} height={spreadsheetPadding.height} loading={isLoading&&!displayedRows.length} start={sheetRowOffset+displayedRows.length+1} gutterWidth={SPREADSHEET_GUTTER_WIDTH}
                     rowSelection={cellSelection?.mode==="row" ? new Set(cellSelection.rows?.map(key=>Number(key.split(":").at(-1)))??[]) : undefined}
                     onRowSelect={(number,event)=>selectWholeRow(`virtual:${transactionView?"trips":reportKey}:slot:${number}`,cellSelection?.mode==="row"||event.ctrlKey||event.metaKey,event.shiftKey)}

@@ -1,5 +1,5 @@
 import ImportPreviewInput from "./ImportPreviewInput";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { importFields, importPayload, type ImportField, type ImportFile } from "./tripImportFiles";
 import type { ImportOutcome, ImportPreview } from "../../services/trip-import.service";
@@ -23,11 +23,15 @@ export default function TripImportPreview({ files, preview, outcomes, disabled, 
   const view = viewMode ?? localView;
   const [page, setPage] = useState(1);
   const panelRef = useRef<HTMLElement>(null);
-  useEffect(() => {
-    if (!mappedFileRequest) return;
+  const [appliedRequest, setAppliedRequest] = useState<Props["mappedFileRequest"]>(undefined);
+  if (mappedFileRequest && mappedFileRequest !== appliedRequest) {
+    setAppliedRequest(mappedFileRequest);
     setFileId(mappedFileRequest.fileId);
     setView("mapped");
     setPage(1);
+  }
+  useEffect(() => {
+    if (!mappedFileRequest) return;
     const frame = requestAnimationFrame(() => {
       panelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
       panelRef.current?.querySelector<HTMLInputElement>('input[data-optional="true"]')?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
@@ -35,11 +39,11 @@ export default function TripImportPreview({ files, preview, outcomes, disabled, 
     return () => cancelAnimationFrame(frame);
   }, [mappedFileRequest]);
   const file = files.find(item => item.id === fileId) ?? files[0];
-  if (!file) return null;
-  const pages = Math.max(1, Math.ceil(file.rows.length / 50));
+  const pages = Math.max(1, Math.ceil((file?.rows.length??0) / 50));
   const current = Math.min(page, pages), offset = (current - 1) * 50;
-  const mapped = importPayload([file])[0].rows;
-  const checkedRows = new Map(preview?.rows.filter(row => row.filename === file.name).map(row => [row.line, row]));
+  const mapped=useMemo(()=>file?importPayload([{...file,rows:file.rows.slice(offset,offset+50)}])[0].rows:[],[file,offset]);
+  const checkedRows=useMemo(()=>new Map(preview?.rows.filter(row=>row.filename===file?.name).map(row=>[row.line,row])),[preview,file?.name]);
+  if (!file) return null;
   const sourceHeaders = file.originalHeaders ?? file.headers;
   const headers = view === "source" ? sourceHeaders : ["Trip group", "Row status", ...importFields.map(([, label]) => label)];
   const cell = "border-b border-r border-slate-100 px-3 py-2.5 align-top";
@@ -68,7 +72,7 @@ export default function TripImportPreview({ files, preview, outcomes, disabled, 
             {view === "source" ? sourceHeaders.map((_, column) => { const value = (source.originalCells ?? source.cells)[column] ?? ""; const display = column === file.mapping.unit_cbm || column === file.mapping.cbm ? cbmDisplay(value) : value; return <td key={column} className={`${cell} max-w-80 whitespace-pre-wrap break-words`}>{display || <span className="text-slate-300">—</span>}</td>; }) : <>
               <td className={cell}><input aria-label={`Trip group source row ${source.line}`} disabled={disabled} defaultValue={source.group} key={source.group} onBlur={event => { if (event.target.value.trim() !== source.group) onGroup(file.id, source.line, event.target.value.trim()); }} className="w-40 rounded-md border border-slate-200 bg-transparent p-1.5 disabled:border-transparent" /></td>
               <td className={`${cell} max-w-72 whitespace-normal ${invalid ? "text-rose-700" : "text-slate-500"}`}>{message}</td>
-              {importFields.map(([field, label]) => { const value = mapped[offset + index].values[field] ?? ""; const display = isCbmField(field) ? cbmDisplay(value) : value; const optional = file.mapping[field] < 0 || file.mapping[field] >= sourceHeaders.length; return <td key={field} className={cell}><ImportPreviewInput aria-label={`${label} source row ${source.line}`} data-optional={optional} placeholder={optional ? "Optional — not in CSV" : undefined} disabled={disabled} value={display} onCommit={value => onEdit(file.id, source.line, field, value)} className="w-40 rounded-md border border-transparent bg-transparent p-1.5 focus:border-blue-300 focus:outline-none" /></td>; })}
+              {importFields.map(([field, label]) => { const value = mapped[index].values[field] ?? ""; const display = isCbmField(field) ? cbmDisplay(value) : value; const optional = file.mapping[field] < 0 || file.mapping[field] >= sourceHeaders.length; return <td key={field} className={cell}><ImportPreviewInput aria-label={`${label} source row ${source.line}`} data-optional={optional} placeholder={optional ? "Optional — not in CSV" : undefined} disabled={disabled} value={display} onCommit={value => onEdit(file.id, source.line, field, value)} className="w-40 rounded-md border border-transparent bg-transparent p-1.5 focus:border-blue-300 focus:outline-none" /></td>; })}
             </>}
           </tr>;
         })}</tbody>

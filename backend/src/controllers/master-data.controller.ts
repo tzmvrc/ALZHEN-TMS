@@ -1,9 +1,10 @@
 import {listMasterImageCleanup,retryMasterImageCleanup} from "../services/master-image-cleanup.service.js";
+import {withServerTiming} from "../utils/server-timing.js";
 import {ApiError} from "../utils/api-response.js";
 import type { Request, Response } from "express";
 import { deleteMasterDataRecords, listMasterData, readMasterDataSelection, readMasterDataRecord, saveMasterData } from "../services/master-data.service.js";
 import { LocationSearchError, searchLocations } from "../services/location-search.service.js";
-import { deleteTruckImage, listTruckImages, TruckImageError, uploadTruckImage } from "../services/truck-image.service.js";
+import { deleteTruckImage, listTruckImages, listTruckImageBatch, TruckImageError, uploadTruckImage } from "../services/truck-image.service.js";
 
 export async function searchWarehouseLocations(req: Request, res: Response) {
   try {
@@ -28,8 +29,13 @@ function failure(res: Response, error: unknown) {
 }
 
 export async function list(req: Request, res: Response) {
-  try { return res.json({ success: true, data: await listMasterData(String(req.params.resource), req.query) }); }
+  try { return res.json({ success: true, data: await withServerTiming(res,"data",()=>listMasterData(String(req.params.resource), req.query)) }); }
   catch (error) { return failure(res, error); }
+}
+
+export async function listImageBatch(req:Request,res:Response){
+ try{return res.json({success:true,data:await withServerTiming(res,"images",()=>listTruckImageBatch(typeof req.query.ids==="string"?req.query.ids.split(","):null))});}
+ catch(error){return truckImageFailure(res,error);}
 }
 
 export async function create(req: Request, res: Response) {

@@ -16,9 +16,9 @@ export type SavedMapLocation = {
   longitude: number;
 };
 
-export const getCachedMasterData=(token:string,resource:MasterDataKey,search="",page=1,limit=100,sort="",direction="asc")=>{
+export const getCachedMasterData=(token:string,resource:MasterDataKey,search="",page=1,limit=100,sort="",direction="asc",staleForMs=5*60_000)=>{
   const query=new URLSearchParams({page:String(page),limit:String(limit)});if(search.trim())query.set("search",search.trim());if(sort){query.set("sort",sort);query.set("direction",direction);}
-  return getCachedApiResponse<ApiResponse<MasterDataPage>>(`/master-data/${resource}?${query}`,token,5*60_000)?.data??null;
+  return getCachedApiResponse<ApiResponse<MasterDataPage>>(`/master-data/${resource}?${query}`,token,staleForMs)?.data??null;
 };
 
 export async function fetchMasterData(token: string, resource: MasterDataKey, search: string, page = 1, limit=100, sort="", direction="asc"): Promise<MasterDataPage> {
@@ -97,6 +97,7 @@ async function imageRequest<T>(path: string, token: string, init?: RequestInit):
 }
 
 export const fetchTruckImages = (token: string, truckId: string) => imageRequest<TruckImage[]>(`/master-data/trucks/${encodeURIComponent(truckId)}/images`, token);
+export const fetchTruckImageBatch=(token:string,ids:string[])=>imageRequest<Record<string,TruckImage[]>>(`/master-data/trucks/images?${new URLSearchParams({ids:ids.join(",")})}`,token);
 
 export const uploadTruckImage = (token: string, truckId: string, file: File) => imageRequest<TruckImage>(`/master-data/trucks/${encodeURIComponent(truckId)}/images`, token, {
   method: "POST", headers: { "Content-Type": file.type, "X-File-Name": encodeURIComponent(file.name) }, body: file,

@@ -1,5 +1,5 @@
 // src/pages/Admin/views/ResourceView.tsx
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, memo, Suspense, useCallback, useEffect, useState } from "react";
 import { useAuth } from "../../../context/AuthContext";
 import type { DashboardData } from "../../../types/dashboard";
 const IncidentPanel=lazy(()=>import("../../../components/admin/DashboardPrimitives").then(module=>({default:module.IncidentPanel})));
@@ -9,8 +9,8 @@ const ChecklistPanel=lazy(()=>import("../../../components/admin/DashboardPrimiti
 const SettingsPanel=lazy(()=>import("../../Account/SettingsPage"));
 const PodWorkflowPanel=lazy(()=>import("../../../components/admin/DashboardPrimitives").then(module=>({default:module.PodWorkflowPanel})));
 import { tableUi } from "../../../components/admin/dashboardStyles";
-import ReportDataView from "../../../components/admin/ReportDataView";
-import ReportsWorkspace from "../../../components/admin/ReportsWorkspace";
+const ReportDataView=lazy(()=>import("../../../components/admin/ReportDataView"));
+const ReportsWorkspace=lazy(()=>import("../../../components/admin/ReportsWorkspace"));
 import FlexibleTableSectionTabs from "../../../components/admin/FlexibleTableSectionTabs";
 const TruckCardGrid=lazy(()=>import("../../../components/admin/TruckCardGrid"));
 const RequestsView=lazy(()=>import("./RequestsView"));
@@ -265,7 +265,7 @@ function PageHeading({ title, subtitle }: { title: string; subtitle?: string }) 
 /* ---------------------------------------------------------------- */
 /* Main ResourceView                                                 */
 /* ---------------------------------------------------------------- */
-export default function ResourceView({
+function ResourceView({
   id,
   data,
   onNavigate,
@@ -305,13 +305,13 @@ export default function ResourceView({
     setLocalTripId(null);
     setLocalTripStopId(null);
   }, [id]);
-  const openTrip = (tripId: string, stopId?: string | null) => {
+  const openTrip = useCallback((tripId: string, stopId?: string | null) => {
     if(onNavigate){onNavigate(`trip-detail:${tripId}:dispatches${stopId?`:stop:${stopId}`:""}`);return;}
 
     setLocalTripId(tripId);
     setLocalTripStopId(stopId ?? null);
     window.scrollTo({ top: 0 });
-  };
+  },[onNavigate]);
   const isTripDetail =
     tripDetailPrefix === "trip-detail" && Boolean(tripDetailId);
   const [title, subtitle] = isTripDetail
@@ -369,17 +369,8 @@ export default function ResourceView({
     : isReportsScope
       ? (titleMap.reports?.[1] ?? subtitle)
       : subtitle;
-  /* The page shell (DashboardPage) already offsets the content from the rail and top bar,
-     so the pages add no horizontal padding of their own. Table pages use the full width;
-     everything else is centred and moderately wide. The Requests board also runs full width. */
-  const layoutClass =
-    isTripDetail || showLocalTrip
-      ? "mx-auto w-full max-w-[1640px]"
-      : id === "requests"
-        ? "w-full"
-        : isTablePage
-          ? "w-full"
-          : "mx-auto w-full max-w-[1180px]";
+  // The shared shell supplies consistent page padding; all sections can use its full width.
+  const layoutClass = "w-full min-w-0";
 
   return (
     <>
@@ -523,6 +514,8 @@ export default function ResourceView({
     </>
   );
 }
+
+export default memo(ResourceView);
 
 function AddTripButton({ onCreated }: { onCreated: (reference: string) => void }) {
   const [open, setOpen] = useState(false);

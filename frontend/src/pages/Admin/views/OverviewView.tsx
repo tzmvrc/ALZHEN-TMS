@@ -67,13 +67,15 @@ export default function OverviewView({ onOpenTrip, onMetricNavigate, active = tr
         let bookingUnavailable = false;
         let bookingLimited = false;
         try {
+          const visibleIds = allTrips.rows.map(trip => textValue(trip.id)).filter(Boolean);
+          if (visibleIds.length) {
           const bookingOptions = {
             page: 1,
             limit: 500,
             search: "",
             sortBy: "loading_date",
             sortOrder: "desc" as const,
-            filters: { active_transactions: "true", archive_scope: "active" },
+            filters: { active_transactions: "true", archive_scope: "active", trip_ids: visibleIds.join(",") },
           };
           const bookingPage = await fetchReportPage(
             "dispatch-monitoring",
@@ -84,6 +86,7 @@ export default function OverviewView({ onOpenTrip, onMetricNavigate, active = tr
           bookingLimited = bookingPage.pagination.total > bookingPage.rows.length;
           const visibleTripIds = new Set(allTrips.rows.map((trip) => textValue(trip.id)));
           bookingRows = bookingRows.filter((row) => visibleTripIds.has(textValue(row.trip_id ?? row._trip_id)));
+          }
         } catch (cause) {
           if (cause instanceof ApiError && cause.status === 401) throw cause;
           bookingUnavailable = true;

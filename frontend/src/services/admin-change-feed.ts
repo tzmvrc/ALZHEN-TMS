@@ -24,7 +24,7 @@ export function createAdminChangeFeed(options: {
   cancel: (timer: ReturnType<typeof setTimeout>) => void;
 }) {
   const revisions = new Map<string, string>(), pending = new Set<string>();
-  let active = true, request: Promise<void> | null = null, timer: ReturnType<typeof setTimeout> | null = null, epoch = 0;
+  let active = true, baselineReady = false, request: Promise<void> | null = null, timer: ReturnType<typeof setTimeout> | null = null, epoch = 0;
   function ingest(signal: ChangeSignal) {
     if (!active || !topics.has(signal?.topic) || typeof signal.revision !== "string" || !signal.revision || revisions.get(signal.topic) === signal.revision) return;
     revisions.set(signal.topic, signal.revision); pending.add(signal.topic);
@@ -42,7 +42,17 @@ export function createAdminChangeFeed(options: {
       if (request) return request;
       const started = epoch;
       request = options.snapshot().then((rows) => {
-        if (!active || started !== epoch) return;
+        if (!active) return;
+        if (!baselineReady) {
+          // The first snapshot describes changes that already existed before
+          // this session. Record their revisions without invalidating every
+          // report that is loading. A socket signal received meanwhile keeps
+          // its newer revision and has already been emitted by push().
+          for (const signal of rows) if (topics.has(signal.topic) && !revisions.has(signal.topic) && signal.revision) revisions.set(signal.topic, signal.revision);
+          baselineReady = true;
+          return;
+        }
+        if (started !== epoch) return;
         rows.forEach(ingest);
       }).catch(() => { /* Keep valid cached pages; the next recovery tick retries. */ }).finally(() => { request = null; });
       return request;

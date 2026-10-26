@@ -1,5 +1,5 @@
 import type {DeliveryEvent} from './delivery.service';
-import { apiDelete, apiGet, apiGetCached, apiPatch, apiPost, invalidateApiCache, type ApiResponse } from "./api.service";
+import { apiDelete, apiGetCached, apiPatch, apiPost, invalidateApiCache, type ApiResponse } from "./api.service";
 import { invalidateReportPageCache } from "./report.service";
 
 export async function updateMasterListCell(token: string, trip: string, stop: string | undefined, line: string | undefined, field: string, value: unknown) {
@@ -55,6 +55,7 @@ export async function archiveTransaction(token: string, tripId: string, stopId: 
 export type TransactionDeletion = { operation_id: string; transaction_id: string; trip_id: string; trip_stop_id: string | null; cleanup_pending: boolean };
 export type TransactionCleanup = { id: string; transaction_id: string; trip_id: string; trip_stop_id: string | null };
 export async function deleteTransaction(token: string, tripId: string, stopId: string | null, _currentPassword?: string) {
+  void _currentPassword; // Compatibility argument; authorization uses the current session.
   const path = `/trips/${encodeURIComponent(tripId)}${stopId ? `/stops/${encodeURIComponent(stopId)}` : ""}`;
   const response = await apiDelete<ApiResponse<TransactionDeletion>>(path, token, {});
   if (!response.success || !response.data) throw new Error(response.message ?? "Deletion could not be confirmed. Retry the same transaction.");
@@ -62,7 +63,8 @@ export async function deleteTransaction(token: string, tripId: string, stopId: s
   return response.data;
 }
 export async function fetchTransactionCleanup(token: string) {
-  const response = await apiGet<ApiResponse<TransactionCleanup[]>>("/trips/transaction-cleanup", token);
+  // Share concurrent mount reads without retaining stale cleanup status.
+  const response = await apiGetCached<ApiResponse<TransactionCleanup[]>>("/trips/transaction-cleanup", token, 0);
   if (!response.success || !response.data) throw new Error(response.message ?? "Unable to load pending cleanup.");
   return response.data;
 }

@@ -1,5 +1,8 @@
 import {useCallback,useEffect,useLayoutEffect,useMemo,useRef,useState,useSyncExternalStore} from "react";
 import {collaborationSnapshot,subscribeCollaboration,subscribeCollaborationEvents,joinCollaborationRoom,focusCollaborationCell,readCommittedRecord,rememberConfirmedVersion,type CellTarget,type Commit} from "../../services/collaboration.service";
+// The record endpoint serves editable spreadsheet sources. Delivery events use
+// their own authorized notification endpoint and must not enter this retry queue.
+const EDITABLE_SOURCES=new Set(["trips","trip_stops","trip_line_items","trip_truck_assignments","trip_cargo_allocations","trip_assignment_stops","store_calls","billings"]);
 export function useSpreadsheetCollaboration(table:string,token:string|null,userId:string|undefined,onRecord:(commit:Commit,record:Record<string,unknown>|null)=>void){
  const snapshot=useSyncExternalStore(subscribeCollaboration,collaborationSnapshot,collaborationSnapshot);
  const presences=snapshot.presences;
@@ -32,7 +35,7 @@ export function useSpreadsheetCollaboration(table:string,token:string|null,userI
   };
   const resume=()=>{if(!live)return;for(const item of pending.values())if(item.failed){item.failed=false;item.attempt=0;item.ready=true;}pump();};
   const unsubscribe=subscribeCollaborationEvents(event=>{
-   if(event.kind==="connected"){resume();return;}if(event.kind!=="commit")return;const commit=event.commit,id=key(commit),prior=pending.get(id);
+   if(event.kind==="connected"){resume();return;}if(event.kind!=="commit")return;const commit=event.commit;if(!EDITABLE_SOURCES.has(commit.source))return;const id=key(commit),prior=pending.get(id);
    if(prior&&prior.commit.version!==null&&commit.version!==null&&prior.commit.version>commit.version)return;
    if(prior?.timer)clearTimeout(prior.timer);
    if(commit.operation==="DELETE"){pending.delete(id);callback.current(commit,null);return;}

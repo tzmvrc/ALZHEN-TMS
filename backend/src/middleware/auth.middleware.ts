@@ -1,4 +1,5 @@
 import {captureUserActivity} from "../services/user-activity.service.js";
+import {withServerTiming} from "../utils/server-timing.js";
 import { createHash } from "node:crypto";
 import { createConcurrentReadGate } from "../utils/concurrent-read.js";
 const shareRead=createConcurrentReadGate();
@@ -32,7 +33,7 @@ async function authenticate(
     const {
       data: { user },
       error,
-    } = await shareRead(`user:${fingerprint(token)}`,()=>supabaseAuth.auth.getUser(token));
+    } = await withServerTiming(res,"identity",()=>shareRead(`user:${fingerprint(token)}`,()=>supabaseAuth.auth.getUser(token)));
     if(error&&(!Number.isFinite(error.status)||Number(error.status)===0||Number(error.status)>=500||/Fetch|Unknown|Timeout|Abort/.test(error.name))){
       if(Date.now()-lastAvailabilityWarning>=30000){lastAvailabilityWarning=Date.now();const original=(error as any).originalError;console.warn(JSON.stringify({event:'auth_verification_unavailable',status:error.status??null,code:error.code??null,name:error.name,transportCode:original?.cause?.code??null}));}
       // An unavailable identity provider is not evidence of an expired token.
@@ -51,11 +52,11 @@ async function authenticate(
       });
     }
 
-    const { data: profile, error: profileError } = await shareRead(`profile:${user.id}`,()=>supabaseAdmin
+    const { data: profile, error: profileError } = await withServerTiming(res,"profile",()=>shareRead(`profile:${user.id}`,()=>supabaseAdmin
       .from("profiles")
       .select("*")
       .eq("id", user.id)
-      .maybeSingle());
+      .maybeSingle()));
     if (profileError) {
       console.error("Profile lookup error:", {
         userId: user.id,
@@ -78,9 +79,9 @@ async function authenticate(
     if (!skipSessionValidation) {
       try {
         if (role === "TRUCKER") {
-          await shareRead(`session:${role}:${user.id}:${fingerprint(sessionId??"")}`,()=>assertActiveTruckerSession(user.id, sessionId));
+          await withServerTiming(res,"session",()=>shareRead(`session:${role}:${user.id}:${fingerprint(sessionId??"")}`,()=>assertActiveTruckerSession(user.id, sessionId)));
         } else if (role === "ADMIN" || role === "STAFF") {
-          const active = await shareRead(`session:${role}:${user.id}:${fingerprint(sessionId??"")}`,()=>assertAdminStaffSession(user.id, role, sessionId));
+          const active = await withServerTiming(res,"session",()=>shareRead(`session:${role}:${user.id}:${fingerprint(sessionId??"")}`,()=>assertAdminStaffSession(user.id, role, sessionId)));
           // Each request still checks its own clock, even when a concurrent read
           // completed across the Manila-midnight expiration boundary.
           if(Date.parse(active.expiresAt)<=Date.now())throw new AppSessionError("Your session ended at midnight Manila time. Please sign in again.","ADMIN_SESSION_EXPIRED",401);

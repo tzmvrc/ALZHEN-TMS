@@ -58,6 +58,7 @@ export const WATCHED_TABLES = [
   "trips",
   "trip_stops",
   "trip_events",
+  "driver_trip_updates",
   "loading_reports",
   "unloading_reports",
   ...RECEIPT_TABLES,
@@ -208,6 +209,19 @@ export function deriveActivities(
         push("arrived", "Arrived at the delivery stop", { stopId, detail: notes ?? undefined });
       } else if (notes && /^(on route|en route)/i.test(notes)) {
         push("route", "On the road", { stopId, detail: notes });
+      }
+      break;
+    }
+    case "driver_trip_updates": {
+      const status = text(row.status) ?? text(row.delivery_status);
+      if (!status || !isFresh(row.updated_at, now, 7 * 24 * 60 * 60_000)) break;
+      const stage: ActivityStage = ALERT_STATUS.test(status) ? "alert"
+        : /DELIVER|COMPLET/i.test(status) ? "delivered"
+        : /ARRIV/i.test(status) ? "arrived"
+        : /LOAD/i.test(status) ? "loading" : "route";
+      const title = status.replaceAll("_", " ").toLowerCase().replace(/^./, (letter) => letter.toUpperCase());
+      if (once(`driver-update:${row.id}:${row.updated_at}`)) {
+        push(stage, title, { detail: text(row.notes) ?? undefined, sticky: stage === "alert" });
       }
       break;
     }

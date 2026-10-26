@@ -8,7 +8,7 @@ export type ActivityStats={period_days:number;daily:Array<{day:string;actions:nu
 const unwrap=async<T>(request:Promise<ApiResponse<T>>)=>{const response=await request;if(!response.success||response.data===undefined)throw Error(response.message??'The request could not be completed.');return response.data;};
 const directory=(category:string,search:string,page:number,sort:string,direction:string)=>`/users/directory?${new URLSearchParams({category,search,page:String(page),sort,direction})}`;
 export const loadUserSheet=(token:string,category:string,search='',page=1,sort='',direction='asc')=>unwrap(apiGetCached<ApiResponse<MasterDataPage>>(directory(category,search,page,sort,direction),token,30_000));
-export const cachedUserSheet=(token:string,category:string,search='',sort='',direction='asc')=>getCachedApiResponse<ApiResponse<MasterDataPage>>(directory(category,search,1,sort,direction),token,300_000)?.data??null;
+export const cachedUserSheet=(token:string,category:string,search='',sort='',direction='asc')=>getCachedApiResponse<ApiResponse<MasterDataPage>>(directory(category,search,1,sort,direction),token,0)?.data??null;
 export function invalidateUserWorkspace(){invalidateApiCache('/users');invalidateApiCache('/truckers');invalidateApiCache('/lookups/drivers');invalidateApiCache('/lookups/trucks');}
 export const fetchUserProfile=(token:string,id:string)=>unwrap(apiGetCached<ApiResponse<UserProfile>>(`/users/${id}/profile`,token,15_000));
 export const readUserProfile=(token:string,id:string)=>unwrap(apiGet<ApiResponse<UserProfile>>(`/users/${id}/profile`,token));

@@ -9,7 +9,7 @@ function actorId(req: Request) {
 
 export async function getNotifications(req: Request, res: Response) {
   try {
-    return sendSuccess(res, 200, "Notifications retrieved", await listNotifications(actorId(req)));
+    return sendSuccess(res, 200, "Notifications retrieved", await listNotifications(actorId(req), req.user?.role));
   } catch (error) {
     return sendError(res, 500, error instanceof Error ? error.message : "Unable to load notifications", "NOTIFICATIONS_QUERY_FAILED");
   }

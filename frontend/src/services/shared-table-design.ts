@@ -38,7 +38,7 @@ export async function refreshSharedDesign(token:string,table:string,force=false)
   if(!response.success||!Array.isArray(response.data))throw Error("Shared design response was invalid.");
   if(!e.active)return;
   for(const row of response.data){if(row.revision>=(e.rows.get(row.column_key)?.revision??0))e.rows.set(row.column_key,row);}
-  e.fetchedAt=Date.now();e.snapshot={...e.snapshot,loaded:true};publish(e,e.drafts.size?e.snapshot.error:"");
+  e.fetchedAt=Date.now();if(!e.snapshot.loaded)e.snapshot={...e.snapshot,loaded:true};publish(e,e.drafts.size?e.snapshot.error:"");
  }).catch(error=>{if(epoch===e.epoch)publish(e,error instanceof Error?error.message:"Shared design could not be loaded.");}).finally(()=>{e.request=undefined;});return e.request;
 }
 /** Widths and appearance are the same versioned database row. Share its

@@ -1,12 +1,13 @@
 import { Router } from "express";
 import express from "express";
-import { pendingImageCleanup, retryImageCleanup, create, list, listImages, read, removeRecords, removeImage, searchWarehouseLocations, selection, update, uploadImage } from "../controllers/master-data.controller.js";
+import { pendingImageCleanup, retryImageCleanup, create, list, listImages, listImageBatch, read, removeRecords, removeImage, searchWarehouseLocations, selection, update, uploadImage } from "../controllers/master-data.controller.js";
 import { getPhoto, removePhoto, uploadPhoto } from "../controllers/product-photo.controller.js";
 import { authMiddleware } from "../middleware/auth.middleware.js";
 import { requireAdminOrStaff } from "../middleware/role.middleware.js";
 
 const router = Router();
 router.use(authMiddleware, requireAdminOrStaff);
+router.get("/trucks/images",listImageBatch);
 router.get("/trucks/:truckId/images", listImages);
 router.post("/trucks/:truckId/images", express.raw({ type: ["image/jpeg", "image/png", "image/webp"], limit: "5mb" }), uploadImage);
 router.delete("/trucks/:truckId/images/:imageId", removeImage);
