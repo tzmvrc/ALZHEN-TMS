@@ -9,6 +9,7 @@ const summarizedKeys = new Set([
   "product_name","product_model","model_code","sku",
 ]);
 const cardDateFormatter = new Intl.DateTimeFormat("en-PH", {month:"short",day:"numeric",year:"numeric",timeZone:"UTC"});
+const CARD_BATCH_SKELETON_COUNT = 3;
 
 function text(row: ReportRow, ...keys: string[]) {
   for (const key of keys) {
@@ -126,7 +127,7 @@ export default function DispatchVisualCards({rows,columns,reportKey,onOpenTrip,g
       const loadingDate = dateLabel(first(group,"loading_date","date_assigned"));
       const dr = unique(group,"dr_number","transaction_dr_number");
       const products = unique(group,"product_name","product_model","model_code","sku");
-      return <article key={cardKey} className="flex min-w-0 flex-col overflow-hidden rounded-[22px] border border-[#e4e9f0] bg-white shadow-[0_8px_24px_-18px_rgba(11,35,67,.28)]">
+      return <article key={cardKey} className="flex min-w-0 flex-col overflow-hidden rounded-[22px] border border-[#e4e9f0] bg-white shadow-[0_8px_24px_-18px_rgba(11,35,67,.28)] motion-safe:[animation:fadeInUp_200ms_ease-out_both]">
         <div className="mx-4 mt-4 rounded-2xl bg-[#0b2343] px-4 pb-8 pt-4 text-white">
           <div className="flex min-w-0 items-center justify-between gap-2">
             <span className="text-[11px] font-medium text-white/75">Delivery progress</span>
@@ -173,6 +174,6 @@ export default function DispatchVisualCards({rows,columns,reportKey,onOpenTrip,g
         </div>
       </article>;
     })}
-    {loadingMore && <><span className="sr-only" role="status">Loading more dispatch cards</span><DispatchCardSkeleton/><DispatchCardSkeleton/></>}
+    {loadingMore && <><span className="sr-only" role="status">Loading more dispatch cards</span>{Array.from({length:CARD_BATCH_SKELETON_COUNT},(_,index)=><DispatchCardSkeleton key={index}/>)}</>}
   </div>;
 }

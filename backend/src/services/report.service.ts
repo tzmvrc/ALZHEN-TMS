@@ -599,6 +599,73 @@ async function attachLoadingMilestones(rows: Record<string, unknown>[]) {
   return rows;
 }
 
+/** Workbook-only Dispatch columns come from their actual related records.
+ * Keep this enrichment page-scoped; it never changes the other report views. */
+async function attachDispatchWorkbookFields(rows: Record<string, unknown>[]) {
+  const ids = (field: string) => [...new Set(rows.map(row => row[field]).filter((value): value is string => typeof value === "string" && isValidUuid(value)))];
+  const tripIds = ids("trip_id");
+  if (!tripIds.length) return;
+  const driverIds = ids("driver_id");
+  const warehouseIds = ids("warehouse_id");
+  const storeIds = ids("store_id");
+  const [trips, drivers, warehouses, stores, billings] = await Promise.all([
+    supabaseAdmin.from("trips").select("id,created_by,authorization_letter,page_no,trip_type_id").in("id", tripIds),
+    driverIds.length ? supabaseAdmin.from("drivers").select("id,contact_number").in("id", driverIds) : Promise.resolve({data:[],error:null}),
+    warehouseIds.length ? supabaseAdmin.from("warehouses").select("id,city").in("id", warehouseIds) : Promise.resolve({data:[],error:null}),
+    storeIds.length ? supabaseAdmin.from("customer_stores").select("id,city").in("id", storeIds) : Promise.resolve({data:[],error:null}),
+    supabaseAdmin.from("billings").select("id,trip_id,invoice_number").in("trip_id", tripIds),
+  ]);
+  const tripRows = trips.error ? [] : trips.data ?? [];
+  const creatorIds = [...new Set(tripRows.map(trip => trip.created_by).filter((id): id is string => typeof id === "string" && isValidUuid(id)))];
+  const typeIds = [...new Set(tripRows.map(trip => trip.trip_type_id).filter((id): id is string => typeof id === "string" && isValidUuid(id)))];
+  const [creators, types] = await Promise.all([
+    creatorIds.length ? supabaseAdmin.from("profiles").select("id,first_name,last_name").in("id", creatorIds) : Promise.resolve({data:[],error:null}),
+    typeIds.length ? supabaseAdmin.from("trip_types").select("id,name").in("id", typeIds) : Promise.resolve({data:[],error:null}),
+  ]);
+  const stops: Array<{id:string;trip_id:string}> = [];
+  for (let offset = 0; ; offset += 1000) {
+    const page = await supabaseAdmin.from("trip_stops").select("id,trip_id").in("trip_id", tripIds).order("id").range(offset, offset + 999);
+    if (page.error) break;
+    stops.push(...(page.data ?? []));
+    if ((page.data?.length ?? 0) < 1000) break;
+  }
+  const byId = <T extends {id:string}>(records: T[] | null | undefined) => new Map((records ?? []).map(record => [record.id, record]));
+  const tripById = byId(tripRows);
+  const driverById = byId(drivers.error ? [] : drivers.data);
+  const warehouseById = byId(warehouses.error ? [] : warehouses.data);
+  const storeById = byId(stores.error ? [] : stores.data);
+  const creatorById = byId(creators.error ? [] : creators.data);
+  const typeById = byId(types.error ? [] : types.data);
+  const billingByTrip = new Map<string, typeof billings.data>();
+  if (!billings.error) for (const billing of billings.data ?? []) billingByTrip.set(billing.trip_id, [...(billingByTrip.get(billing.trip_id) ?? []), billing]);
+  const dropsByTrip = new Map<string, number>();
+  for (const stop of stops) dropsByTrip.set(stop.trip_id, (dropsByTrip.get(stop.trip_id) ?? 0) + 1);
+  for (const row of rows) {
+    const tripId = String(row.trip_id ?? "");
+    const trip = tripById.get(tripId);
+    const creator = creatorById.get(String(trip?.created_by ?? ""));
+    const cityFrom = warehouseById.get(String(row.warehouse_id ?? ""))?.city || null;
+    const cityTo = storeById.get(String(row.store_id ?? ""))?.city || null;
+    const relatedBillings = billingByTrip.get(tripId) ?? [];
+    row.added_by_name = creator ? [creator.first_name, creator.last_name].filter(Boolean).join(" ") : null;
+    row.trip_type = typeById.get(String(trip?.trip_type_id ?? row.trip_type_id ?? ""))?.name ?? null;
+    row.contact_number = driverById.get(String(row.driver_id ?? ""))?.contact_number ?? null;
+    row.authorization_letter = trip?.authorization_letter ?? null;
+    row.page_no = trip?.page_no ?? null;
+    row.number_of_drops = dropsByTrip.get(tripId) ?? 0;
+    row.ship_from_city = cityFrom;
+    row.ship_to_city = cityTo;
+    row.from_to = cityFrom && cityTo ? `${cityFrom} - ${cityTo}` : null;
+    // The workbook looks this rate up in another file. No saved rate table or
+    // equivalent formula exists here; the manual rate is not a substitute.
+    row.subcon_rate_automated = null;
+    row.billing = null;
+    row.transaction_number_repeat = row.transaction_number ?? null;
+    row.invoice_number = relatedBillings.length === 1 ? relatedBillings[0].invoice_number : null;
+    row.billing_id = relatedBillings.length === 1 ? relatedBillings[0].id : null;
+  }
+}
+
 function getReportDefinition(reportKey: string): ReportDefinition {
   const definition = REPORT_DEFINITIONS[reportKey];
   if (!definition) throw new ApiError("Report not found", 404, "REPORT_NOT_FOUND");
@@ -832,7 +899,7 @@ export async function getReportData(
       ? [...new Set([...(REPORT_PROJECTIONS[viewName]??[]),...MASTER_LIST_READ_COLUMNS.split(",")])].join(",")
       : REPORT_PROJECTIONS[viewName]?.join(",")??"*";
     const rowProjection=requestedSourceLines&&!legacySourceLines?`${projection},_source_quantity_text:quantity::text,_source_cbm_text:cbm::text,_source_unit_cbm_text:unit_cbm::text,_source_stock_quantity_text:stock_quantity::text`:projection;
-    const mapField=(field:string)=>key==="trip-exceptions"?({backload_reason:"backload_reasons",offload_reason:"offload_reasons"} as Record<string,string>)[field]??field:key!=="store-calling"?field:viewName==="vw_store_calling_tracker"?({status:"contact_status",assigned_to:"assigned_to_id"} as Record<string,string>)[field]??field:field==="ship_to"?"store_name":field;
+    const mapField=(field:string)=>key==="trip-exceptions"?({backload_reason:"backload_reasons",offload_reason:"offload_reasons"} as Record<string,string>)[field]??field:key==="dispatch"&&field==="warehouse_departure_time"?"_parent_departure_at":key!=="store-calling"?field:viewName==="vw_store_calling_tracker"?({status:"contact_status",assigned_to:"assigned_to_id"} as Record<string,string>)[field]??field:({ship_to:"store_name",trucker_gc_name:"trucking_company"} as Record<string,string>)[field]??field;
     const readQuery=(head=false)=>{
     // Counting this nested view in the row request repeats its expanded plan.
     // Read the page first; request the exact count only when a full page needs it.
@@ -874,7 +941,9 @@ export async function getReportData(
     builder = serverSearch&&search?builder.ilike("_search_text",`%${search.replace(/[\\%_]/g,"\\$&")}%`):applySearch(builder, search, searchColumns.map(column=>({...column,key:mapField(column.key)})), matchingTripIds, tripIdField,
       matchingAssignees.length?[`${mapField("assigned_to")}.in.(${matchingAssignees.join(",")})`]:[]);
     if(head)return builder;
-    builder = builder.order(mapField(sortBy==="trip_number"&&["combined","dispatch","dispatch-monitoring","trip-booking"].includes(key)?"_parent_trip_reference":sortBy), { ascending: sortOrder === "asc" });
+    builder = builder.order(key === "store-calling" && sortBy === "assigned_to" && viewName === "vw_store_calling_tracker"
+      ? "assigned_to_name"
+      : mapField(sortBy==="trip_number"&&["combined","dispatch","dispatch-monitoring","trip-booking"].includes(key)?"_parent_trip_reference":sortBy), { ascending: sortOrder === "asc" });
     // Stable boundaries when many Master List rows share the selected sort value.
     // These physical columns are part of the existing dispatch-monitoring view.
     const tieBreakers: Record<string,string[]> = {
@@ -897,7 +966,11 @@ export async function getReportData(
     const data=result.data;
     let {error,count}=result;
     if(csvMaster&&!error&&count==null){
-      if((data?.length??0)<limit&&(page===1||(data?.length??0)>0))count=from+(data?.length??0);
+      // Dispatch card previews are scoped to one known trip. Counting every
+      // source line in the expanded view adds no value to the card and can
+      // exceed the database statement deadline.
+      if(getQueryString(query.card_preview)==="true"&&getQueryString(query.card_meta)==="true"&&requestedTripIds.length===1)count=data?.length??0;
+      else if((data?.length??0)<limit&&(page===1||(data?.length??0)>0))count=from+(data?.length??0);
       else if(useLeadingTrips){
         // Master CSV adds only one-to-one enrichment to the source rows. Count
         // the source view so pagination does not execute the expensive nested
@@ -914,7 +987,7 @@ export async function getReportData(
       for (const row of rows) {
         if (requestedSourceLines) row._master_list = true;
         if(key==="trip-exceptions"){row.backload_reason??=row.backload_reasons;row.offload_reason??=row.offload_reasons;}
-        if(key==="store-calling"){row.ship_to??=row.store_name;row.status??=row.contact_status;row.assigned_to??=row.assigned_to_id;}
+        if(key==="store-calling"){row.ship_to??=row.store_name;row.trucker_gc_name??=row.trucking_company;row.status??=row.contact_status;row.assigned_to??=row.assigned_to_id;}
         if (Object.hasOwn(row, "transmittal_ref")) {
           const reference = resolveLegacyPodCellValue(row.transmittal_ref);
           row.transmittal_ref = reference.value;
@@ -952,6 +1025,20 @@ export async function getReportData(
           for (const row of enriched) row.route = typeof row.trip_id === "string" ? routes.get(row.trip_id) ?? null : null;
         }).catch(() => { for (const row of enriched) row.route = null; console.warn("Report route enrichment unavailable", {reportKey:key}); }) : Promise.resolve(),
       ]);
+      if (key === "dispatch") for (const row of enriched) {
+        row.warehouse_departure_time = row._parent_departure_at ?? null;
+        // Imported line values take precedence over catalog/store defaults.
+        // Keep the same keys so editing and export use the displayed values.
+        if (typeof row.source_product_category === "string" && row.source_product_category.trim()) row.category = row.source_product_category;
+        if (typeof row.source_province === "string" && row.source_province.trim()) row.province = row.source_province;
+        if (typeof row.source_city === "string" && row.source_city.trim()) row.city = row.source_city;
+      }
+      if (key === "store-calling") for (const row of enriched) {
+        // The cell editor retains assigned_to_id; the CSV column displays the
+        // staff member's name rather than the underlying profile UUID.
+        row.assigned_to = row.assigned_to_name ?? null;
+      }
+      if (key === "dispatch-monitoring" && !requestedSourceLines) await attachDispatchWorkbookFields(enriched);
       if (getQueryString(query.card_meta) === "true" && ["combined", "dispatch", "dispatch-monitoring", "trip-booking", "store-calling"].includes(key)) {
         await attachCardMetadata(enriched);
       }
@@ -986,6 +1073,9 @@ export async function getReportColumns(reportKey: string, sourceLines = false) {
   if (!REPORT_KEYS.includes(key)) throw new ApiError("Report not found", 404, "REPORT_NOT_FOUND");
   const master = sourceLines && key === "dispatch-monitoring";
   if (master) return { report: key, columns: MASTER_LIST_COLUMNS };
+  // The Dispatch Report CSV is the complete UI schema. Keep source and cargo
+  // values in the row payload for operational features, without adding headers.
+  if (key === "dispatch") return { report: key, columns: REPORT_DEFINITIONS.dispatch.columns };
   const source = (master || SOURCE_REPORTS.includes(key)) && await tripImportAvailable();
   const columns = [...REPORT_DEFINITIONS[key].columns, ...(source || master ? [...TRIP_SOURCE_COLUMNS, ...(master ? SOURCE_LINE_COLUMNS : []),...(source&&await tripAllocationReportAvailable()?TRIP_CARGO_COLUMNS:[])] : [])]
     .map(column => ({ ...column, type: column.key === "trip_number" ? "text" as const : column.type }));

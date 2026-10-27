@@ -64,6 +64,7 @@ import { TRIP_EDIT_STEPS, REPORT_EDIT_STEPS, tripEditFieldStep, tripEditFieldCha
 import WholeTripDeletionDialog from "./WholeTripDeletionDialog";
 import FlexibleTableSectionTabs from "./FlexibleTableSectionTabs";
 import DispatchVisualCards, {DispatchCardsSkeleton} from "./DispatchVisualCards";
+import {fetchDispatchCardPage} from "../../services/dispatch-card-page.service";
 import { ApiError, invalidateApiCache } from "../../services/api.service";
 import {
   fetchReportPage,
@@ -716,9 +717,17 @@ export default function ReportDataView({
   const sharedWidths = useSharedTableWidths(transactionView ? "trips" : `report:${reportKey}`, accessToken, ["ADMIN", "STAFF"].includes(profile?.role ?? ""));
   const saveSharedColumnWidth = sharedWidths.save;
   const columnLayoutStorageKey = `alzhen:report-column-layout:${profile?.id ?? "user"}:${reportKey}`;
+  const workbookOrderStorageKey = `${columnLayoutStorageKey}:${reportKey === "dispatch" ? "dispatch-report-csv-order-v1" : reportKey === "store-calling" ? "store-calling-csv-order-v1" : "dispatch-workbook-order-v3"}`;
   const [localColumnLayout, setColumnLayout] = useState<ReportColumnLayout>(() =>
     typeof window === "undefined" ? { order: [], hidden: [] } : readReportColumnLayout(`alzhen:report-column-layout:${profile?.id ?? "user"}:${initialReport}`),
   );
+  const [workbookManualOrder, setWorkbookManualOrder] = useState<string[] | null>(null);
+  useEffect(() => {
+    try {
+      setWorkbookManualOrder(window.localStorage.getItem(workbookOrderStorageKey) === "custom"
+        ? readReportColumnLayout(columnLayoutStorageKey).order : null);
+    } catch { setWorkbookManualOrder(null); }
+  }, [workbookOrderStorageKey, columnLayoutStorageKey]);
   const [cellSelection, setCellSelection] = useState<CellSelection | null>(null);
   const [physicalDeletion,setPhysicalDeletion]=useState<PhysicalDeletionTarget[]|null>(null);
   const [deletionCapabilities,setDeletionCapabilities]=useState({storeCalls:false,emptyStops:false});
@@ -798,6 +807,7 @@ export default function ReportDataView({
     if (editModalOpen) tripEditHeading.current?.focus();
   }, [transactionView, editModalOpen, tripEditStep]);
   const [pagination, setPagination] = useState<Pagination | null>(null);
+  const [cardPageWindow,setCardPageWindow]=useState<{page:number;totalPages:number}|null>(null);
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [appliedSearch, setAppliedSearch] = useState("");
@@ -911,16 +921,24 @@ export default function ReportDataView({
   const layoutColumnKeys = useMemo(() => {
     // Preserve stored formatting and visibility while following the CSV order.
     if (allTripRecords && reportKey === "dispatch-monitoring") return columns.map(column => column.key);
+    // Ignore legacy orders from before the Dispatch workbook was applied.
+    // A new drag order is stored separately and remains available afterward.
+    if ((reportKey === "dispatch-monitoring" && !allTripRecords) || reportKey === "dispatch" || reportKey === "store-calling") {
+      const keys = new Set(columns.map(column => column.key));
+      return workbookManualOrder
+        ? [...workbookManualOrder.filter(key => keys.has(key)), ...columns.map(column => column.key).filter(key => !workbookManualOrder.includes(key))]
+        : columns.map(column => column.key);
+    }
     const availableKeys = new Set(columns.map((column) => column.key));
     const orderedKeys = [
       ...columnLayout.order.filter((key) => availableKeys.has(key)),
       ...columns.map((column) => column.key).filter((key) => !columnLayout.order.includes(key)),
     ];
     return orderedKeys;
-  }, [columnLayout.order, columns, allTripRecords, reportKey]);
+  }, [columnLayout.order, columns, allTripRecords, reportKey, workbookManualOrder]);
   const hiddenColumnKeys = useMemo(
-    () => new Set(columnLayout.hidden.filter((key) => columnsByKey.has(key))),
-    [columnLayout.hidden, columnsByKey],
+    () => new Set((reportKey === "store-calling" && !workbookManualOrder ? [] : columnLayout.hidden).filter((key) => columnsByKey.has(key))),
+    [columnLayout.hidden, columnsByKey, reportKey, workbookManualOrder],
   );
   const gridColumns = useMemo(
     () => layoutColumnKeys.filter((key) => !hiddenColumnKeys.has(key)).flatMap((key) => {
@@ -949,6 +967,9 @@ export default function ReportDataView({
   const spreadsheetPadding = useSpreadsheetViewport(tableViewportRef, displayedRows.length, viewMode === "table");
   const presentationColumns=useMemo<ReportColumn[]>(()=>renderedGridColumns.length?renderedGridColumns:Array.from({length:5},(_,index)=>({key:`__loading_${index}`,title:"",type:"action"})),[renderedGridColumns]);
   const infiniteRows=transactionView||viewMode==="table";
+  const coordinatedCardBatch=transactionView&&viewMode==="visual";
+  const optimizedCardView=coordinatedCardBatch&&!effectiveSearch.trim()&&activeSortBy==="loading_date"&&
+    Object.keys(queryFilters).every(key=>key==="source_lines");
   const sheetRowOffset=infiniteRows?0:(page-1)*50;
   const virtualGridRows=useMemo(()=>Array.from({length:spreadsheetPadding.count},(_,index)=>({id:`virtual:${transactionView?"trips":reportKey}:slot:${sheetRowOffset+displayedRows.length+index+1}`})),[spreadsheetPadding.count,transactionView,reportKey,sheetRowOffset,displayedRows.length]);
   const issueTripIds=useMemo(()=>displayedRows.flatMap(row=>typeof (row.trip_id??row._trip_id)==="string"?[String(row.trip_id??row._trip_id)]:[]),[displayedRows]);
@@ -994,7 +1015,7 @@ export default function ReportDataView({
   const formulaFocusIndex=useMemo(()=>formulas.selectedIdentity?(formulaRowLookup.get(formulas.selectedIdentity)?.index??-1):-1,[formulas.selectedIdentity,formulaRowLookup]);
   const windowColumns=useMemo(()=>renderedGridColumns.map(column=>({key:column.key,width:columnLayout.widths?.[column.key]??defaultReportColumnWidth(column)})),[renderedGridColumns,columnLayout.widths]);
   const mountedColumns=useSpreadsheetColumnWindow(tableViewportRef,windowColumns,pinnedColumnSides,[editingCell?.field,formulas.selectedColumn]);
-  useEffect(()=>accessToken&&infiniteRows?retainReportCollection(reportKey,accessToken,pageOptions):undefined,[accessToken,reportKey,pageOptions,infiniteRows]);
+  useEffect(()=>accessToken&&infiniteRows&&!optimizedCardView?retainReportCollection(reportKey,accessToken,pageOptions):undefined,[accessToken,reportKey,pageOptions,infiniteRows,optimizedCardView]);
   const snapshotKeyRef = useRef(snapshotKey);
   const loadedSnapshotKeyRef = useRef<string | null>(null);
   const reportKeyRef = useRef(reportKey);
@@ -1281,20 +1302,24 @@ export default function ReportDataView({
 
     let active = true;
     const collectionAbort = new AbortController();
-    const cached = infiniteRows ? getReportCollection(reportKey, accessToken, pageOptions) : getCachedReportPage(reportKey, accessToken, pageOptions);
-    const displayCache = cached ?? (infiniteRows ? getReportCollection(reportKey, accessToken, pageOptions,true) : getStaleReportPage(reportKey, accessToken, pageOptions));
+    const cached = optimizedCardView ? null : infiniteRows ? getReportCollection(reportKey, accessToken, pageOptions) : getCachedReportPage(reportKey, accessToken, pageOptions);
+    const displayCache = cached ?? (optimizedCardView ? null : infiniteRows ? getReportCollection(reportKey, accessToken, pageOptions,true) : getStaleReportPage(reportKey, accessToken, pageOptions));
+    const cachedCardBatchReady = !coordinatedCardBatch || !displayCache ||
+      new Set(displayCache.rows.map(row => String(row.dispatch_number ?? "").trim()).filter(Boolean)).size >= 3 ||
+      Boolean(displayCache.collection && displayCache.collection.page >= displayCache.collection.totalPages);
     if (displayCache) {
       setColumns(displayCache.columns);
       setRows(displayCache.rows.filter(row => !deletedTripIds.current.has(String(row.trip_id))));
       setPagination(displayCache.pagination);
-      setLoadedQueryKey(queryKey);
+      setLoadedQueryKey(cachedCardBatchReady ? queryKey : null);
       loadedSnapshotKeyRef.current = snapshotKey;
-    } else if (loadedSnapshotKeyRef.current === snapshotKey) {
+    } else if (!coordinatedCardBatch && loadedSnapshotKeyRef.current === snapshotKey) {
       setLoadedQueryKey(queryKey);
     } else {
       // Preserve a known schema/widths while the requested rows load.
       setRows([]);
       setPagination(null);
+      setCardPageWindow(null);
     }
     if(!displayCache)void fetchReportColumns(reportKey,accessToken,false,allTripRecords).then(next=>{if(active)setColumns(next);}).catch(()=>{
       // The deduplicated page request below owns the visible failure/retry outcome.
@@ -1312,8 +1337,10 @@ export default function ReportDataView({
 
     void (async () => {
       try {
-        const result = infiniteRows
-          ? await fetchReportCollection(reportKey, accessToken, pageOptions, progress=>{
+        const result = optimizedCardView
+          ? await fetchDispatchCardPage(accessToken,pageOptions,1)
+          : infiniteRows
+          ? await fetchReportCollection(reportKey, accessToken, pageOptions, coordinatedCardBatch?undefined:progress=>{
               if(!active||activeReportEdit.current||successfulSaveVersion.current!==requestSaveVersion)return;
               setColumns(progress.columns);
               if(!displayCache){setRows(progress.rows.filter(row=>!deletedTripIds.current.has(String(row.trip_id))));setPagination(progress.pagination);}
@@ -1377,6 +1404,7 @@ export default function ReportDataView({
         const visibleRows = reconciledRows.filter(row => !deletedTripIds.current.has(String(row.trip_id))&&!isDeletedReportRecord(row));
         setRows(visibleRows);
         setPagination(result.pagination);
+        setCardPageWindow(optimizedCardView?result.collection??null:null);
         if(!allTripRecords) setCachedReportPage(reportKey, accessToken, pageOptions, {
           columns: result.columns,
           rows: visibleRows,
@@ -1446,6 +1474,8 @@ export default function ReportDataView({
     allTripRecords,
     deletionCapabilitiesReady,
     infiniteRows,
+    coordinatedCardBatch,
+    optimizedCardView,
     queryKey,
     reportKey,
     refreshSession,
@@ -1455,19 +1485,22 @@ export default function ReportDataView({
     snapshotKey,
   ]);
 
-  const collectionWindow=infiniteRows&&accessToken?getReportCollection(reportKey,accessToken,pageOptions,true)?.collection:null;
+  const collectionWindow=optimizedCardView?cardPageWindow:infiniteRows&&accessToken?getReportCollection(reportKey,accessToken,pageOptions,true)?.collection:null;
   const hasMoreRows=Boolean(collectionWindow&&collectionWindow.page<collectionWindow.totalPages);
   const loadMoreRows=async()=>{
     if(!accessToken||!infiniteRows||!hasMoreRows||moreRowsFlight.current||activeReportEdit.current||formulas.draftPending||cellSaveInFlight.current)return;
     const expected=snapshotKey;moreRowsFlight.current=true;setLoadingMore(true);setMoreRowsError("");
     try{
-      const next=await fetchNextReportCollection(reportKey,accessToken,pageOptions);
+      const next=optimizedCardView
+        ? await fetchDispatchCardPage(accessToken,pageOptions,(cardPageWindow?.page??0)+1)
+        : await fetchNextReportCollection(reportKey,accessToken,pageOptions);
       if(snapshotKeyRef.current!==expected)return;
       setRows(current=>{
         const known=new Set(current.map(row=>getReportRowKey(reportKey,row)));
         return [...current,...next.rows.filter(row=>!known.has(getReportRowKey(reportKey,row))&&!deletedTripIds.current.has(String(row.trip_id))&&!isDeletedReportRecord(row))];
       });
       setPagination(next.pagination);
+      if(optimizedCardView)setCardPageWindow(next.collection??null);
     }catch(cause){if(snapshotKeyRef.current===expected&&!(cause instanceof DOMException&&cause.name==="AbortError"))setMoreRowsError("Unable to load more rows. Please try again.");}
     finally{moreRowsFlight.current=false;setLoadingMore(false);}
   };
@@ -1727,9 +1760,17 @@ export default function ReportDataView({
 
   function saveColumnLayout(next: ReportColumnLayout) {
     if (!sharedDesign.canEdit) return;
+    if (reportKey === "store-calling" && !workbookManualOrder && next.order.join("\u0000") !== layoutColumnKeys.join("\u0000")) {
+      next = { ...next, hidden: [] };
+    }
     setColumnLayout(next);
     const reordered=next.order.join("\u0000")!==layoutColumnKeys.join("\u0000");
     if (reordered) void sharedDesign.saveOrder(next.order, getColumnWidth);
+    if ((reordered && ((reportKey === "dispatch-monitoring" && !allTripRecords) || reportKey === "dispatch")) ||
+      (reportKey === "store-calling" && (reordered || next.hidden.join("\u0000") !== [...hiddenColumnKeys].join("\u0000")))) {
+      setWorkbookManualOrder(next.order);
+      try { localStorage.setItem(workbookOrderStorageKey, "custom"); } catch { /* The current order still works this session. */ }
+    }
     for(const key of next.order){
       const patch:import("../../services/shared-table-design").ColumnDesign={};
       if(next.hidden.includes(key)!==columnLayout.hidden.includes(key))patch.hidden=next.hidden.includes(key);
@@ -1837,7 +1878,7 @@ export default function ReportDataView({
     saveColumnLayout({
       ...columnLayout,
       order: layoutColumnKeys,
-      hidden: [...new Set([...columnLayout.hidden, columnKey])],
+      hidden: [...new Set([...hiddenColumnKeys, columnKey])],
     });
   }
 
@@ -1845,7 +1886,7 @@ export default function ReportDataView({
     saveColumnLayout({
       ...columnLayout,
       order: layoutColumnKeys,
-      hidden: columnLayout.hidden.filter((key) => key !== columnKey),
+      hidden: [...hiddenColumnKeys].filter((key) => key !== columnKey),
     });
   }
 

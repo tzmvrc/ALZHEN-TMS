@@ -62,6 +62,7 @@ export const DRAFT_REPORT_FIELDS:Record<string,Record<string,readonly string[]>>
   "dispatch-monitoring": {
     "trips": [
       "added_to_report",
+      "authorization_letter",
       "dispatch_number",
       "lbc_tracking_number",
       "letter_status",
@@ -107,6 +108,7 @@ export const DRAFT_REPORT_FIELDS:Record<string,Record<string,readonly string[]>>
   "dispatch": {
     "trips": [
       "added_to_report",
+      "departure_from_warehouse_at",
       "dispatch_number",
       "estimated_delivery_date",
       "lbc_tracking_number",
@@ -214,7 +216,8 @@ export const DRAFT_REPORT_FIELDS:Record<string,Record<string,readonly string[]>>
     ],
     "trip_truck_assignments": [
       "driver_id",
-      "truck_id"
+      "truck_id",
+      "trucking_company_id"
     ],
     "store_calls": [
       "assigned_to",
@@ -223,6 +226,9 @@ export const DRAFT_REPORT_FIELDS:Record<string,Record<string,readonly string[]>>
       "contact_number",
       "date_assigned",
       "date_of_contact",
+      "time_texted",
+      "time_called",
+      "remarks",
       "status"
     ]
   },

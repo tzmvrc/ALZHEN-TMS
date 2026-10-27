@@ -1,4 +1,4 @@
-import { ArrowRight, Check, FileText, MapPin, Package, PackageCheck, PackageOpen, TriangleAlert, Truck, Warehouse } from "lucide-react";
+import { Check, FileText, MapPin, Package, PackageCheck, PackageOpen, TriangleAlert, Truck, Warehouse } from "lucide-react";
 import type { AdminNotification } from "../../services/notification.service";
 import { activityDescription } from "../../services/activity-presentation";
 import { TRACKER_STAGES } from "../../services/live-activity.service";
@@ -46,7 +46,19 @@ export default function DriverUpdateCard({
     : activityDescription(eventType).replace(" at warehouse", "");
 
   return (
-    <section aria-label={`Driver update for ${dispatch}`} className={`relative min-w-0 overflow-hidden rounded-xl border border-[#e4e9f0] bg-white ${item.read_at ? "opacity-80" : "shadow-sm"}`}>
+    <section
+      role="button"
+      tabIndex={0}
+      aria-label={`View trip ${dispatch}: ${title}`}
+      onClick={onOpen}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onOpen();
+        }
+      }}
+      className={`relative min-w-0 cursor-pointer overflow-hidden rounded-xl border border-[#e4e9f0] bg-white transition-colors hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0b2343] ${item.read_at ? "opacity-80" : "shadow-sm"}`}
+    >
       <span aria-hidden="true" className="absolute inset-y-0 left-0 w-1" style={{ backgroundColor: color }} />
       <div className="px-3 py-3 pl-4">
         <div className="flex min-w-0 items-start gap-2.5">
@@ -76,9 +88,6 @@ export default function DriverUpdateCard({
             ))}
           </ol>
         )}
-        <button type="button" onClick={onOpen} className="mt-2.5 inline-flex h-7 items-center gap-1 rounded-full px-3 text-[11px] font-semibold text-white transition hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0b2343]" style={{ backgroundColor: color }}>
-          View trip <ArrowRight aria-hidden="true" className="h-3 w-3" />
-        </button>
       </div>
     </section>
   );

@@ -387,6 +387,7 @@ export async function fetchReportRows(
   if (!params.get("sort_by")) params.delete("sort_by");
   if(options.filters.trip_id) params.set("trip_id",options.filters.trip_id);
   if(options.filters.trip_ids) params.set("trip_ids",options.filters.trip_ids);
+  if(options.filters.card_preview==="true")params.set("card_preview","true");
   if(options.filters.record_delete_versions==="true")params.set("record_delete_versions","true");
   if(options.filters.source_lines==="true")params.set("source_lines","true");
   for (const key of ["sp_reference", "ph_truck_reference", "dn_reference", "order_item_number", "so_number", "stock_quantity", "unit_cbm", "so_approval_date", "item_status", "source_warehouse", "source_product_category", "source_province", "source_city"]) {
