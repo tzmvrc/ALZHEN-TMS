@@ -8,14 +8,14 @@ import './delivery-workspace.css';
 import DeliveryEvidenceGallery from './DeliveryEvidenceGallery';
 import {invalidateApiCache} from '../../services/api.service';
 
-export default function DeliveryTimeline({assignmentId,tripId,driverName,stopNames={},onLocate,onOpenReport,reportsOnly=false,showEvidence=false,refreshKey=0}:{assignmentId:string;tripId:string;driverName?:string;stopNames?:Record<string,string>;onLocate?:(point:{latitude:number;longitude:number;label:string})=>void;onOpenReport?:(kind:'operations'|'receipts')=>void;reportsOnly?:boolean;showEvidence?:boolean;refreshKey?:number}){
+export default function DeliveryTimeline({assignmentId,tripId,driverName,stopNames={},onLocate,onOpenReport,reportsOnly=false,showEvidence=false,refreshKey=0,realtimeManaged=false}:{assignmentId:string;tripId:string;driverName?:string;stopNames?:Record<string,string>;onLocate?:(point:{latitude:number;longitude:number;label:string})=>void;onOpenReport?:(kind:'operations'|'receipts')=>void;reportsOnly?:boolean;showEvidence?:boolean;refreshKey?:number;realtimeManaged?:boolean}){
  const {accessToken}=useAuth();const [page,setPage]=useState<{assignment:string;rows:DeliveryEvent[];next:string|null}|null>(null),[error,setError]=useState(''),[busy,setBusy]=useState(false),[retry,setRetry]=useState(0);
  useEffect(()=>{if(!accessToken||!assignmentId)return;let current=true,busy=false,again=false,timer:ReturnType<typeof setTimeout>|undefined;
   const load=async()=>{if(busy){again=true;return;}busy=true;try{const data=await readDeliveryEvents(accessToken,assignmentId,undefined,reportsOnly,showEvidence);if(current){setPage({assignment:assignmentId,...data});setError('');}}catch(e){if(current)setError(e instanceof Error?e.message:'Activity could not load.');}finally{busy=false;if(current&&again){again=false;void load();}}};
   const refresh=()=>{if(!timer)timer=setTimeout(()=>{timer=undefined;void load();},250);};void load();
-  const off=subscribeCollaborationEvents(e=>{if(e.kind==='connected'||e.kind==='trucker'||e.kind==='commit'&&e.commit.tripId===tripId&&e.commit.source==='trip_events'||e.kind==='signal'&&e.topic==='trip_events')refresh();});
+  const off=realtimeManaged?()=>{}:subscribeCollaborationEvents(e=>{if(e.kind==='connected'||e.kind==='trucker'||e.kind==='commit'&&e.commit.tripId===tripId&&e.commit.source==='trip_events'||e.kind==='signal'&&e.topic==='trip_events')refresh();});
   return()=>{current=false;clearTimeout(timer);off();};
- },[accessToken,assignmentId,tripId,refreshKey,retry,reportsOnly,showEvidence]);
+ },[accessToken,assignmentId,tripId,refreshKey,retry,reportsOnly,showEvidence,realtimeManaged]);
  const rows=page?.assignment===assignmentId?page.rows:[];
  const more=async()=>{if(!accessToken||!page?.next||busy)return;setBusy(true);try{const result=await readDeliveryEvents(accessToken,assignmentId,page.next,reportsOnly,showEvidence);setPage(p=>p?.assignment===assignmentId?{...p,rows:[...new Map([...p.rows,...result.rows].map(r=>[r.id,r])).values()],next:result.next}:p);}catch(e){setError(e instanceof Error?e.message:'Older activity could not load.');}finally{setBusy(false);}};
  return <section className="delivery-timeline" aria-label="Delivery activity and reports"><header className="delivery-section-title"><span><Clock size={19} aria-hidden="true"/><h2>Delivery activity & reports</h2></span><small>Latest first · Philippine time</small></header>{error&&<p className="delivery-feedback" role="alert">{error} <button onClick={()=>setRetry(n=>n+1)}>Retry</button></p>}

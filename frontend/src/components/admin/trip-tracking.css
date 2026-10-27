@@ -1,22 +1,22 @@
-﻿.trip-detail-page{padding-top:8px;padding-bottom:28px;min-width:0;color:#19334d;display:grid;gap:14px}
-.trip-tracking-workspace{--trip-line:#e9edf4;--trip-navy:#17243b;--trip-muted:#66758a;min-width:0;display:grid;gap:14px}
+ï»¿.trip-detail-page{padding-top:8px;padding-bottom:28px;min-width:0;color:#19334d;display:grid;gap:14px}
+.trip-tracking-workspace{--trip-line:#e9edf4;--trip-navy:#0b2341;--trip-muted:#66758a;min-width:0;display:grid;gap:14px}
 .trip-tracking-workspace :is(section,div,header){min-width:0}
 .trip-tracking-workspace :is(button,summary),.trip-detail-page>details>summary{cursor:pointer}
 .trip-tracking-workspace :is(button,summary):focus-visible,.trip-detail-page>details>summary:focus-visible{outline:3px solid #2678b9;outline-offset:3px}
 .trip-tracking-workspace :is(h1,h2,h3,h4,p){margin:0}
-.trip-command-header{position:relative;overflow:hidden;isolation:isolate;border:1px solid #dceaf7;border-radius:18px;background:#eaf4ff;color:#17243b;padding:18px 22px 15px;box-shadow:none}
+.trip-command-header{position:relative;overflow:hidden;isolation:isolate;border:1px solid var(--trip-navy);border-radius:18px;background:var(--trip-navy);color:#fff;padding:18px 22px 15px;box-shadow:none}
 .trip-command-main{display:grid;grid-template-columns:minmax(0,1fr) 210px;gap:20px;align-items:center}
 .trip-kicker{font-size:10px;text-transform:uppercase;letter-spacing:1.5px;font-weight:700;color:#2678b9}
-.trip-command-header .trip-kicker{color:#426b94;display:flex;align-items:center;gap:10px}
-.trip-small-badge{font-size:10px;font-weight:600;padding:2px 7px;background:#fff;border:1px solid #dceaf7;border-radius:999px;text-transform:none;letter-spacing:0}
+.trip-command-header .trip-kicker{color:#9cc6e6;display:flex;align-items:center;gap:10px}
+.trip-small-badge{font-size:10px;font-weight:600;padding:2px 7px;background:#fff;border:1px solid #dceaf7;border-radius:999px;text-transform:none;letter-spacing:0;color:var(--trip-navy)}
 .trip-title-line{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:7px}
 .trip-command-header h1{font-size:clamp(26px,2.25vw,34px);font-weight:750;line-height:1.16;letter-spacing:-.6px;overflow-wrap:anywhere}
 .trip-status-label{padding:3px 9px;color:#14745b;background:#e7f6ef;border:1px solid #bfdfd1;border-radius:999px;font-size:11px;white-space:nowrap}
 .trip-status-label[data-status="CANCELLED"],.trip-status-label[data-status="DELAYED"]{background:#fff1f1;border-color:#f1d6d6;color:#a44949}
 .trip-status-label[data-status="PLANNED"]{background:#fff5df;border-color:#ebdfc2;color:#8c661a}
-.trip-command-route{display:flex;flex-wrap:wrap;gap:7px;align-items:center;color:#526b82;margin-top:9px!important;font-size:12px;line-height:1.6;overflow-wrap:anywhere}
+.trip-command-route{display:flex;flex-wrap:wrap;gap:7px;align-items:center;color:#c0d2e2;margin-top:9px!important;font-size:12px;line-height:1.6;overflow-wrap:anywhere}
 .trip-command-route svg{flex-shrink:0}
-.trip-header-illustration{position:relative;height:88px;border-radius:12px;background:#dceefa;overflow:hidden}
+.trip-header-illustration{position:relative;height:88px;border-radius:12px;background:#ffffff08;overflow:hidden}
 .trip-header-illustration .home-truck-art{position:static;width:100%;height:100%;min-width:0;opacity:1;overflow:hidden;filter:drop-shadow(0 3px 6px #0003)}
 .trip-header-illustration .home-loop-truck{animation:trip-truck-drive 22s linear infinite;will-change:transform}
 @keyframes trip-truck-drive{from{transform:translateX(0)}to{transform:translateX(360px)}}
@@ -24,7 +24,7 @@
 .trip-header-facts small,.trip-header-facts strong{display:block}
 .trip-header-facts small{font-size:11px;color:#667d91}
 .trip-header-facts strong{font-size:12px;margin-top:4px;font-weight:600;overflow-wrap:anywhere}
-.trip-header-progress{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px;margin-top:12px;font-size:10px;color:#667d91}
+.trip-header-progress{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px;margin-top:12px;font-size:10px;color:#b7cfdf}
 .trip-header-progress>div{width:100%;height:4px;border-radius:5px;background:#cfdfed;overflow:hidden}
 .trip-header-progress i,.trip-fleet-progress i{display:block;width:100%;height:100%;transform-origin:left;background:#ffd43b;transition:transform .35s ease-out}
 .trip-summary-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}

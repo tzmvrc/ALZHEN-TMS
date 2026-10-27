@@ -9,6 +9,7 @@ const DashboardPage = lazy(() => import("./pages/Admin/DashboardPage"));
 const DriverPortal = lazy(() => import("./pages/Driver/DeliveryCompanion"));
 const DriverAccountPage = lazy(() => import("./pages/Driver/DriverAccountPage"));
 import NotFoundPage from "./pages/NotFoundPage";
+import AccountLocked from './pages/Account/AccountLocked';
 
 function App() {
   useEffect(() => {
@@ -57,6 +58,7 @@ function App() {
 
   return (
     <Suspense fallback={<div className="min-h-screen bg-slate-50" role="status" aria-label="Opening workspace" />}><Routes>
+      <Route path="/account-locked" element={<AccountLocked/>}/>
       <Route
         path="/"
         element={

@@ -28,10 +28,11 @@ export function validateReceiptText(input: Record<string, unknown>) {
 
 async function signedReceipt(row: Record<string, unknown>) {
   const { data, error } = await supabaseAdmin.storage.from("trip-images").createSignedUrl(String(row.storage_path), 3600);
-  if (error || !data?.signedUrl) throw new ApiError("Unable to create a secure receipt link.", 502, "RECEIPT_LINK_FAILED");
+  // Keep metadata/review accessible when an individual Storage link is unavailable.
   return {
     id: row.id, trip_id: row.trip_id, trip_stop_id: row.trip_stop_id,
-    dr_number: row.dr_number, file_name: row.file_name, signed_url: data.signedUrl,
+    dr_number: row.dr_number, file_name: row.file_name, signed_url: error?null:data?.signedUrl??null,
+    assignment_id:row.assignment_id??null,uploaded_by:row.uploaded_by??null,uploader_name:row.uploader_name??null,
     mime_type: row.mime_type??(String(row.storage_path).endsWith(".pdf")?"application/pdf":null),
     uploaded_at: row.created_at, ocr_text: row.ocr_text, ocr_confidence: row.ocr_confidence,
     ocr_version: row.ocr_version, reviewed_at: row.reviewed_at, reviewed_by: row.reviewed_by,
@@ -45,7 +46,9 @@ export async function listTripReceipts(tripId: string) {
   const { data, error } = await supabaseAdmin.from("trip_images").select("*")
     .eq("trip_id", tripId).eq("kind", "receipt").order("created_at", { ascending: false });
   if (error) fail(error);
-  return Promise.all((data ?? []).map(signedReceipt));
+  const ids=[...new Set((data??[]).map(r=>r.uploaded_by).filter(Boolean))];
+  const people=ids.length?await supabaseAdmin.from('profiles').select('id,first_name,last_name').in('id',ids):{data:[]};
+  return Promise.all((data??[]).map(row=>signedReceipt({...row,uploader_name:people.data?.filter(p=>p.id===row.uploaded_by).map(p=>[p.first_name,p.last_name].filter(Boolean).join(' '))[0]??null})));
 }
 
 async function getReceipt(tripId: string, receiptId: string) {

@@ -13,7 +13,7 @@ test("tracking HTTP endpoints enforce JWT/app-session/roles, activation and serv
  db.from=((table:string)=>{
   let profile=driver;const q={select:()=>q,eq:(key:string,value:string)=>{if(key==="id")profile=value;return q;},maybeSingle:async()=>({error:null,data:table==="profiles"?{id:profile,role:profile===admin?"STAFF":"TRUCKER"}:table==="trucker_active_sessions"?{session_hash:sha256SessionIdentifier(session)}:{profile_id:admin,role:"STAFF",expires_at:new Date(Date.now()+86400000).toISOString()}})};return q;
  }) as typeof original;
- db.rpc=(async(name:string,args:Record<string,unknown>)=>{calls.push({name,args});return {error:null,data:name==="tracking_assignment_v1"?{id:assignment,tripId:admin,profileId:driver,active:true,revision:4}:name==="tracking_feed_v1"?[]:true};}) as typeof rpc;
+ db.rpc=(async(name:string,args:Record<string,unknown>)=>{if(name==="check_device_session_v1")return {data:"ACTIVE",error:null};calls.push({name,args});return {error:null,data:name==="tracking_assignment_v1"?{id:assignment,tripId:admin,profileId:driver,active:true,revision:4}:name==="tracking_feed_v1"?[]:true};}) as typeof rpc;
  const app=express();app.use(express.json());app.use(router);const server=createServer(app);await new Promise<void>(resolve=>server.listen(0,"127.0.0.1",resolve));
  const address=server.address();if(!address||typeof address==="string")throw Error("port");
  const request=(path:string,role="driver",body?:object)=>fetch(`http://127.0.0.1:${address.port}${path}`,{method:body?"POST":"GET",headers:{Authorization:`Bearer ${role}`,"X-App-Session":session,"Content-Type":"application/json"},body:body?JSON.stringify(body):undefined});

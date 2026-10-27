@@ -6,6 +6,7 @@ import {
 } from "../services/auth.service.js";
 import { AppSessionError } from "../services/app-session.service.js";
 import {ApiError} from "../utils/api-response.js";
+import {browserMetadata} from '../services/device-session.service.js';
 
 export async function login(req: Request, res: Response) {
   try {
@@ -18,7 +19,7 @@ export async function login(req: Request, res: Response) {
       });
     }
 
-    const result = await loginAppUser(email, password);
+    const result = await loginAppUser(email, password,browserMetadata(req.get('user-agent')??'',req.body?.device_identifier));
 
     return res.status(200).json({
       success: true,

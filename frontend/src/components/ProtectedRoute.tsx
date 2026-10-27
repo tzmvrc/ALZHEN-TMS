@@ -14,6 +14,7 @@ export default function ProtectedRoute({
 }: ProtectedRouteProps) {
   const { user, profile, loading } = useAuth();
   const location = useLocation();
+  if(sessionStorage.getItem('alzhen.account-locked')==='true')return <Navigate to="/account-locked" replace/>;
 
   if (loading && !user) {
     return <RouteLoading />;

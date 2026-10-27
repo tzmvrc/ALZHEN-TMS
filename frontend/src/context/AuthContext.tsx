@@ -22,7 +22,8 @@ import {
 import { cancelAdminPreload, preloadAdminPageData } from "../services/admin-preload.service";
 import { clearReportPageCache } from "../services/report.service";
 import { clearSharedWidths } from "../services/shared-table-widths";
-import { startCollaboration } from "../services/collaboration.service";
+import { startCollaboration,collaborationSnapshot,subscribeCollaborationEvents } from "../services/collaboration.service";
+import {browserDeviceIdentifier} from '../services/device-identity';
 import { useToast } from "../components/ui/Toast";
 
 export type AuthProfile = {
@@ -136,7 +137,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setLoading(true);
 
     try {
-      await supabase.auth.signOut().catch(() => undefined);
+      if(reason==='ACCOUNT_LOCKED'){
+        sessionStorage.setItem('alzhen.account-locked','true');
+        sessionStorage.setItem('alzhen.locked-login',profile?.role==='TRUCKER'||window.location.pathname.startsWith('/trucker')?'/trucker/login':'/login');
+      }
+      await supabase.auth.signOut({scope:'local'}).catch(() => undefined);
     } finally {
       clearSessionState();
       authSyncLockedRef.current = false;
@@ -145,15 +150,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const currentPath = window.location.pathname;
     const isTruckerSessionError = reason?.startsWith("TRUCKER_") ?? false;
     const loginTarget =
-      profile?.role === "TRUCKER" || isTruckerSessionError
+      reason==='ACCOUNT_LOCKED'?'/account-locked':profile?.role === "TRUCKER" || isTruckerSessionError
         ? "/trucker/login"
         : "/login";
 
-    if (currentPath !== "/login" && currentPath !== "/trucker/login") {
+    if (reason==='ACCOUNT_LOCKED'||currentPath !== "/login" && currentPath !== "/trucker/login") {
       navigate(loginTarget, { replace: true });
     }
 
-    if (reason !== "ADMIN_SESSION_EXPIRED") {
+    if (reason !== "ADMIN_SESSION_EXPIRED" && reason!=='ACCOUNT_LOCKED') {
       addToast({
         title: reason === "TRUCKER_SESSION_REPLACED"
           ? "This account was signed in on another device."
@@ -312,7 +317,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             appSessionId: string;
             expiresAt?: string | null;
           };
-        }>("/auth/login", { email, password });
+        }>("/auth/login", { email, password,device_identifier:browserDeviceIdentifier() });
 
         if (!response.success || !response.data) {
           throw new Error(
@@ -321,6 +326,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
 
         const profileRole = response.data.profile.role;
+        sessionStorage.removeItem('alzhen.account-locked');
 
         const persistAppSession = async () => {
           try {
@@ -335,7 +341,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (allowedRole && profileRole !== allowedRole) {
           await persistAppSession();
           await apiPost("/auth/logout", {}, response.data.session.access_token).catch(() => undefined);
-          await supabase.auth.signOut().catch(() => undefined);
+          await supabase.auth.signOut({scope:"local"}).catch(() => undefined);
           clearSessionState();
           throw new Error("Invalid account or login credentials.");
         }
@@ -348,7 +354,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         });
         if (setSessionError) {
           await apiPost("/auth/logout", {}, response.data.session.access_token).catch(() => undefined);
-          await supabase.auth.signOut().catch(() => undefined);
+          await supabase.auth.signOut({scope:"local"}).catch(() => undefined);
           clearSessionState();
           throw new Error("Unable to establish the authenticated browser session.");
         }
@@ -368,11 +374,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setLoading(false);
 
         return response.data;
+      } catch(error) {
+        if(error instanceof ApiError&&error.code==='ACCOUNT_LOCKED'){
+          sessionStorage.setItem('alzhen.account-locked','true');
+          await handleSessionExpired('ACCOUNT_LOCKED');
+          navigate('/account-locked',{replace:true});
+        }
+        throw error;
       } finally {
         authSyncLockedRef.current = false;
       }
     },
-    [clearSessionState],
+    [clearSessionState, handleSessionExpired, navigate],
   );
 
   const logout = useCallback(async () => {
@@ -382,35 +395,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       accessToken ??
       (await supabase.auth.getSession()).data.session?.access_token;
 
-    let backendLogoutFailed = false;
-
-    if (token) {
-      try {
-        await apiPost<{ success: boolean; message?: string }>(
-          "/auth/logout",
-          {},
-          token,
-        );
-      } catch (error) {
-        backendLogoutFailed = true;
-        console.error("Backend logout failed:", error);
-      }
-    }
-
     try {
-      await supabase.auth.signOut();
-    } catch (error) {
-      console.error("Supabase signOut failed:", error);
-      throw new Error("Unable to log out completely. Please try again.");
-    }
-
-    clearSession();
-    setLoading(false);
-
-    if (backendLogoutFailed) {
-      throw new Error("Unable to log out completely. Please try again.");
-    }
-  }, [accessToken, clearSession]);
+      if(token)await apiPost('/auth/logout',{},token);
+      const signedOut=await supabase.auth.signOut({scope:'local'});
+      if(signedOut.error)throw new Error('Device access was revoked, but browser sign-out could not finish. Retry logout.');
+      clearSession();
+      navigate(profile?.role==='TRUCKER'?'/trucker/login':'/login',{replace:true});
+    } catch(error) {
+      throw new Error(error instanceof Error?error.message:'Logout could not be confirmed. Please retry.');
+    } finally {setLoading(false);}
+  }, [accessToken, clearSession, navigate, profile?.role]);
 
   useEffect(() => {
     registerSessionExpiredHandler(handleSessionExpired);
@@ -469,21 +463,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [clearSessionState]);
 
   useEffect(() => {
-    if (!user || profile?.role !== "TRUCKER" || !accessToken) return;
-    let inFlight = false;
+    if (!user || !profile || !accessToken) return;
+    let inFlight = false, pending = false, live = true;
     const heartbeat = () => {
-      if (document.visibilityState !== "visible" || inFlight) return;
+      if (!live || document.visibilityState !== "visible") return;
+      if (inFlight) { pending = true; return; }
       inFlight = true;
       void apiPost("/auth/session/heartbeat", {}, accessToken)
         .catch(() => undefined)
-        .finally(() => { inFlight = false; });
+        .finally(() => { inFlight = false; if (pending) { pending = false; heartbeat(); } });
     };
-    const interval = window.setInterval(heartbeat, 30_000);
+    const off=subscribeCollaborationEvents(e=>{if(e.kind==='security'||e.kind==='connected')heartbeat();});
+    const interval = window.setInterval(()=>{const connection=collaborationSnapshot();if(!connection.connected||!connection.bridgeHealthy)heartbeat();}, 15_000);
     window.addEventListener("focus", heartbeat);
     document.addEventListener("visibilitychange", heartbeat);
     heartbeat();
     return () => {
+      live = false;
       window.clearInterval(interval);
+      off();
       window.removeEventListener("focus", heartbeat);
       document.removeEventListener("visibilitychange", heartbeat);
     };

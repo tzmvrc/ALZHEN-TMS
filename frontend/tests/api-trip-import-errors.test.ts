@@ -2,6 +2,17 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { apiGet, apiPost, ApiError } from "../src/services/api.service.ts";
 
+test('delivery workspace outages preserve the safe recovery message',async()=>{
+ const original=globalThis.fetch;
+ try{
+  const message='Delivery data could not be confirmed. Your draft is preserved.';
+  globalThis.fetch=async()=>new Response(JSON.stringify({success:false,message,error:{code:'DELIVERY_UNAVAILABLE'}}),{status:503});
+  await assert.rejects(apiGet('/delivery/assignments/fixture','fixture-token'),error=>{
+   assert.ok(error instanceof ApiError);assert.equal(error.code,'DELIVERY_UNAVAILABLE');assert.equal(error.message,message);return true;
+  });
+ }finally{globalThis.fetch=original;}
+});
+
 test("login preserves safe service-outage messages without exposing them on unrelated endpoints",async()=>{
  const original=globalThis.fetch;
  try{

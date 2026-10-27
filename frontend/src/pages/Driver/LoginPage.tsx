@@ -1,3 +1,4 @@
+import {rememberedEmail,rememberEmail} from '../../services/remembered-login';
 import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { Eye, EyeOff } from "lucide-react";
@@ -8,7 +9,8 @@ import { getRoleBasedHomePath, useAuth } from "../../context/AuthContext";
 export default function DriverLoginPage() {
   const navigate = useNavigate();
   const [showPassword, setShowPassword] = useState(false);
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(rememberedEmail);
+  const [remember,setRemember]=useState(()=>Boolean(rememberedEmail()));
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const { addToast } = useToast();
@@ -33,6 +35,7 @@ export default function DriverLoginPage() {
 
     try {
       const session = await login(trimmedEmail, trimmedPassword, "TRUCKER");
+      rememberEmail(trimmedEmail,remember);
       const nextPath = getRoleBasedHomePath(session.profile.role);
 
       addToast({
@@ -85,12 +88,12 @@ export default function DriverLoginPage() {
   return (
     <div className="w-full bg-[#dde1e7] sm:h-dvh sm:p-4">
       {/* ───────── Full-viewport dotted panel ───────── */}
-      <div className="dotted-surface relative flex min-h-dvh w-full flex-col border border-[#e9edf4] px-4 pb-4 pt-4 sm:h-full sm:min-h-0 sm:rounded-[28px] sm:px-10 sm:py-8">
+      <div className="dotted-surface relative flex min-h-dvh w-full flex-col border border-[#dbe2e9] px-4 pb-4 pt-4 sm:h-full sm:min-h-0 sm:rounded-2xl sm:px-7 sm:py-5">
         <div className="relative z-10 mx-auto flex w-full max-w-sm flex-col pt-1 sm:pt-0">
           {/* Header */}
           <div className="text-center">
             {/* Logo tile */}
-            <div className="relative mx-auto mb-2 h-[82px] w-[82px] sm:mb-3 sm:h-[100px] sm:w-[100px]">
+            <div className="relative mx-auto mb-2 h-[72px] w-[72px] sm:mb-2 sm:h-[84px] sm:w-[84px]">
               {/* soft glow — locked to same size as tile */}
               <div className="pointer-events-none absolute inset-0 -z-10 rounded-full bg-amber-400/15 blur-xl" />
 
@@ -130,8 +133,9 @@ export default function DriverLoginPage() {
 
           {/* Form */}
           <form
+            autoComplete="on"
             onSubmit={handleSubmit}
-            className="mt-4 space-y-3 sm:mt-8 sm:space-y-5">
+            className="mt-4 space-y-3">
             {/* Driver ID */}
             <div>
               <label
@@ -143,7 +147,7 @@ export default function DriverLoginPage() {
                 id="email"
                 name="email"
                 type="email"
-                autoComplete="email"
+                autoComplete="username"
                 required
                 placeholder="name@example.com"
                 value={email}
@@ -185,6 +189,7 @@ export default function DriverLoginPage() {
               </div>
             </div>
 
+<label className="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" checked={remember} onChange={e=>setRemember(e.target.checked)}/>Remember Me</label>
             {/* Submit */}
             <button
               type="submit"
@@ -195,7 +200,7 @@ export default function DriverLoginPage() {
           </form>
 
           {/* Footer */}
-          <p className="mt-4 text-center text-[11px] text-slate-500 sm:mt-8 sm:text-sm">
+          <p className="mt-4 text-center text-[11px] text-slate-500 sm:text-xs">
             Having trouble signing in?{" "}
             <button
               type="button"

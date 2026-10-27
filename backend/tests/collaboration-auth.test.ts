@@ -5,7 +5,7 @@ test("socket authentication uses validated JWT identity, database role and exist
  const {supabaseAdmin,supabaseAuth}=await import("../src/config/supabase.js");
  const {authenticateCollaboration}=await import("../src/services/collaboration-auth.service.js");
  const {sha256SessionIdentifier}=await import("../src/utils/session-rules.js");
- const originalUser=supabaseAuth.auth.getUser,originalFrom=supabaseAdmin.from;
+ const originalUser=supabaseAuth.auth.getUser,originalFrom=supabaseAdmin.from,originalRpc=supabaseAdmin.rpc;
  const session="A".repeat(43),id="fixture-user";let role="STAFF",valid=true,revoked=false;
  const token=`header.${Buffer.from(JSON.stringify({exp:Math.floor(Date.now()/1000)+3600,role:"ADMIN",sub:"forged-client-id"})).toString("base64url")}.signature`;
  (supabaseAuth.auth as any).getUser=async()=>({data:{user:valid?{id}:null},error:valid?null:{message:"invalid"}});
@@ -15,11 +15,12 @@ test("socket authentication uses validated JWT identity, database role and exist
   if(table==="trucker_active_sessions")return {data:{session_hash:revoked?"replaced":sha256SessionIdentifier(session)},error:null};
   throw Error("Unexpected table "+table);
  }};return chain;};
+ (supabaseAdmin as any).rpc=async()=>({data:"ACTIVE",error:null});
  try {
   const actor=await authenticateCollaboration(token,session);assert.equal(actor.id,id);assert.equal(actor.role,"STAFF");assert.equal(actor.name,"Server Identity");assert.ok(actor.expiresAt<Date.now()+61000);
   valid=false;await assert.rejects(authenticateCollaboration(token,session),/Invalid or expired/);valid=true;
   await assert.rejects(authenticateCollaboration(token,"missing"),/sign in/);
   revoked=true;await assert.rejects(authenticateCollaboration(token,session),/midnight/);revoked=false;
   role="TRUCKER";assert.equal((await authenticateCollaboration(token,session)).role,"TRUCKER");revoked=true;await assert.rejects(authenticateCollaboration(token,session),/another device/);
- }finally{supabaseAuth.auth.getUser=originalUser;supabaseAdmin.from=originalFrom;}
+ }finally{supabaseAuth.auth.getUser=originalUser;supabaseAdmin.from=originalFrom;supabaseAdmin.rpc=originalRpc;}
 });

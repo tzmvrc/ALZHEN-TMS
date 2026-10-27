@@ -202,7 +202,8 @@ export default function OperationsReportsView({ mode, onOpenTrip, refreshVersion
   };
   useEffect(() => { realtimeLoad.current = () => { invalidateOperationsReportsCache(); return load(true, false, true); }; }, [load]);
 
-  useEffect(()=>{ if(mode === "trucker" && refreshVersion > 0)realtimeGate.request(); },[mode,refreshVersion,realtimeGate]);
+  const lastRefreshVersion = useRef(refreshVersion);
+  useEffect(()=>{ const changed=lastRefreshVersion.current!==refreshVersion; lastRefreshVersion.current=refreshVersion; if(mode === "trucker" && changed)realtimeGate.request(); },[mode,refreshVersion,realtimeGate]);
 
   async function openSubmission() {
     setShowSubmission(true);

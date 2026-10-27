@@ -1,8 +1,9 @@
+import ImagePreview from '../../../components/ui/ImagePreview';
 import {motion,useReducedMotion} from "motion/react";
 import TripTrackingWorkspace from "../../../components/admin/TripTrackingWorkspace";
 import TripConvoyPanel from "../../../components/admin/TripConvoyPanel";
 import { useDeferredRealtimeRefresh } from "../../../components/admin/useDeferredRealtimeRefresh";
-import { lazy,Suspense,useEffect,useLayoutEffect,useRef, useState, type ReactNode } from "react";
+import { lazy,Suspense,useEffect,useLayoutEffect,useMemo,useRef, useState, type ReactNode } from "react";
 import type {TripRecordTarget} from '../../../components/admin/TripDeliveryOperations';
 import {
   ArrowLeft,
@@ -35,7 +36,6 @@ import {
 } from "../../../services/trip.service";
 import { surface } from "../../../components/admin/dashboardStyles";
 import ProductPhotoManager from "../../../components/admin/ProductPhotoManager";
-import ReceiptReviewCard from "../../../components/admin/ReceiptReviewCard";
 import TripWorkspaceDialog from "../../../components/admin/TripWorkspaceDialog";
 import {
   deleteTripImage,
@@ -45,7 +45,6 @@ import {
   type TripImage,
 } from "../../../services/trip-image.service";
 import { subscribeToAdminRealtime } from "../../../services/realtime.service";
-import { RECEIPT_TABLES } from "../../../services/live-activity.service";
 import {
   fetchTripOperations,
   type OperationsReportData,
@@ -205,6 +204,7 @@ function TripGallery({
   const [savedPhotos, setSavedPhotos] = useState<TripImage[] | null>(null);
   const [active, setActive] = useState(0);
   const [photoBusy, setPhotoBusy] = useState(false);
+  const [previewOpen,setPreviewOpen]=useState(false);
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [imageRefreshVersion, setImageRefreshVersion] = useState(0);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -335,12 +335,12 @@ function TripGallery({
       <div className={`relative mt-4 overflow-hidden rounded-2xl bg-slate-100 ${photos.length > 0 ? "aspect-[16/10]" : "min-h-[8rem] flex-1"}`}>
         {photos.length > 0 ? (
           <>
-            <img
+            <button type="button" className="h-full w-full cursor-zoom-in" aria-label="Enlarge trip photo" onClick={()=>setPreviewOpen(true)}><img
               key={photos[active]?.id}
               src={photos[active]?.signed_url}
               alt={`Truck photo ${active + 1} of ${photos.length}`}
               className="h-full w-full object-cover"
-            />
+            /></button>
             {photos.length > 1 && (
               <>
                 <button type="button" aria-label="Previous photo" onClick={() => go(-1)} className={`${navBtn} left-3`}>
@@ -411,6 +411,7 @@ function TripGallery({
           ))}
         </div>
       )}
+      {previewOpen&&activeSavedPhoto&&<ImagePreview key={activeSavedPhoto.id} file={{id:activeSavedPhoto.id,file_name:activeSavedPhoto.file_name,url:activeSavedPhoto.signed_url}} onClose={()=>setPreviewOpen(false)} onPrevious={photos.length>1?()=>go(-1):undefined} onNext={photos.length>1?()=>go(1):undefined}/>}
       <p className="mt-3 text-[10px] text-slate-400">JPEG, PNG, or WebP · up to 5 MB each</p>
       {photoError && (
         <p role="alert" className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700">
@@ -479,7 +480,6 @@ export default function TripDetailView({
   const [loadedKey, setLoadedKey] = useState<string | null>(null);
   const [failure, setFailure] = useState<{ key: string; message: string } | null>(null);
   const [retry, setRetry] = useState(0);
-  const [receiptTick, setReceiptTick] = useState(0);
   const [selectedStop, setSelectedStop] = useState<string | null>(null);
   const [stopSelectionChanged, setStopSelectionChanged] = useState(false);
   const [library,setLibrary]=useState<'records'|'receipts'|'operations'|null>(null);
@@ -489,7 +489,7 @@ export default function TripDetailView({
   const [sidePanel, setSidePanel] = useState<"trucks" | "products" | "stops">("trucks");
   const openReportSection=(target:TripRecordTarget)=>{
     if(target==='records'){setSidePanel('products');setLibrary('records');return;}
-    if(target==='receipts'){setLibrary('receipts');return;}
+    if(target==='receipts'){document.getElementById(`trip-${tripId}-pod`)?.scrollIntoView({block:'start',behavior:'smooth'});return;}
     if(target==='operations'){setLibrary('operations');return;}
     const node=document.getElementById(`trip-${tripId}-${target}`);
     if(!node)return;
@@ -502,8 +502,7 @@ export default function TripDetailView({
 
   useEffect(() => subscribeToAdminRealtime((event) => {
     if (event.kind === "batch") {
-      if (event.tables.some((table) => (RECEIPT_TABLES as readonly string[]).includes(table))) setReceiptTick((value) => value + 1);
-      if (event.tables.some((table) => ["trips", "trip_stops", "trip_line_items", "trip_truck_assignments", "billings", "loading_reports", "unloading_reports", "backloads", "offloads", "incidents", "demurrages", "report_receipts", "operations_report_conversions", "customers", "customer_stores", "warehouses", "drivers", "trucks", "trucking_companies"].includes(table))) {
+      if (event.tables.some((table) => ["trips", "trip_stops", "trip_line_items", "trip_truck_assignments", "billings", "customers", "customer_stores", "warehouses", "drivers", "trucks", "trucking_companies"].includes(table))) {
         realtimeGate.request();
       }
       return;
@@ -513,17 +512,11 @@ export default function TripDetailView({
 
       return;
     }
-    const tripTables = ["trips", "trip_stops", "trip_line_items", "trip_truck_assignments", "billings", "loading_reports", "unloading_reports", "backloads", "offloads", "incidents", "demurrages", "report_receipts", "operations_report_conversions"];
-    const receiptTables: readonly string[] = RECEIPT_TABLES;
+    const tripTables = ["trips", "trip_stops", "trip_line_items", "trip_truck_assignments", "billings"];
     if (event.kind === "recovered") {
-      if (receiptTables.includes(event.table)) setReceiptTick((value) => value + 1);
       if (!tripTables.includes(event.table)) return;
     } else {
       const { table, new: next, old } = event.payload;
-      /* A receipt photo or its text changed: refresh just the receipt card, not the whole trip. */
-      if (receiptTables.includes(table) && [next?.trip_id, old?.trip_id].includes(tripId)) {
-        setReceiptTick((value) => value + 1);
-      }
       if (!tripTables.includes(table)) return;
       const relatedId = table === "trips"
         ? [next?.id, old?.id].find((value) => typeof value === "string")
@@ -641,6 +634,7 @@ export default function TripDetailView({
 
   const isLoading = Boolean(accessToken) && loadedKey !== requestKey;
   const error = failure?.key === requestKey ? failure.message : null;
+  const orderedEvents = useMemo(()=>(detail?.events ?? []).slice().sort((a,b)=>Date.parse(a.event_time)-Date.parse(b.event_time)),[detail?.events]);
 
   if (error&&!detail) {
     return (
@@ -677,9 +671,6 @@ export default function TripDetailView({
       }))
     : [...new Map(bookingRows.filter((row) => row.trip_line_item_id || row._trip_line_item_id).map(row=>[String(row.trip_line_item_id??row._trip_line_item_id),row])).values()];
   const reportRows = bookingRows;
-  const orderedEvents = (detail?.events ?? [])
-    .slice()
-    .sort((a, b) => Date.parse(a.event_time) - Date.parse(b.event_time));
   const destinationNames = [
     ...new Set(reportRows.map((row) => String(row.store_name ?? "")).filter(Boolean)),
   ];
@@ -765,7 +756,7 @@ export default function TripDetailView({
 
       {trip&&<TripTrackingWorkspace trip={trip} assignments={assignments} stops={stops} events={orderedEvents} origin={originName} destination={destinationText} progress={progress} totalCbm={totalCbm} totalQty={totalQty} onManage={id=>{setConvoyInitial(id);setConvoyOpen(true);}} refreshKey={retry} loading={isLoading} operations={detail?.operations??null} bookingRows={bookingRows} operationsError={detail?.sectionErrors.find(message=>message.startsWith('Operational reports:'))} onOpenReport={openReportSection}/>}
       {library==='operations'&&<TripWorkspaceDialog title="Operational report management" onClose={()=>setLibrary(null)}><p className="trip-empty-note">Reports are initially searched by this dispatch. Shared historical records retain their original scope.</p><Suspense fallback={<p role="status">Loading reports...</p>}><OperationsReportsView mode="management" initialSearch={dispatchNumber} onOpenTrip={(id,stopId)=>{setLibrary(null);const params=new URLSearchParams(id===tripId?window.location.search:'');params.delete('event');if(stopId)params.set('stop',stopId);navigate(`/trips/${encodeURIComponent(id)}${params.size?`?${params}`:''}`);}}/></Suspense></TripWorkspaceDialog>}
-      {library==='receipts'&&<TripWorkspaceDialog title="Trip-wide POD review" onClose={()=>setLibrary(null)}><ReceiptReviewCard key={tripId} tripId={tripId} accessToken={accessToken} stopLabels={stopLabels} refreshKey={retry + receiptTick}/></TripWorkspaceDialog>}
+
       {/* Products / stops / activity beside trip photos */}
       {library==='records'&&<TripWorkspaceDialog title="Manage trip records & photos" onClose={()=>setLibrary(null)}><section id={`trip-${tripId}-records`} className="trip-records-library" tabIndex={-1}>
       <div className="grid grid-cols-1 items-stretch gap-4 xl:grid-cols-12">

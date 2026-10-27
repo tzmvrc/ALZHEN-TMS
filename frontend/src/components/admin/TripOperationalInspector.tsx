@@ -6,8 +6,8 @@ import {fetchOperationsReceipts,type OperationsReceipt,type OperationsReportData
 import {ArrowLeft} from 'lucide-react';
 import {DeliveryEventEntry} from '../delivery/DeliveryTimeline';
 import DeliveryEvidenceGallery,{type EvidencePreview} from '../delivery/DeliveryEvidenceGallery';
-import {milestoneIcon} from './TripOperationalTimeline';
-import {incidentPresentation,isOperationalIncident,type OperationalMilestone} from '../../services/operational-timeline';
+import {milestoneIcon} from '../../services/operational-timeline-icons';
+import {incidentPresentation,isOperationalReport,type OperationalMilestone} from '../../services/operational-timeline';
 import {phTime,readDeliveryEventDetails,verificationLabel,type EventDetails} from '../../services/delivery.service';
 import {cleanActivityNote} from '../../services/activity-presentation';
 
@@ -31,11 +31,11 @@ export default function TripOperationalInspector({milestone,assignmentId,plate,d
  const id=milestone.reportId??event?.delivery_metadata.report_id;
  const report=milestone.report??[...(operations?.backloads??[]),...(operations?.offloads??[])].find(row=>row.id===id);
  const reportItems=operations?.event_rows.flatMap(row=>[...row.backload_records,...row.offload_records]).find(row=>row.id===id)?.items??[];
- const incident=isOperationalIncident(milestone),presentation=incidentPresentation(milestone);
+ const incident=isOperationalReport(milestone),presentation=incidentPresentation(milestone);
  const Icon=milestoneIcon(incident&&presentation.tone!=='incident'?presentation.tone.toUpperCase():milestone.type),shared=milestone.scope==='trip-wide';
  const remarks=cleanActivityNote(milestone.remarks||report?.comments||'');
  const loading=hasEventImages&&!eventDetails&&!event?.attachments.every(file=>file.url)||Boolean(operations?.evidence_links_pending&&milestone.files.length&&!receipts);
- return <section className="trip-event-inspector trip-event-simple" data-category={incident?presentation.tone:undefined} aria-label="Selected milestone details"><header><h2>{incident?'Incident Report Details':'Event Details'}</h2><button type="button" onClick={onBack}><ArrowLeft size={15} aria-hidden="true"/>Back to route</button></header>
+ return <section className="trip-event-inspector trip-event-simple" data-category={incident?presentation.tone:undefined} aria-label="Selected milestone details"><header><h2>{incident?'Report Details':'Event Details'}</h2><button type="button" onClick={onBack}><ArrowLeft size={15} aria-hidden="true"/>Back to route</button></header>
  <div className="trip-event-hero"><Icon className="trip-event-watermark" aria-hidden="true"/><span className="trip-event-symbol"><Icon size={23} aria-hidden="true"/></span><div><h3>{incident?presentation.label:milestone.title}</h3><time>{milestone.time?phTime(milestone.time):'None'}</time></div></div>
  <dl className="trip-event-info">{incident&&<><div><dt>Report type</dt><dd>{presentation.label}</dd></div><div><dt>Status</dt><dd>{presentation.status||'None'}</dd></div><div><dt>Scope</dt><dd>{shared?'Trip-wide report':'Truck-specific report'}</dd></div></>}<div><dt>Truck</dt><dd>{shared?'None':plate||'None'}</dd></div><div><dt>Driver</dt><dd>{shared?'None':driver||'None'}</dd></div><div><dt>{incident?'Stop':'Location'}</dt><dd>{incident&&!milestone.stopId?'None':milestone.location||'None'}</dd></div>{event?.verification_method&&event.verification_method!=='NONE'&&<div><dt>Verification</dt><dd>{verificationLabel(event.verification_method)}</dd></div>}{event?.demonstration&&<div><dt>Source</dt><dd><span className="trip-demo-tag">Demo</span></dd></div>}</dl>
  {report&&!incident&&<dl className="trip-report-facts"><div><dt>Report type</dt><dd>{milestone.reportType??event?.delivery_metadata.report_type??'Operational report'}</dd></div>{report.reason&&<div><dt>Reason</dt><dd>{cleanActivityNote(report.reason)}</dd></div>}{report.number_of_boxes!=null&&<div><dt>Boxes</dt><dd>{report.number_of_boxes}</dd></div>}</dl>}

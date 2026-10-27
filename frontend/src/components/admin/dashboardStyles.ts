@@ -77,8 +77,8 @@ export function assignFleetTruckCutouts(
 /* Alzhen brand palette (same navy + yellow as the top navigation) */
 export const accent = {
   navy: "#0b2341",
-  blue: "#0b2343",
-  blueSoft: "#e9eef5",
+  blue: "#2678b9",
+  blueSoft: "#e6f0f9",
   yellow: "#ffd43b",
   yellowDeep: "#f2c200",
   canvas: "#f4f6fa",
@@ -93,7 +93,7 @@ export const toneClasses = {
   rose: "bg-rose-50 text-rose-600",
   slate: "bg-slate-100 text-slate-600",
   navy: "bg-[#e6ecf4] text-[#0b2341]",
-  brand: "bg-[#e9eef5] text-[#0b2343]",
+  brand: "bg-[#e6f0f9] text-[#1d5f94]",
 } as const;
 
 export const toneHex = {
@@ -104,7 +104,7 @@ export const toneHex = {
   rose: "#ef4444",
   slate: "#64748b",
   navy: "#0b2341",
-  brand: "#0b2343",
+  brand: "#2678b9",
 } as const;
 
 export const statusColor = (status: string) => {

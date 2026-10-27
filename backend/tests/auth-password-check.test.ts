@@ -17,7 +17,7 @@ test("localhost authentication-only check verifies the original Admin without in
  let role="ADMIN",expired=false,signIns=0,signOuts=0,mutations=0;
  supabaseAuth.auth.getUser=(async()=>expired?{data:{user:null},error:{code:"expired",status:401,message:"expired"}}:{data:{user:{id,email:"admin@example.invalid"}},error:null}) as typeof original.user;
  db.from=((table:string)=>{const q={select(){return q;},eq(){return q;},async maybeSingle(){assert.ok(["profiles","admin_staff_session_days","trucker_active_sessions"].includes(table));return {data:table==="profiles"?{id,role}:table==="trucker_active_sessions"?{session_hash:createHash("sha256").update("a".repeat(43)).digest("hex")}:{profile_id:id,role,expires_at:"2099-01-01T00:00:00Z"},error:null};}};return q;}) as typeof original.from;
- db.rpc=(async()=>{mutations++;throw Error("Authentication check must not call any mutation RPC");}) as typeof original.rpc;
+ db.rpc=(async(name:string)=>{if(name==="check_device_session_v1")return {data:"ACTIVE",error:null};mutations++;throw Error("Authentication check must not call any mutation RPC");}) as typeof original.rpc;
  globalThis.fetch=async(input,init)=>{
   const url=new URL(String(input));assert.equal(url.origin,"http://127.0.0.1:54321");
   if(url.pathname==="/auth/v1/token"){

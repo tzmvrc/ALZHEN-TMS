@@ -1,12 +1,13 @@
 import { supabaseAdmin,supabaseAuth } from "../config/supabase.js";
 import { assertActiveTruckerSession,assertAdminStaffSession } from "./app-session.service.js";
+import {checkDeviceSession} from './device-session.service.js';
 export type SocketActor={id:string;role:string;name:string;expiresAt:number;avatarUrl?:string|null};
 export async function authenticateCollaboration(token:unknown,sessionId:unknown,includeAvatar=true):Promise<SocketActor>{
  if(typeof token!=="string"||token.length>10000||typeof sessionId!=="string"||sessionId.length>128)throw Error("Authentication required");
  const {data,error}=await supabaseAuth.auth.getUser(token);
  if(error||!data.user)throw Error("Invalid or expired authentication");
- const profile=await supabaseAdmin.from("profiles").select("id,role,first_name,last_name,profile_picture_path,deactivated_at").eq("id",data.user.id).maybeSingle();
- if(profile.error||!profile.data||profile.data.deactivated_at||!["ADMIN","STAFF","TRUCKER"].includes(profile.data.role))throw Error("Account unavailable");
+ const profile=await supabaseAdmin.from("profiles").select("id,role,first_name,last_name,profile_picture_path,deactivated_at,locked_at").eq("id",data.user.id).maybeSingle();
+ if(profile.error||!profile.data||profile.data.deactivated_at||profile.data.locked_at||!["ADMIN","STAFF","TRUCKER"].includes(profile.data.role))throw Error("Account unavailable");
  const role=profile.data.role;
  // Expiry is used only after Supabase has validated the JWT signature/issuer.
  const expiry=JSON.parse(Buffer.from(token.split(".")[1]??"","base64url").toString()).exp;
@@ -14,6 +15,7 @@ export async function authenticateCollaboration(token:unknown,sessionId:unknown,
  let expiresAt=expiry*1000;
  if(role==="TRUCKER")await assertActiveTruckerSession(data.user.id,sessionId);
  else expiresAt=Math.min(expiresAt,Date.parse((await assertAdminStaffSession(data.user.id,role,sessionId)).expiresAt));
+ await checkDeviceSession(data.user.id,sessionId,token,'');
  const path=profile.data.profile_picture_path;
  let avatarUrl:string|null=null;
  if(includeAvatar&&typeof path==="string"&&path){

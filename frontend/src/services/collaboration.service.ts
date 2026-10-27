@@ -7,7 +7,7 @@ export type Commit={eventId:string;source:string;recordId:string;tripId?:string;
 export const COLLABORATION_SOURCES=["trips","trip_stops","trip_line_items","trip_truck_assignments","store_calls","billings"] as const;
 export type TableViewer={userId:string;name:string;avatarUrl:string|null;color:string};
 type Snapshot={connected:boolean;bridgeHealthy:boolean;presences:Presence[];viewers?:Record<string,TableViewer[]>};
-type Event={kind:"commit";commit:Commit}|{kind:"tracking";assignmentId?:string}|{kind:"trucker";scope?:"assignments"|"trip"}|{kind:"notification"}|{kind:"connected"}|{kind:"layout";table:string;column:string;revision:number}|{kind:"signal";topic:string;revision:string};
+type Event={kind:"security"}|{kind:"commit";commit:Commit}|{kind:"tracking";assignmentId?:string}|{kind:"trucker";scope?:"assignments"|"trip"}|{kind:"notification"}|{kind:"connected"}|{kind:"layout";table:string;column:string;revision:number}|{kind:"signal";topic:string;revision:string};
 let socket:Socket|null=null,owner="",snapshot:Snapshot={connected:false,bridgeHealthy:false,presences:[]};
 let stopCurrent:((preserveDrafts?:boolean)=>void)|null=null;
 const watchers=new Set<()=>void>(),events=new Set<(event:Event)=>void>(),rooms=new Map<string,number>(),cells=new Map<string,CellTarget>(),versions=new Map<string,number>(),seen=new Set<string>();
@@ -56,7 +56,8 @@ export function startCollaboration(token:string|null,profileId:string|undefined,
  client.on("connect",()=>{if(!active())return;snapshot={...snapshot,connected:true};notify();const joining=[...rooms.keys()].map(room=>new Promise<void>(resolve=>{const [kind,...parts]=room.split(":");client.timeout(5000).emit("room:join",{kind,key:parts.join(":")},()=>resolve());}));void Promise.all(joining).then(()=>{if(!active()||!client.connected)return;draftRoomsReady=true;draftConnection(draftRelayReady);for(const cell of cells.values())client.emit("cell:presence",cell);});emit({kind:"connected"});});
  client.on("disconnect",reason=>{if(!active())return;draftRoomsReady=false;draftConnection(false);snapshot={connected:false,bridgeHealthy:false,presences:[]};received.clear();notify();if(reason==="io server disconnect"){clearTimeout(retryTimer);retryTimer=setTimeout(()=>{if(active())client.connect();},1500);}});
  client.on("connect_error",()=>{if(active()){snapshot={...snapshot,connected:false,bridgeHealthy:false};notify();}});
- client.on("bridge:status",value=>{if(active()){snapshot={...snapshot,bridgeHealthy:value?.healthy===true};notify();}});
+ client.on("bridge:status",value=>{if(active()){const recovered=!snapshot.bridgeHealthy&&value?.healthy===true;snapshot={...snapshot,bridgeHealthy:value?.healthy===true};notify();if(recovered&&snapshot.connected)emit({kind:'connected'});}});
+ client.on('security:changed',value=>{if(active()&&typeof value?.revision==='string')emit({kind:'security'});});
  client.on("table:expired",value=>{if(active()&&typeof value?.table==="string"&&rooms.has(`table:${value.table}`))client.emit("room:join",{kind:"table",key:value.table});});
  client.on("table:viewers",value=>{if(!active()||typeof value?.table!=="string"||!rooms.has(`table:${value.table}`)||!Array.isArray(value.users))return;const users=value.users.filter((u:TableViewer)=>u&&typeof u.userId==="string"&&typeof u.name==="string").slice(0,500);snapshot={...snapshot,viewers:{...snapshot.viewers,[value.table]:users}};notify();});
  client.on("cell:presence",value=>{if(active())presence(value);});

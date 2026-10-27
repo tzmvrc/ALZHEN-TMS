@@ -1,4 +1,5 @@
 import {captureUserActivity} from "../services/user-activity.service.js";
+import {checkDeviceSession} from '../services/device-session.service.js';
 import {withServerTiming} from "../utils/server-timing.js";
 import { createHash } from "node:crypto";
 import { createConcurrentReadGate } from "../utils/concurrent-read.js";
@@ -69,6 +70,7 @@ async function authenticate(
       });
     }
 
+    if((profile as any)?.locked_at&&!skipSessionValidation)return res.status(403).json({success:false,code:'ACCOUNT_LOCKED',message:'Your account has been locked by an administrator. Please contact your administrator for assistance.'});
     if((profile as any)?.deactivated_at)return res.status(403).json({success:false,message:"Access denied. This account has been deactivated. Contact an administrator."});
     if(profile)req.profile=profile;
     const role = String(profile?.role ?? "UNKNOWN").trim().toUpperCase();
@@ -87,6 +89,7 @@ async function authenticate(
           if(Date.parse(active.expiresAt)<=Date.now())throw new AppSessionError("Your session ended at midnight Manila time. Please sign in again.","ADMIN_SESSION_EXPIRED",401);
           req.appSession.expiresAt = active.expiresAt;
         }
+        await shareRead(`device:${user.id}:${fingerprint(sessionId??'')}:${fingerprint(token)}`,()=>checkDeviceSession(user.id,sessionId,token,req.get('user-agent')??''));
       } catch (sessionError) {
         if (sessionError instanceof AppSessionError) {
           return res.status(sessionError.status).json({

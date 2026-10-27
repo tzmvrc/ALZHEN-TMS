@@ -133,6 +133,16 @@ export async function attachCollaborationServer(http:HttpServer,options:Options=
  trackingEvents.on("changed",emitTracking);
  const channel=options.bridge===false?null:supabaseAdmin.channel(`collaboration-server-${process.pid}-${Date.now()}`);
  if(channel){
+  channel.on('postgres_changes',{schema:'public',table:'trip_operational_signals',event:'*'},payload=>{
+   const row=payload.new as Record<string,unknown>;
+   if(typeof row.trip_id!=='string'||typeof row.record_id!=='string'||typeof row.source!=='string'||typeof row.revision!=='string')return;
+   emitCommit({source:row.source,recordId:row.record_id,tripId:row.trip_id,fields:[],actorId:null,version:null,eventId:`operation:${row.revision}`});
+  });
+  channel.on('postgres_changes',{schema:'public',table:'device_security_signals',event:'*'},payload=>{
+   const row=payload.new as Record<string,unknown>;
+   if(typeof row.profile_id!=='string'||typeof row.revision!=='string')return;
+   io.to(`user:${row.profile_id}`).emit('security:changed',{revision:row.revision});
+  });
   channel.on("postgres_changes",{schema:"public",table:"trip_tracking_locations",event:"*"},payload=>{
    const record=(payload.eventType==="DELETE"?payload.old:payload.new) as Record<string,unknown>;
    if(typeof record.assignment_id==='string')emitTracking({assignmentId:record.assignment_id});
@@ -162,7 +172,7 @@ export async function attachCollaborationServer(http:HttpServer,options:Options=
    emitCommit({source,recordId:record.id,tripId:source==="trips"?record.id:typeof record.trip_id==="string"?record.trip_id:undefined,stopId:source==="trip_stops"?record.id:typeof record.trip_stop_id==="string"?record.trip_stop_id:undefined,fields:[],actorId:null,version,operation:payload.eventType,eventId:`${source}:${record.id}:${payload.eventType==="DELETE"?"deleted":version??record.updated_at??"changed"}`});
    if(source==="trip_truck_assignments"&&typeof record.driver_id==="string")void supabaseAdmin.from("drivers").select("profile_id").eq("id",record.driver_id).maybeSingle().then(result=>{if(result.data?.profile_id)io.to(`user:${result.data.profile_id}`).emit("trucker:changed",{kind:"assignments"});});
   });
-  channel.subscribe(status=>{bridgeHealthy=status==="SUBSCRIBED";io.to("management").emit("bridge:status",{healthy:bridgeHealthy});});
+  channel.subscribe(status=>{bridgeHealthy=status==="SUBSCRIBED";io.emit("bridge:status",{healthy:bridgeHealthy});});
  }
  let versionChecking=false;
  const versionCheck=async()=>{if(versionChecking)return;versionChecking=true;try{const result=await withSupabaseDeadline(10_000,async()=>await supabaseAdmin.from("trips").select("collaboration_version").limit(1).retry(false));setCollaborationVersionsReady(!result.error);}catch{setCollaborationVersionsReady(false);}finally{versionChecking=false;}};

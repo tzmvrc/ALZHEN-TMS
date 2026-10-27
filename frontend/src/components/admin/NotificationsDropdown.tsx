@@ -67,8 +67,8 @@ export default function NotificationsDropdown({
     <div
       role="dialog"
       aria-label="Notifications"
-      style={placement}
-      className={`${placement ? "fixed z-[1200]" : "absolute right-0 top-full z-50 mt-3"} w-[min(380px,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-[0_24px_48px_-12px_rgba(15,23,42,0.22)]`}>
+      style={placement ? {...placement,maxHeight:`calc(100dvh - ${placement.top + 12}px)`} : {maxHeight:'calc(100dvh - 120px)'}}
+      className={`${placement ? "fixed z-[1200]" : "absolute right-0 top-full z-50 mt-3"} w-[min(380px,calc(100vw-2rem))] overflow-x-hidden overflow-y-auto rounded-2xl border border-slate-200/80 bg-white shadow-[0_24px_48px_-12px_rgba(15,23,42,0.22)]`}>
       <div className="px-4 pb-2 pt-4">
         <h2 className="text-[17px] font-semibold tracking-tight text-[#0b2341]">
           Notifications

@@ -34,6 +34,7 @@ export async function interpretReceiptText(token:string, tripId:string, receiptI
 }
 
 export type TripReceipt = {
+  assignment_id?:string|null;uploaded_by?:string|null;uploader_name?:string|null;
   mime_type?:string|null;
   id: string;
   trip_id: string;

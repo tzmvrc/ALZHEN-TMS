@@ -3,6 +3,7 @@ import { supabaseAdmin, supabaseAuth } from "../config/supabase.js";
 import { getProfileByUserId, type ProfileRow } from "../models/profile.model.js";
 import { createTruckerSession, registerAdminStaffSession, removeCurrentAdminStaffSession, removeCurrentTruckerSession } from "./app-session.service.js";
 import {ApiError} from "../utils/api-response.js";
+import {browserMetadata,registerDeviceSession,revokeOwnDeviceSession} from './device-session.service.js';
 
 function signInUnavailable(){return new ApiError("Sign-in is temporarily unavailable because the database or authentication service is not responding. Please try again shortly.",503,"AUTH_SERVICE_UNAVAILABLE");}
 
@@ -90,7 +91,7 @@ export async function logoutUser() {
   };
 }
 
-export async function loginAppUser(email: string, password: string) {
+export async function loginAppUser(email: string, password: string, metadata=browserMetadata('')) {
   const result = await loginUser(email, password);
   let profile;
   try { profile = await getCurrentUserProfile(result.user.id); }
@@ -99,13 +100,16 @@ export async function loginAppUser(email: string, password: string) {
     throw error;
   }
   if ((profile as any).deactivated_at) throw new Error("This account is not authorized to use the application.");
+  if ((profile as any).locked_at) throw new ApiError('Your account has been locked by an administrator. Please contact your administrator for assistance.',403,'ACCOUNT_LOCKED');
   const role = String(profile.role).trim().toUpperCase();
   if (role === "TRUCKER") {
     const appSessionId = await createTruckerSession(result.user.id);
+    await registerDeviceSession(result.user.id,appSessionId,result.session.access_token,metadata);
     return { authUser: result.user, profile, session: result.session, appSessionId, expiresAt: null };
   }
   if (role === "ADMIN" || role === "STAFF") {
     const registered = await registerAdminStaffSession(result.user.id, role);
+    await registerDeviceSession(result.user.id,registered.sessionId,result.session.access_token,metadata);
     return { authUser: result.user, profile, session: result.session, appSessionId: registered.sessionId, expiresAt: registered.expiresAt };
   }
   throw new Error("This account is not authorized to use the application.");
@@ -116,6 +120,7 @@ export async function logoutAppSession(session: {
   role: string;
   sessionId: string | null;
 }) {
+  await revokeOwnDeviceSession(session.profileId,session.sessionId);
   if (session.role === "TRUCKER") {
     await removeCurrentTruckerSession(session.profileId, session.sessionId);
   } else if (session.role === "ADMIN" || session.role === "STAFF") {

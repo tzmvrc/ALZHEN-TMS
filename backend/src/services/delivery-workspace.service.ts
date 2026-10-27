@@ -18,6 +18,7 @@ type Row=Record<string,any>;
 const ids=(value:unknown)=>typeof value==='string'&&isValidUuid(value);
 const management=(actor:DeliveryActor)=>['ADMIN','STAFF'].includes(actor.role);
 function failure(error:any){
+ if(error?.code==='P0400')throw new ApiError('GPS is required for arrival. Enable location permission and retry.',422,'ARRIVAL_GPS_REQUIRED');
  if(error?.code==='23505'&&/trip_receipt_content_once_idx/.test(error?.message??''))throw new ApiError('This image is already saved as a POD for this trip. Choose the original receipt for this truck and stop.',409,'POD_ALREADY_SUBMITTED');
  const expected=['22023','23514','23505','P0001','40001','42501'].includes(error?.code);
  throw new ApiError(expected?error.message:'Delivery data could not be confirmed. Your draft is preserved.',error?.code==='42501'?403:error?.code==='40001'||error?.code==='23505'?409:expected?422:503,error?.code==='P0001'?'ARRIVAL_EVIDENCE_REQUIRED':'DELIVERY_UNAVAILABLE');
@@ -47,7 +48,9 @@ export async function deliveryWorkspace(actor:DeliveryActor,id:string){
   rows('trip_stops','*,store:customer_stores(id,name,address,city,province,latitude,longitude,location_verified,arrival_radius_meters)','trip_id',assignment.trip_id),
   rows('trip_assignment_stops','id,trip_stop_id,progress','assignment_id',id),
   rows('trip_cargo_allocations','id,quantity,allocated_cbm,line:trip_line_items(id,trip_stop_id,dr_number,customer_model,product:products(model_code,sku))','assignment_id',id),
-  db.from('warehouses').select('id,name,address,latitude,longitude,location_verified,arrival_radius_meters').eq('id',assignment.trip.warehouse_id).maybeSingle(),
+  assignment.trip.warehouse_id
+   ? db.from('warehouses').select('id,name,address,latitude,longitude,location_verified,arrival_radius_meters').eq('id',assignment.trip.warehouse_id).maybeSingle()
+   : Promise.resolve({data:null,error:null}),
   db.from('trip_events').select('id,event_type,event_time,trip_stop_id,verification_method').eq('assignment_id',id).in('event_type',['WAREHOUSE_ARRIVAL','LOADING_STARTED','LOADING_FINISHED','WAREHOUSE_DEPARTURE','ARRIVED','UNLOADING_STARTED','UNLOADING_FINISHED','STOP_DEPARTURE','ASSIGNMENT_COMPLETED']).order('event_time').limit(1001),
  ]);
  if(warehouse.error||events.error)failure(warehouse.error??events.error);
@@ -56,6 +59,19 @@ export async function deliveryWorkspace(actor:DeliveryActor,id:string){
  if(delivered.error)failure(delivered.error);if((delivered.data?.length??0)>10000)throw new ApiError('Quantity history exceeds its read limit.',409);
  const totals=new Map<string,number>();for(const item of delivered.data??[])totals.set(item.allocation_id,(totals.get(item.allocation_id)??0)+Number(item.quantity));
  return {assignment,warehouse:warehouse.data,stops:stops.filter(s=>!s.archived_at&&(assignment.stop_scope==='ALL'||responsibilities.some(r=>r.trip_stop_id===s.id))).sort((a,b)=>a.stop_sequence-b.stop_sequence),cargo:cargo.map(c=>({...c,delivered:totals.get(c.id)??0,remaining:Math.max(0,Number(c.quantity)-(totals.get(c.id)??0))})),milestones:events.data??[]};
+}
+/** Match the current master truck first; preserve the established latest-assignment rule. */
+export async function currentDeliveryWorkspace(actor:DeliveryActor){
+ if(actor.role!=='TRUCKER')throw new ApiError('A trucker account is required.',403);
+ const driver=await db.from('drivers').select('id,assigned_truck_id').eq('profile_id',actor.id).maybeSingle();
+ if(driver.error)failure(driver.error);if(!driver.data)return null;
+ const result=await db.from('trip_truck_assignments').select('id,truck_id,assigned_at,created_at,trip:trips!inner(status,archived_at)').eq('driver_id',driver.data.id).is('unassigned_at',null).is('trip.archived_at',null).order('assigned_at',{ascending:false,nullsFirst:false}).order('created_at',{ascending:false}).order('id').limit(501);
+ if(result.error)failure(result.error);if((result.data?.length??0)>500)throw new ApiError('Too many active assignments. Contact dispatch.',409);
+ const candidates=(result.data??[]).filter((a:any)=>!['COMPLETED','DELIVERED','CANCELLED','CANCELED','CLOSED','FINISHED','ARCHIVED','REJECTED'].includes(a.trip.status));
+ const currentTruck=driver.data.assigned_truck_id;
+ const ranked=[...candidates.filter(a=>a.truck_id===currentTruck),...candidates.filter(a=>a.truck_id!==currentTruck)];
+ for(const candidate of ranked){const workspace=await deliveryWorkspace(actor,candidate.id);if(!workspace.milestones.some(m=>m.event_type==='ASSIGNMENT_COMPLETED'))return workspace;}
+ return null;
 }
 export async function deliveryEvents(actor:DeliveryActor,id:string,cursor?:string,reportsOnly=false,includeEvidence=false){
  const assignment=await deliveryAssignment(actor,id);

@@ -96,6 +96,7 @@ export function clearAppSessionId() {
 }
 
 function hasExpiredSessionSignal(status: number, payload: unknown): boolean {
+  if(status===403&&(payload as {code?:string})?.code==='ACCOUNT_LOCKED')return true;
   if (status === 401) {
     return true;
   }
@@ -192,6 +193,7 @@ async function request<T>(
       throw new ApiError(
         payload?.message ?? "You are not authorized to access this resource.",
         response.status,
+        payload?.code??payload?.error?.code,
       );
     }
 
@@ -220,6 +222,9 @@ async function request<T>(
         throw new ApiError(payload.message, response.status, code);
       }
       if (endpoint.startsWith("/reports/") && code === "REPORT_READ_TIMEOUT" && payload?.message) {
+        throw new ApiError(payload.message, response.status, code);
+      }
+      if (endpoint.startsWith("/delivery/") && code === "DELIVERY_UNAVAILABLE" && payload?.message) {
         throw new ApiError(payload.message, response.status, code);
       }
       if(endpoint==="/auth/login"&&["AUTH_SERVICE_UNAVAILABLE","SESSION_STORE_UNAVAILABLE"].includes(code??"")&&payload?.message){

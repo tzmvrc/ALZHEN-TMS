@@ -1,3 +1,4 @@
+import {rememberedEmail,rememberEmail} from '../../services/remembered-login';
 import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { Eye, EyeOff } from "lucide-react";
@@ -9,7 +10,8 @@ import { getRoleBasedHomePath, useAuth } from "../../context/AuthContext";
 export default function LoginPage() {
   const navigate = useNavigate();
   const [showPassword, setShowPassword] = useState(false);
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(rememberedEmail);
+  const [remember,setRemember]=useState(()=>Boolean(rememberedEmail()));
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const { addToast } = useToast();
@@ -43,6 +45,7 @@ export default function LoginPage() {
 
     try {
       const session = await login(trimmedEmail, trimmedPassword);
+      rememberEmail(trimmedEmail,remember);
       const nextPath = getRoleBasedHomePath(session.profile.role);
 
       addToast({
@@ -143,14 +146,14 @@ export default function LoginPage() {
       </div>
 
       {/* ───────── Right: Login Form ───────── */}
-      <div className="dotted-surface relative flex w-full flex-col justify-start border border-[#e9edf4] px-6 py-12 shadow-[0_22px_52px_-34px_rgba(23,36,59,0.32)] sm:rounded-[28px] sm:px-12 lg:w-1/2 lg:rounded-l-none lg:px-16 lg:pt-20 xl:px-24 xl:pt-24">
+      <div className="dotted-surface relative flex w-full flex-col justify-start border border-[#dbe2e9] px-5 py-6 sm:rounded-2xl sm:px-8 lg:w-1/2 lg:rounded-l-none lg:px-12 lg:py-8 xl:px-16">
         <div className="relative z-10 mx-auto flex w-full max-w-sm flex-col">
           {/* Header */}
           <div className="text-center">
             <img
               src={logo}
               alt="Alzhen Trucking Services"
-              className="mx-auto mb-6 h-24 w-24 rounded-full object-contain"
+              className="mx-auto mb-3 h-22 w-22 rounded-xl object-contain"
             />
 
             <h1 className="text-[1.75rem] font-black tracking-tight text-slate-900 sm:text-3xl">
@@ -163,7 +166,7 @@ export default function LoginPage() {
           </div>
 
           {/* Form */}
-          <form onSubmit={handleSubmit} className="mt-10 space-y-5">
+          <form autoComplete="on" onSubmit={handleSubmit} className="mt-5 space-y-3">
             {/* Email */}
             <div>
               <label
@@ -175,7 +178,7 @@ export default function LoginPage() {
                 id="email"
                 name="email"
                 type="email"
-                autoComplete="email"
+                autoComplete="username"
                 required
                 placeholder="name@example.com"
                 value={email}
@@ -217,6 +220,7 @@ export default function LoginPage() {
               </div>
             </div>
 
+<label className="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" checked={remember} onChange={e=>setRemember(e.target.checked)}/>Remember Me</label>
             {/* Submit */}
             <button
               type="submit"
@@ -227,7 +231,7 @@ export default function LoginPage() {
           </form>
 
           {/* Footer */}
-          <p className="mt-10 text-center text-sm text-slate-500">
+          <p className="mt-5 text-center text-sm text-slate-500">
             Need access or locked out?{" "}
             <button
               type="button"

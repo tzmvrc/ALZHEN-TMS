@@ -1,5 +1,6 @@
 export type ChangeSignal = { topic: string; revision: string };
 export const ADMIN_CHANGE_TOPICS = [
+  "device_sessions",
   "trip_cargo_allocations", "trip_assignment_stops", "trips", "trip_stops", "trip_line_items", "trip_truck_assignments", "trip_events",
   "store_calls", "documents", "trip_images", "incidents", "incident_reasons", "demurrages",
   "backloads", "backload_items", "offloads", "offload_items", "loading_reports",

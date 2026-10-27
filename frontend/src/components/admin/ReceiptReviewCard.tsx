@@ -1,9 +1,10 @@
+import ImagePreview from '../ui/ImagePreview';
+import {subscribeCollaborationEvents} from '../../services/collaboration.service';
 import {savedPdfPages} from "../../services/pdf-intake.service";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   CheckCircle2,
   ChevronDown,
-  ExternalLink,
   ImageOff,
   LoaderCircle,
   RefreshCw,
@@ -41,12 +42,6 @@ function reviewState(receipt: TripReceipt): "reviewed" | "needs-review" | "not-s
   return receipt.ocr_text ? "needs-review" : "not-scanned";
 }
 
-const stateStyle = {
-  reviewed: { pill: "bg-emerald-50 text-emerald-700", dot: "bg-emerald-500", label: "Verified" },
-  "needs-review": { pill: "bg-amber-50 text-amber-700", dot: "bg-amber-500", label: "Needs review" },
-  "not-scanned": { pill: "bg-slate-100 text-slate-600", dot: "bg-slate-400", label: "Awaiting OCR" },
-} as const;
-
 const inputClass =
   "mt-1.5 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-[#0b2341] shadow-sm placeholder:text-slate-400 focus:border-[#2678b9] focus:outline-none focus:ring-2 focus:ring-blue-100 disabled:bg-slate-50";
 
@@ -75,7 +70,7 @@ export default function ReceiptReviewCard({
   accessToken,
   stopLabels,
   refreshKey = 0,
-  onRecordsChange,
+  onRecordsChange, inline=false,assignmentId,assignments=[],dispatchNumber,
 }: {
   tripId: string;
   accessToken: string | null;
@@ -83,6 +78,7 @@ export default function ReceiptReviewCard({
   stopLabels: Record<string, string>;
   refreshKey?: number;
   onRecordsChange?: (records:TripReceipt[]|null)=>void;
+  inline?:boolean;assignmentId?:string;assignments?:Array<{id:string;label:string}>;dispatchNumber?:string;
 }) {
   const [receipts, setReceipts] = useState<TripReceipt[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -107,12 +103,14 @@ export default function ReceiptReviewCard({
   const [interpretError, setInterpretError] = useState<string | null>(null);
   const attempted = useRef(new Set<string>());
 
-  const active = receipts?.find((receipt) => receipt.id === activeId) ?? null;
+  const visibleReceipts=receipts?.filter(r=>!assignmentId||!r.assignment_id||r.assignment_id===assignmentId);
+  const active = visibleReceipts?.find((receipt) => receipt.id === activeId) ?? visibleReceipts?.[0] ?? null;
+  const [preview,setPreview]=useState(false),[imageFailed,setImageFailed]=useState<string|null>(null);
   const dirty = !sameSnapshot(work, base);
   const confidence = active ? sessionConfidence[active.id] ?? active.ocr_confidence : null;
 
   const replaceReceipt = (updated: TripReceipt) =>
-    setReceipts((current) => (current ?? []).map((item) => (item.id === updated.id ? updated : item)));
+    setReceipts((current) => (current ?? []).map((item) => (item.id === updated.id ? {...item,...updated,uploader_name:updated.uploader_name??item.uploader_name} : item)));
   const setField = (key: keyof ReceiptFields, value: string) => {
     setWork((current) => ({ ...current, fields: { ...current.fields, [key]: value } }));
     setJustSaved(false);
@@ -147,6 +145,7 @@ export default function ReceiptReviewCard({
   /* A driver just saved a receipt or its text: pick it up without a page refresh. */
   useEffect(() => {
     let timer: number | null = null;
+    const offSocket=subscribeCollaborationEvents(e=>{if(e.kind==='connected'||e.kind==='commit'&&e.commit.tripId===tripId&&['trip_images','pod_records','pod_review_events'].includes(e.commit.source)){if(timer!==null)window.clearTimeout(timer);timer=window.setTimeout(()=>setLiveTick(n=>n+1),300);}});
     const unsubscribe = subscribeToAdminRealtime((event) => {
       const tables: readonly string[] = RECEIPT_TABLES;
       if (event.kind === "batch" ? !event.tables.some(table=>tables.includes(table)) : event.kind === "recovered" ? !tables.includes(event.table) : event.kind !== "resume" && (
@@ -157,7 +156,7 @@ export default function ReceiptReviewCard({
       timer = window.setTimeout(() => setLiveTick((value) => value + 1), 300);
     });
     return () => {
-      unsubscribe();
+      unsubscribe();offSocket();
       if (timer !== null) window.clearTimeout(timer);
     };
   }, [tripId]);
@@ -217,7 +216,7 @@ export default function ReceiptReviewCard({
     setScanError(null);
     setSaveError(null);
     setJustSaved(false);
-    if (!active.ocr_text && active.signed_url && !attempted.current.has(active.id)) {
+    if (!inline && !active.ocr_text && active.signed_url && !attempted.current.has(active.id)) {
       attempted.current.add(active.id);
       void runOcr(active);
     }
@@ -308,15 +307,15 @@ export default function ReceiptReviewCard({
   const canSave = Boolean(active) && hasContent && (dirty || state !== "reviewed") && !scanning && !saving && !interpreting;
 
   return (
-    <section aria-labelledby="receipt-card-title" data-unsaved={dirty||scanning||saving||interpreting||undefined} className="min-w-0 space-y-4">
+    <section aria-labelledby="receipt-card-title" data-pod-review data-unsaved={dirty||scanning||saving||interpreting||undefined} className="min-w-0 space-y-4">
       <header className="flex flex-wrap items-end justify-between gap-2">
         <div>
-          <h3 id="receipt-card-title" className="text-lg font-bold text-[#0b2341]">Delivery receipts &amp; OCR</h3>
+          <h3 id="receipt-card-title" className="text-lg font-bold text-[#0b2341]">{inline?"POD Review":"Delivery receipts & OCR"}</h3>
           <p className="text-sm text-slate-500">Check the fields read from each driver’s photo, then confirm.</p>
         </div>
       </header>
 
-      {!!receipts?.length&&<div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      {!inline&&!!receipts?.length&&<div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label="Receipts" value={counts.total} hint="Uploaded for this trip" tone="text-[#0b2341]" />
         <Stat label="Awaiting OCR" value={counts.awaiting} hint="Not scanned yet" tone="text-slate-600" />
         <Stat label="Needs review" value={counts.review} hint="Read, not yet checked" tone="text-amber-600" />
@@ -328,46 +327,14 @@ export default function ReceiptReviewCard({
           <LoaderCircle aria-hidden="true" className="h-4 w-4 animate-spin text-[#2678b9]" />
           Loading receipts
         </div>
-      ) : receipts.length === 0 ? (
+      ) : !visibleReceipts?.length ? (
         <div className={`${surface.card} flex flex-col items-center justify-center gap-1 py-4 text-center`}>
           <p className="text-sm font-semibold text-[#0b2341]">No receipts uploaded yet</p>
           <p className="max-w-xs text-xs text-slate-500">When a driver saves a delivery receipt photo, it appears here with its fields ready to check.</p>
           {loadError && <p role="alert" className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700">{loadError}</p>}
         </div>
       ) : (
-        <div className="grid min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white lg:grid-cols-[250px_minmax(0,1fr)]">
-          {/* Queue */}
-          <div className="border-b border-slate-200 lg:border-b-0 lg:border-r">
-            <h4 className="px-5 py-4 text-sm font-semibold text-[#0b2341]">Submission queue</h4>
-            <ul className="max-h-[220px] overflow-y-auto border-t border-slate-100 lg:max-h-none">
-              {receipts.map((receipt) => {
-                const style = stateStyle[reviewState(receipt)];
-                const selected = receipt.id === activeId;
-                const title = (receipt.trip_stop_id && stopLabels[receipt.trip_stop_id]) || receipt.dr_number || "Receipt";
-                return (
-                  <li key={receipt.id} className="border-b border-slate-100 last:border-b-0">
-                    <button
-                      type="button"
-                      aria-current={selected}
-                      onClick={() => selectReceipt(receipt.id)}
-                      className={`block w-full px-5 py-3.5 text-left transition ${selected ? "bg-[#eaf1fb]" : "hover:bg-slate-50"}`}
-                    >
-                      <span className="block truncate text-sm font-semibold text-[#0b2341]">{title}</span>
-                      <span className="mt-0.5 block truncate text-xs text-slate-500">
-                        {receipt.dr_number ? `DR ${receipt.dr_number}` : "No DR number"}
-                        {receipt.uploaded_at ? ` · ${new Date(receipt.uploaded_at).toLocaleDateString()}` : ""}
-                      </span>
-                      <span className={`mt-2 inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${style.pill}`}>
-                        <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${style.dot}`} />
-                        {style.label}
-                      </span>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-
+        <div className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white">
           {/* Verification */}
           {active && state && (
             <div className="min-w-0">
@@ -393,36 +360,28 @@ export default function ReceiptReviewCard({
                 </div>
               </div>
 
-              <div className="grid min-w-0 xl:grid-cols-2 xl:divide-x xl:divide-slate-200">
+              <div className="grid min-w-0 lg:grid-cols-2 lg:divide-x lg:divide-slate-200">
                 {/* Photo */}
                 <div className="min-w-0 p-5">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Raw scan</p>
+                  <label className="block text-xs font-semibold">POD document<select aria-label="POD document" value={active.id} onChange={e=>selectReceipt(e.target.value)} className={inputClass}>{visibleReceipts?.map(r=><option key={r.id} value={r.id}>{r.file_name||'Receipt'} / {r.dr_number||'No DR'}{!r.assignment_id?' / Trip-wide':''}</option>)}</select></label>
                   <div className="relative mt-3 flex aspect-[3/4] max-h-[520px] w-full items-center justify-center overflow-hidden rounded-lg border border-dashed border-slate-300 bg-slate-50">
-                    {active.signed_url ? (
-                      active.mime_type==="application/pdf"?<iframe title="Original PDF receipt" sandbox="" src={active.signed_url} className="h-full w-full"/>:(<img src={active.signed_url} alt={`Delivery receipt${drNumber ? ` ${drNumber}` : ""}`} className="h-full w-full object-contain" />)
+                    {active.signed_url && imageFailed!==active.id ? (
+                      active.mime_type==="application/pdf"?<iframe title="Original PDF receipt" sandbox="" src={active.signed_url} className="h-full w-full"/>:(<button type="button" className="h-full w-full cursor-zoom-in" aria-label="Enlarge POD document" onClick={()=>setPreview(true)}><img src={active.signed_url} onError={()=>setImageFailed(active.id)} alt={`Delivery receipt${drNumber ? ` ${drNumber}` : ""}`} className="h-full w-full object-contain" /></button>)
                     ) : (
                       <div className="flex flex-col items-center gap-2 text-slate-400">
                         <ImageOff aria-hidden="true" className="h-8 w-8" />
-                        <span className="text-xs">Photo unavailable</span>
+                        <span className="text-xs">Photo unavailable</span><button type="button" onClick={()=>{setImageFailed(null);setLiveTick(n=>n+1);}} className="text-xs underline">Retry document</button>
                       </div>
                     )}
                     {active.signed_url && (
-                      <a
-                        href={active.signed_url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="absolute right-3 top-3 inline-flex items-center gap-1.5 rounded-full bg-white/90 px-3 py-1.5 text-[11px] font-semibold text-[#0b2341] shadow transition hover:bg-white"
-                      >
-                        <ExternalLink aria-hidden="true" className="h-3.5 w-3.5" />
-                        Full size
-                      </a>
+                      <button type="button" onClick={()=>setPreview(true)} className="absolute right-3 top-3 rounded-full bg-white/90 px-3 py-2 text-xs font-semibold text-[#0b2341]">Enlarge document</button>
                     )}
                   </div>
                 </div>
 
                 {/* Fields */}
                 <div className="relative min-w-0 p-5">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Extracted fields (editable)</p>
+                  <dl className="pod-review-facts"><div><dt>Dispatch</dt><dd>{dispatchNumber||tripId}</dd></div><div><dt>Truck assignment</dt><dd>{active.assignment_id?assignments.find(a=>a.id===active.assignment_id)?.label||'Assignment unavailable':'Trip-wide / legacy document'}</dd></div><div><dt>Delivery stop / DR</dt><dd>{active.trip_stop_id?stopLabels[active.trip_stop_id]||'Stop unavailable':'Not linked'} / {active.dr_number||'None'}</dd></div><div><dt>Uploaded by</dt><dd>{active.uploader_name||'Not recorded'}</dd></div><div><dt>Uploaded</dt><dd>{active.uploaded_at?new Date(active.uploaded_at).toLocaleString('en-PH',{timeZone:'Asia/Manila'}):'Not recorded'}</dd></div><div><dt>POD status</dt><dd>{active.pod_review_status||'PENDING'}</dd></div></dl><p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Extracted fields (editable)</p>
                   <div className="mt-3 space-y-4">
                     <Field
                       label="DR number"
@@ -536,6 +495,7 @@ export default function ReceiptReviewCard({
           )}
         </div>
       )}
+    {preview&&active&&<ImagePreview key={active.id} file={{id:active.id,file_name:active.file_name||"POD document",url:active.signed_url,mime_type:active.mime_type}} onClose={()=>setPreview(false)}/>}
     </section>
   );
 }

@@ -175,7 +175,7 @@ export default function DashboardPage({
 
   useEffect(() => {
     const notificationProfileId = profile?.id;
-    if (!(["ADMIN", "STAFF"] as unknown[]).includes(profile?.role) || !accessToken || !notificationProfileId) {
+    if (!profile || !(["ADMIN", "STAFF"] as unknown[]).includes(profile.role) || !accessToken || !notificationProfileId) {
       notificationReload.current = () => {};
       notificationOwner.current = null;
       notificationItemsRef.current = [];

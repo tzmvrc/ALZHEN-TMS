@@ -16,6 +16,7 @@ test("transaction service validates exact scope, retries owned images, and repor
   let rpcCalls = 0, fails = true, ackFails = false, rpcError: { code: string; message: string } | null = null;
   const removed: string[][] = [];
   (supabaseAdmin as any).rpc = async (name: string, input: unknown) => {
+    if(name==='claim_transaction_image_cleanup_v1')return {data:[{...job}],error:null};
     if(name==="validate_transaction_cleanup_objects_v1")return {data:job.storage_objects,error:null};
     rpcCalls++; assert.equal(name, "delete_transaction_with_cleanup_v1");
     assert.deepEqual(input, { p_trip_id: id(3), p_stop_id: id(4), p_actor_id: id(1) });
@@ -82,7 +83,7 @@ test("the actual transaction deleter never reaches the database without current-
  const {deleteTransaction}=await import("../src/services/transaction-deletion.service.js");
  const old=supabaseAdmin.rpc;let calls=0;supabaseAdmin.rpc=(async()=>{calls++;throw Error("Must not call RPC");}) as typeof old;
  try{
-  for(const stop of [null,id(4)])await assert.rejects(deleteTransaction({id:id(1),role:"ADMIN"},id(3),stop),/current account password/);
+  for(const stop of [null,id(4)])await assert.rejects(deleteTransaction({id:id(1),role:"ADMIN"},id(3),stop),/current account password|Please sign in again/);
   assert.equal(calls,0);
  }finally{supabaseAdmin.rpc=old;}
 });

@@ -20,10 +20,10 @@ test("GPS coalesces throttled fixes, retries network failure, rejects invalid/or
  const capture=createLocationCapture({now:()=>now,onState:s=>states.push(s),schedule:fn=>{timers.set(++timerId,fn);return timerId as unknown as ReturnType<typeof setTimeout>;},cancelScheduled:id=>{timers.delete(id as unknown as number);},geolocation:{getCurrentPosition:fn=>fn(position()),watchPosition:fn=>{callback=fn;return 1;},clearWatch:()=>{clears++;}},api:{begin:async()=>({session_id:"fixture"}),send:async(_s,fix)=>{sends++;sent.push(fix.latitude);if(offline)throw Error("offline");},stop:async()=>{stops++;}}});
  await capture.start();await flush();assert.equal(sends,1);
  now+=1000;callback(position(11));now+=1000;callback(position(12));callback(position(999,now+1));callback(position(13,now-500));
- assert.equal(sends,1);assert.equal(timers.size,1);now+=28000;await tick();assert.deepEqual(sent,[10,12]);
+ assert.equal(sends,1);assert.equal(timers.size,2);now+=28000;await tick();assert.deepEqual(sent,[10,12]);
  offline=true;now+=30000;callback(position(14));await flush();assert.equal(states.at(-1),"LOCATION_NOT_SAVED");
  offline=false;now+=30000;await tick();assert.equal(states.at(-1),"SHARING");assert.deepEqual(sent,[10,12,14,14]);
- now+=1000;callback(position(15));assert.equal(timers.size,1);await capture.stop();assert.equal(timers.size,0);assert.equal(clears,1);assert.equal(stops,1);
+ now+=1000;callback(position(15));assert.equal(timers.size,2);await capture.stop();assert.equal(timers.size,0);assert.equal(clears,1);assert.equal(stops,1);
  callback(position(16));await tick();assert.equal(sends,4);
 });
 
@@ -55,7 +55,7 @@ test("GPS asks permission only on explicit start, throttles, stops watches and n
  now+=30000;callback(position());await new Promise(resolve=>setTimeout(resolve,0));assert.equal(sends,1); // stationary jitter is suppressed
  now+=300000;callback(position());await new Promise(resolve=>setTimeout(resolve,0));assert.equal(sends,2); // bounded stationary heartbeat
  await capture.stop();callback(position());assert.equal(sends,2);assert.equal(clears,1);assert.equal(stops,1);
- denied=true;await capture.start();assert.equal(watchCalls,1);assert.equal(states.at(-1),"PERMISSION_OR_LOCATION_UNAVAILABLE");
+ denied=true;await capture.start();assert.equal(watchCalls,1);assert.equal(states.at(-1),"PERMISSION_DENIED");
  errorCallback({code:2} as GeolocationPositionError);assert.equal(watchCalls,1);
  assert.equal(locationIsStale(new Date(now-121000).toISOString(),now),true);assert.equal(locationIsStale(new Date(now).toISOString(),now),false);
 });
@@ -70,4 +70,17 @@ test("overlapping explicit starts create one watch and close a session returned 
  const capture=createLocationCapture({geolocation:{getCurrentPosition:fn=>fn(position),watchPosition:()=>{watches++;return 1;},clearWatch:()=>{}},onState:()=>{},api:{begin:()=>{begins++;return new Promise(resolve=>{finishBegin=resolve;});},send:async()=>{},stop:async()=>{stopCalls++;}}});
  const first=capture.start(),second=capture.start();await new Promise(resolve=>setTimeout(resolve,0));assert.equal(begins,1);
  await capture.stop();finishBegin({session_id:"late-session"});await Promise.all([first,second]);assert.equal(watches,0);assert.equal(stopCalls,1);
+});
+
+test('silent GPS watcher stops become stale, and only a newly saved fix restores sharing',async()=>{
+ let now=Date.now(),watch:PositionCallback=()=>{},saves=0,release:(v?:unknown)=>void=()=>{};
+ const timers=new Map<number,()=>void>();let sequence=0;const states:string[]=[];
+ const position=()=>({timestamp:now,coords:{latitude:10,longitude:123,accuracy:4}} as GeolocationPosition);
+ const capture=createLocationCapture({now:()=>now,onState:s=>states.push(s),schedule:fn=>{timers.set(++sequence,fn);return sequence as any;},cancelScheduled:t=>{timers.delete(t as any);},geolocation:{getCurrentPosition:fn=>fn(position()),watchPosition:fn=>{watch=fn;return 1;},clearWatch:()=>{}},api:{begin:async()=>({session_id:'fixture'}),send:async()=>{if(++saves>1)await new Promise(resolve=>{release=resolve;});},stop:async()=>{}}});
+ try{
+  await capture.start();await new Promise(r=>setTimeout(r,0));assert.equal(states.at(-1),'SHARING');
+  now+=121000;const tasks=[...timers.values()];timers.clear();tasks.forEach(fn=>fn());assert.equal(states.at(-1),'LOCATION_STALE');
+  watch(position());assert.equal(states.at(-1),'LOCATION_STALE','Obtaining a fix without saving must not clear warning');
+  release();await new Promise(r=>setTimeout(r,0));assert.equal(states.at(-1),'SHARING');
+ }finally{await capture.stop();}
 });
