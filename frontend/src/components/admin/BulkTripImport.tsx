@@ -1,4 +1,5 @@
 import { withOptionalTripAddress, withoutTripMapPins } from "../../services/optional-trip-address";
+import { beginTripImportSave } from "../../services/trip-import-activity";
 import { importBatchHasRecordedRows } from "../../services/import-batch-lock";
 import { isolateImportRows } from "../../services/isolate-import-rows";
 import { storeLocationLabel } from "../../services/store-location";
@@ -337,6 +338,7 @@ export default function BulkTripImport({ onClose: onDismiss, onComplete, onImpor
     // Clicking Save accepts optional CSV totals/unmapped values, never recovery approval.
     setConfirmed(true); setVerifiedCbm(true); setVerifiedUnmapped(true);
     savingRef.current = true; setStarted(true);
+    const finishImportSave = beginTripImportSave();
     setSaving(true); setError(""); setSaveWarning(""); setProgress(0);
     let processed = 0;
     let addressesDeferred = false;
@@ -411,7 +413,6 @@ export default function BulkTripImport({ onClose: onDismiss, onComplete, onImpor
         setLocationRetryRequired(false);
       }
     } catch (cause) {
-      try { const recovered = await reopenImportBatch(accessToken, batchId); setOutcomes(Object.fromEntries(recovered.outcomes.map(row => [row.source_identity, row]))); setHistory(recovered.history ?? {}); setCargoSaved(recovered.cargo_saved); if (recovered.outcomes.some(row => row.line_item_id && (row.status === "imported" || row.original_batch_id === batchId))) refreshOnClose.current = true; } catch { /* Keep the existing batch and draft when acknowledgements are unavailable. */ }
       if (cause instanceof ApiError && cause.code === "TRIP_LOCATION_FOLLOWUP_REQUIRED") {
         setLocationRetryRequired(true);
         refreshOnClose.current = true;
@@ -427,8 +428,10 @@ export default function BulkTripImport({ onClose: onDismiss, onComplete, onImpor
         setOutcomes(current => ({ ...current, ...Object.fromEntries(recovered.outcomes.map(row => [row.source_identity, row])) }));
         setHistory(recovered.history ?? {});
         setCargoSaved(recovered.cargo_saved);
+        if (recovered.outcomes.some(row => row.line_item_id && (row.status === "imported" || row.original_batch_id === batchId))) refreshOnClose.current = true;
       } catch { /* Preserve the lock until server state can be confirmed. */ }
       savingRef.current = false; setSaving(false);
+      finishImportSave();
     }
   }
   function downloadFailures() {

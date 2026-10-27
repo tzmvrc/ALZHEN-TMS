@@ -11,15 +11,17 @@ export type WholeTripImpact = {
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const WHOLE_TRIP_DELETE_LIMIT = 20;
 /** A missing/stale row fails closed. Never infer physical trips from DR/dispatch. */
-function parentTripIds(rows: readonly ({ trip_id?: unknown } | undefined)[]): string[] | null {
-  if (!rows.length || rows.some(row => !row || typeof row.trip_id !== "string" || !uuid.test(row.trip_id))) return null;
-  const ids = [...new Set(rows.map(row => (row!.trip_id as string).toLowerCase()))].sort();
+function parentTripIds(rows: readonly ({ trip_id?: unknown; _trip_id?: unknown } | undefined)[]): string[] | null {
+  const idOf = (row: { trip_id?: unknown; _trip_id?: unknown } | undefined) =>
+    typeof row?.trip_id === "string" && uuid.test(row.trip_id) ? row.trip_id : row?._trip_id;
+  if (!rows.length || rows.some(row => { const id = idOf(row); return typeof id !== "string" || !uuid.test(id); })) return null;
+  const ids = [...new Set(rows.map(row => String(idOf(row)).toLowerCase()))].sort();
   return ids;
 }
-export function selectedParentTripCount(rows: readonly ({ trip_id?: unknown } | undefined)[]): number | null {
+export function selectedParentTripCount(rows: readonly ({ trip_id?: unknown; _trip_id?: unknown } | undefined)[]): number | null {
   return parentTripIds(rows)?.length ?? null;
 }
-export function selectedParentTripIds(rows: readonly ({ trip_id?: unknown } | undefined)[]): string[] | null {
+export function selectedParentTripIds(rows: readonly ({ trip_id?: unknown; _trip_id?: unknown } | undefined)[]): string[] | null {
   return parentTripIds(rows);
 }
 export async function fetchWholeTripImpact(token: string, tripIds: string[],signal?:AbortSignal): Promise<WholeTripImpact> {

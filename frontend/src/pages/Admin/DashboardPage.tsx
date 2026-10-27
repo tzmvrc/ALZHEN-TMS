@@ -29,6 +29,8 @@ const UserProfilePage = lazy(() => import("./views/UserProfilePage"));
 const OverviewView = lazy(() => import("./views/OverviewView"));
 import RequestReviewModal from "../../components/admin/RequestDetail";
 import LiveTripPingsProvider from "../../components/admin/LiveTripPingsProvider";
+import DriverUpdatePopup from "../../components/admin/DriverUpdatePopup";
+import { installNotificationSoundUnlock, playDriverNotificationSound } from "../../services/notification-sound";
 const ResourceView = lazy(() => import("./views/ResourceView"));
 const BillingView = lazy(() => import("./views/BillingView"));
 const ClientWebsiteWorkspace = lazy(() => import("./clientwebsite"));
@@ -156,9 +158,11 @@ export default function DashboardPage({
   const [notificationLoading, setNotificationLoading] = useState(false);
   const [notificationError, setNotificationError] = useState("");
   const [newNotification, setNewNotification] = useState<AdminNotification | null>(null);
+  const [driverPopups, setDriverPopups] = useState<AdminNotification[]>([]);
   const [notificationTarget, setNotificationTarget] = useState<AdminNotificationTarget | null>(null);
   const notificationItemsRef = useRef<AdminNotification[]>([]);
   const seenNotificationIds = useRef(new Set<string>());
+  const shownDriverPopupIds = useRef(new Set<string>());
   const notificationOwner = useRef<string | null>(null);
   const notificationReload = useRef<() => void>(() => {});
   const notificationsReadAtById = useRef(new Map<string, string>());
@@ -173,6 +177,11 @@ export default function DashboardPage({
   );
 
   useEffect(() => {
+    if (!(["ADMIN", "STAFF"] as unknown[]).includes(profile?.role)) return;
+    return installNotificationSoundUnlock();
+  }, [profile?.role]);
+
+  useEffect(() => {
     const notificationProfileId = profile?.id;
     if (!profile || !(["ADMIN", "STAFF"] as unknown[]).includes(profile.role) || !accessToken || !notificationProfileId) {
       notificationReload.current = () => {};
@@ -183,6 +192,8 @@ export default function DashboardPage({
       setNotificationCount(0);
       setNotificationLoading(false);
       setNewNotification(null);
+      setDriverPopups([]);
+      shownDriverPopupIds.current.clear();
       setNotificationError("");
       return;
     }
@@ -193,8 +204,14 @@ export default function DashboardPage({
       setNotificationItems([]);
       setNotificationCount(0);
       setNewNotification(null);
+      setDriverPopups([]);
+      try {
+        const stored = JSON.parse(sessionStorage.getItem(`alzhen:driver-popups:${notificationProfileId}`) ?? "[]") as unknown;
+        shownDriverPopupIds.current = new Set(Array.isArray(stored) ? stored.filter((id): id is string => typeof id === "string").slice(-100) : []);
+      } catch { shownDriverPopupIds.current.clear(); }
     }
     let active = true;
+    const mountedAt = Date.now();
     let initialLoaded = false;
     let loadInFlight = false;
     const receivedBeforeLoad = new Map<string, AdminNotification>();
@@ -277,6 +294,14 @@ export default function DashboardPage({
             : notificationsReadAtById.current.get(row.id) ?? null,
         created_at: row.created_at,
       };
+      if (item.metadata.event_kind === "driver_update" && !item.read_at && !item.metadata.recovered &&
+          Date.parse(item.created_at) >= mountedAt - 2_000 && !shownDriverPopupIds.current.has(item.id)) {
+        shownDriverPopupIds.current.add(item.id);
+        if (shownDriverPopupIds.current.size > 500) shownDriverPopupIds.current.delete(shownDriverPopupIds.current.values().next().value!);
+        try { sessionStorage.setItem(`alzhen:driver-popups:${notificationProfileId}`, JSON.stringify([...shownDriverPopupIds.current].slice(-100))); } catch { /* Private browsing can disable storage. */ }
+        setDriverPopups(current => current.some(popup => popup.id === item.id) ? current : [...current, item]);
+        playDriverNotificationSound();
+      }
       if (seenNotificationIds.current.has(item.id)) return;
       seenNotificationIds.current.add(item.id);
       if (!initialLoaded) receivedBeforeLoad.set(item.id, item);
@@ -431,6 +456,8 @@ export default function DashboardPage({
   };
 
   const openToastNotification = async (item: AdminNotification) => {
+    setNewNotification(null);
+    void handleNotificationOpen(item);
     if (!item.read_at && accessToken) {
       try {
         const result = await markNotificationAsRead(accessToken, item.id);
@@ -441,12 +468,10 @@ export default function DashboardPage({
             ? cause.message
             : "Unable to mark notification as read.",
         );
-        return;
       }
     }
-    setNewNotification(null);
-    handleNotificationOpen(item);
   };
+  const removeDriverPopup = useCallback((id: string) => setDriverPopups(current => current.filter(item => item.id !== id)), []);
 
   const navEntries: NavEntry[] = useMemo(
     () => [
@@ -583,35 +608,10 @@ export default function DashboardPage({
     <LiveTripPingsProvider>
     <div className="al-workspace relative min-h-screen text-slate-900">
       <RequestReviewModal/>
-      {(["ADMIN", "STAFF"] as unknown[]).includes(profile?.role) && newNotification && (
-        <div
-          role="status"
-          aria-live="polite"
-          className="fixed right-4 top-20 z-[90] w-[min(25rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-blue-200 bg-white shadow-xl"
-        >
-          <div className="flex items-start gap-3 p-3.5">
-            <span className="mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full" />
-            <button
-              type="button"
-              onClick={() => void openToastNotification(newNotification)}
-              className="min-w-0 flex-1 text-left"
-            >
-              <span className="block text-xs font-semibold uppercase tracking-wide text-[#2678b9]">
-                New notification
-              </span>
-              <span className="mt-1 block text-sm font-medium text-slate-800">
-                {newNotification.message}
-              </span>
-            </button>
-            <button
-              type="button"
-              aria-label="Dismiss notification"
-              onClick={() => setNewNotification(null)}
-              className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-            >
-              <X aria-hidden="true" className="h-4 w-4" />
-            </button>
-          </div>
+      {(["ADMIN", "STAFF"] as unknown[]).includes(profile?.role) && (newNotification || driverPopups.length > 0) && (
+        <div className="pointer-events-none fixed right-6 top-24 z-[90] flex max-h-[calc(100dvh-7rem)] w-[min(22rem,calc(100vw-3rem))] flex-col gap-3" aria-label="Live notifications">
+          {driverPopups.slice(0, 2).map(item => <DriverUpdatePopup key={item.id} item={item} onOpen={popup => { void openToastNotification(popup); removeDriverPopup(popup.id); }} onRemove={removeDriverPopup} />)}
+          {newNotification && <div role="status" aria-live="polite" className="pointer-events-auto overflow-hidden rounded-xl border border-blue-200 bg-white shadow-xl"><div className="flex items-start gap-3 p-3.5"><span className="mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full"/><button type="button" onClick={() => void openToastNotification(newNotification)} className="min-w-0 flex-1 text-left"><span className="block text-xs font-semibold uppercase tracking-wide text-[#2678b9]">New notification</span><span className="mt-1 block text-sm font-medium text-slate-800">{newNotification.message}</span></button><button type="button" aria-label="Dismiss notification" onClick={() => setNewNotification(null)} className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><X aria-hidden="true" className="h-4 w-4"/></button></div></div>}
         </div>
       )}
 

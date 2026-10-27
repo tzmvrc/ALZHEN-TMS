@@ -5,7 +5,10 @@ import { TRIP_SOURCE_COLUMNS, TRIP_CARGO_COLUMNS } from "./trip-source-columns.j
  * Keep displayed values, source provenance and every physical edit/delete identity.
  * SQL filters and ordering can still use columns outside this projection. */
 export const MASTER_LIST_READ_COLUMNS = [...new Set([
-  ...MASTER_LIST_COLUMNS.map(column => column.key),
+  ...MASTER_LIST_COLUMNS.map(column => column.key).filter(key => !["incident_report", "incident_boxes", "incident_details"].includes(key)),
+  // Keep the old physical fields available for detailed exports and legacy rows.
+  "incident_date", "backload_reason", "backload_number_of_boxes", "ir_status", "ir_submitted_date",
+  "backload_comments", "offload_number_of_boxes", "offload_reason",
   ...TRIP_SOURCE_COLUMNS.map(column => column.key),
   ...TRIP_CARGO_COLUMNS.map(column => column.key),
   "trip_id", "_trip_id", "_trip_stop_id", "_trip_line_item_id", "_assignment_id", "_product_id",

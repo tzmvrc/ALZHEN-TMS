@@ -11,9 +11,11 @@ import {
   LogOut,
   Menu,
   Plus,
+  Pencil,
   Search,
   Settings,
   Table2,
+  Trash2,
   UserCircle2,
   X,
 } from "lucide-react";
@@ -212,9 +214,11 @@ export default function SidebarNav({
   }, [Boolean(searchConfig)]);
 
   const toggleNotifications = () => {
-    const width = Math.min(380, window.innerWidth - 32);
+    const bellRight = notifRef.current?.getBoundingClientRect().right ?? window.innerWidth - 16;
+    const rightInset = Math.max(16, window.innerWidth - bellRight);
+    const width = Math.min(380, window.innerWidth - rightInset * 2);
     const headerBottom = document.querySelector(".al-topbar")?.getBoundingClientRect().bottom ?? 60;
-    setNotifPosition({ left: Math.max(8, window.innerWidth - width - 8), top: headerBottom + 4 });
+    setNotifPosition({ left: window.innerWidth - width - rightInset, top: headerBottom + 4 });
     setProfileOpen(false);
     setMobileNavOpen(false);
     if (!notifOpen) onNotificationBellOpen();
@@ -278,6 +282,10 @@ export default function SidebarNav({
         </div>
 
         <div ref={topbarSearchRef} className="al-topbar-center">
+          {(topbarActions?.edit || topbarActions?.delete) && <div role="group" aria-label="Selected row actions" className="al-topbar-selection-actions">
+            {topbarActions.edit && <button type="button" className="al-topbar-selection-action" title={topbarActions.edit.label} aria-label={topbarActions.edit.label} disabled={topbarActions.edit.disabled} onClick={topbarActions.edit.onClick}><Pencil aria-hidden="true" size={16}/></button>}
+            {topbarActions.delete && <button type="button" className="al-topbar-selection-action al-topbar-selection-delete" title={topbarActions.delete.label} aria-label={topbarActions.delete.label} disabled={topbarActions.delete.disabled} onClick={topbarActions.delete.onClick}><Trash2 aria-hidden="true" size={16}/></button>}
+          </div>}
           {searchConfig?.kind === "field" && <div className="al-quick-search">
             <Search aria-hidden="true" className="h-4 w-4 shrink-0" />
             <input type="search" aria-label={searchConfig.label} placeholder={searchConfig.placeholder} value={searchConfig.value} disabled={searchConfig.disabled} onChange={event => searchConfig.onChange(event.target.value)} />

@@ -1,6 +1,7 @@
 import type { ReportColumnDefinition } from "../types/report.types.js";
 
-/** CSV order, with Page No. omitted from the displayed/exported Master List. */
+/** CSV order, with Page No. omitted and the eight incident fields summarized
+ * into three visible columns. The original fields remain in the read projection. */
 export const MASTER_LIST_COLUMNS: ReportColumnDefinition[] = [
   { key: "dispatch_number", title: "Dispatch no.", type: "text" },
   { key: "added_to_report", title: "Added to report?", type: "boolean" },
@@ -26,14 +27,9 @@ export const MASTER_LIST_COLUMNS: ReportColumnDefinition[] = [
   { key: "cbm", title: "Total CBM", type: "number" },
   { key: "source_province", title: "Province", type: "text" },
   { key: "source_city", title: "City", type: "text" },
-  { key: "incident_date", title: "Incident Date", type: "date" },
-  { key: "backload_reason", title: "Backload Reason", type: "text" },
-  { key: "backload_number_of_boxes", title: "No. of Box (Backload)", type: "number" },
-  { key: "ir_status", title: "IR Status", type: "text" },
-  { key: "ir_submitted_date", title: "IR Submitted Date", type: "date" },
-  { key: "backload_comments", title: "Backload comments", type: "text" },
-  { key: "offload_number_of_boxes", title: "No. of Box (Offload)", type: "number" },
-  { key: "offload_reason", title: "Offload Reason", type: "text" },
+  { key: "incident_report", title: "Incident Report", type: "text" },
+  { key: "incident_boxes", title: "No. of Box", type: "text" },
+  { key: "incident_details", title: "Details", type: "text" },
   { key: "delivery_status", title: "Delivery status", type: "text" },
   { key: "delivery_completed_date", title: "Delivery completed date", type: "date" },
   { key: "pod_status", title: "POD status", type: "text" },
@@ -71,11 +67,8 @@ const MASTER_HEADER_ASSIGNMENTS: Record<string, keyof typeof MASTER_HEADER_GROUP
   source_product_category: "PURPLE", customer_model: "PURPLE", quantity: "PURPLE", cbm: "PURPLE",
   // X1:Y1 have the same inherited header color as B1:K1.
   source_province: "TEAL", source_city: "TEAL",
-  // Z1:AE1 (direct fill 17).
-  incident_date: "CYAN", backload_reason: "CYAN", backload_number_of_boxes: "CYAN",
-  ir_status: "CYAN", ir_submitted_date: "CYAN", backload_comments: "CYAN",
-  // AF1:AG1 (direct fill 18).
-  offload_number_of_boxes: "ORANGE", offload_reason: "ORANGE",
+  // The source incident/backload/offload groups share one restrained header style.
+  incident_report: "CYAN", incident_boxes: "CYAN", incident_details: "CYAN",
   // AH1:AJ1 use fill 19; AK1:AR1 use fill 20. Both resolve to #002060.
   delivery_status: "NAVY", delivery_completed_date: "NAVY", pod_status: "NAVY",
   signed_dr_upload_date: "NAVY", transmittal_date: "NAVY", tms_date: "NAVY", tms_done_by_name: "NAVY",

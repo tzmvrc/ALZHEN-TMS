@@ -715,10 +715,9 @@ export function OperationsEventsTable({ rows, loading, hasLoaded, loadError, tok
     setRowEditError(null);
   };
   const deleteSelectedRows = async () => {
-    if (!token || deleteSaving.current || !selectedRows.size || !selectedTargets?.length || selectedTargets.length > 20) return;
+    if (!token || deleteSaving.current || !selectedRows.size || !selectedTargets?.length) return;
     const selected = [...selectedRows].map((id) => selectionRows.find((row) => row.id === id)).filter((row): row is OperationsEventRow => Boolean(row));
     const targets = operationsDeleteTargets(selectionRows, selectedRows);
-    if (targets?.some(target => !["OFFLOAD", "BACKLOAD"].includes(target.source_type))) { setDeleteFeedbackKind("error"); setDeleteMessage("Select only Offload or Backload reports."); return; }
     if (!targets || selected.length !== selectedRows.size) {
       setDeleteFeedbackKind("error");
       setDeleteMessage("Unable to verify the selected reports. Refresh and select them again.");
@@ -730,10 +729,22 @@ export function OperationsEventsTable({ rows, loading, hasLoaded, loadError, tok
     setDeleteFeedbackKind("error");
     setDeleteMessage(null);
     try {
-      const response = await deleteOperationsReports(token, targets.map(target=>({source_type:target.source_type,record_id:target.record_id})));
+      const responses: Awaited<ReturnType<typeof deleteOperationsReports>>["outcomes"] = [];
+      let interrupted: string | null = null;
+      for (let offset = 0; offset < targets.length; offset += 20) {
+        try {
+          const batch = targets.slice(offset, offset + 20).map(target=>({source_type:target.source_type,record_id:target.record_id}));
+          const response = await deleteOperationsReports(token, batch);
+          responses.push(...response.outcomes);
+        } catch (cause) {
+          interrupted = cause instanceof Error ? cause.message : "A deletion batch could not be confirmed.";
+          break;
+        }
+      }
+      const outcomes = new Map(responses.map(item=>[`${item.source_type}:${item.record_id}`,item]));
       const outcome = await deleteConfirmedOperationsReports(true, targets, async(sourceType,recordId)=>{
-        const entry=response.outcomes.find(item=>item.source_type===sourceType&&item.record_id===recordId);
-        if(!entry?.success)throw new Error(entry?.message??"The deletion outcome could not be confirmed. Refresh before retrying.");
+        const entry=outcomes.get(`${sourceType}:${recordId}`);
+        if(!entry?.success)throw new Error(entry?.message??interrupted??"The deletion outcome could not be confirmed. Refresh before retrying.");
         return {source_type:sourceType,record_id:recordId,...entry.result};
       });
       const deletedIds = new Set(outcome.deletedRowIds);
@@ -1198,8 +1209,8 @@ export function OperationsEventsTable({ rows, loading, hasLoaded, loadError, tok
         <header className="border-b border-slate-100 px-5 py-4"><h2 id="operations-delete-title" className="text-lg font-semibold text-[#0b2341]">Delete selected reports?</h2></header>
         <div className="space-y-3 px-5 py-4 text-sm text-slate-700"><p id="operations-delete-description">Permanently delete {selectedTargets?.length ?? 0} selected report record{selectedTargets?.length === 1 ? "" : "s"}? This cannot be undone. Eligible Offloads include their owned items and receipt images. Protected historical records will be retained, and failures will be reported individually. Other report types retain their existing receipt protections.</p><p>Trips, sibling stops, other reports, POD and Transmittal records will not be deleted. Image cleanup may require a separate retry after database deletion.</p>{deleteMessage && <p role="alert" className="rounded bg-rose-50 p-2 text-rose-800">{deleteMessage}</p>}</div>
         <div className="max-h-40 overflow-y-auto px-5 text-xs text-slate-600">{selectedRows.size ? <ul className="space-y-1">{visibleRows.filter((row) => selectedRows.has(row.id)).map((row) => <li key={row.id}>{row.source_type} · {row.dispatch_number || row.trip_number || "Dispatch unavailable"} · {row.source_record_id}</li>)}</ul> : <p role="alert">The dataset or filter changed. Cancel and select the reports again.</p>}</div>
-        {(selectedTargets?.length ?? 0)>20&&<p role="alert" className="px-5 text-sm text-rose-700">Select at most 20 reports per confirmation.</p>}
-        <footer className="flex justify-end gap-2 border-t border-slate-100 px-5 py-4"><button type="button" disabled={deleteBusy} onClick={() => {  setDeleteConfirmation(false); }} className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 disabled:opacity-50">Cancel</button><button type="button" disabled={deleteBusy || !selectedTargets?.length || selectedTargets.length > 20} onClick={() => void deleteSelectedRows()} className="inline-flex items-center gap-2 rounded-md bg-rose-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">{deleteBusy && <LoaderCircle aria-hidden="true" className="h-4 w-4 animate-spin" />}{deleteBusy ? "Deleting…" : `Delete ${selectedTargets?.length ?? 0} report${selectedTargets?.length === 1 ? "" : "s"}`}</button></footer>
+        {(selectedTargets?.length ?? 0)>20&&<p className="px-5 text-xs text-slate-500">Reports are deleted in batches of 20. Completed batches cannot be undone if a later batch fails.</p>}
+        <footer className="flex justify-end gap-2 border-t border-slate-100 px-5 py-4"><button type="button" disabled={deleteBusy} onClick={() => {  setDeleteConfirmation(false); }} className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 disabled:opacity-50">Cancel</button><button type="button" disabled={deleteBusy || !selectedTargets?.length} onClick={() => void deleteSelectedRows()} className="inline-flex items-center gap-2 rounded-md bg-rose-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">{deleteBusy && <LoaderCircle aria-hidden="true" className="h-4 w-4 animate-spin" />}{deleteBusy ? "Deleting…" : `Delete ${selectedTargets?.length ?? 0} report${selectedTargets?.length === 1 ? "" : "s"}`}</button></footer>
       </section>
     </div>}
     {openColumnMenu && (() => { const column = OPERATIONS_COLUMNS.find((item) => item.key === openColumnMenu.key); if (!column) return null; return <ReportColumnActionsMenu title={column.label} position={openColumnMenu} onClose={() => setOpenColumnMenu(null)} onRename={() => headerFormatting.startRename(openColumnMenu.key, column.label)} onRestoreTitle={() => headerFormatting.restoreTitle(openColumnMenu.key)} onConfigureInput={() => headerFormatting.configure(openColumnMenu.key, column.label)} sortActions={column.sortable ? (["asc", "desc"] as const).map((direction) => ({ label: direction === "asc" ? "Sort ascending" as const : "Sort descending" as const, active: sort.key === column.key && sort.direction === direction, onClick: () => setSort({ key: column.key as EventSortKey, direction }) })) : undefined} pinned={Boolean(layout.pins[column.key])} onTogglePin={() => togglePin(column.key)} onEditColumn={() => setEditingColumnColor(column.key)} canHide={column.key !== "details" && columns.length > 1} onHide={() => setLayout((current) => ({ ...current, hidden: [...current.hidden, column.key], pins: Object.fromEntries(Object.entries(current.pins).filter(([key]) => key !== column.key)) }))} />; })()}

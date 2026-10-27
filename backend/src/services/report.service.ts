@@ -22,6 +22,36 @@ import { TRIP_SOURCE_COLUMNS, TRIP_CARGO_COLUMNS, SOURCE_LINE_COLUMNS, SOURCE_RE
 import { MASTER_LIST_COLUMNS } from "../config/master-list-columns.js";
 import { masterListAvailable } from "./master-list.service.js";
 import { MASTER_LIST_READ_COLUMNS } from "../config/master-list-read-columns.js";
+import { readTripIssuesForTripIds } from "./trip-issues.service.js";
+
+const incidentLabel = (type: string) => type === "FOU_ALERT" ? "FOU Alert" : type.charAt(0) + type.slice(1).toLowerCase();
+async function attachIncidentSummary(rows: Record<string, unknown>[]) {
+  const ids = [...new Set(rows.map(row => String(row.trip_id ?? row._trip_id ?? "")).filter(isValidUuid))];
+  const issues = await Promise.all(Array.from({ length: Math.ceil(ids.length / 100) }, (_, index) =>
+    readTripIssuesForTripIds(ids.slice(index * 100, index * 100 + 100)))).then(groups => groups.flat()).catch(() => []);
+  const byTrip = new Map<string, typeof issues>();
+  for (const issue of issues) byTrip.set(issue.trip_id, [...(byTrip.get(issue.trip_id) ?? []), issue]);
+  for (const row of rows) {
+    const tripId = String(row.trip_id ?? row._trip_id ?? "");
+    const stopId = String(row.trip_stop_id ?? row._trip_stop_id ?? "");
+    const scoped = (byTrip.get(tripId) ?? []).filter(issue => !issue.trip_stop_id || !stopId || issue.trip_stop_id === stopId);
+    if (scoped.length) {
+      row.incident_report = [...new Set(scoped.map(issue => incidentLabel(issue.type)))].join(", ");
+      row.incident_boxes = scoped.filter(issue => issue.number_of_boxes !== null).map(issue => `${incidentLabel(issue.type)}: ${issue.number_of_boxes}`).join(" · ");
+      row.incident_details = `${scoped.length} ${scoped.length === 1 ? "report" : "reports"}`;
+      continue;
+    }
+    // Imported legacy values have no physical incident record. Keep them visible
+    // and available in detailed exports without claiming an editable report exists.
+    const legacy = [row.backload_reason || row.backload_number_of_boxes != null ? "Backload" : "",
+      row.offload_reason || row.offload_number_of_boxes != null ? "Offload" : "",
+      row.incident_date || row.ir_status ? "Incident" : ""].filter(Boolean);
+    row.incident_report = legacy.join(", ");
+    row.incident_boxes = [row.backload_number_of_boxes != null ? `Backload: ${row.backload_number_of_boxes}` : "",
+      row.offload_number_of_boxes != null ? `Offload: ${row.offload_number_of_boxes}` : ""].filter(Boolean).join(" · ");
+    row.incident_details = legacy.length ? "Imported details" : "";
+  }
+}
 
 const REPORT_ROUTE_MAP = {
   combined: "v_tms_combined",
@@ -824,6 +854,7 @@ export async function getReportData(
   const key = reportKey.trim();
   if (!REPORT_KEYS.includes(key)) throw new ApiError("Report not found", 404, "REPORT_NOT_FOUND");
   const requestedSourceLines = key === "dispatch-monitoring" && getQueryString(query.source_lines) === "true";
+  const selectionOnly = getQueryString(query.selection_only) === "true";
   const csvMaster = requestedSourceLines && await masterListAvailable();
   // The CSV projection already depends on the source schema being installed.
   const sourceLines = requestedSourceLines && (csvMaster || await tripImportAvailable());
@@ -842,7 +873,7 @@ export async function getReportData(
   // These views expose the physical parent as an internal field; the public
   // trip_id alias is attached only after querying, so it cannot be filtered in SQL.
   const definition = csvMaster ? { ...sourceDefinition, columns: MASTER_LIST_COLUMNS,
-    sortableColumns: [...new Set([...sourceDefinition.sortableColumns, ...MASTER_LIST_COLUMNS.map(column => column.key)])] } : sourceDefinition;
+    sortableColumns: [...new Set([...sourceDefinition.sortableColumns, ...MASTER_LIST_COLUMNS.map(column => column.key).filter(key => !["incident_report", "incident_boxes", "incident_details"].includes(key))])] } : sourceDefinition;
   const tripIdField = legacySourceLines || ["trip-booking", "dispatch"].includes(key) ? "_trip_id" : "trip_id";
   validateArrayQuery(query.trip_id, "trip_id");
   const tripId = normalizeText(getQueryString(query.trip_id));
@@ -898,7 +929,10 @@ export async function getReportData(
     const projection=csvMaster
       ? [...new Set([...(REPORT_PROJECTIONS[viewName]??[]),...MASTER_LIST_READ_COLUMNS.split(",")])].join(",")
       : REPORT_PROJECTIONS[viewName]?.join(",")??"*";
-    const rowProjection=requestedSourceLines&&!legacySourceLines?`${projection},_source_quantity_text:quantity::text,_source_cbm_text:cbm::text,_source_unit_cbm_text:unit_cbm::text,_source_stock_quantity_text:stock_quantity::text`:projection;
+    const selectionFields=new Set(["id","trip_id","_trip_id","trip_stop_id","_trip_stop_id","trip_line_item_id","_trip_line_item_id","assignment_id","_assignment_id","billing_id","_billing_id","incident_id","_incident_id","backload_id","_backload_id","offload_id","_offload_id","store_call_id","_store_call_id","pod_record_id","pod_drive_file_id","_stop_version","_store_call_version"]);
+    const selectionProjection=projection.split(",").filter(field=>selectionFields.has(field));
+    const rowProjection=selectionOnly&&selectionProjection.length?selectionProjection.join(",")
+      :requestedSourceLines&&!legacySourceLines?`${projection},_source_quantity_text:quantity::text,_source_cbm_text:cbm::text,_source_unit_cbm_text:unit_cbm::text,_source_stock_quantity_text:stock_quantity::text`:projection;
     const mapField=(field:string)=>key==="trip-exceptions"?({backload_reason:"backload_reasons",offload_reason:"offload_reasons"} as Record<string,string>)[field]??field:key==="dispatch"&&field==="warehouse_departure_time"?"_parent_departure_at":key!=="store-calling"?field:viewName==="vw_store_calling_tracker"?({status:"contact_status",assigned_to:"assigned_to_id"} as Record<string,string>)[field]??field:({ship_to:"store_name",trucker_gc_name:"trucking_company"} as Record<string,string>)[field]??field;
     const readQuery=(head=false)=>{
     // Counting this nested view in the row request repeats its expanded plan.
@@ -966,11 +1000,7 @@ export async function getReportData(
     const data=result.data;
     let {error,count}=result;
     if(csvMaster&&!error&&count==null){
-      // Dispatch card previews are scoped to one known trip. Counting every
-      // source line in the expanded view adds no value to the card and can
-      // exceed the database statement deadline.
-      if(getQueryString(query.card_preview)==="true"&&getQueryString(query.card_meta)==="true"&&requestedTripIds.length===1)count=data?.length??0;
-      else if((data?.length??0)<limit&&(page===1||(data?.length??0)>0))count=from+(data?.length??0);
+      if((data?.length??0)<limit&&(page===1||(data?.length??0)>0))count=from+(data?.length??0);
       else if(useLeadingTrips){
         // Master CSV adds only one-to-one enrichment to the source rows. Count
         // the source view so pagination does not execute the expensive nested
@@ -984,6 +1014,9 @@ export async function getReportData(
     if (!error) {
       // The projection is assembled from validated column definitions at runtime.
       const rows = (data ?? []) as unknown as Record<string, unknown>[];
+      // Selection only needs stable physical IDs. Skip relationship, product,
+      // route and incident enrichment; these are expensive on expanded views.
+      if(selectionOnly)return {rows,pagination:buildPaginationMeta(page,limit,count??rows.length)};
       for (const row of rows) {
         if (requestedSourceLines) row._master_list = true;
         if(key==="trip-exceptions"){row.backload_reason??=row.backload_reasons;row.offload_reason??=row.offload_reasons;}
@@ -1039,6 +1072,7 @@ export async function getReportData(
         row.assigned_to = row.assigned_to_name ?? null;
       }
       if (key === "dispatch-monitoring" && !requestedSourceLines) await attachDispatchWorkbookFields(enriched);
+      if (key === "dispatch" || (key === "dispatch-monitoring" && requestedSourceLines)) await attachIncidentSummary(enriched);
       if (getQueryString(query.card_meta) === "true" && ["combined", "dispatch", "dispatch-monitoring", "trip-booking", "store-calling"].includes(key)) {
         await attachCardMetadata(enriched);
       }

@@ -84,22 +84,35 @@ export async function prepareImportDestinationDecisions(rows: SourceRow[], provi
   const prepared: Record<string, Decision> = {};
   const resolveStore = importStoreResolver();
   const chosenIdentities = new Map<string, string>();
-  for (const row of rows) {
-    const source = parseDestination({ ship_to: row.values.ship_to, province: row.values.province, city: row.values.city, customer_name: row.values.customer_name });
+  const sources = rows.map(row => parseDestination({ ship_to: row.values.ship_to, province: row.values.province, city: row.values.city, customer_name: row.values.customer_name }));
+  rows.forEach((row, index) => {
+    const source = sources[index];
     const choice = provided[row.source_identity] ?? {};
     const key = JSON.stringify([storeIdentityText(source.customer_name), destinationLookupKey(source)]);
     const chosen = JSON.stringify([choice.customer_id ?? "", choice.store_id ?? "", storeIdentityText(String(choice.province || source.province)), storeIdentityText(String(choice.city || source.city))]);
     if (chosenIdentities.has(key) && chosenIdentities.get(key) !== chosen) throw new ApiError("Products for the same Ship To / Province / City must use the same store identity. Review the destination choices.", 400);
     chosenIdentities.set(key, chosen);
-    let decision: Decision;
-    try { decision = await resolveStore(source, provided[row.source_identity] ?? {}); }
-    catch (error) { throw new ApiError(`${row.filename ?? "Source file"}, CSV row ${row.line ?? "unknown"}, ${row.values.customer_model ?? "product"}: expected Qty ${row.values.quantity}, CBM ${row.values.cbm}. Customer/store resolution failed: ${error instanceof Error ? error.message : "Review this destination identity."}`, 400, "IMPORT_DESTINATION_REVIEW_REQUIRED"); }
-    // Suggestions are informational until a user explicitly selects a candidate.
-    if (decision.pin_address_mismatch === true && decision.verified === true) throw new ApiError("Review the address against the moved map pin before verifying this destination.", 400, "LOCATION_PIN_ADDRESS_MISMATCH");
-    // Find address is an explicit action. Saving only resolves the store identity;
-    // optional map searches must never delay or determine the result of a save.
-    prepared[row.source_identity] = decision;
-  }
+  });
+  // Independent, read-only customer/store lookups can overlap. The resolver
+  // shares in-flight lookups for repeated destinations; a small limit avoids
+  // serial network latency without flooding Supabase for large imports.
+  const decisions: Decision[] = new Array(rows.length);
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(6, rows.length) }, async () => {
+    while (next < rows.length) {
+      const index = next++;
+      const row = rows[index];
+      const source = sources[index];
+      let decision: Decision;
+      try { decision = await resolveStore(source, provided[row.source_identity] ?? {}); }
+      catch (error) { throw new ApiError(`${row.filename ?? "Source file"}, CSV row ${row.line ?? "unknown"}, ${row.values.customer_model ?? "product"}: expected Qty ${row.values.quantity}, CBM ${row.values.cbm}. Customer/store resolution failed: ${error instanceof Error ? error.message : "Review this destination identity."}`, 400, "IMPORT_DESTINATION_REVIEW_REQUIRED"); }
+      if (decision.pin_address_mismatch === true && decision.verified === true) throw new ApiError("Review the address against the moved map pin before verifying this destination.", 400, "LOCATION_PIN_ADDRESS_MISMATCH");
+      decisions[index] = decision;
+    }
+  }));
+  // Find address is an explicit action. Saving only resolves store identity;
+  // optional map searches must never delay or determine the result of a save.
+  rows.forEach((row, index) => { prepared[row.source_identity] = decisions[index]; });
   return prepared;
 }
 

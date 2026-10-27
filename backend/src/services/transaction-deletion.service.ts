@@ -10,6 +10,18 @@ type StorageObject = { bucket: string; path: string; object_id?: string };
 type Job = { id: string; transaction_id: string; trip_id: string; trip_stop_id: string | null; state: string; attempts: number; storage_objects: StorageObject[]; requested_by?:string;cleanup_lease_until?:string|null };
 const fields = "id,transaction_id,trip_id,trip_stop_id,state,attempts,storage_objects,requested_by,cleanup_lease_until";
 const running = new Map<string, Promise<ReturnType<typeof result>>>();
+async function updateCleanupJournal(job:Job, patch:Record<string,unknown>){
+  const save=(values:Record<string,unknown>)=>supabaseAdmin.from("transaction_deletion_jobs").update(values).eq("id",job.id).eq("transaction_id",job.transaction_id).eq("state","PENDING_STORAGE").select(fields).maybeSingle();
+  let outcome=await save(patch);
+  // Older databases granted only these original journal columns to service_role.
+  // The retry/lease migration adds columns; completion must still be possible
+  // until its matching grant has been applied.
+  if(outcome.error&&["42501","42703","PGRST204"].includes(outcome.error.code)){
+    const compatible={...patch};delete compatible.cleanup_lease_until;delete compatible.next_attempt_at;
+    outcome=await save(compatible);
+  }
+  return outcome;
+}
 function authorize(actor: Actor) {
   if (!["ADMIN", "STAFF"].includes(actor.role.toUpperCase())) throw new ApiError("Only ADMIN or STAFF may delete transactions.", 403, "TRANSACTION_ACCESS_DENIED");
 }
@@ -30,7 +42,7 @@ async function clean(job: Job, actor: Actor) {
   const retryAt=()=>new Date(Date.now()+Math.min(86400000,30000*2**Math.min(job.attempts,11))).toISOString();
   const blocked = async (reason: string) => {
     console.warn(JSON.stringify({event:"trip_image_cleanup_deferred",operation_id:job.id,attempt:job.attempts+1}));
-    try { await supabaseAdmin.from("transaction_deletion_jobs").update({ last_error: reason,attempts:job.attempts+1,next_attempt_at:retryAt(),cleanup_lease_until:null }).eq("id", job.id).eq("state", "PENDING_STORAGE"); } catch { /* Journal remains pending even if diagnostic acknowledgement fails. */ }
+    try { await updateCleanupJournal(job,{ last_error: reason,attempts:job.attempts+1,next_attempt_at:retryAt(),cleanup_lease_until:null }); } catch { /* Journal remains pending even if diagnostic acknowledgement fails. */ }
     return result(job, reason);
   };
   if (!Array.isArray(job.storage_objects) || job.storage_objects.some((object) => !ownedObject(job, object))) return blocked("Cleanup manifest contains an unverified object. Ownership review is required.");
@@ -53,10 +65,10 @@ async function clean(job: Job, actor: Actor) {
     }
   }
   try {
-    const { data, error } = await supabaseAdmin.from("transaction_deletion_jobs").update({ attempts: job.attempts + 1,
+    const { data, error } = await updateCleanupJournal(job,{ attempts: job.attempts + 1,
       last_error: failed ? "Image cleanup failed; retry the same operation." : null,cleanup_lease_until:null,next_attempt_at:retryAt(),
       ...(failed ? {} : { state: "COMPLETE", completed_at: new Date().toISOString() }),
-    }).eq("id", job.id).eq("transaction_id", job.transaction_id).eq("state", "PENDING_STORAGE").select(fields).maybeSingle();
+    });
     console.info(JSON.stringify({event:"trip_image_cleanup",operation_id:job.id,attempt:job.attempts+1,state:!error&&data?data.state:"PENDING_STORAGE"}));
     return result(!error && data ? data as Job : job);
   } catch { return result(job); } // DB deletion is committed even if acknowledgement fails.

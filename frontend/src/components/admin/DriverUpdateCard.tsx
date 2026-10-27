@@ -18,6 +18,9 @@ const stageForEvent = (eventType: string) => {
 const colorForStage = (stage: number) =>
   ["#64748b", "#0ea5e9", "#2678b9", "#7c3aed", "#ea580c", "#059669"][stage] ?? "#dc2626";
 
+export const driverUpdateColor = (item: AdminNotification) =>
+  colorForStage(stageForEvent(String(item.metadata.event_type ?? "")));
+
 /** The same event-specific card used for live driver updates, sized for the bell panel. */
 export default function DriverUpdateCard({
   item,
@@ -30,7 +33,7 @@ export default function DriverUpdateCard({
 }) {
   const eventType = String(item.metadata.event_type ?? "");
   const stage = stageForEvent(eventType);
-  const color = colorForStage(stage);
+  const color = driverUpdateColor(item);
   const Icon = stage < 0 ? TriangleAlert
     : stage === 0 ? Warehouse
     : stage === 1 ? /FINISHED/.test(eventType.toUpperCase()) ? Package : PackageOpen

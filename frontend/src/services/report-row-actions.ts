@@ -22,7 +22,7 @@ export function physicalDeletionTargets(report:ReportKey,rows:ReportRow[],capabi
   const prior=unique.get(id);if(prior&&(prior.tripId!==tripId||prior.version!==version))return null;
   unique.set(id,{source,id,tripId,version:Number(version)});
  }
- return unique.size<=20?[...unique.values()]:null;
+ return [...unique.values()];
 }
 import {apiGetCached,apiDelete,invalidateApiCache,type ApiResponse} from "./api.service";
 import {removeCachedReportRecord,invalidateReportPageCache} from "./report.service";

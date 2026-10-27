@@ -31,6 +31,11 @@ function unique(rows: ReportRow[], ...keys: string[]) {
   return [...new Set(rows.map(row => text(row, ...keys)).filter(Boolean))];
 }
 
+function cardValues(rows:ReportRow[],field:string,...fallback:string[]) {
+  const saved=rows.flatMap(row=>Array.isArray(row[field])?row[field].filter((value):value is string=>typeof value==="string"&&Boolean(value.trim())):[]);
+  return [...new Set([...saved,...unique(rows,...fallback)])];
+}
+
 function groupsFor(rows: ReportRow[], byDispatch: boolean, byTrip: boolean) {
   const groups = new Map<string, ReportRow[]>();
   rows.forEach((row, index) => {
@@ -119,14 +124,14 @@ export default function DispatchVisualCards({rows,columns,reportKey,onOpenTrip,g
       const total = typeof meta?.card_stop_total === "number" ? meta.card_stop_total : null;
       const completed = typeof meta?.card_stop_completed === "number" ? meta.card_stop_completed : null;
       const progress = total && completed !== null ? Math.round(completed / total * 100) : null;
-      const destinations = unique(group,"store_name","ship_to","customer_name");
+      const destinations = cardValues(group,"card_destinations","store_name","ship_to","customer_name");
       const destination = destinations.length > 1 ? `${destinations[0]} +${destinations.length-1} more` : destinations[0] || "Not recorded";
       const origin = first(group,"warehouse_name","ship_from","warehouse_code","wh_code") || "Not recorded";
       const plate = first(group,"plate_number") || "Not assigned";
       const deliveryDate = dateLabel(first(group,"estimated_delivery_date","card_delivery_date","delivery_date"));
       const loadingDate = dateLabel(first(group,"loading_date","date_assigned"));
-      const dr = unique(group,"dr_number","transaction_dr_number");
-      const products = unique(group,"product_name","product_model","model_code","sku");
+      const dr = cardValues(group,"card_dr_numbers","dr_number","transaction_dr_number");
+      const products = cardValues(group,"card_products","product_name","product_model","model_code","sku");
       return <article key={cardKey} className="flex min-w-0 flex-col overflow-hidden rounded-[22px] border border-[#e4e9f0] bg-white shadow-[0_8px_24px_-18px_rgba(11,35,67,.28)] motion-safe:[animation:fadeInUp_200ms_ease-out_both]">
         <div className="mx-4 mt-4 rounded-2xl bg-[#0b2343] px-4 pb-8 pt-4 text-white">
           <div className="flex min-w-0 items-center justify-between gap-2">
@@ -159,7 +164,7 @@ export default function DispatchVisualCards({rows,columns,reportKey,onOpenTrip,g
           </dl>
           {dr.length > 0 && <p className="mt-3 truncate text-[11px] text-slate-500" title={dr.join(", ")}>DR {dr.slice(0,2).join(", ")}{dr.length > 2 ? ` +${dr.length-2} more` : ""}</p>}
           {products.length > 0 && <p className="mt-1 truncate text-[11px] text-slate-500" title={products.join(", ")}>Products shown: {products.slice(0,2).join(", ")}{products.length > 2 ? ` +${products.length-2} more` : ""}</p>}
-          {group.length === 1 && extraColumns.length > 0 && <details className="mt-3 rounded-xl border border-[#e4e9f0] px-3 py-1.5">
+          {group.length === 1 && group[0]._card_summary !== true && extraColumns.length > 0 && <details className="mt-3 rounded-xl border border-[#e4e9f0] px-3 py-1.5">
             <summary className="cursor-pointer text-[11px] font-medium text-[#0b2343]">More record information ({extraColumns.length})</summary>
             <dl className="grid gap-x-3 gap-y-2 py-2 sm:grid-cols-2">{extraColumns.map(column => {
               const value = group[0][column.key];

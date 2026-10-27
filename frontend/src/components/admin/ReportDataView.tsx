@@ -3,6 +3,7 @@ import SpreadsheetRowSelectionHeader from "./SpreadsheetRowSelectionHeader";
 import {useSpreadsheetDragSelection} from "./useSpreadsheetDragSelection";
 import {useSpreadsheetSelectAll} from "./useSpreadsheetSelectAll";
 import {fetchReportSelection} from "../../services/report.service";
+import {isTripImportSaving,subscribeTripImportActivity} from "../../services/trip-import-activity";
 import {useRegisterTopbarFilter} from "./topbarFilters";
 import {spreadsheetColumnLabel, matchesSpreadsheetSearch} from "../../services/spreadsheet-display";
 import { useSheetAutoFit } from "./useSheetAutoFit";
@@ -124,7 +125,6 @@ import {
 import SearchableRelationshipEditor from "./SearchableRelationshipEditor";
 import {
   ReportTextCellEditor,
-  ReportRowActionButton,
   ReportCellFormattingToolbar,
   ReportColumnActionsMenu,
   ReportColumnColorDialog,
@@ -397,6 +397,7 @@ const createReportSelection = () => {
 
 const ReportSelectionToolbar = memo(function ReportSelectionToolbar({
   selection: reportSelection,
+  scope,
   reportKey,
   rows,
   columns,
@@ -406,9 +407,11 @@ const ReportSelectionToolbar = memo(function ReportSelectionToolbar({
   onDeletePhysical,
   deletionCapabilities,
   canManage,
+  enabled=true,
   disabled=false,
 }: {
   selection: ReturnType<typeof createReportSelection>;
+  scope: string;
   reportKey: ReportKey;
   rows: ReportRow[];
   columns: ReportColumn[];
@@ -418,29 +421,33 @@ const ReportSelectionToolbar = memo(function ReportSelectionToolbar({
   onDeletePhysical?:(targets:PhysicalDeletionTarget[])=>void;
   deletionCapabilities:{storeCalls:boolean;emptyStops:boolean};
   canManage: boolean;
+  enabled?:boolean;
   disabled?:boolean;
 }) {
   useSyncExternalStore(reportSelection.subscribe, reportSelection.revision, reportSelection.revision);
   const keys = reportSelection.getKeys(reportKey);
   const rowsByKey=useMemo(()=>new Map(rows.flatMap(row=>{const key=getReportRowKey(reportKey,row);return key?[[key,row] as const]:[];})),[rows,reportKey]);
-  if (!canManage) return null;
-  if (!keys.length || !keys.some(key=>rowsByKey.has(key))) return null;
+  const hasSelection = enabled && canManage && keys.length > 0 && keys.some(key=>rowsByKey.has(key));
   const row = rowsByKey.get(keys[0]);
   const hasEditableFields = Boolean(row && columns.some((column) => getEditableCellTarget(row, column.key, reportKey)));
-  const canEdit = !disabled && keys.length === 1 && Boolean(row) && hasEditableFields;
+  const canEdit = hasSelection && !disabled && keys.length === 1 && Boolean(row) && hasEditableFields;
   const selected=keys.map(key=>rowsByKey.get(key));
   const tripIds = selectedParentTripIds(selected);
   const physicalRows=selected.filter((candidate):candidate is ReportRow=>Boolean(candidate));
   // Store Calling rows represent calls, not their trip's cargo. Operational
   // event rows likewise must not offer a cargo deletion just because IDs coexist.
-  const targets=!onDeleteTrips && physicalRows.length===keys.length
+  const targets=hasSelection&&!onDeleteTrips && physicalRows.length===keys.length
     ?reportLineItemDeletionTargets(reportKey,physicalRows):null;
-  const physicalTargets=!targets&&!onDeleteTrips&&physicalRows.length===keys.length?physicalDeletionTargets(reportKey,physicalRows,deletionCapabilities):null;
-  return <>{canEdit&&<ReportRowActionButton action="edit" onClick={onEdit} />}
-    {physicalTargets&&onDeletePhysical&&<ReportRowActionButton action="delete" disabled={disabled} label={reportKey==="store-calling"?"Delete selected store calls only":"Delete selected empty stops only"} onClick={()=>onDeletePhysical(physicalTargets)}/>}
-    {targets&&onDeleteRows&&<ReportRowActionButton action="delete" disabled={disabled} label="Delete selected line items only" onClick={()=>onDeleteRows(targets)}/>}
-    {onDeleteTrips&&tripIds&&tripIds.length>0&&<ReportRowActionButton action="delete" disabled={disabled} label={tripIds.length===1?"Delete Entire Trip":"Delete Selected Trips"} onClick={()=>onDeleteTrips(physicalRows)}/>}
-  </>;
+  const physicalTargets=hasSelection&&!targets&&!onDeleteTrips&&physicalRows.length===keys.length?physicalDeletionTargets(reportKey,physicalRows,deletionCapabilities):null;
+  useRegisterTopbarAction(scope,"edit",canEdit?{label:"Edit selected row",onClick:onEdit}:null);
+  useRegisterTopbarAction(scope,"delete",hasSelection&&physicalTargets&&onDeletePhysical
+    ?{label:reportKey==="store-calling"?"Delete selected store calls only":"Delete selected empty stops only",disabled,onClick:()=>onDeletePhysical(physicalTargets)}
+    :hasSelection&&targets&&onDeleteRows
+      ?{label:"Delete selected line items only",disabled,onClick:()=>onDeleteRows(targets)}
+      :hasSelection&&onDeleteTrips&&tripIds?.length
+        ?{label:tripIds.length===1?"Delete Entire Trip":"Delete Selected Trips",disabled,onClick:()=>onDeleteTrips(physicalRows)}
+        :null);
+  return null;
 
 });
 
@@ -713,7 +720,7 @@ export default function ReportDataView({
   const moreRowsFlight=useRef(false);
   const [moreRowsError,setMoreRowsError]=useState("");
   const [dataColumns, setColumns] = useState<ReportColumn[]>([]);
-  const columns=useMemo(()=>{const defaults=dataColumns.map(column=>({...column,title:spreadsheetColumnLabel(column.title)}));return defaults.length?rows.length?withTripDetailsColumn(defaults.filter(column=>column.key!=="trip_issues"),transactionView||reportKey==="combined"):defaults.filter(column=>!["trip_issues","trip_details"].includes(column.key)):[];},[dataColumns,rows.length,transactionView,reportKey]);
+  const columns=useMemo(()=>{const defaults=dataColumns.map(column=>({...column,title:spreadsheetColumnLabel(column.title)}));return defaults.length?withTripDetailsColumn(defaults.filter(column=>!["trip_issues","trip_details"].includes(column.key)),transactionView||reportKey==="combined"):[];},[dataColumns,transactionView,reportKey]);
   const sharedWidths = useSharedTableWidths(transactionView ? "trips" : `report:${reportKey}`, accessToken, ["ADMIN", "STAFF"].includes(profile?.role ?? ""));
   const saveSharedColumnWidth = sharedWidths.save;
   const columnLayoutStorageKey = `alzhen:report-column-layout:${profile?.id ?? "user"}:${reportKey}`;
@@ -842,7 +849,10 @@ export default function ReportDataView({
     const layout=sharedDesign.loaded?{order:columns.map(c=>c.key).sort((a,b)=>(design[a]?.position??1001)-(design[b]?.position??1001)),hidden:Object.keys(design).filter(k=>design[k].hidden),colors:Object.fromEntries(Object.entries(design).filter(([,v])=>v.color).map(([k,v])=>[k,v.color!]))}:{...localColumnLayout,colors:{},hidden:[],order:columns.map(column=>column.key)};
     return {...layout,widths:columnResize?localColumnLayout.widths:{...(sharedWidths.loaded?{}:localColumnLayout.widths),...sharedWidths.widths,...autoFit.widths}};
   },[sharedDesign.columns,sharedDesign.loaded,columns,localColumnLayout,columnResize,sharedWidths.loaded,sharedWidths.widths,autoFit.widths]);
-  const pinnedColumnSides=localPinnedColumnSides;
+  // Keep Details pinned by default, but honor an explicit shared pin or unpin.
+  const pinnedColumnSides=useMemo(()=>columns.some(column=>column.key==="trip_details")&&sharedDesign.columns.trip_details?.pin===undefined
+    ?{...localPinnedColumnSides,trip_details:"right" as const}
+    :localPinnedColumnSides,[columns,localPinnedColumnSides,sharedDesign.columns.trip_details?.pin]);
   useEffect(()=>{let live=true;if(sharedDesign.loaded){const next=Object.fromEntries(Object.entries(sharedDesign.columns).flatMap(([k,v])=>v.pin?[[k,v.pin]]:[])) as Record<string,"left"|"right">;queueMicrotask(()=>{if(live)setPinnedColumnSides(next);});}return()=>{live=false;};},[sharedDesign.columns,sharedDesign.loaded]);
   const cellFormats=useMemo(()=>Object.fromEntries(Object.entries(sharedDesign.columns).flatMap(([column,design])=>Object.entries(design.cells??{}).flatMap(([row,format])=>format?[[reportCellFormatKey(row,column),format]]:[]))),[sharedDesign.columns]);
   const [dropdownOptions, setDropdownOptions] = useState<DropdownOption[]>([]);
@@ -1004,13 +1014,16 @@ export default function ReportDataView({
   const snapshotKey = JSON.stringify({ accessToken, activeSortBy, appliedFilters: queryFilters, appliedSearch: effectiveSearch, page, reportKey, sortOrder, viewMode });
   const pageOptions = useMemo(() => ({
     page,
-    limit: 50,
+    // A full 50-row Master List page forces an extra exact count of the
+    // expanded source view. The 100-row window also avoids a second read for
+    // the common 50–100-row import while table rows remain virtualized.
+    limit: allTripRecords && viewMode === "table" ? 100 : 50,
     search: effectiveSearch,
     sortBy: activeSortBy,
     sortOrder,
     filters: queryFilters,
-    cardMeta: transactionView || viewMode === "visual",
-  }), [activeSortBy, queryFilters, effectiveSearch, page, sortOrder, viewMode, transactionView]);
+    cardMeta: viewMode === "visual",
+  }), [activeSortBy, queryFilters, effectiveSearch, page, sortOrder, viewMode, allTripRecords]);
   const formulas=useOperationalFormulas({viewport:tableViewportRef,token:accessToken,table:transactionView?"trips":`report:${reportKey}`,rows:displayedRows,columns:formulaColumns,identity:physicalRowIdentity,sourceEditor:prepareFormulaSource,virtualRows:virtualGridRows,onSelect:syncGridCellSelection,rowOffset:sheetRowOffset,canEdit:["ADMIN","STAFF"].includes(profile?.role??"")&&!headerFormatting.key,paused:Boolean(editingCell||editModalOpen||fillGesture)});
   const formulaFocusIndex=useMemo(()=>formulas.selectedIdentity?(formulaRowLookup.get(formulas.selectedIdentity)?.index??-1):-1,[formulas.selectedIdentity,formulaRowLookup]);
   const windowColumns=useMemo(()=>renderedGridColumns.map(column=>({key:column.key,width:columnLayout.widths?.[column.key]??defaultReportColumnWidth(column)})),[renderedGridColumns,columnLayout.widths]);
@@ -1036,6 +1049,7 @@ export default function ReportDataView({
   const targetedDirty=useRef(new Set<string>());
   const savedTripRefreshes=useRef(new Map<string,string>());
   function refreshOneTrip(tripId:string){
+    if(isTripImportSaving()){realtimeRefreshDirty.current=true;return true;}
     if(!allTripRecords||!accessToken||!tripId||activeReportEdit.current||loadedSnapshotKeyRef.current!==snapshotKey)return false;
     const targetKey=`${snapshotKey}:${tripId}`;
     if(targetedRefreshes.current.has(targetKey)){targetedDirty.current.add(targetKey);return true;}
@@ -1183,6 +1197,7 @@ export default function ReportDataView({
     }
     const targetSnapshot = snapshotKeyRef.current;
     if (
+      isTripImportSaving() ||
       activeReportEdit.current ||
       cellSaveInFlight.current ||
       (inFlightReportQueries.current.get(targetSnapshot) ?? 0) > 0 ||
@@ -1207,8 +1222,15 @@ export default function ReportDataView({
   };
   const scheduleRealtimeRefreshRef = useRef(scheduleRealtimeRefresh);
   scheduleRealtimeRefreshRef.current = scheduleRealtimeRefresh;
+  useEffect(() => subscribeTripImportActivity(() => {
+    if (!isTripImportSaving() && realtimeRefreshDirty.current) {
+      realtimeRefreshDirty.current = false;
+      savedTripRefreshes.current.clear();
+      scheduleRealtimeRefreshRef.current();
+    }
+  }), []);
   useEffect(() => {
-    if (activeReportEdit.current) return;
+    if (activeReportEdit.current || isTripImportSaving()) return;
     if (realtimeRefreshDirty.current) {
       savedTripRefreshes.current.clear();
       realtimeRefreshDirty.current = false;
@@ -1831,13 +1853,20 @@ export default function ReportDataView({
   function selectAllGridCells(){
     if(!accessToken||!presentationColumns.length||editingCell||editModalOpen||fillGesture||formulas.draftPending)return;
     setSelectionError("");
-    void selectAllRequest.run(current=>fetchReportSelection(reportKey,accessToken,pageOptions,current),matching=>{
+    const applySelection=(matching:ReportRow[])=>{
       const keys=matching.flatMap(row=>{const key=getReportRowKey(reportKey,row);return key?[key]:[];});
       headerFormatting.clear();setSelectionRecords(matching);reportSelection.selectOnly(reportKey,keys);
       if(!keys.length){setCellSelection(null);return;}
       const anchor=physicalGridKeys.find(key=>keys.includes(key))??keys[0];
       setCellSelection({anchorRowKey:anchor,focusRowKey:anchor,anchorField:presentationColumns[0].key,focusField:presentationColumns.at(-1)!.key,mode:"row",rows:keys});
-    });
+    };
+    // The complete filtered result is already in the collection. Re-querying
+    // its expanded report view makes even a two-row Select All wait on SQL.
+    if(pagination && pagination.total===displayedRows.length && displayedRows.every(row=>getReportRowKey(reportKey,row))){
+      applySelection(displayedRows);
+      return;
+    }
+    void selectAllRequest.run(current=>fetchReportSelection(reportKey,accessToken,pageOptions,current),applySelection);
   }
   function openCellContextMenu(event:MouseEvent<HTMLElement>,key:string,field:string){
     event.preventDefault();event.stopPropagation();headerFormatting.clear();
@@ -2901,7 +2930,7 @@ export default function ReportDataView({
     onChange: value => { setAppliedFilters(current => ({...current,[quickFilterConfig.field]:value})); setPage(1); },
   } : null);
   return (
-    <TripIssuesProvider token={accessToken} enabled={Boolean(transactionView&&accessToken)} tripIds={issueTripIds} onChanged={()=>{if(appliedFilters.issue_filter && appliedFilters.issue_filter !== "All")scheduleRealtimeRefreshRef.current();}}>
+    <TripIssuesProvider token={accessToken} enabled={Boolean(accessToken&&viewMode==="table"&&(transactionView||reportKey==="dispatch"))} tripIds={issueTripIds} onChanged={()=>{if(appliedFilters.issue_filter && appliedFilters.issue_filter !== "All")scheduleRealtimeRefreshRef.current();}}>
     <div className="space-y-2">
       <div className={REPORT_TOOLBAR_ROW_CLASS} style={showVisualCards ? {display:"none"} : undefined}>
         {pageTitle && (
@@ -2941,9 +2970,11 @@ export default function ReportDataView({
           {activeError && <button type="button" onClick={() => { if (accessToken) retryReportRead(reportKey, accessToken); setRetryVersion(value => value + 1); }} className="h-9 rounded border border-slate-200 px-3 text-xs text-slate-600">Retry loading</button>}
           <ReportSelectionToolbar
             selection={reportSelection}
+            scope={topbarSearchScope??"reports"}
             reportKey={reportKey}
             deletionCapabilities={deletionCapabilities} onDeletePhysical={setPhysicalDeletion}
             canManage={["ADMIN", "STAFF"].includes(profile?.role ?? "")}
+            enabled={viewMode==="table"}
             rows={selectionRows}
             disabled={selectAllRequest.busy}
             columns={columns}
@@ -3313,7 +3344,7 @@ export default function ReportDataView({
                                   : "text-left"
                               }`}>
                               <CollaborativeCell target={liveDraftCell(transactionView?"trips":reportKey,editableTarget,draftTrackerColumns.transmittal_ref)} selectionPresence={remoteEditors}>{formulas.render(row,column.key,<>
-                              {column.key==="trip_issues"? <TripIssueCell token={accessToken??""} tripId={String(row.trip_id??row._trip_id??"")} stopId={typeof (row.trip_stop_id??row._trip_stop_id)==="string"?String(row.trip_stop_id??row._trip_stop_id):null} status={row.trip_status??row.status}/> : column.key==="trip_details"?(()=>{
+                              {["incident_report","incident_boxes","incident_details"].includes(column.key)? <TripIssueCell token={accessToken??""} tripId={String(row.trip_id??row._trip_id??"")} stopId={typeof (row.trip_stop_id??row._trip_stop_id)==="string"?String(row.trip_stop_id??row._trip_stop_id):null} status={row.trip_status??row.status} display={column.key==="incident_boxes"?"boxes":column.key==="incident_details"?"details":"types"} legacy={row}/> : column.key==="trip_issues"? <TripIssueCell token={accessToken??""} tripId={String(row.trip_id??row._trip_id??"")} stopId={typeof (row.trip_stop_id??row._trip_stop_id)==="string"?String(row.trip_stop_id??row._trip_stop_id):null} status={row.trip_status??row.status}/> : column.key==="trip_details"?(()=>{
                                 const target=tripDetailsTarget(row);
                                 return target ? <span className="inline-flex items-center gap-1">{transactionView&&<TripIssueCell iconOnly token={accessToken??""} tripId={target.tripId} stopId={target.stopId??null} status={row.trip_status??row.status}/>}<SpreadsheetDetailsAction href={target.href} label={`View trip details for ${rowText(row,"dispatch_number","trip_number") || "trip"}`} onClick={event => { event.stopPropagation(); if (!event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) { event.preventDefault(); if (onOpenTrip) onOpenTrip(target.tripId, target.stopId); else navigate(target.href); } }} /></span> : <span aria-label="Trip details unavailable" />;
                               })():isEditing && editingCell ? (

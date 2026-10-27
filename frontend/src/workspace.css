@@ -152,6 +152,13 @@ body { background: var(--al-outer); }
 .al-topbar button[aria-label="Calendar"][aria-current="page"]:hover { background: var(--al-blue); border-color: var(--al-blue); color: #fff; }
 .al-topbar-leading { display:flex; align-items:center; gap:9px; min-width:0; justify-self:start; }
 .al-topbar-center { display: flex; align-items: center; justify-content: flex-end; gap: 8px; min-width: 0; padding-left: 0; }
+.al-topbar-selection-actions { display:flex; flex:none; align-items:center; gap:6px; }
+.al-topbar-selection-action { display:grid; place-items:center; width:40px; height:40px; border:1px solid var(--al-border); border-radius:50%; background:#fff; color:var(--al-navy); }
+.al-topbar-selection-action:hover { border-color:#b8c8da; background:#edf1f6; }
+.al-topbar-selection-delete { color:#b54747; }
+.al-topbar-selection-delete:hover { border-color:#f0caca; background:#fff3f3; }
+.al-topbar-selection-action:focus-visible { outline:2px solid var(--al-navy); outline-offset:2px; }
+.al-topbar-selection-action:disabled { cursor:not-allowed; opacity:.5; }
 .al-topbar-primary-action { display:inline-flex; flex:none; align-items:center; justify-content:center; gap:7px; height:40px; padding:0 14px; border:1px solid #0b2343; border-radius:999px; background:#0b2343; color:#fff; font-size:12px; font-weight:600; white-space:nowrap; transition:background-color .16s ease,border-color .16s ease; }
 .al-topbar-primary-action:hover { background:#17385f; border-color:#17385f; }
 .al-topbar-primary-action:focus-visible { outline:2px solid #0b2343; outline-offset:2px; }

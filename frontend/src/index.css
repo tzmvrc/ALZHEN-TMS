@@ -187,6 +187,25 @@ select {
   animation: toast-out 180ms ease-in forwards;
 }
 
+@keyframes driver-popup-enter {
+  from { opacity: 0; transform: translate3d(16px, -6px, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+@keyframes driver-popup-exit {
+  from { opacity: 1; transform: translate3d(0, 0, 0); }
+  to { opacity: 0; transform: translate3d(16px, -6px, 0); }
+}
+.driver-popup-in { animation: driver-popup-enter 240ms ease-out both; }
+.driver-popup-out { animation: driver-popup-exit 260ms ease-in both; }
+@keyframes driver-popup-countdown {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}
+.driver-popup-countdown { animation-name: driver-popup-countdown; animation-timing-function: linear; animation-fill-mode: forwards; }
+@media (prefers-reduced-motion: reduce) {
+  .driver-popup-in, .driver-popup-out { animation-duration: 1ms; }
+}
+
 @keyframes viewer-pop-in {
   from {
     opacity: 0;
