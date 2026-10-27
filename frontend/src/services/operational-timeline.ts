@@ -1,10 +1,12 @@
+import {DELIVERY_STOP_STEPS} from './delivery-workflow';
+import type {ConfirmedProgressState} from './operational-progress';
 import type {TripEvent,TripRecord} from './trip.service';
 import type {OperationsReportData,ReportEvidence,ScopeReport} from './operations-report.service';
 import type {DeliveryEvent} from './delivery.service';
 import type {assignmentWorkspace} from './trip-workspace-data';
 import {deliveryLabel} from './delivery.service';
 
-export type OperationalMilestone={key:string;title:string;type:string;time:string|null;stopId:string|null;location:string;scope:'assignment'|'trip-wide';event?:DeliveryEvent;remarks?:string|null;files:ReportEvidence[];report?:ScopeReport;reportType?:'LOADING'|'UNLOADING'|'BACKLOAD'|'OFFLOAD';reportId?:string;pending?:boolean;activity?:boolean;derived?:boolean;ongoing?:boolean};
+export type OperationalMilestone={key:string;title:string;type:string;time:string|null;stopId:string|null;location:string;scope:'assignment'|'trip-wide';event?:DeliveryEvent;remarks?:string|null;files:ReportEvidence[];report?:ScopeReport;reportType?:'LOADING'|'UNLOADING'|'BACKLOAD'|'OFFLOAD';reportId?:string;pending?:boolean;activity?:boolean;derived?:boolean;ongoing?:boolean;podStatus?:string;completionApproved?:boolean};
 export type OperationalPhase={key:string;title:string;subtitle:string;milestones:OperationalMilestone[]};
 const validTime=(v:unknown):string|null=>typeof v==='string'&&Number.isFinite(Date.parse(v))?v:null;
 const canonical=(type:string)=>['STORE_ARRIVAL','DELIVERY_ARRIVAL'].includes(type)?'ARRIVED':type;
@@ -25,24 +27,26 @@ export const isOperationalIncident=(m:OperationalMilestone)=>isOperationalReport
 export function milestoneTone(m:OperationalMilestone):'pending'|'blue'|'amber'|'red'|'green'{
  if(m.pending||!m.time)return 'pending';
  if(m.ongoing)return 'blue';
+ if(m.type==='STOP_DEPARTURE'&&m.completionApproved===false)return 'amber';
  const title=`${m.type} ${m.title}`;
  if(/accident|breakdown|serious|fault/i.test(title))return 'red';
  if(/traffic|delay|waiting|road closure/i.test(title))return 'amber';
  return m.activity||m.type==='CUSTOM_STATUS'||m.type==='INCIDENT'?'blue':'green';
 }
 const chronological=(a:OperationalMilestone,b:OperationalMilestone)=>Date.parse(a.time??'')-Date.parse(b.time??'')||(a.type==='IN_TRANSIT'?-1:b.type==='IN_TRANSIT'?1:a.key.localeCompare(b.key));
-/** Sort confirmed events by server time, retaining unrecorded steps at their planned anchor. */
+/** Keep required milestones in sequence and insert custom activity by its saved time. */
 export function mergeOperationalActivity(base:OperationalMilestone[],activity:OperationalMilestone[]){
- const confirmed=[...new Map([...base,...activity].filter(m=>m.time).map(m=>[m.key,m])).values()].sort(chronological);
- for(const [index,m] of base.entries()){
-  if(m.time)continue;
-  const next=base.slice(index+1).find(n=>n.time);
-  const at=next?confirmed.findIndex(n=>n.key===next.key):-1;
-  if(at>=0)confirmed.splice(at,0,m);else confirmed.push(m);
+ // Keep required steps in workflow order even when historical timestamps differ.
+ const merged=[...base],known=new Set(base.map(m=>m.key));
+ for(const m of [...activity].filter(m=>m.time&&!known.has(m.key)).sort(chronological)){
+  const next=merged.findIndex(n=>n.time&&Date.parse(n.time)>Date.parse(m.time!));
+  if(next>=0)merged.splice(next,0,m);
+  else {let last=-1;for(const [i,n]of merged.entries())if(n.time)last=i;merged.splice(last+1,0,m);}
+  known.add(m.key);
  }
- return confirmed;
+ return merged;
 }
-export function operationalPhases({events,assignmentId,trip,data,operations,origin}:{events:TripEvent[];assignmentId:string;trip:TripRecord;data:ReturnType<typeof assignmentWorkspace>;operations:OperationsReportData|null;origin:string}):OperationalPhase[]{
+export function operationalPhases({events,assignmentId,trip,data,operations,origin,podStates=[]}:{events:TripEvent[];assignmentId:string;trip:TripRecord;data:ReturnType<typeof assignmentWorkspace>;operations:OperationsReportData|null;origin:string;podStates?:ConfirmedProgressState[]}):OperationalPhase[]{
  const unique=new Map<string,TripEvent>();
  for(const e of events){if(e.trip_id!==String(trip.id))continue;const previous=unique.get(e.id) as (TripEvent&Partial<DeliveryEvent>)|undefined;if(!previous||Number((e as TripEvent&Partial<DeliveryEvent>).delivery_version??0)>=Number(previous.delivery_version??0))unique.set(e.id,e);}
  const rows=[...unique.values()],owned=rows.filter(e=>e.assignment_id===assignmentId||!e.assignment_id&&e.notes?.includes(`[assignment:${assignmentId}]`));
@@ -55,19 +59,26 @@ export function operationalPhases({events,assignmentId,trip,data,operations,orig
   const reportType=kind==='LOADING'||kind==='UNLOADING'||kind==='BACKLOAD'||kind==='OFFLOAD'?kind:undefined;
   return {key:e.id,title:event.delivery_metadata.title||deliveryLabel(e.event_type),type:canonical(e.event_type),time:validTime(e.event_time),stopId:e.trip_stop_id??null,location:data.stops.find(s=>s.id===e.trip_stop_id)?.name??origin,scope,event,remarks:e.notes,files:reportId?reportFiles(reportId):[],report:reportRows.find(r=>r.id===reportId),reportId,reportType};
  };
+ const scopedOnly=data.stops.some(s=>s.shared)||rows.some(e=>e.assignment_id&&e.assignment_id!==assignmentId);
  const used=new Set<string>();
  const milestone=(type:string,title:string,stopId:string|null,location:string,fallback?:unknown):OperationalMilestone=>{
-  const eligible=owned.concat(rows.filter(e=>!e.assignment_id&&!e.notes?.match(/\[assignment:[0-9a-f-]{36}\]/i)));
-  const saved=eligible.filter(e=>canonical(e.event_type)===type&&(e.trip_stop_id??null)===stopId).sort((a,b)=>Date.parse(b.event_time)-Date.parse(a.event_time))[0];
+  const eligible=owned.concat(rows.filter(e=>!scopedOnly&&!e.assignment_id&&!e.notes?.match(/\[assignment:[0-9a-f-]{36}\]/i)));
+  const saved=eligible.filter(e=>canonical(e.event_type)===type&&(e.trip_stop_id??null)===stopId).sort((a,b)=>(type==='POD_SUBMITTED'?1:-1)*(Date.parse(a.event_time)-Date.parse(b.event_time)))[0];
   if(saved){used.add(saved.id);return {...normalize(saved,owned.includes(saved)?'assignment':'trip-wide'),location};}
-  const time=validTime(fallback);return {key:`${stopId??'warehouse'}:${type}`,type,title,time,stopId,location,scope:time?'trip-wide':'assignment',files:[],pending:!time};
+  const time=scopedOnly?null:validTime(fallback);return {key:`${stopId??'warehouse'}:${type}`,type,title,time,stopId,location,scope:time?'trip-wide':'assignment',files:[],pending:!time};
  };
  const load=operations?.loading[0];
  const loading=[milestone('WAREHOUSE_ARRIVAL','Warehouse arrival',null,origin,load?.warehouse_arrival_at),milestone('LOADING_STARTED','Loading started',null,origin,load?.loading_start_at),milestone('LOADING_FINISHED','Loading finished',null,origin,load?.loading_finished_at),milestone('WAREHOUSE_DEPARTURE','Departed warehouse',null,origin,trip.departure_from_warehouse_at)];
  if(load&&reportFiles(load.id).length)loading.push({key:`loading-report:${load.id}`,title:'Loading report evidence',type:'LOADING_REPORT',time:null,stopId:null,location:origin,scope:'trip-wide',files:reportFiles(load.id),reportType:'LOADING',reportId:load.id});
  const phases:OperationalPhase[]=[{key:'loading',title:'Loading',subtitle:origin,milestones:loading}];
  for(const stop of data.stops){
-  const steps=[milestone('IN_TRANSIT','On the way',stop.id,stop.name),milestone('ARRIVED','Destination arrival',stop.id,stop.name,stop.arrival_time),milestone('UNLOADING_STARTED','Unloading started',stop.id,stop.name,stop.start_unloading_time),milestone('UNLOADING_FINISHED','Unloading finished',stop.id,stop.name,stop.finish_unloading_time),milestone('STOP_DEPARTURE','Departed destination',stop.id,stop.name,stop.departure_time)];
+  const state=podStates.find(s=>s.assignment_id===assignmentId&&s.trip_stop_id===stop.id);
+  const steps=[milestone('IN_TRANSIT','On the way',stop.id,stop.name),...DELIVERY_STOP_STEPS.map(step=>{
+   const saved=milestone(step.type,step.title,stop.id,stop.name,step.type==='POD_SUBMITTED'?state?.pod_submitted_at:stop[step.field as keyof typeof stop]);
+   // A projection is already scoped to this assignment, including legacy receipt records.
+   if(step.type==='POD_SUBMITTED'&&!saved.time&&validTime(state?.pod_submitted_at)){saved.time=validTime(state?.pod_submitted_at);saved.scope='assignment';saved.pending=false;}
+   return {...saved,title:step.title,...(step.type==='POD_SUBMITTED'?{podStatus:state?.pod_approved?'Approved':saved.time?(state?.pod_status==='REJECTED'?'Rejected - upload replacement':'Uploaded - approval pending'):'Not uploaded'}:{}),...(step.type==='STOP_DEPARTURE'?{completionApproved:state?.pod_approved??false}: {})};
+  })];
   // This visual stage is activated by a confirmed departure; it is not a second event.
   const previous=phases.at(-1)!,source=previous.milestones.find(m=>m.type===(previous.key==='loading'?'WAREHOUSE_DEPARTURE':'STOP_DEPARTURE')&&m.time);
   if(!steps[0].time&&source){steps[0]={...steps[0],time:source.time,pending:false,derived:true,ongoing:!steps[1].time,scope:source.scope,event:source.event,remarks:'Activated by saved departure.'};}
@@ -76,7 +87,7 @@ export function operationalPhases({events,assignmentId,trip,data,operations,orig
   phases.push({key:stop.id,title:`Delivery stop ${stop.sequence}`,subtitle:stop.name,milestones:steps});
  }
  const reports:OperationalMilestone[]=[],activity:OperationalMilestone[]=[];
- for(const e of rows.filter(e=>!used.has(e.id))){
+ for(const e of rows.filter(e=>!used.has(e.id)&&!['PARTIAL_UNLOAD','ASSIGNMENT_COMPLETED','POD_SUBMITTED'].includes(e.event_type))){
   const shared=!e.assignment_id&&!e.notes?.match(/\[assignment:[0-9a-f-]{36}\]/i);
   if(!shared&&!owned.some(row=>row.id===e.id))continue;
   const m=normalize(e,shared?'trip-wide':'assignment');
@@ -110,7 +121,8 @@ export function operationalPhases({events,assignmentId,trip,data,operations,orig
 }
 
 export function operationalProgress(phase:OperationalPhase){
- const complete=phase.milestones.some(m=>/^(WAREHOUSE_DEPARTURE|STOP_DEPARTURE|ASSIGNMENT_COMPLETED)$/.test(m.type)&&m.time&&m.scope==='assignment');
+ const required=phase.milestones.filter(m=>['WAREHOUSE_ARRIVAL','LOADING_STARTED','LOADING_FINISHED','WAREHOUSE_DEPARTURE'].includes(m.type)||DELIVERY_STOP_STEPS.some(step=>step.type===m.type));
+ const complete=required.length>0&&required.every(m=>!!m.time&&(m.type!=='STOP_DEPARTURE'||m.completionApproved!==false))&&phase.milestones.some(m=>/^(WAREHOUSE_DEPARTURE|STOP_DEPARTURE)$/.test(m.type)&&m.time&&m.scope==='assignment');
  let latest=-1;
  for(const [i,m] of phase.milestones.entries())if(m.time&&(latest<0||Date.parse(m.time)>=Date.parse(phase.milestones[latest].time!)))latest=i;
  return {complete,index:complete?Math.max(0,phase.milestones.length-1):Math.max(0,latest),latest};

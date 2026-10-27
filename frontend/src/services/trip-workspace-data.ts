@@ -1,8 +1,9 @@
+import type {ConfirmedProgressState} from './operational-progress';
 import type {TripAssignmentRecord,TripChildRecord} from './trip.service';
 import type {RoadTrip} from './road-routing';
 export type Allocation={id:string;assignment_id:string;trip_line_item_id:string;quantity:string|number;allocated_cbm:string|number};
 export type Responsibility={assignment_id:string;trip_stop_id:string;progress:string};
-export type Convoy={assignments:TripAssignmentRecord[];stops:TripChildRecord[];cargo:TripChildRecord[];allocations:Allocation[];responsibilities:Responsibility[]};
+export type Convoy={operational_state?:ConfirmedProgressState[];assignments:TripAssignmentRecord[];stops:TripChildRecord[];cargo:TripChildRecord[];allocations:Allocation[];responsibilities:Responsibility[]};
 export const tripText=(value:unknown,fallback='Not recorded')=>typeof value==='string'&&value.trim()?value:typeof value==='number'?String(value):fallback;
 export const tripAmount=(value:number)=>value.toLocaleString('en-PH',{maximumFractionDigits:2});
 export const tripDone=(value:unknown)=>['COMPLETED','DELIVERED','FINISHED'].includes(String(value??'').toUpperCase());

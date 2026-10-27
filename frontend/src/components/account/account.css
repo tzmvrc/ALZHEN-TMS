@@ -13,3 +13,5 @@
 .account-avatar{display:flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden;border-radius:50%;background:var(--account-soft);border:1px solid var(--account-border)}
 .account-workspace th{background:var(--account-soft);color:var(--account-muted)}.account-workspace td,.account-workspace th{border-color:var(--account-border)}
 .account-workspace ul.divide-y > :not(:last-child){border-color:var(--account-border)}
+
+.operational-email-settings .account-button,.operational-email-settings .account-input{min-height:44px}

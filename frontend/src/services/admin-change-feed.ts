@@ -12,7 +12,7 @@ export const ADMIN_CHANGE_TOPICS = [
   "flex_tables", "flex_columns", "flex_rows", "flex_cells", "flex_dropdown_options",
   "flex_table_permissions", "flex_cell_mentions", "shared_table_column_widths",
   "audit_logs", "flex_audit_events", "report_audit_logs", "pod_review_events",
-  "driver_trip_updates", "offload_deletion_jobs", "transaction_deletion_jobs",
+  "operational_email_outbox", "operational_email_settings", "driver_trip_updates", "offload_deletion_jobs", "transaction_deletion_jobs",
 ] as const;
 const topics = new Set<string>(ADMIN_CHANGE_TOPICS);
 

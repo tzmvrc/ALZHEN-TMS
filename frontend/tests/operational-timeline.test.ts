@@ -41,3 +41,9 @@ test('next assigned stop takes its travel activation from the previous stop depa
  const next=operationalPhases(source).find(p=>p.key==='next-stop')!;
  assert.equal(next.milestones[0].type,'IN_TRANSIT');assert.equal(next.milestones[0].event?.id,'leave');assert.equal(next.milestones[0].time,'2026-10-27T12:00:00Z');
 });
+
+
+test('another truck departure cannot activate the selected truck through trip-wide timestamp fallbacks',()=>{
+ const value=input([event('other-depart','WAREHOUSE_DEPARTURE',10,undefined,'other-assignment')]);value.trip.departure_from_warehouse_at='2026-10-27T10:00:00Z';const phases=operationalPhases(value);
+ assert.equal(phases[0].milestones.find(m=>m.type==='WAREHOUSE_DEPARTURE')?.time,null);assert.equal(phases.find(p=>p.key===stop)?.milestones.find(m=>m.type==='IN_TRANSIT')?.time,null);
+});

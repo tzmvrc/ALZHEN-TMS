@@ -26,11 +26,12 @@ test("convoy saves use one atomic RPC, preserve physical IDs, and expose version
   }finally{db.rpc=old;}
 });
 test("convoy detail reads page through all physical cargo and retain assignment company relationships",async()=>{
- const old=db.from;const reads:any[]=[];
+ const old=db.from,oldRpc=db.rpc;const reads:any[]=[];
+ db.rpc=(async(name:string,payload:any)=>{assert.equal(name,"read_confirmed_operational_state_batch_v1");assert.deepEqual(payload.p_trips,[trip]);return {data:[],error:null};}) as typeof oldRpc;
  const cargo=Array.from({length:1001},(_,index)=>({id:uuid(1000+index),trip_id:trip}));
  (db as any).from=(table:string)=>{const query:any={select:()=>query,eq:()=>query,order:()=>query,
   maybeSingle:async()=>({data:table==="trips"?{id:trip}:{total_cbm:80,assigned_cbm:0,remaining_cbm:80},error:null}),
   range:async(from:number,to:number)=>{reads.push({table,from,to});const rows=table==="trip_line_items"?cargo:table==="trip_truck_assignments"?[{id:assignment,truck:{trucking_company:{id:uuid(12),name:"Assigned company"}}}]:[];return {data:rows.slice(from,to+1),error:null};}};return query;};
  try{const result=await readTripConvoy(actor,trip);assert.equal(result.cargo.length,1001);assert.equal(result.assignments[0].trucking_company.name,"Assigned company");assert.ok(reads.some(read=>read.table==="trip_line_items"&&read.from===1000));}
- finally{db.from=old;}
+ finally{db.from=old;db.rpc=oldRpc;}
 });

@@ -1,3 +1,4 @@
+import operationalEmailRoutes from './routes/operational-email.routes.js';
 import {reportReadTiming} from "./utils/report-read-timing.js";
 import express from "express";
 import { collaborationResponseMiddleware } from "./services/collaboration-events.js";
@@ -52,6 +53,7 @@ app.use("/api/documents", documentRoutes);
 app.use("/api/store-calls", storeCallRoutes);
 app.use("/api/dropdown-options", dropdownOptionRoutes);
 app.use("/api/notifications", notificationRoutes);
+app.use("/api/operational-emails", operationalEmailRoutes);
 app.use("/api/tracking", trackingRoutes);
 app.use("/api/delivery", deliveryRoutes);
 app.use("/api/master-data", masterDataRoutes);

@@ -8,6 +8,19 @@ const byId=(rows:Record<string,unknown>[])=>new Map(rows.map(row=>[String(row.id
 const settledRows=<T extends Record<string,unknown>>(result:PromiseSettledResult<{data:T[]|null;error:unknown}>):T[]=>
   result.status==="fulfilled"&&!result.value.error?result.value.data??[]:[];
 
+/** Read every active assignment for this small trip batch, not only its primary truck. */
+async function readCardAssignments(tripIds:string[]){
+  const rows:Record<string,unknown>[]=[];
+  for(let offset=0;;offset+=1000){
+    const result=await supabaseAdmin.from("trip_truck_assignments")
+      .select("id,trip_id,assignment_type,truck_id,driver_id,trucking_company_id")
+      .in("trip_id",tripIds).is("unassigned_at",null).order("id").range(offset,offset+999);
+    if(result.error)return {data:null,error:result.error};
+    rows.push(...(result.data??[]));
+    if((result.data?.length??0)<1000)return {data:rows,error:null};
+  }
+}
+
 /** Small card projection over physical tables. It never reads the wide CSV view. */
 export async function getDispatchCards(tripIds:string[]){
   if(!tripIds.length||tripIds.length>3||tripIds.some(id=>!isValidUuid(id)))throw new ApiError("Select up to three trips for card details.",400,"INVALID_CARD_SCOPE");
@@ -24,7 +37,7 @@ export async function getDispatchCards(tripIds:string[]){
   const allTripIds=idsOf(linked,"id");
   const [stopsResult,assignmentsResult,linesResult]=await Promise.allSettled([
     supabaseAdmin.from("trip_stops").select("id,trip_id,store_id,delivery_status,finish_unloading_time,dr_number").in("trip_id",allTripIds).is("archived_at",null).limit(1000),
-    supabaseAdmin.from("trip_truck_assignments").select("id,trip_id,assignment_type,truck_id,driver_id,trucking_company_id").in("trip_id",tripIds).limit(100),
+    readCardAssignments(tripIds),
     supabaseAdmin.from("trip_line_items").select("trip_id,dr_number,customer_model").in("trip_id",tripIds).limit(1000),
   ]);
   const stops=settledRows(stopsResult),assignments=settledRows(assignmentsResult),lines=settledRows(linesResult);
@@ -53,13 +66,30 @@ export async function getDispatchCards(tripIds:string[]){
     if(!linkedIds.size)linkedIds.add(id);
     const dispatchStops=stops.filter(stop=>linkedIds.has(String(stop.trip_id)));
     const ownStops=stops.filter(stop=>String(stop.trip_id)===id);
-    const primary=assignments.find(assignment=>String(assignment.trip_id)===id&&assignment.assignment_type==="PRIMARY")??assignments.find(assignment=>String(assignment.trip_id)===id);
+    const ownAssignments=assignments.filter(assignment=>String(assignment.trip_id)===id);
+    const primary=ownAssignments.find(assignment=>assignment.assignment_type==="PRIMARY")??ownAssignments[0];
     const truck=trucks.get(String(primary?.truck_id??""));
     const driver=drivers.get(String(primary?.driver_id??""));
     const carrier=companies.get(String(primary?.trucking_company_id??truck?.trucking_company_id??driver?.trucking_company_id??""));
     const warehouse=warehouses.get(String(trip.warehouse_id??""));
     const profile=profiles.get(String(driver?.profile_id??""));
     const photo=profile?.profile_picture_path;
+    // Reuse the existing batched master-data/photo lookups and the frontend's
+    // driver-ID deduplication, plate tooltips and overflow avatar group.
+    const cardDrivers=ownAssignments.filter(assignment=>typeof assignment.driver_id==="string"&&isValidUuid(assignment.driver_id)).map(assignment=>{
+      const assignedDriver=drivers.get(String(assignment.driver_id));
+      const assignedTruck=trucks.get(String(assignment.truck_id??""));
+      const assignedCompany=companies.get(String(assignment.trucking_company_id??assignedTruck?.trucking_company_id??assignedDriver?.trucking_company_id??""));
+      const assignedProfile=profiles.get(String(assignedDriver?.profile_id??""));
+      const path=assignedProfile?.profile_picture_path;
+      return {
+        id:String(assignment.driver_id),
+        name:[assignedDriver?.first_name,assignedDriver?.last_name].filter(Boolean).join(" ")||"Driver not recorded",
+        plate:String(assignedTruck?.plate_number??"Truck not recorded"),
+        company:String(assignedCompany?.name??""),
+        avatarUrl:typeof path==="string"?(/^https?:\/\//i.test(path)?path:signed.get(path)??null):null,
+      };
+    });
     const ownLines=lines.filter(line=>String(line.trip_id)===id);
     const dates=linked.filter(item=>linkedIds.has(String(item.id))).map(item=>String(item.estimated_delivery_date??"")).filter(Boolean).sort();
     return [{
@@ -75,6 +105,7 @@ export async function getDispatchCards(tripIds:string[]){
       card_stop_completed:dispatchStops.filter(stop=>["COMPLETED","DELIVERED","FINISHED"].includes(String(stop.delivery_status??"").toUpperCase())||Boolean(stop.finish_unloading_time)).length,
       card_delivery_date:dates.at(-1)??null,
       driver_photo_url:typeof photo==="string"?(/^https?:\/\//i.test(photo)?photo:signed.get(photo)??null):null,
+      card_drivers:cardDrivers,
       card_dr_numbers:[...new Set([...ownLines.map(line=>String(line.dr_number??"")),...ownStops.map(stop=>String(stop.dr_number??""))].filter(Boolean))],
       card_products:[...new Set(ownLines.map(line=>String(line.customer_model??"")).filter(Boolean))],
     }];

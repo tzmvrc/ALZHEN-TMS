@@ -1,3 +1,4 @@
+import {readConfirmedOperationalState,attachConfirmedOperationalState} from './confirmed-operational-state.service.js';
 import {signStoragePaths} from "./storage-links.service.js";
 import {REPORT_PROJECTIONS} from "../config/report-projections.js";
 import { supabaseAdmin } from "../config/supabase.js";
@@ -622,6 +623,7 @@ async function attachLoadingMilestones(rows: Record<string, unknown>[]) {
     const report = byTrip.get(tripId);
     if (!report) continue;
     row.loading_report_id = report.id ?? null;
+    if(row.delivery_status_source === "CONFIRMED_MILESTONES") continue;
     row.warehouse_arrival_at = report.warehouse_arrival_at ?? null;
     row.loading_start_at = report.loading_start_at ?? null;
     row.loading_finished_at = report.loading_finished_at ?? null;
@@ -764,7 +766,7 @@ async function attachGeneratedTripNumbers(rows: Record<string, unknown>[], suppl
 async function attachCardMetadata(rows: Record<string, unknown>[]) {
   const tripIds = [...new Set(rows.map(row => row.trip_id ?? row._trip_id).filter((id): id is string => typeof id === "string" && isValidUuid(id)))];
   const dispatchNumbers = [...new Set(rows.map(row => row.dispatch_number).filter((value): value is string => typeof value === "string" && Boolean(value.trim())).map(value => value.trim()))];
-  const driverIds = [...new Set(rows.map(row => row.driver_id ?? row._driver_id).filter((id): id is string => typeof id === "string" && isValidUuid(id)))];
+  let driverIds = [...new Set(rows.map(row => row.driver_id ?? row._driver_id).filter((id): id is string => typeof id === "string" && isValidUuid(id)))];
   const stopCounts = new Map<string, {total:number;completed:number}>();
   const deliveryDateByTrip = new Map<string,string>();
   const tripsByDispatch = new Map<string, Set<string>>();
@@ -796,6 +798,11 @@ async function attachCardMetadata(rows: Record<string, unknown>[]) {
   }
   for(const [id,trip] of tripById)if(trip.estimated_delivery_date)deliveryDateByTrip.set(id,trip.estimated_delivery_date);
   const linkedTripIds=[...tripById.keys()];
+  const nativeStates=await readConfirmedOperationalState(linkedTripIds);
+  const convoyAssignments:Record<string,any>[]=[];
+  for(let index=0;index<linkedTripIds.length;index+=100)for(let offset=0;;offset+=1000){const result=await supabaseAdmin.from('trip_truck_assignments').select('id,trip_id,driver_id,driver:drivers(id,profile_id,first_name,last_name),truck:trucks(plate_number),company:trucking_companies(name)').in('trip_id',linkedTripIds.slice(index,index+100)).is('unassigned_at',null).order('id').range(offset,offset+999);if(result.error)throw new ApiError('Convoy card assignments could not load.',503);convoyAssignments.push(...result.data??[]);if((result.data?.length??0)<1000)break;}
+  driverIds=[...new Set([...driverIds,...convoyAssignments.map(a=>a.driver_id).filter((id):id is string=>typeof id==='string'&&isValidUuid(id))])];
+  const stopIdsByTrip=new Map<string,string[]>();
   for(let index=0;tripsAvailable&&index<linkedTripIds.length;index+=100) {
     const ids=linkedTripIds.slice(index,index+100);
     for (let offset=0;;offset+=1000) {
@@ -807,7 +814,9 @@ async function attachCardMetadata(rows: Record<string, unknown>[]) {
         const id = String(stop.trip_id);
         const count = stopCounts.get(id) ?? {total:0,completed:0};
         count.total += 1;
-        if (["COMPLETED","DELIVERED","FINISHED"].includes(String(stop.delivery_status ?? "").toUpperCase()) || stop.finish_unloading_time) count.completed += 1;
+        const scoped=nativeStates.filter(s=>s.trip_stop_id===stop.id);
+        if(scoped.length&&scoped.every(s=>s.delivery_status==='COMPLETED'))count.completed++;
+        const stopIds=stopIdsByTrip.get(id)??[];stopIds.push(String(stop.id));stopIdsByTrip.set(id,stopIds);
         stopCounts.set(id,count);
       }
       if ((data?.length ?? 0) < 1000) break;
@@ -833,13 +842,20 @@ async function attachCardMetadata(rows: Record<string, unknown>[]) {
       }
     }
   }
+  const metadataAssigned=new Set<string>();
+  const one=(value:any)=>Array.isArray(value)?value[0]:value;
   for (const row of rows) {
     const tripId = String(row.trip_id ?? row._trip_id);
+    if(!metadataAssigned.has(tripId)){
+     metadataAssigned.add(tripId);const own=nativeStates.filter(s=>s.trip_id===tripId);
+     row.card_operational_states=own;row.card_unassigned_stops=(stopIdsByTrip.get(tripId)??[]).filter(id=>!own.some(s=>s.trip_stop_id===id)).length;
+     row.card_drivers=convoyAssignments.filter(a=>a.trip_id===tripId&&a.driver_id).map(a=>({id:a.driver_id||a.id,name:[one(a.driver)?.first_name,one(a.driver)?.last_name].filter(Boolean).join(' ')||'Driver not assigned',plate:one(a.truck)?.plate_number||'Truck not assigned',company:one(a.company)?.name||'',avatarUrl:photoByDriver.get(String(a.driver_id))??null}));
+    }
     const dispatchNumber=typeof row.dispatch_number==="string"?row.dispatch_number.trim():"";
     const linked=dispatchNumber?tripsByDispatch.get(dispatchNumber):null;
     const ids=linked?.size?[...linked]:tripById.has(tripId)?[tripId]:[];
-    row.card_stop_total = tripsAvailable&&ids.length?ids.reduce((total,id)=>total+(stopCounts.get(id)?.total??0),0):null;
-    row.card_stop_completed = tripsAvailable&&ids.length?ids.reduce((total,id)=>total+(stopCounts.get(id)?.completed??0),0):null;
+    row.card_stop_total = tripsAvailable&&tripById.has(tripId)?stopCounts.get(tripId)?.total??0:null;
+    row.card_stop_completed = tripsAvailable&&tripById.has(tripId)?stopCounts.get(tripId)?.completed??0:null;
     row.card_delivery_date = ids.map(id=>deliveryDateByTrip.get(id)).filter((date):date is string=>Boolean(date)).sort().at(-1)??null;
     row.driver_photo_url = photoByDriver.get(String(row.driver_id ?? row._driver_id)) ?? null;
   }
@@ -1059,7 +1075,7 @@ export async function getReportData(
         }).catch(() => { for (const row of enriched) row.route = null; console.warn("Report route enrichment unavailable", {reportKey:key}); }) : Promise.resolve(),
       ]);
       if (key === "dispatch") for (const row of enriched) {
-        row.warehouse_departure_time = row._parent_departure_at ?? null;
+        if(row.delivery_status_source!=="CONFIRMED_MILESTONES")row.warehouse_departure_time = row._parent_departure_at ?? null;
         // Imported line values take precedence over catalog/store defaults.
         // Keep the same keys so editing and export use the displayed values.
         if (typeof row.source_product_category === "string" && row.source_product_category.trim()) row.category = row.source_product_category;
@@ -1073,6 +1089,8 @@ export async function getReportData(
       }
       if (key === "dispatch-monitoring" && !requestedSourceLines) await attachDispatchWorkbookFields(enriched);
       if (key === "dispatch" || (key === "dispatch-monitoring" && requestedSourceLines)) await attachIncidentSummary(enriched);
+      if(["combined","dispatch","dispatch-monitoring","trip-booking"].includes(key) && !enriched.every(row=>row._operational_projection_ready===true))await attachConfirmedOperationalState(enriched);
+      for(const row of enriched)delete row._operational_projection_ready;
       if (getQueryString(query.card_meta) === "true" && ["combined", "dispatch", "dispatch-monitoring", "trip-booking", "store-calling"].includes(key)) {
         await attachCardMetadata(enriched);
       }
@@ -1113,6 +1131,7 @@ export async function getReportColumns(reportKey: string, sourceLines = false) {
   const source = (master || SOURCE_REPORTS.includes(key)) && await tripImportAvailable();
   const columns = [...REPORT_DEFINITIONS[key].columns, ...(source || master ? [...TRIP_SOURCE_COLUMNS, ...(master ? SOURCE_LINE_COLUMNS : []),...(source&&await tripAllocationReportAvailable()?TRIP_CARGO_COLUMNS:[])] : [])]
     .map(column => ({ ...column, type: column.key === "trip_number" ? "text" as const : column.type }));
+  if(["combined","dispatch","dispatch-monitoring","trip-booking"].includes(key))for(const [field,title]of [["pod_submitted_at","POD Submitted"],["pod_received_at","POD Approved / Received"],["delivery_completed_date","Delivery Completed"]])if(!columns.some(c=>c.key===field))columns.push({key:field,title,type:"date"});
   return { report: key, columns: source || master ? sourceOrderedColumns(columns, master) : columns };
 }
 

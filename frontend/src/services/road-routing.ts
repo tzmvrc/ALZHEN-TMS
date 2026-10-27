@@ -3,7 +3,7 @@ export type Point={latitude:number;longitude:number};
 export type RoadGeometry={type:"LineString";coordinates:[number,number][]};
 export type RoadMode="planned"|"remaining";
 export type RoadCache={mode:RoadMode;matchesContext:boolean;geometry:RoadGeometry|null;calculatedAt:string|null;expiresAt?:string|null;distanceMeters:number|null;durationSeconds:number|null;error:string|null};
-export type RoadTrip={tripStatus?:string;estimatedDeliveryDate?:string|null;driverId?:string|null;demonstration?:boolean;key:string;assignmentId:string|null;tripId:string;dispatchNumber:string|null;plateNumber:string|null;driverName:string|null;warehouse:{id:string|null;name:string;point:Point|null};stops:Array<{id:string;sequence:number;stopSequence:number|null;status:string;name:string;point:Point|null}>;position:(Point&{capturedAt:string;accuracyMeters:number;simulated?:boolean})|null;cache:RoadCache|null;plannedCache?:RoadCache|null};
+export type RoadTrip={positionFallback?:(Point&{source:'WAREHOUSE_ESTIMATE';since:string})|null;lastActualLocationAt?:string|null;tripStatus?:string;estimatedDeliveryDate?:string|null;driverId?:string|null;demonstration?:boolean;key:string;assignmentId:string|null;tripId:string;dispatchNumber:string|null;plateNumber:string|null;driverName:string|null;warehouse:{id:string|null;name:string;point:Point|null};stops:Array<{id:string;sequence:number;stopSequence:number|null;status:string;name:string;point:Point|null}>;position:(Point&{capturedAt:string;accuracyMeters:number;simulated?:boolean})|null;cache:RoadCache|null;plannedCache?:RoadCache|null};
 export const validPoint=(p:Point|null|undefined):p is Point=>!!p&&Number.isFinite(p.latitude)&&Math.abs(p.latitude)<=90&&Number.isFinite(p.longitude)&&Math.abs(p.longitude)<=180;
 export function validRoadGeometry(g:RoadGeometry|null|undefined):g is RoadGeometry{return !!g&&g.type==="LineString"&&Array.isArray(g.coordinates)&&g.coordinates.length>=2&&g.coordinates.length<=20000&&g.coordinates.every(p=>Array.isArray(p)&&p.length===2&&Number.isFinite(p[0])&&Math.abs(p[0])<=180&&Number.isFinite(p[1])&&Math.abs(p[1])<=90);}
 export function roadView(row:RoadTrip,mode:RoadMode,now=Date.now()){
@@ -29,3 +29,7 @@ export async function fetchRoadTrips(token:string,ids:string[],contextAssignment
  const result=await apiGetCached<ApiResponse<{rows:RoadTrip[]}>>(roadEndpoint(ids,contextAssignment),token,15000);
  if(!result.success||!result.data)throw Error("Road routing could not be loaded");return result.data.rows;
 }
+
+/** Never returns an estimated point as a live/saved GPS fix. */
+export function warehouseEstimate(row:RoadTrip){const fallback=row.positionFallback;if(!fallback||!validPoint(fallback)||!Number.isFinite(Date.parse(fallback.since)))return null;if(validPoint(row.position)&&!row.position.simulated&&Date.parse(row.position.capturedAt)>=Date.parse(fallback.since))return null;return fallback;}
+export function roadPositionLabel(row:RoadTrip){return warehouseEstimate(row)?'Warehouse starting estimate - not live GPS':row.position?.simulated?'Demo / Simulated GPS':row.position?'Recorded GPS':'Location Unavailable';}

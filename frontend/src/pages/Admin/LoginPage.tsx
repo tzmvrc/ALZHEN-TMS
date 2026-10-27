@@ -146,7 +146,7 @@ export default function LoginPage() {
       </div>
 
       {/* ───────── Right: Login Form ───────── */}
-      <div className="dotted-surface relative flex w-full flex-col justify-start border border-[#dbe2e9] px-5 py-6 sm:rounded-2xl sm:px-8 lg:w-1/2 lg:rounded-l-none lg:px-12 lg:py-8 xl:px-16">
+      <div className="dotted-surface relative flex w-full flex-col justify-center items-center border border-[#dbe2e9] px-5 py-6 sm:rounded-2xl sm:px-8 lg:w-1/2 lg:rounded-l-none lg:px-12 lg:py-8 xl:px-16">
         <div className="relative z-10 mx-auto flex w-full max-w-sm flex-col">
           {/* Header */}
           <div className="text-center">

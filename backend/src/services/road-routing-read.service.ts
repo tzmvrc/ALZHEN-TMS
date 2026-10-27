@@ -1,3 +1,4 @@
+import {readConfirmedOperationalState} from './confirmed-operational-state.service.js';
 import {supabaseAdmin as db} from "../config/supabase.js";
 import {isApprovedDemoTrip} from "./demo-trip-identity.js";
 import {ApiError} from "../utils/api-response.js";
@@ -38,10 +39,11 @@ export async function readRoadRouting(actor:{id:string;role:string},tripIds:stri
  if(!["ADMIN","STAFF"].includes(actor.role))throw new ApiError("Road routing access denied.",403,"ROAD_FORBIDDEN");
  parseRoadTripIds(tripIds.join(","));
  if(contextAssignment!==undefined&&contextAssignment!==null)parseRoadContextAssignment(contextAssignment);
- const [tripRows,stopRows,assignmentRows]=await Promise.all([
+ const [tripRows,stopRows,assignmentRows,nativeStates]=await Promise.all([
   read("trips","id,dispatch_number,warehouse_id,status,estimated_delivery_date,archived_at,remarks","id",tripIds,51),
   read("trip_stops","id,trip_id,store_id,stop_sequence,delivery_status,archived_at","trip_id",tripIds),
   read("trip_truck_assignments","id,trip_id,driver_id,truck_id,unassigned_at,stop_scope","trip_id",tripIds,251),
+  readConfirmedOperationalState(tripIds),
  ]);
  const trips=tripRows.filter(t=>!t.archived_at),validTrips=new Set(trips.map(t=>t.id));
  const stops=stopRows.filter(s=>validTrips.has(s.trip_id)&&!s.archived_at);
@@ -84,6 +86,9 @@ export async function readRoadRouting(actor:{id:string;role:string},tripIds:stri
    const demoFix=demonstration&&assignment?demoEvents
     .filter(event=>event.trip_id===trip.id&&event.event_type==="DEMO_SIMULATED_GPS"&&((String(event.notes??"").includes("[ALZHEN_FLEET_DEMO_V1]")||String(event.notes??"").includes("[ALZHEN_DEMO30_V1]"))&&String(event.notes??"").includes(`[assignment:${assignment.id}]`)||assignment.id==="d0241024-0000-4000-8000-000000000101"&&String(event.notes??"").includes("[ALZHEN_HOME_DEMO_V1]"))&&coordinatePair(event.latitude,event.longitude)&&Number.isFinite(Date.parse(String(event.event_time))))
     .sort((a,b)=>Date.parse(String(b.event_time))-Date.parse(String(a.event_time)))[0]:undefined;
+   const departure=nativeStates.find(s=>s.assignment_id===assignment?.id)?.warehouse_departure_time;
+   const warehousePoint=warehouse?.location_verified===true?coordinatePair(warehouse?.latitude,warehouse?.longitude):null;
+   const lastActual=locations.find(l=>l.assignment_id===assignment?.id&&l.profile_id===driver?.profile_id);
    const actualPoint=location?coordinatePair(location.latitude,location.longitude):null;
    const simulatedPoint=demoFix?coordinatePair(demoFix.latitude,demoFix.longitude):null;
    const cache=caches.find(c=>c.assignment_id===assignment?.id),context=contexts.get(String(assignment?.id));
@@ -95,6 +100,8 @@ export async function readRoadRouting(actor:{id:string;role:string},tripIds:stri
     driverId:driver?.id??null,plateNumber:truck?.plate_number??null,driverName:[driver?.first_name,driver?.last_name].filter(Boolean).join(" ")||null,
     warehouse:{id:trip.warehouse_id??null,name:String(warehouse?.name??"Warehouse unavailable"),point:warehouse?.location_verified===true?coordinatePair(warehouse?.latitude,warehouse?.longitude):null},stops:attended,
     position:actualPoint&&location?{...actualPoint,capturedAt:location.captured_at,accuracyMeters:location.accuracy_meters,simulated:false}:simulatedPoint&&demoFix?{...simulatedPoint,capturedAt:demoFix.event_time,accuracyMeters:0,simulated:true}:null,
+    positionFallback:departure&&warehousePoint&&(!actualPoint||Date.parse(String(location?.captured_at))<Date.parse(departure))?{...warehousePoint,source:'WAREHOUSE_ESTIMATE',since:departure}:null,
+    lastActualLocationAt:lastActual?.captured_at??null,
     plannedCache:cache?.planned_geometry?{mode:"planned",matchesContext:plannedMatches,geometry:cache.planned_geometry,calculatedAt:cache.planned_calculated_at,expiresAt:cache.planned_expires_at,distanceMeters:cache.planned_distance_meters,durationSeconds:cache.planned_duration_seconds,error:cache.planned_error?"Last planned refresh failed":null}:null,
     cache:cache?{mode:"remaining",matchesContext:cacheMatches,geometry:cache.route_geometry,calculatedAt:cache.calculated_at,distanceMeters:cache.distance_meters,durationSeconds:cache.duration_seconds,error:cache.last_error_code?"Last route refresh failed":null}:null};
   });

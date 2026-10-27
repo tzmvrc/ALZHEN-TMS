@@ -1219,6 +1219,7 @@ export async function createTripStopRecord(
 
   const payload: Record<string, unknown> = { trip_id: tripId };
   const patch = buildTripStopPayload(input);
+  if(patch.delivery_status===null||typeof patch.delivery_status==="string"&&patch.delivery_status.toUpperCase()==="PENDING")patch.delivery_status="PLANNED";
   await validateTripStopReferences(patch.customer_id, patch.store_id);
   if (patch.delivery_status !== undefined) {
     await assertActiveDropdownOption("delivery_status", patch.delivery_status);
@@ -1272,7 +1273,7 @@ export async function updateTripStopRecord(
 
   const { data: existingStop, error: existingError } = await supabaseAdmin
     .from("trip_stops")
-    .select("id, trip_id, customer_id, store_id")
+    .select("id, trip_id, customer_id, store_id, delivery_status")
     .eq("id", stopId)
     .maybeSingle();
 
@@ -1311,7 +1312,7 @@ export async function updateTripStopRecord(
       : existingStop.customer_id,
     payload.store_id !== undefined ? payload.store_id : existingStop.store_id,
   );
-  if (payload.delivery_status !== undefined) {
+  if (payload.delivery_status !== undefined && payload.delivery_status !== existingStop.delivery_status) {
     await assertActiveDropdownOption(
       "delivery_status",
       payload.delivery_status,

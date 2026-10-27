@@ -1,4 +1,7 @@
-import {useState} from "react";
+import RoadProgress from '../ui/RoadProgress';
+import {ViewerGroup} from './TableViewers';
+import {confirmedStateProgress,type ConfirmedProgressState} from '../../services/operational-progress';
+import {useMemo,useState} from "react";
 import {ArrowUpRight, UserRound} from "lucide-react";
 import type {ReportColumn, ReportKey, ReportRow} from "../../services/report.service";
 
@@ -104,7 +107,7 @@ export default function DispatchVisualCards({rows,columns,reportKey,onOpenTrip,g
   groupByDispatch?:boolean;
   loadingMore?:boolean;
 }) {
-  const groups = groupsFor(rows,groupByDispatch,reportKey!=="store-calling");
+  const groups = useMemo(()=>groupsFor(rows,groupByDispatch,reportKey!=="store-calling"),[rows,groupByDispatch,reportKey]);
   const extraColumns = columns.filter(column => !summarizedKeys.has(column.key));
   return <div className="grid grid-cols-1 items-start gap-4 py-2 lg:grid-cols-2 2xl:grid-cols-3">
     {groups.map((group,index) => {
@@ -113,26 +116,32 @@ export default function DispatchVisualCards({rows,columns,reportKey,onOpenTrip,g
       const tripId = first(group,"_trip_id","trip_id");
       const cardKey = groupByDispatch ? dispatchNumber ? `dispatch:${dispatchNumber}` : `row:${index}` : `${tripId || identity}-${index}`;
       const driver = first(group,"driver_name","assigned_to_name","assigned_to");
-      const carrier = first(group,"trucking_company");
+      let carrier = first(group,"trucking_company");
       const photo = group.find(row => text(row,"driver_name","assigned_to_name","assigned_to") === driver)?.driver_photo_url;
       const photoUrl = typeof photo === "string" ? photo : "";
       const tripStatus = first(group,"trip_status","status");
       const deliveryStatus = first(group,"delivery_status","confirmation_status");
       const letterStatus = first(group,"letter_status");
       const status = tripStatus || deliveryStatus || "Status not recorded";
-      const meta = group.find(row => typeof row.card_stop_total === "number" && typeof row.card_stop_completed === "number");
-      const total = typeof meta?.card_stop_total === "number" ? meta.card_stop_total : null;
-      const completed = typeof meta?.card_stop_completed === "number" ? meta.card_stop_completed : null;
-      const progress = total && completed !== null ? Math.round(completed / total * 100) : null;
+      const perTrip=[...new Map(group.filter(r=>typeof r.card_stop_total==="number").map(r=>[String(r.trip_id??r._trip_id),r])).values()];
+      const total = perTrip.length?perTrip.reduce((n,r)=>n+Number(r.card_stop_total),0):null;
+      const completed = perTrip.length?perTrip.reduce((n,r)=>n+Number(r.card_stop_completed??0),0):null;
+      const metadata=[...new Map(group.filter(r=>Array.isArray(r.card_operational_states)).map(r=>[String(r.trip_id??r._trip_id),r])).values()];
+      const progress=metadata.length?confirmedStateProgress(metadata.flatMap(r=>r.card_operational_states as ConfirmedProgressState[]),metadata.reduce((n,r)=>n+Number(r.card_unassigned_stops??0),0)).percent:null;
+      const byDriver=new Map<string,{id:string;name:string;plate:string;avatarUrl:string|null;company:string}>();
+      for(const row of group)for(const d of (Array.isArray(row.card_drivers)?row.card_drivers:[]) as Array<{id:string;name:string;plate:string;avatarUrl:string|null;company:string}>){const previous=byDriver.get(d.id);byDriver.set(d.id,previous?{...previous,plate:[...new Set([...previous.plate.split(', '),d.plate])].join(', '),avatarUrl:previous.avatarUrl||d.avatarUrl}:d);}
+      const drivers=[...byDriver.values()];
+      if(drivers.length)carrier=[...new Set(drivers.map(d=>d.company).filter(Boolean))].join(', ')||carrier;
+      const viewers=drivers.map((d,i)=>({userId:d.id,name:`${d.name} / ${d.plate}`,avatarUrl:d.avatarUrl,color:['#2678b9','#16846c','#7958ac','#a86b12'][i%4]}));
       const destinations = cardValues(group,"card_destinations","store_name","ship_to","customer_name");
       const destination = destinations.length > 1 ? `${destinations[0]} +${destinations.length-1} more` : destinations[0] || "Not recorded";
       const origin = first(group,"warehouse_name","ship_from","warehouse_code","wh_code") || "Not recorded";
-      const plate = first(group,"plate_number") || "Not assigned";
+      const plate = drivers.length?[...new Set(drivers.map(d=>d.plate))].join(", "):first(group,"plate_number") || "Not assigned";
       const deliveryDate = dateLabel(first(group,"estimated_delivery_date","card_delivery_date","delivery_date"));
       const loadingDate = dateLabel(first(group,"loading_date","date_assigned"));
       const dr = cardValues(group,"card_dr_numbers","dr_number","transaction_dr_number");
       const products = cardValues(group,"card_products","product_name","product_model","model_code","sku");
-      return <article key={cardKey} className="flex min-w-0 flex-col overflow-hidden rounded-[22px] border border-[#e4e9f0] bg-white shadow-[0_8px_24px_-18px_rgba(11,35,67,.28)] motion-safe:[animation:fadeInUp_200ms_ease-out_both]">
+      return <article key={cardKey} className="dispatch-convoy-card flex min-w-0 flex-col overflow-hidden rounded-[22px] border border-[#e4e9f0] bg-white shadow-[0_8px_24px_-18px_rgba(11,35,67,.28)] motion-safe:[animation:fadeInUp_200ms_ease-out_both]">
         <div className="mx-4 mt-4 rounded-2xl bg-[#0b2343] px-4 pb-8 pt-4 text-white">
           <div className="flex min-w-0 items-center justify-between gap-2">
             <span className="text-[11px] font-medium text-white/75">Delivery progress</span>
@@ -142,15 +151,14 @@ export default function DispatchVisualCards({rows,columns,reportKey,onOpenTrip,g
             <strong className="text-[25px] font-semibold leading-none tabular-nums">{progress === null ? "—" : `${progress}%`}</strong>
             <span className="text-right text-[11px] text-white/75">{total === null ? "Progress unavailable" : total === 0 ? "No stops recorded" : `${completed} of ${total} stops completed`}</span>
           </div>
-          <div role={progress === null ? undefined : "progressbar"} aria-label={progress === null ? undefined : `Delivery progress for ${identity}`} aria-valuemin={progress === null ? undefined : 0} aria-valuemax={progress === null ? undefined : 100} aria-valuenow={progress ?? undefined} className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/20">
-            <div className="h-full rounded-full bg-[#ffd43b] transition-[width] duration-200 motion-reduce:transition-none" style={{width:`${progress ?? 0}%`}} />
-          </div>
+          <RoadProgress percent={progress??0} label={`Delivery progress for ${identity}`}/>
+
         </div>
         <div className="flex flex-1 flex-col px-5 pb-5">
-          <DriverAvatar url={photoUrl} name={driver} />
+          <div className="dispatch-driver-avatars">{viewers.length?<ViewerGroup users={viewers} toolbar label="Assigned drivers"/>:<DriverAvatar url={photoUrl} name={driver}/>}</div>
           <div className="mt-2 min-w-0">
             <h3 className="truncate text-[17px] font-semibold text-[#0b2343]" title={identity}>{identity}</h3>
-            <p className="mt-0.5 truncate text-[12px] text-[#718096]" title={[driver,carrier].filter(Boolean).join(" · ")}>{driver || "Driver not assigned"}{carrier ? ` · ${carrier}` : ""}</p>
+            <p className="mt-0.5 truncate text-[12px] text-[#718096]" title={drivers.length?drivers.map(d=>[d.name,d.plate,d.company].filter(Boolean).join(' / ')).join('; '):[driver,carrier].filter(Boolean).join(' / ')}>{drivers.length>1?`${drivers.length} assigned drivers`:drivers[0]?.name||driver||'Driver not assigned'}{carrier?` / ${carrier}`:''}</p>
           </div>
           <dl className="mt-4 grid grid-cols-2 gap-x-4 border-y border-[#edf0f4]">
             <Detail label="Origin" value={origin} />

@@ -64,7 +64,16 @@ export const REPORT_PROJECTIONS:Readonly<Record<string,readonly string[]>> = {
     "_parent_dispatch_number",
     "_parent_transaction_number",
     "_parent_warehouse_id",
-    "_parent_departure_at"
+    "_parent_departure_at",
+    "warehouse_arrival_at",
+    "loading_start_at",
+    "loading_finished_at",
+    "pod_submitted_at",
+    "pod_received_at",
+    "delivery_completed_date",
+    "pod_status",
+    "delivery_status_source",
+    "_operational_projection_ready"
   ],
   "v_dispatch_report": [
     "dispatch_number",
@@ -158,7 +167,16 @@ export const REPORT_PROJECTIONS:Readonly<Record<string,readonly string[]>> = {
     "_parent_dispatch_number",
     "_parent_transaction_number",
     "_parent_warehouse_id",
-    "_parent_departure_at"
+    "_parent_departure_at",
+    "warehouse_arrival_at",
+    "loading_start_at",
+    "loading_finished_at",
+    "pod_submitted_at",
+    "pod_received_at",
+    "delivery_completed_date",
+    "pod_status",
+    "delivery_status_source",
+    "_operational_projection_ready"
   ],
   "v_store_calling": [
     "store_call_id",
@@ -287,7 +305,16 @@ export const REPORT_PROJECTIONS:Readonly<Record<string,readonly string[]>> = {
     "_parent_dispatch_number",
     "_parent_transaction_number",
     "_parent_warehouse_id",
-    "_parent_departure_at"
+    "_parent_departure_at",
+    "warehouse_arrival_at",
+    "loading_start_at",
+    "loading_finished_at",
+    "pod_submitted_at",
+    "pod_received_at",
+    "delivery_completed_date",
+    "pod_status",
+    "delivery_status_source",
+    "_operational_projection_ready"
   ],
   "v_trip_booking": [
     "dispatch_number",
@@ -375,7 +402,16 @@ export const REPORT_PROJECTIONS:Readonly<Record<string,readonly string[]>> = {
     "_parent_dispatch_number",
     "_parent_transaction_number",
     "_parent_warehouse_id",
-    "_parent_departure_at"
+    "_parent_departure_at",
+    "warehouse_arrival_at",
+    "loading_start_at",
+    "loading_finished_at",
+    "pod_submitted_at",
+    "pod_received_at",
+    "delivery_completed_date",
+    "pod_status",
+    "delivery_status_source",
+    "_operational_projection_ready"
   ],
   "v_trip_master_csv": [
     "trip_id",

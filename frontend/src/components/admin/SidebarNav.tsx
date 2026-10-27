@@ -199,7 +199,8 @@ export default function SidebarNav({
     : activeId === "truckers" ? `users:${usersSection === "Truckers" ? "truckers" : "staff"}`
     : null;
   const visiblePresenceTable = useSidebarPresence() ?? presenceTable;
-  const searchConfig = useTopbarSearch(searchScope);
+  const registeredSearch = useTopbarSearch(searchScope);
+  const searchConfig = activeId === "overview" ? null : registeredSearch;
   const viewConfig = useTopbarView(searchScope);
   const topbarActions = useTopbarActions(searchScope);
   useEffect(() => {
@@ -263,7 +264,7 @@ export default function SidebarNav({
       <nav aria-label="Primary" className="al-sidebar-group" data-has-active={activeNavIndex >= 0} style={{"--al-active-index": Math.max(activeNavIndex, 0)} as CSSProperties}>
         {navItems.map((entry) => <button key={entry.id} type="button" onClick={() => navigate(entry.id)} onMouseEnter={event => showSidebarTooltip(entry.label,event.currentTarget)} onMouseLeave={hideSidebarTooltip} onFocus={event => showSidebarTooltip(entry.label,event.currentTarget)} onBlur={hideSidebarTooltip} aria-describedby={sidebarTooltip?.visible && sidebarTooltip.label===entry.label?"al-sidebar-tooltip":undefined} aria-current={entry.id === activeId ? "page" : undefined} aria-label={entry.label} className={`al-sidebar-item ${entry.id === activeId ? "al-sidebar-item-active" : ""}`}><span>{entry.icon}</span>{!!entry.badge && <span className="al-sidebar-badge">{entry.badge}</span>}</button>)}
       </nav>
-      {visiblePresenceTable && <div className="al-sidebar-viewers" aria-label="People viewing this table"><TableViewers key={visiblePresenceTable} table={visiblePresenceTable} sidebar/></div>}
+
       <div className="al-sidebar-profile">
         <div ref={sidebarProfileRef} className="relative">
           <button type="button" aria-label="User menu" aria-describedby={sidebarTooltip?.visible && sidebarTooltip.label==="Profile"?"al-sidebar-tooltip":undefined} aria-expanded={profileOpen} aria-haspopup="menu" onMouseEnter={event => showSidebarTooltip("Profile",event.currentTarget)} onMouseLeave={hideSidebarTooltip} onFocus={event => showSidebarTooltip("Profile",event.currentTarget)} onBlur={hideSidebarTooltip} onClick={() => { setSidebarTooltip(null); toggleProfile("sidebar"); }} className={focusRing}><span className="al-profile-avatar flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-[#0b2341] text-xs font-semibold text-white">{avatarContent}</span></button>
@@ -286,7 +287,8 @@ export default function SidebarNav({
             {topbarActions.edit && <button type="button" className="al-topbar-selection-action" title={topbarActions.edit.label} aria-label={topbarActions.edit.label} disabled={topbarActions.edit.disabled} onClick={topbarActions.edit.onClick}><Pencil aria-hidden="true" size={16}/></button>}
             {topbarActions.delete && <button type="button" className="al-topbar-selection-action al-topbar-selection-delete" title={topbarActions.delete.label} aria-label={topbarActions.delete.label} disabled={topbarActions.delete.disabled} onClick={topbarActions.delete.onClick}><Trash2 aria-hidden="true" size={16}/></button>}
           </div>}
-          {searchConfig?.kind === "field" && <div className="al-quick-search">
+          {visiblePresenceTable && <div className="al-toolbar-viewers" aria-label="People viewing this table"><TableViewers key={visiblePresenceTable} table={visiblePresenceTable} toolbar/></div>}
+          {searchConfig?.kind === "field" && <div className="al-quick-search" data-search-scope={searchScope}>
             <Search aria-hidden="true" className="h-4 w-4 shrink-0" />
             <input type="search" aria-label={searchConfig.label} placeholder={searchConfig.placeholder} value={searchConfig.value} disabled={searchConfig.disabled} onChange={event => searchConfig.onChange(event.target.value)} />
             {searchConfig.value && <button type="button" aria-label="Clear search" onClick={() => searchConfig.onChange("")} className="rounded-full p-1 text-slate-500 hover:bg-slate-100"><X className="h-3.5 w-3.5" /></button>}

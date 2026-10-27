@@ -2,7 +2,7 @@
 async(page,saved)=>{
  const assert=(v,m)=>{if(!v)throw Error(m);};
  const errors=[],writes=[];let fail=true,holdFix=false,releaseFix;
- const workspace=saved.current??Object.values(saved.workspaces)[0];
+ const workspace=structuredClone(saved.current??Object.values(saved.workspaces)[0]);workspace.milestones=[];
  page.on('pageerror',e=>errors.push(e.message));
  await page.addInitScript(()=>{
   window.__gpsMode='denied';
@@ -47,17 +47,10 @@ async(page,saved)=>{
  assert(await page.locator('.delivery-action-cards .delivery-action-decoration').first().evaluate(e=>getComputedStyle(e).position==='absolute'),'Action-card decorative styles missing');
  for(const width of [320,390,768]){await page.setViewportSize({width,height:700});await page.getByRole('button',{name:'POD notifications',exact:true}).click();await page.getByRole('region',{name:'Your notifications'}).waitFor();assert(await page.getByRole('region',{name:'Your notifications'}).evaluate(e=>{const r=e.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth;}),'Notifications outside viewport '+width);await page.keyboard.press('Escape');}
  await page.setViewportSize({width:390,height:900});
- await page.getByRole('button',{name:'Share My Location',exact:true}).click();
- await page.getByRole('button',{name:'Retry Location',exact:true}).waitFor();
- assert(await page.getByLabel('Location sharing unavailable').count()===1,'Permission denial must remain visible');
- await page.evaluate(()=>window.__gpsMode='valid');holdFix=true;
- await page.getByRole('button',{name:'Retry Location',exact:true}).click();
- await page.waitForTimeout(150);
- assert(await page.getByLabel('Location sharing unavailable').count()===1,'Retry must not dismiss warning before a confirmed fix');
- for(let i=0;i<100&&!releaseFix;i++)await page.waitForTimeout(25);assert(releaseFix,'Fixture GPS request not received');holdFix=false;releaseFix();
- await page.getByText('Location sharing active',{exact:true}).waitFor();
- await page.getByRole('button',{name:'Stop sharing',exact:true}).click();
- await page.getByLabel('Location sharing unavailable').waitFor();
+ await page.getByRole('button',{name:'Share My Location',exact:true}).click();await page.getByRole('alert').filter({hasText:'Location unavailable'}).waitFor();
+ assert(await page.locator('.delivery-location-warning').count()===0,'Old GPS panel remains');
+ await page.evaluate(()=>window.__gpsMode='valid');holdFix=true;await page.getByRole('button',{name:'Share My Location',exact:true}).click();await page.getByRole('button',{name:'Arrived at Warehouse',exact:true}).waitFor();
+ for(let i=0;i<100&&!releaseFix;i++)await page.waitForTimeout(25);assert(releaseFix,'Background GPS was not saved');holdFix=false;releaseFix();assert(writes.every(path=>path.startsWith('/api/tracking/')),'Acquiring GPS submitted an operational milestone');
  for(const label of ['Add Status','Upload POD','Submit Report']){
   await page.getByRole('button',{name:label,exact:true}).click();await page.locator('dialog').waitFor();
   if(label==='Add Status')await page.getByRole('combobox',{name:/^Status/}).selectOption('Fuel stop');
@@ -79,6 +72,6 @@ async(page,saved)=>{
   if(view==='settings')for(const name of ['Security','Profile','Appearance','Preferences']){await page.getByRole('button',{name,exact:true}).click();assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'Settings category overflow '+name);}
  }
  assert(errors.length===0,errors.join('; '));
- return {passed:true,realSavedTrip:true,isolatedAuthentication:true,productionWrites:0,fixtureTrackingRequests:writes.length,checks:['automatic assignment','retry','three workflows at all widths','short viewport dialogs','permission denial','warning retained until saved GPS','stop warning','top navigation','History and Reports layouts','320/360/375/390/430/768/955 layouts']};
+ return {passed:true,realSavedTrip:true,isolatedAuthentication:true,productionWrites:0,fixtureTrackingRequests:writes.length,checks:['automatic assignment','retry','three workflows at all widths','short viewport dialogs','permission denial','arrival button GPS gate','independent background GPS','top navigation','History and Reports layouts','320/360/375/390/430/768/955 layouts']};
 }
 

@@ -43,9 +43,6 @@ async function assertAssignmentAvailable(tripId: string, resources: AssignmentRe
 
   if (schedule.data.archived_at || ["CANCELLED", "CANCELED", "COMPLETED", "DELIVERED"].includes(String(schedule.data.status).toUpperCase())) return;
   const start = schedule.data.loading_date ?? undefined, end = schedule.data.estimated_delivery_date ?? undefined;
-  if ((!start || !end) && String(schedule.data.status).toUpperCase() !== "PLANNED") {
-    throw new ApiError("Complete the loading and delivery dates before activating an assigned trip.", 409, "TRIP_ASSIGNMENT_CONFLICT");
-  }
   const [trucks, drivers] = await Promise.all([
     getTruckAvailability(start, end, tripId, [resources.truck_id]),
     resources.driver_id ? getDriverAvailability(start, end, tripId, [resources.driver_id]) : Promise.resolve([]),

@@ -10,7 +10,8 @@ test("Master List expands by physical product while monitoring stays at stop gra
   const trip = "123e4567-e89b-42d3-a456-426614174000", stop = "223e4567-e89b-42d3-a456-426614174000";
   const lines = [3, 4, 5].map(value => ({ id: `${value}23e4567-e89b-42d3-a456-426614174000`, quantity: "2.00", cbm: "0.246913578246", unit_cbm: "0.123456789123", stock_quantity: null }));
   const source = lines.map((line, index) => ({ trip_id: trip, _trip_id: trip, _trip_stop_id: stop, _trip_line_item_id: line.id, customer_model: `MODEL-${index}`, dr_number: "SHARED-DR" }));
-  const originalFrom = supabaseAdmin.from;
+  const originalFrom = supabaseAdmin.from,originalRpc=supabaseAdmin.rpc;
+  (supabaseAdmin as any).rpc=async(name:string)=>{assert.equal(name,"read_confirmed_operational_state_batch_v1");return {data:[],error:null};};
   (supabaseAdmin as any).from = (table: string) => {
     let limit = 500;
     const chain: any = { select: () => chain, eq: () => chain, in: () => chain, order: () => chain, range: () => chain,
@@ -33,5 +34,5 @@ test("Master List expands by physical product while monitoring stays at stop gra
     const {MASTER_LIST_COLUMNS}=await import("../src/config/master-list-columns.js");
     assert.deepEqual(columns.map(column=>column.key),MASTER_LIST_COLUMNS.map(column=>column.key));
     assert.ok(columns.some(column=>column.key==="quantity"));assert.ok(columns.some(column=>column.key==="cbm"));
-  } finally { supabaseAdmin.from = originalFrom; }
+  } finally { supabaseAdmin.from = originalFrom;supabaseAdmin.rpc=originalRpc; }
 });

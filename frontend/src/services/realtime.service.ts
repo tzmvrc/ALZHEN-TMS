@@ -36,7 +36,7 @@ export const REPORT_REALTIME_TABLES: Record<ReportKey, readonly string[]> = {
     "trip_line_items",
     "products",
     "profiles",
-    "trip_events",
+    "trip_events", "trip_images", "pod_records", "pod_review_events",
     "trip_types",
     "warehouses",
   ],
@@ -54,11 +54,12 @@ export const REPORT_REALTIME_TABLES: Record<ReportKey, readonly string[]> = {
     "customers",
     "customer_stores",
     "profiles",
-    "trip_events",
+    "trip_events", "trip_images", "pod_records", "pod_review_events",
     "trip_types",
     "warehouses",
   ],
   dispatch: [
+    "trip_events", "trip_images", "pod_records", "pod_review_events",
     "loading_reports",
     "trips",
     "trip_stops",
@@ -78,6 +79,7 @@ export const REPORT_REALTIME_TABLES: Record<ReportKey, readonly string[]> = {
     "warehouses",
   ],
   "trip-booking": [
+    "trip_events", "trip_images", "pod_records", "pod_review_events",
     "trips",
     "trip_stops",
     "trip_line_items",
@@ -182,7 +184,7 @@ function invalidateForTable(table: string, payload?: RealtimePayload, invalidate
   }
   if (["incidents", "incident_reasons", "demurrages", "pod_records", "pod_drive_files", "backload_items", "driver_trip_updates", "tms_route_options"].includes(table)) invalidate("/reports/operations/");
   if (table === "admin_notifications") invalidate("/notifications");
-  if (ADMIN_CHANGE_TOPICS.includes(table as typeof ADMIN_CHANGE_TOPICS[number])) invalidate("/dashboard");
+  if (!table.startsWith("operational_email_")&&ADMIN_CHANGE_TOPICS.includes(table as typeof ADMIN_CHANGE_TOPICS[number])) invalidate("/dashboard");
   if (["loading_reports", "unloading_reports", "backloads", "offloads", "offload_items", "report_receipts", "operations_report_conversions", "trip_stops", "trips", "trip_truck_assignments", "drivers", "trucks", "profiles", "warehouses", "customers", "customer_stores"].includes(table)) {
     invalidate("/reports/operations/");
   }

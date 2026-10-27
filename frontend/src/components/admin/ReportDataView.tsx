@@ -254,12 +254,15 @@ function downloadBlob(blob: Blob, filename: string) {
 }
 
 const reportDateFormat=new Intl.DateTimeFormat("en-US",{month:"short",day:"numeric",year:"numeric"});
+const operationalDateTimeFormat=new Intl.DateTimeFormat("en-PH",{timeZone:"Asia/Manila",month:"short",day:"numeric",year:"numeric",hour:"numeric",minute:"2-digit"});
+const operationalTimestampFields=new Set(["warehouse_arrival_at","warehouse_departure_time","departure_from_warehouse_at","arrival_time","departure_time","pod_submitted_at","pod_received_at","delivery_completed_date"]);
 const reportNumberFormat=new Intl.NumberFormat(undefined,{maximumFractionDigits:2});
 function displayValue(value: unknown, type: string,field=""): string {
   if (isCbmField(field)) return cbmDisplay(value);
   if (field === "so_approval_date") return value == null ? "" : String(value).replace("T", " ");
   if(isTripTimeField(field))return tripTimeDisplay(value);
   if (value === null || value === undefined || value === "") return "";
+  if(operationalTimestampFields.has(field)&&typeof value==="string"&&value.includes("T")){const date=new Date(value);return Number.isNaN(date.getTime())?value:operationalDateTimeFormat.format(date);}
   const formatDate = (date: Date) => reportDateFormat.format(date);
   if (type === "date" && typeof value === "string") {
     const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
@@ -916,7 +919,7 @@ export default function ReportDataView({
   const sortableFields =
     columns.length > 0
       ? columns
-          .filter((column) => column.key !== "route" && column.type !== "action")
+          .filter((column) => column.key !== "route" && !["pod_submitted_at","pod_received_at"].includes(column.key) && column.type !== "action")
           .map((column) => column.key)
       : getSortableFields(reportKey);
   const activeSortBy = sortableFields.includes(sortBy)
@@ -1068,6 +1071,7 @@ export default function ReportDataView({
   }
   const refreshOneTripRef=useRef(refreshOneTrip);refreshOneTripRef.current=refreshOneTrip;
   const collaboration=useSpreadsheetCollaboration(transactionView?"trips":reportKey,accessToken,profile?.id,(commit,record)=>{
+    if(["trip_events","trip_images","pod_review_events","pod_records"].includes(commit.source)||commit.source==="trip_stops"&&(!commit.fields.length||commit.fields.some(f=>["delivery_status","arrival_time","start_unloading_time","finish_unloading_time","departure_time"].includes(f)))){if(!commit.tripId||!refreshOneTrip(commit.tripId))scheduleRealtimeRefreshRef.current();return;}
     if(["trip_cargo_allocations","trip_assignment_stops"].includes(commit.source)||commit.source==="trip_truck_assignments"&&commit.fields.includes("stop_scope")){
       if(activeReportEdit.current)realtimeRefreshDirty.current=true;else if(!commit.tripId||!refreshOneTrip(commit.tripId))scheduleRealtimeRefreshRef.current();return;
     }
@@ -1545,8 +1549,8 @@ export default function ReportDataView({
       if (event.kind === "batch") {
         if (event.tables.includes("tms_dropdown_options")) dropdownRefreshPending.current = true;
         const socket=collaborationSnapshot();
-        if(allTripRecords&&socket.connected&&socket.bridgeHealthy&&event.tables.every(table=>(COLLABORATION_SOURCES as readonly string[]).includes(table)||table==="transaction_deletion_jobs"))return;
-        if (event.tables.some((table) => !(socket.connected&&socket.bridgeHealthy&&(COLLABORATION_SOURCES as readonly string[]).includes(table))&&(reportTables.includes(table) || table === "tms_dropdown_options" || table === "transaction_deletion_jobs"))) scheduleRealtimeRefreshRef.current();
+        if(allTripRecords&&socket.connected&&socket.bridgeHealthy&&event.tables.every(table=>[...COLLABORATION_SOURCES,"trip_events","trip_images","pod_review_events","pod_records"].includes(table)||table==="transaction_deletion_jobs"))return;
+        if (event.tables.some((table) => !(socket.connected&&socket.bridgeHealthy&&[...COLLABORATION_SOURCES,"trip_events","trip_images","pod_review_events","pod_records"].includes(table))&&(reportTables.includes(table) || table === "tms_dropdown_options" || table === "transaction_deletion_jobs"))) scheduleRealtimeRefreshRef.current();
         return;
       }
       if (event.kind === "resume") {
@@ -1555,7 +1559,7 @@ export default function ReportDataView({
         if (reportTables.includes(event.table)) scheduleRealtimeRefreshRef.current();
       } else if (reportTables.includes(event.payload.table)) {
         const socket=collaborationSnapshot();
-        if(socket.connected&&socket.bridgeHealthy&&(COLLABORATION_SOURCES as readonly string[]).includes(event.payload.table))return;
+        if(socket.connected&&socket.bridgeHealthy&&[...COLLABORATION_SOURCES,"trip_events","trip_images","pod_review_events","pod_records"].includes(event.payload.table))return;
         const payloadTrip=event.payload.table==="trips"?event.payload.new?.id??event.payload.old?.id:event.payload.new?.trip_id??event.payload.old?.trip_id;
         if(typeof payloadTrip==="string"&&refreshOneTripRef.current(payloadTrip))return;
         const diagnosticTarget = diagnosticEditTarget.current;

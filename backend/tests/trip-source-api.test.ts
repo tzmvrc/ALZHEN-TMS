@@ -12,18 +12,20 @@ test("signed preview protects rows, skips renamed reimports, flags cross-file ma
   const existing = prepareImport([file])[0];
   const originalFrom = supabaseAdmin.from, originalRpc = supabaseAdmin.rpc;
   let saved: unknown = null, reads: unknown[] = [];
-  (supabaseAdmin as any).from = () => { const chain: any = { select: () => chain, eq: () => chain, in: () => chain,
-    range: async () => ({ data: reads, error: null }) }; return chain; };
+  (supabaseAdmin as any).from = (table:string) => { const chain: any = { select: () => chain, limit:async()=>({data:[],error:null}), eq: () => chain, ilike:()=>chain, update:()=>chain, not:()=>chain, order:()=>chain, in: () => chain,
+    range: async () => ({ data: reads, error: null }),
+    then:(resolve:any)=>Promise.resolve({data:table==='trip_import_rows'?reads.map((r:any)=>({...r,status:'imported',batch_id:'batch',line_item_id:'live-line',source_row:2,imported_at:'2026-10-27T00:00:00Z'})):table==='trip_line_items'&&reads.length?[{id:'live-line',trip_id:'fixture-trip'}]:[],error:null}).then(resolve)
+   }; return chain; };
   (supabaseAdmin as any).rpc = async (_name: string, payload: unknown) => { saved = payload; return { data: { batch_id: "batch", rows: [] }, error: null }; };
   try {
     const first = await previewTripImport([file]);
-    assert.equal(first.rows.length, 1); assert.equal(first.valid, 1); assert.equal(first.rows[0].warnings.length, 1);
+    assert.equal(first.rows.length, 1); assert.equal(first.valid, 1); assert.ok(first.rows[0].warnings.some(warning=>/CBM/i.test(warning)));
     const payload = { batch_id: "123e4567-e89b-42d3-a456-426614174000", rows: first.rows, group: "confirmed-group", target: { mode: "new" as const, value: "", allow_create: false } };
     await assert.rejects(commitTripImport(payload, "creator"), /CBM discrepancies/);
     await commitTripImport({ ...payload, verified_cbm: true }, "creator");
     assert.equal((saved as any).p_target.allow_create, false); assert.equal((saved as any).p_rows[0].values.cbm, "0.3");
     await assert.rejects(commitTripImport({ ...payload, verified_cbm: true, rows: [{ ...first.rows[0], values: { ...first.rows[0].values, customer_model: "TAMPERED" } }] }, "creator"), /preview changed/);
-    reads = [{ source_identity: existing.source_identity, fingerprint: existing.fingerprint }];
+    reads = [{ source_identity: existing.source_identity, fingerprint: existing.fingerprint,source_ship_to:"Store",source_province:null,source_city:null }];
     const repeated = await previewTripImport([{ ...file, name: "renamed.csv" }]);
     assert.equal(repeated.duplicates, 1);
     const modified = await previewTripImport([{ ...file, rows: [{ ...file.rows[0], values: { ...file.rows[0].values, quantity: "3" } }] }]);

@@ -1,3 +1,4 @@
+import {readConfirmedOperationalState} from './confirmed-operational-state.service.js';
 import {collaborationEvents} from "./collaboration-events.js";
 import {supabaseAdmin as db} from "../config/supabase.js";
 import {ApiError} from "../utils/api-response.js";
@@ -13,14 +14,14 @@ export async function readTripConvoy(actor:Actor,trip:string){
  const parent=await db.from("trips").select("id").eq("id",trip).maybeSingle();
  if(parent.error)throw new ApiError("Unable to confirm trip access. Please retry.",503);
  if(!parent.data)throw new ApiError("Trip not found.",404);
- const [assignments,stops,cargo,allocations,responsibilities,totals]=await Promise.all([
+ const [assignments,stops,cargo,allocations,responsibilities,totals,operational_state]=await Promise.all([
   scopedRows("trip_truck_assignments",trip,"*,truck:trucks(id,plate_number,truck_type,capacity_cbm,trucking_company:trucking_companies(id,name)),driver:drivers(id,first_name,last_name,trucking_company:trucking_companies(id,name)),trucking_company:trucking_companies(id,name)"),
   scopedRows("trip_stops",trip),scopedRows("trip_line_items",trip,"*,source_quantity:quantity::text,source_cbm:cbm::text,product:products(id,sku,model_code)"),
   scopedRows("trip_cargo_allocations",trip,"*,exact_quantity:quantity::text,exact_cbm:allocated_cbm::text"),scopedRows("trip_assignment_stops",trip),
-  db.from("v_trip_cargo_totals").select("trip_id,total_cbm::text,assigned_cbm::text,remaining_cbm::text").eq("trip_id",trip).maybeSingle()
+  db.from("v_trip_cargo_totals").select("trip_id,total_cbm::text,assigned_cbm::text,remaining_cbm::text").eq("trip_id",trip).maybeSingle(),readConfirmedOperationalState([trip])
  ]);
  if(totals.error)throw new ApiError("Unable to load trip capacity totals.",503);
- return {assignments:assignments.map((row:any)=>({...row,trucking_company:row.trucking_company??row.truck?.trucking_company??row.driver?.trucking_company??null})),stops:stops.sort((a:any,b:any)=>a.stop_sequence-b.stop_sequence),cargo:cargo.map(row=>({...row,quantity:row.source_quantity,cbm:row.source_cbm})),allocations:allocations.map(row=>({...row,quantity:row.exact_quantity,allocated_cbm:row.exact_cbm})),responsibilities,totals:totals.data};
+ return {operational_state,assignments:assignments.map((row:any)=>({...row,trucking_company:row.trucking_company??row.truck?.trucking_company??row.driver?.trucking_company??null})),stops:stops.sort((a:any,b:any)=>a.stop_sequence-b.stop_sequence),cargo:cargo.map(row=>({...row,quantity:row.source_quantity,cbm:row.source_cbm})),allocations:allocations.map(row=>({...row,quantity:row.exact_quantity,allocated_cbm:row.exact_cbm})),responsibilities,totals:totals.data};
 }
 function failure(error:{code?:string}){if(error.code==="42501")return new ApiError("Access denied.",403);if(error.code==="40001")return new ApiError("This allocation changed. Reload it before retrying.",409);if(["23514","23503","P0002"].includes(error.code??""))return new ApiError("Check the selected trip, truck capacity, source cargo and stop responsibilities.",409);return new ApiError("Unable to confirm the allocation. Reload before retrying.",503);}
 export async function saveTripAllocations(actor:Actor,trip:string,input:unknown){authorize(actor,trip);if(!Array.isArray(input)||!input.length||input.length>100)throw new ApiError("Choose one to one hundred cargo allocations.",400);const seen=new Set<string>();for(const change of input){if(!change||typeof change!=="object"||Array.isArray(change)||Object.keys(change).some(key=>!["assignment_id","trip_line_item_id","expected_version","quantity","allocated_cbm","remove"].includes(key))||!isValidUuid(change.assignment_id)||!isValidUuid(change.trip_line_item_id)||!Number.isSafeInteger(change.expected_version)||change.expected_version<0||change.remove!==undefined&&typeof change.remove!=="boolean"||!change.remove&&[change.quantity,change.allocated_cbm].some(value=>!((typeof value==="number"&&Number.isFinite(value)&&value>=0)||(typeof value==="string"&&/^\d+(?:\.\d+)?$/.test(value)&&Number.isFinite(Number(value))))))throw new ApiError("Invalid cargo allocation.",400);const key=change.assignment_id+":"+change.trip_line_item_id;if(seen.has(key))throw new ApiError("Duplicate allocation target.",400);seen.add(key);}

@@ -100,9 +100,9 @@ export async function listDropdownOptions(fieldInput?: unknown) {
 
 export async function createDropdownOption(input: Record<string, unknown>) {
   const field = validateField(input.field_key);
-  if (field === "letter_status") {
+  if (field === "letter_status" || field === "delivery_status") {
     throw new Error(
-      "Letter status values are fixed by the database constraint.",
+      "Letter and delivery status choices are fixed by the operational workflow.",
     );
   }
   const optionValue = validateOptionValue(input.option_value);
@@ -172,6 +172,7 @@ export async function updateDropdownOption(
   }
 
   const field = validateField(existing.field_key);
+  if(field==="delivery_status"&&Object.keys(input).some(key=>key!=="color"))throw new Error("Delivery Status labels and choices are fixed by the operational workflow.");
   const patch: Record<string, unknown> = {};
   if ("display_label" in input) {
     patch.display_label = validateText(input.display_label, "display_label");

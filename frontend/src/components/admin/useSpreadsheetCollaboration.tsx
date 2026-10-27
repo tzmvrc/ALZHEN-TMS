@@ -35,7 +35,7 @@ export function useSpreadsheetCollaboration(table:string,token:string|null,userI
   };
   const resume=()=>{if(!live)return;for(const item of pending.values())if(item.failed){item.failed=false;item.attempt=0;item.ready=true;}pump();};
   const unsubscribe=subscribeCollaborationEvents(event=>{
-   if(event.kind==="connected"){resume();return;}if(event.kind!=="commit")return;const commit=event.commit;if(!EDITABLE_SOURCES.has(commit.source))return;const id=key(commit),prior=pending.get(id);
+   if(event.kind==="connected"){resume();return;}if(event.kind!=="commit")return;const commit=event.commit;if(!EDITABLE_SOURCES.has(commit.source)){if(["trip_events","trip_images","pod_review_events","pod_records"].includes(commit.source))callback.current(commit,null);return;}const id=key(commit),prior=pending.get(id);
    if(prior&&prior.commit.version!==null&&commit.version!==null&&prior.commit.version>commit.version)return;
    if(prior?.timer)clearTimeout(prior.timer);
    if(commit.operation==="DELETE"){pending.delete(id);callback.current(commit,null);return;}

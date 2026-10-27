@@ -28,7 +28,7 @@ export default function TripRowContextDialog({ token, initial, action, onClose, 
         if (!customer) throw Error("Select the stop's customer.");
         invalidateApiCache(`/trips/${trip}/stops`);
         const current = await fetchTripStops(token, trip);
-        const response = await apiPost<ApiResponse<ReportRow>>(`/trips/${trip}/stops`, { customer_id: customer.id, store_id: store?.id ?? null, stop_sequence: Math.max(0, ...current.map(row => Number(row.stop_sequence) || 0)) + 1, delivery_status: "PENDING" }, token);
+        const response = await apiPost<ApiResponse<ReportRow>>(`/trips/${trip}/stops`, { customer_id: customer.id, store_id: store?.id ?? null, stop_sequence: Math.max(0, ...current.map(row => Number(row.stop_sequence) || 0)) + 1, delivery_status: "PLANNED" }, token);
         if (!response.success || !response.data) throw Error(response.message ?? "Stop creation was not confirmed.");
         onChosen({ ...parent, trip_id: trip, trip_stop_id: response.data.id, customer_name: customer.label, store_name: store?.label ?? "", customer_id: customer.id, store_id: store?.id ?? null });
       } else {

@@ -4,7 +4,7 @@ const EVENT_TYPES = new Set([
   "WAREHOUSE_ARRIVAL", "LOADING_STARTED", "LOADING_FINISHED", "WAREHOUSE_DEPARTURE",
   "IN_TRANSIT", "ARRIVED", "UNLOADING_STARTED", "PARTIAL_UNLOAD", "UNLOADING_FINISHED",
   "STOP_DEPARTURE", "ASSIGNMENT_COMPLETED", "POD_SUBMITTED", "PHOTO_UPLOADED",
-  "BACKLOAD_REPORTED", "OFFLOAD_REPORTED", "CUSTOM_STATUS", "STORE_ARRIVAL",
+  "BACKLOAD_REPORTED", "OFFLOAD_REPORTED", "DEMURRAGE_REPORTED", "CUSTOM_STATUS", "STORE_ARRIVAL",
 ]);
 type Source = "trip_events" | "driver_trip_updates";
 type DriverRow = Record<string, unknown> & { id: string; trip_id: string };
@@ -39,7 +39,7 @@ async function saveNotifications(entries: { source: Source; row: DriverRow }[], 
       ? candidate.id === row.assignment_id
       : candidate.trip_id === row.trip_id && candidate.driver_id === row.driver_id && !candidate.unassigned_at);
     const truck = assignment?.trucks;
-    const plate = text(truck?.[0]?.plate_number);
+    const plate = text(Array.isArray(truck)?truck[0]?.plate_number:(truck as unknown as {plate_number?:string}|null)?.plate_number);
     const eventType = source === "trip_events" ? text(row.event_type) : text(row.status) || text(row.delivery_status);
     const title = source === "trip_events" && eventType === "CUSTOM_STATUS" && typeof (row.delivery_metadata as { title?: unknown } | null)?.title === "string"
       ? String((row.delivery_metadata as { title: string }).title) : eventType.replaceAll("_", " ").toLowerCase().replace(/^./, letter => letter.toUpperCase());

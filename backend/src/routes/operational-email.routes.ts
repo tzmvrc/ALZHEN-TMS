@@ -1,0 +1,12 @@
+import {Router} from 'express';
+import {authMiddleware} from '../middleware/auth.middleware.js';
+import {requireRole} from '../middleware/role.middleware.js';
+import {sendSuccess} from '../utils/api-response.js';
+import {readOperationalEmailSettings,saveOperationalEmailSettings,queueOperationalTestEmail,retryOperationalEmail} from '../services/operational-email.service.js';
+const router=Router();router.use(authMiddleware,requireRole('ADMIN'));
+const actor=(req:any)=>({id:req.user.id,role:req.profile.role});
+router.get('/',async(req,res,next)=>{try{sendSuccess(res,200,'Operational email settings',await readOperationalEmailSettings(actor(req)));}catch(e){next(e);}});
+router.put('/',async(req,res,next)=>{try{sendSuccess(res,200,'Operational email settings saved',await saveOperationalEmailSettings(actor(req),req.body));}catch(e){next(e);}});
+router.post('/test',async(req,res,next)=>{try{sendSuccess(res,202,'Test email queued',await queueOperationalTestEmail(actor(req),req.body?.email,req.body?.request_id));}catch(e){next(e);}});
+router.post('/:id/retry',async(req,res,next)=>{try{sendSuccess(res,202,'Email retry queued',await retryOperationalEmail(actor(req),req.params.id));}catch(e){next(e);}});
+export default router;

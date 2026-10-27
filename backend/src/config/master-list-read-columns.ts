@@ -14,6 +14,7 @@ export const MASTER_LIST_READ_COLUMNS = [...new Set([
   "trip_id", "_trip_id", "_trip_stop_id", "_trip_line_item_id", "_assignment_id", "_product_id",
   "_trip_type_id", "_warehouse_id", "_customer_id", "_store_id", "_truck_id", "_driver_id", "_trucking_company_id", "_cargo_allocation_id",
   "loading_date", "driver_name", "trip_status", "stop_sequence", "transaction_number", "created_by", "page_no",
+  "warehouse_arrival_at", "loading_start_at", "loading_finished_at", "pod_submitted_at", "pod_received_at", "delivery_completed_date", "pod_status", "delivery_status_source", "_operational_projection_ready",
   "arrival_time", "start_unloading_time", "finish_unloading_time", "departure_time", "warehouse_departure_time",
   "truck_allocated_by", "truck_allocated_by_name", "subcon_rate_manual", "tms_done_by",
   "transaction_dr_number", "transaction_quantity", "transaction_total_cbm", "transaction_archived_at",

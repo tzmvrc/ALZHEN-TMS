@@ -23,7 +23,7 @@ async(page,saved)=>{
     data={id:'00000000-0000-4000-8000-'+String(++serial).padStart(12,'0'),state:'READY'};
    }else{
     const body=req.postDataJSON(),key=req.headers()['idempotency-key'];requests.push({key,body});
-    assert(Boolean(body.gps)===['WAREHOUSE_ARRIVAL','ARRIVED'].includes(body.type),'Incorrect GPS policy for '+body.type);
+    assert(!['WAREHOUSE_ARRIVAL','ARRIVED'].includes(body.type)||Boolean(body.gps),'Arrival GPS missing');if(body.type==='CUSTOM_STATUS')assert(Boolean(body.gps),'Recent optional GPS missing from custom update');
     if(body.type==='LOADING_STARTED'&&failLoading){failLoading=false;return r.fulfill({status:503,contentType:'application/json',body:JSON.stringify({success:false,message:'Fixture save unavailable',code:'TEMPORARY_FAILURE'})});}
     if(body.type==='WAREHOUSE_ARRIVAL')await new Promise(resolve=>{releaseArrival=resolve;});
     let event=events.find(e=>e.key===key);if(!event){event={key,id:'00000000-0000-4000-8000-'+String(++serial).padStart(12,'0'),trip_id:workspace.assignment.trip_id,assignment_id:assignment,trip_stop_id:body.stop_id??null,event_type:body.type,event_time:new Date().toISOString(),delivery_metadata:{title:body.title},attachments:[]};events.push(event);
@@ -40,18 +40,23 @@ async(page,saved)=>{
  });
  await page.setViewportSize({width:390,height:850});await page.goto('http://localhost:5173/trucker');await page.getByRole('region',{name:'Trip information'}).waitFor();
  const next=page.locator('.delivery-next-panel .delivery-primary'),sheet=page.locator('dialog.delivery-sheet'),primary=sheet.locator('.delivery-submit-button');
- assert(await next.textContent()==='Arrived at Warehouse','Planned trip starts at wrong milestone');
- await page.evaluate(()=>window.fixtureGpsDenied=true);await next.click();await sheet.getByRole('button',{name:'Retry arrival location'}).waitFor();
- assert(await sheet.getByText('Add photos (optional)',{exact:true}).count()===1,'Arrival photo is compulsory');
- await page.evaluate(()=>window.fixtureGpsDenied=false);await sheet.getByRole('button',{name:'Retry arrival location'}).click();
- await primary.click();for(let i=0;i<100&&!releaseArrival;i++)await page.waitForTimeout(20);assert(releaseArrival,'Arrival request not received');
+ assert(await next.textContent()==='Share My Location','Missing GPS must replace the arrival button');
+ await page.evaluate(()=>window.fixtureGpsDenied=true);await next.click();await page.getByRole('alert').filter({hasText:'Location unavailable'}).waitFor();assert(events.length===0,'GPS request submitted a milestone');
+ await page.evaluate(()=>window.fixtureGpsDenied=false);await next.click();await page.waitForFunction(()=>document.querySelector('.delivery-next-panel button')?.textContent==='Arrived at Warehouse');assert(events.length===0,'Acquiring GPS automatically submitted arrival');
+ assert(await page.locator('.delivery-location-warning').count()===0,'Old GPS warning panel remains');await next.click();assert(await sheet.getByText('Add photos (optional)',{exact:true}).count()===1,'Arrival photo is compulsory');
+ const buttonBefore=await primary.boundingBox();await primary.click();for(let i=0;i<100&&!releaseArrival;i++)await page.waitForTimeout(20);assert(releaseArrival,'Arrival request not received');const buttonDuring=await primary.boundingBox();assert(Math.abs(buttonBefore.width-buttonDuring.width)<1&&Math.abs(buttonBefore.height-buttonDuring.height)<1,'Saving changed button dimensions');
  assert(await primary.isDisabled(),'Duplicate submission allowed');assert((await primary.textContent()).includes('confirmation'),'Missing confirmation state');assert(workspace.milestones.length===0,'Progress advanced before confirmation');
  releaseArrival();await sheet.waitFor({state:'detached'});await page.waitForFunction(()=>document.querySelector('.delivery-next-panel button')?.textContent==='Start Loading');
  let gpsCount=await page.evaluate(()=>window.fixtureGpsCalls);await next.click();assert(await page.evaluate(()=>window.fixtureGpsCalls)===gpsCount,'Loading requests blocking GPS');
  await primary.click();await sheet.getByRole('alert').waitFor();await primary.click();await sheet.waitFor({state:'detached'});
  const loading=requests.filter(r=>r.body.type==='LOADING_STARTED');assert(loading.length===2&&loading[0].key===loading[1].key,'Retry created a different request identity');
- const submitNext=async expected=>{await next.click();await primary.click();await sheet.waitFor({state:'detached'});assert(events.at(-1).event_type===expected,'Unexpected saved stage '+events.at(-1).event_type);};
- await submitNext('LOADING_FINISHED');await submitNext('WAREHOUSE_DEPARTURE');assert(!events.some(e=>e.event_type==='IN_TRANSIT'),'Duplicate On the Way event created');
+ const submitNext=async expected=>{if((await next.textContent()).includes('Share My Location')){await next.click();await page.waitForFunction(()=>!document.querySelector('.delivery-next-panel .delivery-primary')?.textContent.includes('Share My Location'));}await next.click();await primary.click();await sheet.waitFor({state:'detached'});assert(events.at(-1).event_type===expected,'Unexpected saved stage '+events.at(-1).event_type);};
+ await submitNext('LOADING_FINISHED');
+ for(const width of [320,390,768]){await page.setViewportSize({width,height:900});assert(await next.evaluate(e=>{const p=e.parentElement,c=getComputedStyle(p);return Math.abs(e.getBoundingClientRect().width-(p.clientWidth-parseFloat(c.paddingLeft)-parseFloat(c.paddingRight)))<2;}),'Next action is not full width '+width);}await page.setViewportSize({width:390,height:900});
+ await page.evaluate(async assignment=>{const source=await(await fetch('/src/pages/Driver/DeliveryCompanion.tsx')).text();const path=source.match(/from ["']([^"']*delivery.service[^"']*)["']/)[1];(await import(path)).clearDeliveryGps(assignment);window.fixtureGpsDenied=true;},assignment);
+ await submitNext('WAREHOUSE_DEPARTURE');assert(await page.evaluate(()=>window.fixtureGpsCalls)===gpsCount,'Warehouse departure acquired GPS');assert(requests.filter(r=>r.body.type==='WAREHOUSE_DEPARTURE').every(r=>!r.body.gps),'Departure manufactured a GPS reading');assert(!events.some(e=>e.event_type==='IN_TRANSIT'),'Duplicate On the Way event created');
+ assert((await next.textContent()).includes('Share My Location'),'Arrival without GPS did not offer location sharing');
+ await page.evaluate(async assignment=>{const source=await(await fetch('/src/pages/Driver/DeliveryCompanion.tsx')).text();const path=source.match(/from ["']([^"']*delivery.service[^"']*)["']/)[1];(await import(path)).cacheDeliveryGps(assignment,{latitude:14.7,longitude:121,accuracy_meters:10,captured_at:new Date().toISOString()});},assignment);
  const photo=await page.evaluate(()=>{const c=document.createElement('canvas');c.width=3000;c.height=2100;const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height);x.fillStyle='#000';x.font='bold 160px sans-serif';x.fillText('DR 12345 - DELIVERED',120,230);x.fillText('Receiver: Test Driver',120,490);const pixels=x.getImageData(0,700,3000,1400);for(let i=0;i<pixels.data.length;i+=4){const v=(i*31+i%37)%255;pixels.data[i]=v;pixels.data[i+1]=v;pixels.data[i+2]=v;pixels.data[i+3]=255;}x.putImageData(pixels,0,700);return c.toDataURL('image/jpeg',.97).split(',')[1];});
  const file={name:'fixture-document.jpg',mimeType:'image/jpeg',buffer:Buffer.from(photo,'base64')};
  const exif=Buffer.from('ffe1002245786966000049492a0008000000010012010300010000000600000000000000','hex'),oriented=Buffer.concat([file.buffer.subarray(0,2),exif,file.buffer.subarray(2)]).toString('base64');
@@ -60,7 +65,7 @@ async(page,saved)=>{
  await page.getByRole('button',{name:'Add Status',exact:true}).click();await sheet.locator('input[type=file]').setInputFiles(file);await sheet.getByAltText('Evidence preview 1').waitFor();await primary.click();
  for(let i=0;i<100&&!releaseUpload;i++)await page.waitForTimeout(20);assert(releaseUpload,'Photo upload did not start');assert((await primary.textContent()).includes('Uploading photos'),'Upload progress missing');releaseUpload();await sheet.waitFor({state:'detached'});
  assert(await page.evaluate(()=>window.fixtureGpsCalls)===gpsCount,'Manual travel status requested GPS');
- await submitNext('ARRIVED');assert(events.at(-1).trip_stop_id===first.id,'Arrival associated with wrong stop');
+ await page.evaluate(()=>window.fixtureGpsDenied=false);await submitNext('ARRIVED');assert(events.at(-1).trip_stop_id===first.id,'Arrival associated with wrong stop');
  await submitNext('UNLOADING_STARTED');
  await next.click();await sheet.getByRole('button',{name:'Unload all remaining in this DR'}).first().click();await primary.click();await sheet.waitFor({state:'detached'});assert(events.at(-1).event_type==='PARTIAL_UNLOAD','Unloaded quantities missing');
  await submitNext('UNLOADING_FINISHED');assert(!events.some(e=>e.event_type==='POD_SUBMITTED'),'Unloading created a POD');
