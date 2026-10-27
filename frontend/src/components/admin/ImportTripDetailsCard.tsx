@@ -7,8 +7,8 @@ import { fieldControl, secondaryAction } from "./shared/styles";
 import { TRIP_STATUSES } from "../../../../packages/trip-import/trip-details.js";
 import type { TripDetails } from "../../services/trip-import.service";
 
-type Props = { token: string; group: string; details: TripDetails; tripNumber: string; disabled: boolean; existingTrip?: boolean; id?: string; onChange: (patch: Partial<TripDetails>) => void; onApplyAll?: () => void; readOnly?: boolean };
-export default function ImportTripDetailsCard({ token, group, details, tripNumber, disabled, existingTrip, id, onChange, onApplyAll, readOnly = false }: Props) {
+type Props = { token: string; group: string; details: TripDetails; tripNumber: string; disabled: boolean; existingTrip?: boolean; id?: string; onChange: (patch: Partial<TripDetails>) => void; onApplyAll?: () => void; readOnly?: boolean; hideDates?: boolean };
+export default function ImportTripDetailsCard({ token, group, details, tripNumber, disabled, existingTrip, id, onChange, onApplyAll, readOnly = false, hideDates = false }: Props) {
   const [addingType, setAddingType] = useState(false);
   const locked = disabled || existingTrip;
   const [originChoice, setOriginChoice] = useState<{ id: string; label: string } | null>(null);
@@ -24,8 +24,8 @@ export default function ImportTripDetailsCard({ token, group, details, tripNumbe
 
       </div>
       <label className="grid content-start gap-1.5 text-xs font-medium text-slate-600">Status<select aria-label={`Trip status for ${group}`} value={details.status} onChange={event => onChange({ status: event.target.value })} className={fieldControl}>{[...new Set([...TRIP_STATUSES, details.status])].map(status => <option key={status} value={status}>{status.replaceAll("_", " ")}</option>)}</select></label>
-      <label className="grid content-start gap-1.5 text-xs font-medium text-slate-600">Loading date<input type="date" aria-label={`Loading date for ${group}`} value={details.loading_date ?? ""} onChange={event => onChange({ loading_date: event.target.value || null })} className={`${fieldControl} tabular-nums`} /></label>
-      <label className="grid content-start gap-1.5 text-xs font-medium text-slate-600">Estimated delivery<input type="date" aria-label={`Estimated delivery for ${group}`} min={details.loading_date || undefined} value={details.estimated_delivery_date ?? ""} onChange={event => onChange({ estimated_delivery_date: event.target.value || null })} className={`${fieldControl} tabular-nums`} /></label>
+      {!hideDates && <label className="grid content-start gap-1.5 text-xs font-medium text-slate-600">Loading date<input type="date" aria-label={`Loading date for ${group}`} value={details.loading_date ?? ""} onChange={event => onChange({ loading_date: event.target.value || null })} className={`${fieldControl} tabular-nums`} /></label>}
+      {!hideDates && <label className="grid content-start gap-1.5 text-xs font-medium text-slate-600">Estimated delivery<input type="date" aria-label={`Estimated delivery for ${group}`} min={details.loading_date || undefined} value={details.estimated_delivery_date ?? ""} onChange={event => onChange({ estimated_delivery_date: event.target.value || null })} className={`${fieldControl} tabular-nums`} /></label>}
       <div className="min-w-0 space-y-1.5"><span className="text-xs font-medium text-slate-600">Origin warehouse</span><SearchableRelationshipEditor key={details.origin_warehouse_id ?? "none"} token={token} kind="warehouses" presentation="form" autoFocus={false} disabled={locked} value={originLabel} onSelect={option => { setOriginChoice(option); onChange({ origin_warehouse_id: option.id }); }} onCommitBlur={() => {}} onCancel={() => {}} /></div>
       <label className="grid content-start gap-1.5 text-xs font-medium text-slate-600 !col-span-12">Remarks<textarea aria-label={`Trip remarks for ${group}`} rows={2} value={details.remarks ?? ""} onChange={event => onChange({ remarks: event.target.value || null })} maxLength={10000} className={fieldControl} /></label>
     </fieldset>

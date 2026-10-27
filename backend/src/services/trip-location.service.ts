@@ -89,30 +89,38 @@ export async function prepareImportDestinationDecisions(rows: SourceRow[], provi
     const source = sources[index];
     const choice = provided[row.source_identity] ?? {};
     const key = JSON.stringify([storeIdentityText(source.customer_name), destinationLookupKey(source)]);
-    const chosen = JSON.stringify([choice.customer_id ?? "", choice.store_id ?? "", storeIdentityText(String(choice.province || source.province)), storeIdentityText(String(choice.city || source.city))]);
+    const chosen = JSON.stringify([choice.customer_id ?? "", choice.customer_code ?? "", choice.store_id ?? "", storeIdentityText(String(choice.province || source.province)), storeIdentityText(String(choice.city || source.city))]);
     if (chosenIdentities.has(key) && chosenIdentities.get(key) !== chosen) throw new ApiError("Products for the same Ship To / Province / City must use the same store identity. Review the destination choices.", 400);
     chosenIdentities.set(key, chosen);
   });
   // Independent, read-only customer/store lookups can overlap. The resolver
   // shares in-flight lookups for repeated destinations; a small limit avoids
   // serial network latency without flooding Supabase for large imports.
-  const decisions: Decision[] = new Array(rows.length);
+  const groups = new Map<string, { source: Destination; choice: Decision; rows: SourceRow[] }>();
+  rows.forEach((row, index) => {
+    const key = JSON.stringify([storeIdentityText(sources[index].customer_name), destinationLookupKey(sources[index])]);
+    const group = groups.get(key);
+    if (group) group.rows.push(row);
+    else groups.set(key, { source: sources[index], choice: provided[row.source_identity] ?? {}, rows: [row] });
+  });
+  const distinct = [...groups.values()];
+  const decisions: Decision[] = new Array(distinct.length);
   let next = 0;
-  await Promise.all(Array.from({ length: Math.min(6, rows.length) }, async () => {
-    while (next < rows.length) {
+  await Promise.all(Array.from({ length: Math.min(6, distinct.length) }, async () => {
+    while (next < distinct.length) {
       const index = next++;
-      const row = rows[index];
-      const source = sources[index];
+      const { source, choice, rows: affected } = distinct[index];
       let decision: Decision;
-      try { decision = await resolveStore(source, provided[row.source_identity] ?? {}); }
-      catch (error) { throw new ApiError(`${row.filename ?? "Source file"}, CSV row ${row.line ?? "unknown"}, ${row.values.customer_model ?? "product"}: expected Qty ${row.values.quantity}, CBM ${row.values.cbm}. Customer/store resolution failed: ${error instanceof Error ? error.message : "Review this destination identity."}`, 400, "IMPORT_DESTINATION_REVIEW_REQUIRED"); }
+      try { decision = await resolveStore(source, choice); }
+      catch (error) { throw new ApiError(`${source.customer_name} / ${source.ship_to}: ${error instanceof Error ? error.message : "Review this destination identity."} Affected rows: ${affected.map(row => row.line ?? "?").join(", ")}.`, 400, "IMPORT_DESTINATION_REVIEW_REQUIRED"); }
+      if (!decision.customer_id && !String(decision.customer_code ?? "").trim()) throw new ApiError(`${source.customer_name} / ${source.ship_to}: select an existing customer or enter its real customer code in Stores & products before saving. Affected rows: ${affected.map(row => row.line ?? "?").join(", ")}.`, 400, "IMPORT_DESTINATION_REVIEW_REQUIRED");
       if (decision.pin_address_mismatch === true && decision.verified === true) throw new ApiError("Review the address against the moved map pin before verifying this destination.", 400, "LOCATION_PIN_ADDRESS_MISMATCH");
       decisions[index] = decision;
     }
   }));
   // Find address is an explicit action. Saving only resolves store identity;
   // optional map searches must never delay or determine the result of a save.
-  rows.forEach((row, index) => { prepared[row.source_identity] = decisions[index]; });
+  distinct.forEach((group, index) => group.rows.forEach(row => { prepared[row.source_identity] = decisions[index]; }));
   return prepared;
 }
 
@@ -128,6 +136,7 @@ export async function persistImportDestinationLocations(_actor: string, batch: s
   const linesById = new Map((lines.data ?? []).map(line => [line.id, line]));
   const stopsById = new Map((stops.data ?? []).map(stop => [stop.id, stop]));
   const seen = new Set<string>();
+  const updates: Array<{ stopId: string; decision: Decision }> = [];
   for (const outcome of owned) {
     const row = rowsByIdentity.get(outcome.source_identity);
     const line = linesById.get(outcome.line_item_id!);
@@ -137,6 +146,12 @@ export async function persistImportDestinationLocations(_actor: string, batch: s
     const identity = JSON.stringify([stop.id,decision.address,decision.province,decision.city,decision.latitude,decision.longitude]);
     if (seen.has(identity)) continue;
     seen.add(identity);
-    if (decision.update_store_location !== undefined) await saveTripDeliveryAddress(stop.id, decision);
+    if (decision.update_store_location !== undefined) updates.push({ stopId: stop.id, decision });
   }
+  // Each stop has an independent delivery address; bounded parallel writes avoid
+  // one network round trip per store while preserving the same retry semantics.
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(4, updates.length) }, async () => {
+    while (next < updates.length) { const update = updates[next++]; await saveTripDeliveryAddress(update.stopId, update.decision); }
+  }));
 }

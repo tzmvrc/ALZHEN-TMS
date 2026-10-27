@@ -9,6 +9,7 @@ import { schemaCapability } from "./schema-capability-cache.js";
 import { matchImportWarehouses, checkImportWarehouseTargets } from "./trip-import-warehouse.service.js";
 import { prepareImportDestinationDecisions, persistImportDestinationLocations } from "./trip-location.service.js";
 import { destinationLookupKey, storeIdentityText } from "./trip-location.logic.js";
+import { importStoreResolver } from "./trip-store-identity.service.js";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { supabaseAdmin } from "../config/supabase.js";
 import { ApiError } from "../utils/api-response.js";
@@ -104,7 +105,25 @@ export async function previewTripImport(files: SourceFile[]) {
     return { ...row, duplicate, potential_duplicate: !duplicate && (businessMatches.has(locationFingerprint(row)) || fingerprints.has(locationFingerprint(row)) || (selectedFingerprints.get(locationFingerprint(row))?.size ?? 0) > 1), signature: signature(row) };
   });
   const warehouse_matches = setupRequired ? {} : await matchImportWarehouses(rows);
-  return { rows, warehouse_matches, history, detected: rows.length, valid: rows.filter(row => !row.errors.length).length,
+  // Resolve each distinct destination once. The same customer, name and supplied
+  // geography rules are used again at commit, so preview never guesses a branch.
+  const resolveStore = importStoreResolver();
+  const destinations = [...new Map(rows.filter(row => !row.errors.length).map(row => [JSON.stringify([storeIdentityText(row.values.customer_name), destinationLookupKey({ ship_to: row.values.ship_to ?? "", province: row.values.province ?? "", city: row.values.city ?? "" })]), row])).values()];
+  const resolvedStores: Array<readonly [string, { status: string; id?: unknown; customer_id?: unknown; customer_status: string; message?: string }]> = new Array(destinations.length);
+  let nextDestination = 0;
+  await Promise.all(Array.from({ length: Math.min(6, destinations.length) }, async () => {
+    while (nextDestination < destinations.length) {
+    const index = nextDestination++;
+    const row = destinations[index];
+    const key = JSON.stringify([storeIdentityText(row.values.customer_name), destinationLookupKey({ ship_to: row.values.ship_to ?? "", province: row.values.province ?? "", city: row.values.city ?? "" })]);
+    try {
+      const decision = await resolveStore({ customer_name: row.values.customer_name ?? "", ship_to: row.values.ship_to ?? "", province: row.values.province ?? "", city: row.values.city ?? "" }, {});
+      resolvedStores[index] = [key, decision.store_id ? { status: "matched", id: decision.store_id, customer_id: decision.customer_id, customer_status: "matched" } : { status: "missing", customer_id: decision.customer_id, customer_status: decision.customer_id ? "matched" : "missing" }];
+    } catch (error) { const message = error instanceof Error ? error.message : "Choose the matching customer and store."; resolvedStores[index] = [key, { status: "conflict", customer_status: /Multiple store records match/.test(message) ? "matched" : "conflict", message }]; }
+    }
+  }));
+  const store_matches = Object.fromEntries(resolvedStores);
+  return { rows, warehouse_matches, store_matches, history, detected: rows.length, valid: rows.filter(row => !row.errors.length).length,
     setup_required: setupRequired, duplicate_check_status: setupRequired ? "unavailable" as const : "complete" as const,
     setup_message: masterSetupRequired ? "Preview is available. Master List values require approval and application of 2026_11_17_proposed_master_list_csv.sql before importing. No trip data has been saved." : setupRequired ? "Preview is available. Apply the reviewed source-import and 2026_10_21_trip_workflow_completion.sql migrations to enable duplicate checks and saving. No trip data has been saved." : null,
     invalid: rows.filter(row => row.errors.length).length, duplicates: rows.filter(row => row.duplicate).length,
@@ -139,6 +158,7 @@ export async function commitTripImport(input: { batch_id: string; rows: ImportRo
     if (location.pin_address_mismatch === true && location.verified === true) throw new ApiError("Review the address against the moved map pin before verifying.", 400, "LOCATION_PIN_ADDRESS_MISMATCH");
     for (const field of ["province", "city", "address"]) if (location[field] != null && (typeof location[field] !== "string" || String(location[field]).length > (field === "address" ? 2000 : 200))) throw new ApiError("Use text for the reviewed address, province and city within the supported field length.", 400);
     for(const key of ["customer_id","store_id","product_id"])if(location[key]&&(typeof location[key]!=="string"||!isValidUuid(location[key] as string)))throw new ApiError("Invalid destination or product identity.",400);
+    if (location.customer_code != null && (typeof location.customer_code !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,49}$/.test(location.customer_code.trim()))) throw new ApiError("Enter a real customer code using letters, numbers, dots, underscores or hyphens (up to 50 characters).", 400);
     for (const key of ["restore_missing_source", "product_match_confirmed"]) if (location[key] != null && typeof location[key] !== "boolean") throw new ApiError("Confirm source recovery and product matching explicitly.", 400);
     if(location.verified===true){for(const key of ["latitude","longitude"]){const value=location[key];if(value===null||value===undefined||String(value).trim()===""||!Number.isFinite(Number(value))||Math.abs(Number(value))>(key==="latitude"?90:180))throw new ApiError("Review a valid destination coordinate pair.",400);}}
   }
@@ -170,13 +190,16 @@ export async function commitTripImport(input: { batch_id: string; rows: ImportRo
     console.error("Trip location follow-up incomplete", { code: (failure as { code?: string })?.code });
     throw new ApiError("Trip rows were saved, but location details or admin notifications are incomplete. Retry this same batch; completed products will not be duplicated.", 503, "TRIP_LOCATION_FOLLOWUP_REQUIRED");
   }
-  if(data?.rows?.every((row:{status:string})=>row.status!=="failed")){
-    const updated=await supabaseAdmin.from("trip_import_batches").update({last_error:null,updated_at:new Date().toISOString()}).eq("id",input.batch_id).eq("created_by",creator);
-    if(updated.error)console.error("Unable to update import recovery timestamp",{code:updated.error.code});
-  }
+  const [updated, latestHistory] = await Promise.all([
+    data?.rows?.every((row:{status:string})=>row.status!=="failed")
+      ? supabaseAdmin.from("trip_import_batches").update({last_error:null,updated_at:new Date().toISOString()}).eq("id",input.batch_id).eq("created_by",creator)
+      : Promise.resolve(null),
+    readImportSourceHistory(input.rows.map(row => row.source_identity)),
+  ]);
+  if(updated?.error)console.error("Unable to update import recovery timestamp",{code:updated.error.code});
   const described = (data?.rows ?? []).map((outcome: { source_identity: string; status: string; error?: string }) => {
     const row = input.rows.find(source => source.source_identity === outcome.source_identity);
     return outcome.status === "failed" && row ? { ...outcome, error: `${row.filename}, CSV row ${row.line}, ${row.values.customer_model}, ${row.values.ph_truck_reference ?? "no PH reference"}: expected Qty ${row.values.quantity}, Total CBM ${row.values.cbm}. ${outcome.error ?? "Source import failed."}` } : outcome;
   });
-  return { ...data, rows: described, history: await readImportSourceHistory(input.rows.map(row => row.source_identity)) };
+  return { ...data, rows: described, history: latestHistory };
 }

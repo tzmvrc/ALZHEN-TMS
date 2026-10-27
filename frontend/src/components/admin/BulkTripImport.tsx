@@ -3,21 +3,19 @@ import { beginTripImportSave } from "../../services/trip-import-activity";
 import { importBatchHasRecordedRows } from "../../services/import-batch-lock";
 import { isolateImportRows } from "../../services/isolate-import-rows";
 import { storeLocationLabel } from "../../services/store-location";
-import ReviewPreviewTable, { type PreviewLine } from "./ReviewPreviewTable";
 import PreviousImportSummary from "./PreviousImportSummary";
-import { rowAppearance, reviewFingerprint, type ReviewAnnotations } from "../../services/review-annotations";
-import GroupRail, { type GroupTab } from "./GroupRail";
-import { blockingIssues, completionTabs, confirmedStopAddress, csvCompletion, type CompletionIssue } from "./csv-completion";
+import type { ReviewAnnotations } from "../../services/review-annotations";
 import { createAllocationSession, type AllocationSession } from "./useAutoAllocation";
-import { CsvSourceTabs, ReviewSourceLines } from "./TripImportPresentation";
+import { ReviewSourceLines } from "./TripImportPresentation";
 import TripFileUpload from "./shared/TripFileUpload";
+import CsvPreviewTabs from "./CsvPreviewTabs";
+import CsvSidePanel from "./CsvSidePanel";
+import CsvStoreReview from "./CsvStoreReview";
+import TripSaveProgress from "./shared/TripSaveProgress";
 import { useTripModal } from "./shared/useTripModal";
 import { TripModalHeader, TripModalSteps, tripModalBackdrop, tripModalShell, tripPrimaryAction, tripSecondaryAction, tripFooter } from "./shared/TripModalUI";
-import ImportResultsPanel from "./ImportResultsPanel";
-import { displayCargoTotal, TripSummaryBar } from "./shared/TripLiveSummary";
+import { displayCargoTotal } from "./shared/TripLiveSummary";
 import ImportDispatchTarget from "./ImportDispatchTarget";
-import { StatusChip } from "./shared";
-import { createStoreWorkspaceMemory, useStoreWorkspaceMemory, type StoreWorkspaceMemory } from "./shared/storeWorkspace";
 import ImportTripDetailsCard from "./ImportTripDetailsCard";
 import { emptyTripDetails } from "../../../../packages/trip-import/trip-details.js";
 
@@ -31,39 +29,20 @@ import { cargoSignature, emptyCargoPlan, validateCargo, type CargoPlan, type Car
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronRight, Download, FileSpreadsheet, Loader2 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
-import { readImportFile, editImportRows, hasPhReferenceGroups, regroupImportFile, importFields, importMappingProblems, setSourceMapping, sourceAssignments, importPayload, type ImportFile, type ImportField } from "./tripImportFiles";
-import TripPopover from "./shared/TripPopover";
+import { readImportFile, editImportRows, regroupImportFile, importFields, importMappingProblems, setSourceMapping, sourceAssignments, importPayload, type ImportFile, type ImportField } from "./tripImportFiles";
 import { previewImport, commitImport, confirmImportCargo, saveImportAssignmentCompanies, fetchImportBatches, reopenImportBatch, saveImportBatchDraft, type ImportRecoveryDraft, type ImportBatchSummary, type ImportPreview, type ImportTarget, type ImportOutcome, type ImportSourceHistory, type ImportRowResolution, type TripDetails } from "../../services/trip-import.service";
 import { fetchTrips, fetchTripDetail, type TripRecord } from "../../services/trip.service";
 import TripFormNotice from "./TripFormNotice";
 import ImportLocationNotices from "./ImportLocationNotices";
-import ImportStoreCards, { type ImportCardRow } from "./ImportStoreCards";
-import { failedTripLocation, locationLookupFailed, resolveTripLocation, type TripLocationLookup } from "../../services/trip-location.service";
 import { ApiError } from "../../services/api.service";
+import { useToast } from "../ui/Toast";
 
 const button = tripSecondaryAction;
 const primaryButton = tripPrimaryAction;
 
-export default function BulkTripImport({ onClose: onDismiss, onComplete, onImported, initialTarget, initialTripDetails }: { onClose: () => void; onComplete?: () => void; onImported: () => void; initialTarget?: ImportTarget; initialTripDetails?: TripDetails }) {
-  const storeNavigation = useStoreWorkspaceMemory();
-  const groupNavigation = useRef<Record<string, StoreWorkspaceMemory>>({});
-  const activeStoreGroup = useRef("");
+export default function BulkTripImport({ onClose: onDismiss, onBack, onComplete, onImported, initialTarget, initialTripDetails, active = true }: { onClose: () => void; onBack?: () => void; onComplete?: () => void; onImported: () => void; initialTarget?: ImportTarget; initialTripDetails?: TripDetails; active?: boolean }) {
+  const { addToast } = useToast();
   const allocationSessions = useRef<Record<string, AllocationSession>>({});
-  const [capacityByGroup, setCapacityByGroup] = useState<Record<string, string>>({});
-  const [groupView, setGroupView] = useState<{ group: string; tab: GroupTab }>({ group: "", tab: "details" });
-  const [visitedTabs, setVisitedTabs] = useState<Record<string, GroupTab[]>>({});
-  const [showCompletionIssues, setShowCompletionIssues] = useState(false);
-  const [combineFile, setCombineFile] = useState<string | null>(null);
-  const copyNavigation = (from: StoreWorkspaceMemory, to: StoreWorkspaceMemory) => {
-    to.selected = from.selected; to.members = [...from.members]; to.search = from.search; to.attention = from.attention; to.rail = from.rail;
-    Object.assign(to.details, from.details); Object.assign(to.products, from.products);
-  };
-  const navigationForGroup = (group: string) => {
-    if (!groupNavigation.current[group]) {
-      const memory = createStoreWorkspaceMemory(); copyNavigation(storeNavigation, memory); groupNavigation.current[group] = memory;
-    }
-    return groupNavigation.current[group];
-  };
   const [inheritedTarget, setInheritedTarget] = useState(initialTarget);
   const [tripDetails, setTripDetails] = useState<TripDetails | undefined>(initialTripDetails ?? initialTarget?.trip_details);
   const defaultTarget = (): ImportTarget => {
@@ -80,10 +59,7 @@ export default function BulkTripImport({ onClose: onDismiss, onComplete, onImpor
   const [rowResolutions, setRowResolutions] = useState<Record<string, ImportRowResolution>>({});
   const [plans, setPlans] = useState<Record<string, CargoPlan>>({});
   const [locations, setLocations] = useState<Record<string, LocationDecision>>({});
-  const locationsRef = useRef(locations);
-  locationsRef.current = locations;
-  const [locationChecking, setLocationChecking] = useState(false);
-  const [locationProgress, setLocationProgress] = useState<Record<string, string>>({});
+  const locationChecking = false;
   const [locationRetryRequired, setLocationRetryRequired] = useState(false);
   const [cargoSaved, setCargoSaved] = useState<Record<string, boolean>>({});
   const [started, setStarted] = useState(false);
@@ -97,7 +73,7 @@ export default function BulkTripImport({ onClose: onDismiss, onComplete, onImpor
   const [saveWarning, setSaveWarning] = useState("");
   const [busy, setBusy] = useState(false);
   const [saving, setSaving] = useState(false);
-  
+
   const [batchId, setBatchId] = useState<string>(() => crypto.randomUUID());
   
   const batchRevision = useRef(0), draftWrites = useRef<Promise<unknown>>(Promise.resolve());
@@ -111,6 +87,7 @@ export default function BulkTripImport({ onClose: onDismiss, onComplete, onImpor
   const [verifiedUnmapped, setVerifiedUnmapped] = useState(false);
   const [outcomes, setOutcomes] = useState<Record<string, ImportOutcome>>({});
   const [progress, setProgress] = useState(0);
+  const [saveOperation, setSaveOperation] = useState("Preparing save");
   const [phase, setPhase] = useState(0);
   const [draftLoaded, setDraftLoaded] = useState(false);
   const [detailsDirty, setDetailsDirty] = useState(false);
@@ -167,10 +144,9 @@ export default function BulkTripImport({ onClose: onDismiss, onComplete, onImpor
       const recovered = await reopenImportBatch(accessToken, id), saved = recovered.draft;
       if (!Array.isArray(saved.files) || !saved.files.length) throw Error("This older batch has no saved source preview. Its imported records are preserved.");
       setTripDetails(saved.trip_details ?? saved.initialTarget?.trip_details);
-      setGroupView({ group: "", tab: "details" }); setVisitedTabs({}); setShowCompletionIssues(false);
       setHistory(recovered.history ?? saved.preview?.history ?? {}); setRowResolutions(saved.rowResolutions ?? {});
       setLocationRetryRequired(Boolean(recovered.location_retry_required)); setDetailsDirty(Boolean(saved.detailsDirty));
-      batchRevision.current = recovered.revision; setBatchId(id); setFiles(saved.files); setPreview(saved.preview); setTargets(saved.targets ?? {}); setPlans(saved.plans ?? {}); setLocations(recoverDestinationDecisions(saved.locations)); setAnnotations(saved.review_annotations ?? {}); setInheritedTarget(saved.initialTarget); setConfirmed(false); setVerified(Boolean(saved.verified)); setVerifiedCbm(Boolean(saved.verifiedCbm)); setVerifiedUnmapped(Boolean(saved.verifiedUnmapped)); setOutcomes(Object.fromEntries(recovered.outcomes.map(row => [row.source_identity, row]))); setCargoSaved(recovered.cargo_saved); setCompaniesSaved({}); setStarted(importBatchHasRecordedRows(recovered)); setDraftLoaded(Boolean(saved.preview)); setPhase(saved.preview ? 2 : 1); setWarehouseLabels({}); setDraftStatus(`Reopened ${recovered.state}. ${recovered.last_error ?? "Existing trip and product IDs are preserved."}`);
+      batchRevision.current = recovered.revision; setBatchId(id); setFiles(saved.files); setPreview(saved.preview); setTargets(saved.targets ?? {}); setPlans(saved.plans ?? {}); setLocations(recoverDestinationDecisions(saved.locations)); setAnnotations(saved.review_annotations ?? {}); setInheritedTarget(saved.initialTarget); setConfirmed(false); setVerified(Boolean(saved.verified)); setVerifiedCbm(Boolean(saved.verifiedCbm)); setVerifiedUnmapped(Boolean(saved.verifiedUnmapped)); setOutcomes(Object.fromEntries(recovered.outcomes.map(row => [row.source_identity, row]))); setCargoSaved(recovered.cargo_saved); setCompaniesSaved({}); setStarted(importBatchHasRecordedRows(recovered)); setDraftLoaded(Boolean(saved.preview)); setPhase(0); setDraftStatus(`Reopened ${recovered.state}. ${recovered.last_error ?? "Existing trip and product IDs are preserved."}`);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Unable to reopen this batch."); } finally { setBusy(false); }
   }
   const groups = useMemo(()=>[...new Set(files.flatMap(file => file.rows.map(row => row.group.trim())).filter(Boolean))],[files]);
@@ -181,11 +157,9 @@ export default function BulkTripImport({ onClose: onDismiss, onComplete, onImpor
     const checked = preview?.rows[index];
     return { ...row, errors: !detailsDirty && checked?.filename === row.filename && checked.line === row.line ? checked.errors : [] };
   }), [sourceRows, preview, detailsDirty]);
-  const results = Object.values(outcomes), imported = results.filter(row => row.status === "imported" || row.status === "skipped" && row.original_batch_id === batchId && row.line_item_id).length;
-  const skipped = results.filter(row => row.status === "skipped" && row.original_batch_id !== batchId && row.line_item_id).length, failed = results.filter(row => row.status === "failed").length;
+  const results = Object.values(outcomes);
   const locked = started || results.some(row => row.status !== "failed");
   const validRows = useMemo(()=>preview?.rows.filter(row => !row.errors.length && !skippedRows.has(row.source_identity)) ?? [],[preview,skippedRows]);
-  const stopCounts = new Set(validRows.filter(row => !row.duplicate).map(row => JSON.stringify([row.group, destinationKey(row.values)]))).size;
   const detailIds = JSON.stringify([...new Set(groups.flatMap(group => {
     const target = targets[group] ?? defaultTarget();
     if (target.mode === "trip" && target.value) return [target.value];
@@ -208,45 +182,12 @@ export default function BulkTripImport({ onClose: onDismiss, onComplete, onImpor
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accessToken, detailIds]);
   const destinations = [...new Map(validRows.map(row => [destinationKey(row.values), { key: destinationKey(row.values), customer: row.values.customer_name || '', shipTo: row.values.ship_to || '', province: row.values.province || '', city: row.values.city || '' }])).values()];
-  const destinationSignature = JSON.stringify(destinations);
-  const locationLookupActive = draftLoaded && !locked && !detailsDirty;
-  useEffect(() => {
-    if (!locationLookupActive || !accessToken) { setLocationChecking(false); return; }
-    let active = true;
-    const sources = (JSON.parse(destinationSignature) as typeof destinations).filter(source => {
-      const decision = locationsRef.current[source.key];
-      return !decision?.verified && !(decision?.lookup?.source_key === source.key && !locationLookupFailed(decision.lookup));
-    });
-    let next = 0;
-    setLocationProgress(Object.fromEntries(sources.map((source, index) => [source.key, `Queued ${index + 1} of ${sources.length}`])));
-    setLocationChecking(sources.length > 0);
-    const worker = async () => {
-      while (active && next < sources.length) {
-        const index = next++, source = sources[index];
-        const previous = locationsRef.current[source.key]?.lookup;
-        const decision = locationsRef.current[source.key];
-        if (decision?.verified || (previous?.source_key === source.key && !locationLookupFailed(previous))) {
-          setLocationProgress(current => { const updated = { ...current }; delete updated[source.key]; return updated; });
-          continue;
-        }
-        const effective = { ...source, province: source.province || decision?.province || "", city: source.city || decision?.city || "" };
-        setLocationProgress(current => ({ ...current, [source.key]: `Checking ${index + 1} of ${sources.length}` }));
-        let lookup: TripLocationLookup;
-        try { lookup = await resolveTripLocation(accessToken, effective); }
-        catch (error) { lookup = failedTripLocation(effective, error); }
-        if (!active) return;
-        setLocations(current => {
-          const existing = current[source.key] ?? { address: "", province: source.province, city: source.city, latitude: "", longitude: "", verified: false, replace_verified: false, update_store_location: false };
-          // A manual search/selection made while queued takes precedence. Never fill suggestions.
-          if (existing.verified || existing.lookup !== previous) return current;
-          return { ...current, [source.key]: { ...existing, lookup } };
-        });
-        setLocationProgress(current => { const updated = { ...current }; delete updated[source.key]; return updated; });
-      }
-    };
-    void Promise.all(Array.from({ length: Math.min(3, sources.length) }, worker)).finally(() => { if (active) setLocationChecking(false); });
-    return () => { active = false; };
-  }, [locationLookupActive, accessToken, destinationSignature]);
+  const customerCodeValid = (value: string) => /^[A-Za-z0-9][A-Za-z0-9._-]{0,49}$/.test(value.trim());
+  const customerIssues = destinations.filter(source => {
+    const decision = locations[source.key];
+    const match = preview?.store_matches?.[source.key];
+    return !decision?.store_id && !decision?.customer_id && match?.customer_status !== "matched" && !customerCodeValid(decision?.customer_code ?? "");
+  });
   const ownsSource = (row: ImportPreview["rows"][number], latest = history) => {
     const item = latest[row.source_identity];
     if (item) return item.status !== "live" || item.batch_id === batchId;
@@ -257,39 +198,17 @@ export default function BulkTripImport({ onClose: onDismiss, onComplete, onImpor
   function editCell(fileId: string, line: number, key: ImportField, value: string) {
     setFiles(current => editImportRows(current, [{ fileId, line, field: key, value }])); changed();
   }
-  function editDetails(changes: Array<{ fileId: string; line: number; field: ImportField; value: string }>) {
-    if (locked || saving) return;
-    setFiles(current => editImportRows(current, changes)); setDetailsDirty(true); setConfirmed(false);
-  }
-  function addDetailsProduct(source: ImportCardRow) {
-    if (locked || saving) return;
-    setFiles(current => current.map(file => {
-      if (file.id !== source.file_id) return file;
-      const cells = Array<string>(file.headers.length).fill("");
-      for (const field of ["ship_to", "customer_name", "province", "city", "source_warehouse"] as const) if (file.mapping[field] >= 0) cells[file.mapping[field]] = source.values[field] ?? "";
-      const line = file.rows.reduce((maximum, row) => Math.max(maximum, row.line), 0) + 1;
-      return { ...file, rows: [...file.rows, { line, cells, originalCells: [], group: source.group }] };
-    })); setDetailsDirty(true); setConfirmed(false);
-  }
-  function removeDetailsProduct(source: ImportCardRow) {
-    if (locked || saving) return;
-    setFiles(current => current.map(file => file.id === source.file_id ? { ...file, rows: file.rows.filter(row => row.line !== source.line) } : file)); setDetailsDirty(true); setConfirmed(false);
-  }
-  async function applyDetails() {
-    if (!accessToken || locked || saving || busy) return;
-    setBusy(true); setError("");
-    try {
-      const checked = await previewImport(accessToken, importPayload(files));
-      acceptPreview(checked); setDetailsDirty(false); setVerified(false); setVerifiedCbm(false); setVerifiedUnmapped(false);
-      setPlans(current => Object.fromEntries(Object.entries(current).map(([group, plan]) => [group, { ...plan, placements: [], signature: "", confirmed: false }])));
-      return true;
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Unable to check the edited product lines."); return false; }
-    finally { setBusy(false); }
-  }
-  function changed() { setGroupView({ group: "", tab: "details" }); setVisitedTabs({}); setShowCompletionIssues(false); setDetailsDirty(false); setDraftLoaded(false); setPhase(1); setPreview(null); setConfirmed(false); setVerified(false); setVerifiedCbm(false); setVerifiedUnmapped(false); setError(""); }
+  function changed() { setDetailsDirty(false); setDraftLoaded(false); setPhase(0); setPreview(null); setConfirmed(false); setVerified(false); setVerifiedCbm(false); setVerifiedUnmapped(false); setError(""); }
   async function load(selected: FileList) {
     setBusy(true); setError("");
-    try { const loaded = []; for (const file of Array.from(selected)) loaded.push(...await readImportFile(file)); setFiles(loaded); changed(); setOutcomes({}); setHistory({}); setRowResolutions({}); setPhase(1); }
+    try {
+      const loaded = (await Promise.all(Array.from(selected).map(readImportFile))).flat();
+      setFiles(loaded); changed(); setOutcomes({}); setHistory({}); setRowResolutions({}); setPhase(0);
+      if (accessToken && !loaded.flatMap(importMappingProblems).length) {
+        acceptPreview(await previewImport(accessToken, importPayload(loaded)));
+        setDraftLoaded(true);
+      }
+    }
     catch (cause) { setError(cause instanceof Error ? cause.message : "Unable to read the files."); }
     finally { setBusy(false); }
   }
@@ -298,7 +217,7 @@ export default function BulkTripImport({ onClose: onDismiss, onComplete, onImpor
     const conflicts = files.flatMap(importMappingProblems);
     if (conflicts.length) { setError(conflicts.join(" ")); return; }
     setBusy(true); setError("");
-    try { acceptPreview(await previewImport(accessToken, importPayload(files))); }
+    try { acceptPreview(await previewImport(accessToken, importPayload(files))); setDraftLoaded(true); setDetailsDirty(false); }
     catch (cause) { setError(cause instanceof Error ? cause.message : "Unable to check import rows."); }
     finally { setBusy(false); }
   }
@@ -308,44 +227,40 @@ export default function BulkTripImport({ onClose: onDismiss, onComplete, onImpor
     setExisting(current => [...new Map([...current, ...rows].map(row => [row.id, row])).values()]);
     return rows;
   }
-  function editGroupDetails(changes: Array<{ fileId: string; line: number; field: ImportField; value: string }>) {
-    const identityFields = new Set(["ship_to", "customer_name", "province", "city"]);
-    const expanded = new Map<string, typeof changes[number]>();
-    const rowsById = new Map(rawRows.map(row => [JSON.stringify([row.file_id, row.line]), row]));
-    const expandedStores = new Set<string>();
-    for (const change of changes) {
-      const source = rowsById.get(JSON.stringify([change.fileId, change.line]));
-      if (source && identityFields.has(change.field)) {
-        const key = JSON.stringify([destinationKey(source.values), change.field, change.value]);
-        if (expandedStores.has(key)) continue;
-        expandedStores.add(key);
-      }
-      const affected = source && identityFields.has(change.field) ? rawRows.filter(row => destinationKey(row.values) === destinationKey(source.values)) : [];
-      for (const next of affected.length ? affected.map(row => ({ ...change, fileId: row.file_id, line: row.line })) : [change]) expanded.set(JSON.stringify([next.fileId, next.line, next.field]), next);
-    }
-    editDetails([...expanded.values()]);
-  }
-
   /** Name the cause and the exact control that resolves a missing master record. */
   function explainImportFailure(message: string) {
-    if (/A customer code is needed/i.test(message)) return `${message} Select the existing customer in Complete details → Stops (Edit details), or add the customer with its code in Master Data first.`;
+    if (/A customer code is needed|customer identity failed/i.test(message)) return "Customer identity is missing. In Stores & products, select an existing customer or enter a real code to create one.";
     if (/No verified master match|no exact match/i.test(message)) return `${message} Turn on “Create missing records” in Complete details, or match the customer, store and product in the preview.`;
     return message;
   }
   async function save() {
     if (!preview || !draftLoaded || !accessToken || !validRows.length || savingRef.current) return;
     if (detailsDirty) { setError("Check the latest source edits before saving. Your draft is safe."); return; }
+    if (preview.invalid || preview.setup_required || customerIssues.length || unresolvedGroupIssues.length || groups.some(group => cargoLines(group).some(line => Number(line.cbm) > 0) && !cargoReady(group))) {
+      setError("Resolve the items listed under Fix before saving. Your imported rows and selections are still here."); return;
+    }
     // Clicking Save accepts optional CSV totals/unmapped values, never recovery approval.
     setConfirmed(true); setVerifiedCbm(true); setVerifiedUnmapped(true);
     savingRef.current = true; setStarted(true);
     const finishImportSave = beginTripImportSave();
-    setSaving(true); setError(""); setSaveWarning(""); setProgress(0);
-    let processed = 0;
+    const previouslyProcessed = validRows.filter(row => Boolean(outcomes[row.source_identity]?.line_item_id) && ["imported", "skipped"].includes(outcomes[row.source_identity]?.status ?? "")).length;
+    const retryLocationFollowup = locationRetryRequired;
+    const remainingChunks = groups.reduce((total, group) => total + Math.ceil(validRows.filter(row => row.group === group && (!["imported", "skipped"].includes(outcomes[row.source_identity]?.status ?? "") || locationRetryRequired)).length / 100), 0);
+    const remainingCargo = groups.filter(group => cargoReady(group) && !cargoSaved[group]).length;
+    const remainingCompanies = groups.filter(group => cargoReady(group) && plans[group]?.trucks.some(truck => truck.companyId) && !companiesSaved[group]).length;
+    const totalOperations = 3 + remainingChunks + remainingCargo + remainingCompanies;
+    let completedOperations = 0;
+    const advance = (operation: string) => { completedOperations += 1; setProgress(Math.min(99, Math.round(completedOperations / totalOperations * 100))); setSaveOperation(operation); };
+    setSaving(true); setError(""); setSaveWarning(""); setProgress(0); setSaveOperation("Saving recovery draft");
+    let processed = previouslyProcessed;
     let addressesDeferred = false;
+    let saveSucceeded = false;
     try {
       await persistDraft({ ...draft, started: true, locationFollowupPending: true });
+      advance("Recovery draft saved");
       setLocationRetryRequired(true);
       const failures: string[] = [];
+      const failedRowsByCause = new Map<string, typeof validRows>();
       const latestHistory = { ...history };
       for (const group of groups) {
         let groupFailed = false;
@@ -353,7 +268,7 @@ export default function BulkTripImport({ onClose: onDismiss, onComplete, onImpor
         const target = targets[group] ?? defaultTarget();
         const deferred = validRows.filter(row => row.group === group && history[row.source_identity]?.status === "missing" && (!rowResolutions[row.source_identity]?.restore_missing_source || rowResolutions[row.source_identity]?.restore_history_version !== history[row.source_identity].imported_at));
         if (deferred.length) failures.push(`${deferred.length} products still need the server's recovery approval. Use Approve all in Previously imported products.`);
-        const pending = validRows.filter(row => row.group === group && !deferred.includes(row) && (history[row.source_identity]?.status === "missing" || locationRetryRequired || !["imported", "skipped"].includes(outcomes[row.source_identity]?.status ?? "")));
+        const pending = validRows.filter(row => row.group === group && !deferred.includes(row) && (history[row.source_identity]?.status === "missing" || retryLocationFollowup || !["imported", "skipped"].includes(outcomes[row.source_identity]?.status ?? "")));
         for (let index = 0; index < pending.length; index += 100) {
           const chunk = pending.slice(index, index + 100);
           const attempts = await isolateImportRows(chunk, subset => {
@@ -362,7 +277,7 @@ export default function BulkTripImport({ onClose: onDismiss, onComplete, onImpor
               return [row.source_identity, { ...location, ...(!location?.verified ? { address: location?.address || [row.values.ship_to, row.values.city, row.values.province].filter(Boolean).join(", "), latitude: "", longitude: "", verified: false } : {}), update_store_location: location?.update_store_location === true, ...rowResolutions[row.source_identity] }];
             }));
             return withOptionalTripAddress(defer => commitImport(accessToken, batchId, group, target, subset, verified, true, true, defer || addressesDeferred ? withoutTripMapPins(resolutions) : resolutions), () => { addressesDeferred = true; });
-          }, failure => failure instanceof ApiError && ["IMPORT_WAREHOUSE_REVIEW_REQUIRED", "IMPORT_DESTINATION_REVIEW_REQUIRED", "IMPORT_SOURCE_RECOVERY_REQUIRED"].includes(failure.code || ""), (row, failure) => ({ batch_id: batchId, rows: [{ source_identity: row.source_identity, status: "failed" as const, error: failure instanceof Error ? failure.message : "This product could not be saved." }], history: {} }));
+          }, failure => failure instanceof ApiError && ["IMPORT_WAREHOUSE_REVIEW_REQUIRED", "IMPORT_SOURCE_RECOVERY_REQUIRED"].includes(failure.code || ""), (row, failure) => ({ batch_id: batchId, rows: [{ source_identity: row.source_identity, status: "failed" as const, error: failure instanceof Error ? failure.message : "This product could not be saved." }], history: {} }));
           const result = { rows: attempts.flatMap(attempt => attempt.rows), history: Object.assign({}, ...attempts.map(attempt => attempt.history ?? {})) as Record<string, ImportSourceHistory> };
 
           Object.assign(latestHistory, result.history ?? {}); setHistory(current => ({ ...current, ...result.history }));
@@ -370,20 +285,15 @@ export default function BulkTripImport({ onClose: onDismiss, onComplete, onImpor
           if (result.rows.some(row => row.status === "imported")) refreshOnClose.current = true;
           Object.assign(latestOutcomes, Object.fromEntries(result.rows.map(row => [row.source_identity, row])));
           setOutcomes(current => ({ ...current, ...Object.fromEntries(result.rows.map(row => [row.source_identity, row])) }));
-          processed += chunk.length; setProgress(processed);
+          processed = Math.min(validRows.length, processed + chunk.length); advance(`Source rows confirmed: ${processed} of ${validRows.length}`);
         }
         if (groupFailed) {
           // One actionable message per cause, with the affected rows named. Avoid
           // repeating the same server error once for every source row.
           const failedRows = validRows.filter(row => row.group === group && (latestOutcomes[row.source_identity]?.status === "failed" || latestOutcomes[row.source_identity]?.status === "skipped" && !latestOutcomes[row.source_identity]?.line_item_id));
-          const byCause = new Map<string, typeof failedRows>();
           for (const row of failedRows) {
             const cause = explainImportFailure(latestOutcomes[row.source_identity]?.error || `${row.filename}, CSV row ${row.line}: source import failed.`);
-            byCause.set(cause, [...(byCause.get(cause) ?? []), row]);
-          }
-          for (const [cause, rows] of byCause) {
-            const named = rows.slice(0, 3).map(row => `${row.filename} row ${row.line}`).join(", ");
-            failures.push(`${rows.length} row${rows.length === 1 ? "" : "s"} not saved (${named}${rows.length > 3 ? ` +${rows.length - 3} more` : ""}): ${cause}`);
+            failedRowsByCause.set(cause, [...(failedRowsByCause.get(cause) ?? []), row]);
           }
           continue;
         }
@@ -393,23 +303,31 @@ export default function BulkTripImport({ onClose: onDismiss, onComplete, onImpor
         try {
           if (cargoReady(group) && !cargoSaved[group]) {
             await confirmImportCargo(accessToken, batchId, group, plans[group]);
+            advance(`Cargo saved for ${group}`);
             refreshOnClose.current = true;
             setCargoSaved(current => ({ ...current, [group]: true }));
           }
-          if (cargoReady(group) && plans[group]?.trucks.some(truck => truck.companyId)) {
+          if (cargoReady(group) && plans[group]?.trucks.some(truck => truck.companyId) && !companiesSaved[group]) {
             const tripId = newlyOwned.map(row => latestOutcomes[row.source_identity]?.trip_id).find(Boolean);
             if (!tripId) throw new Error("Trip details are saved, but their assignment identity is unavailable. Reopen this batch to finish.");
             await saveImportAssignmentCompanies(accessToken, tripId, plans[group]);
+            advance(`Truck companies saved for ${group}`);
             refreshOnClose.current = true;
             setCompaniesSaved(current => ({ ...current, [group]: true }));
           }
         } catch { failures.push("Product lines are saved. Truck and cargo details remain in the draft for a later assignment."); }
 
       }
+      for (const [cause, rows] of failedRowsByCause) {
+        const files = [...new Set(rows.map(row => row.filename))].join(", ");
+        failures.push(`${rows.length} row${rows.length === 1 ? "" : "s"} not saved (${files}, rows ${rows.map(row => row.line).join(", ")}): ${cause}`);
+      }
       const warnings = [...failures, ...(addressesDeferred ? ["Trip-only map pins could not be stored on this server. Product lines were saved where accepted; reviewed addresses and coordinates remain in this draft. Store locations were not updated. Saving map pins requires an administrator update."] : [])];
+      saveSucceeded = warnings.length === 0;
       if (warnings.length) setSaveWarning(warnings.join(" "));
-      if (!validRows.some(row => history[row.source_identity]?.status === "missing" && !rowResolutions[row.source_identity]?.restore_missing_source) && !failures.some(message => !message.startsWith("Product lines are saved."))) {
+      if (!addressesDeferred) {
         await persistDraft({ ...draft, started: true, locationFollowupPending: false });
+        advance("Import draft finalized");
         setLocationRetryRequired(false);
       }
     } catch (cause) {
@@ -428,7 +346,20 @@ export default function BulkTripImport({ onClose: onDismiss, onComplete, onImpor
         setOutcomes(current => ({ ...current, ...Object.fromEntries(recovered.outcomes.map(row => [row.source_identity, row])) }));
         setHistory(recovered.history ?? {});
         setCargoSaved(recovered.cargo_saved);
+        setLocationRetryRequired(recovered.location_retry_required === true);
         if (recovered.outcomes.some(row => row.line_item_id && (row.status === "imported" || row.original_batch_id === batchId))) refreshOnClose.current = true;
+        const savedRows = new Map(recovered.outcomes.map(row => [row.source_identity, row]));
+        const complete = saveSucceeded && validRows.every(row => {
+          const outcome = savedRows.get(row.source_identity);
+          return Boolean(outcome?.line_item_id) && ["imported", "skipped"].includes(outcome?.status ?? "");
+        }) && groups.every(group => !cargoLines(group).length || !cargoReady(group) || recovered.cargo_saved[group]);
+        if (complete) {
+          setProgress(100); setSaveOperation("Save confirmed by server");
+          await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+          onImported();
+          addToast({ variant: "success", title: "Trip added successfully!" });
+          if (onComplete) onComplete(); else onClose();
+        }
       } catch { /* Preserve the lock until server state can be confirmed. */ }
       savingRef.current = false; setSaving(false);
       finishImportSave();
@@ -461,8 +392,7 @@ export default function BulkTripImport({ onClose: onDismiss, onComplete, onImpor
     // destinations cannot leak into a newly combined/split planning group.
     setPlans(current => Object.fromEntries(Object.entries(current).filter(([group]) => !affected.has(group))));
     setTargets(current => Object.fromEntries(Object.entries(current).filter(([group]) => !affected.has(group))));
-    setCapacityByGroup(current => Object.fromEntries(Object.entries(current).filter(([group]) => !affected.has(group))));
-    for (const group of affected) { delete allocationSessions.current[group]; delete groupNavigation.current[group]; }
+    for (const group of affected) delete allocationSessions.current[group];
     setFiles(next); changed();
   }
   function updateRowResolution(identity: string, patch: Partial<ImportRowResolution>) { setSaveWarning(""); setRowResolutions(current => ({ ...current, [identity]: { ...current[identity], ...patch } })); setConfirmed(false); }
@@ -520,7 +450,7 @@ export default function BulkTripImport({ onClose: onDismiss, onComplete, onImpor
     const record = id ? detailRecords[id] ?? existing.find(trip => trip.id === id) : undefined;
     return result?.trip_reference || record?.trip_reference || (target.mode === "trip" ? "Existing trip reference" : "Generated on save");
   }
-  function cargoReady(group: string) { const plan = plans[group], lines = cargoLines(group); return Boolean(plan?.trucks.length && lines.length && (plan.trucks.length === 1 || plan.trucks.every(truck => truck.driverId)) && plan.confirmed && plan.signature === cargoSignature(lines, plan.trucks) && !validateCargo(lines, plan.trucks, plan.placements)); }
+  function cargoReady(group: string) { const plan = plans[group], lines = cargoLines(group); return Boolean(plan?.trucks.length && lines.length && plan.trucks.every(truck => truck.driverId) && plan.confirmed && plan.signature === cargoSignature(lines, plan.trucks) && !validateCargo(lines, plan.trucks, plan.placements)); }
   const unresolvedGroupIssues = groups.flatMap(group => {
     const target = targets[group] ?? defaultTarget();
     const warehouses = [...new Set(validRows.filter(row => row.group === group).map(row => row.values.source_warehouse).filter((source): source is string => Boolean(source)))];
@@ -532,23 +462,12 @@ export default function BulkTripImport({ onClose: onDismiss, onComplete, onImpor
       ...(!locked ? warehouses.filter(source => !target.warehouse_ids?.[source]).map(source => `${group}: match source warehouse ${source}.`) : []),
     ];
   });
-  const steps = ["Upload CSV", "Preview & map", "Complete details", "Review & save"];
+  const steps = ["Import & preview", "Trip details", "Stores", "Trucks & save"];
   const finished = !locationRetryRequired && results.length > 0 && validRows.every(row => history[row.source_identity]?.status !== "missing" && Boolean(outcomes[row.source_identity]?.line_item_id) && ["imported", "skipped"].includes(outcomes[row.source_identity]?.status ?? "")) && groups.every(group => !cargoLines(group).length || !cargoReady(group) || (cargoSaved[group] && (!plans[group].trucks.some(truck => truck.companyId) || companiesSaved[group])));
-  const saveDisabled = finished || busy || saving || !validRows.length;
-  const saveReason = finished ? "This batch is complete." : !validRows.length ? "No rows accepted by the current import endpoint." : "Ready. Optional details are saved as warnings.";
+  const saveDisabled = finished || busy || saving || !validRows.length || Boolean(preview?.invalid || preview?.setup_required || detailsDirty || customerIssues.length || unresolvedGroupIssues.length) || groups.some(group => cargoLines(group).some(line => Number(line.cbm) > 0) && !cargoReady(group));
   function navigate(target: number) {
     if (busy || saving) return;
-    if (target === 3 && reviewIssues.length) {
-      setPhase(2); setShowCompletionIssues(true); focusCompletionIssue(reviewIssues[0]); return;
-    }
-    if (phase === 2 && target !== 2) {
-      const memory = groupNavigation.current[activeStoreGroup.current || groups[0]];
-      if (memory) copyNavigation(memory, storeNavigation);
-    } else if (target === 2 && phase !== 2 && storeNavigation.members.length) {
-      const matching = groups.filter(group => rawRows.some(row => row.group.trim() === group && storeNavigation.members.includes(`${row.file_id}:${row.line}`)));
-      const group = matching.includes(activeStoreGroup.current) ? activeStoreGroup.current : matching[0];
-      if (group) { copyNavigation(storeNavigation, navigationForGroup(group)); activeStoreGroup.current = group; }
-    }
+    if (target > 0 && !preview) return;
     setPhase(target); setError("");
     bodyRef.current?.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -556,170 +475,83 @@ export default function BulkTripImport({ onClose: onDismiss, onComplete, onImpor
     setFiles(current => current.map(file => file.id === fileId ? { ...file, rows: file.rows.map(row => row.line === line ? { ...row, group } : row) } : file));
     changed();
   }
-  
-  function revealSection(id: string, selector?: string, activate = false) {
-    const section = id.match(/^csv-(?:trip-details|group)-(\d+)(?:-(.*))?$/);
-    if (section && groups[Number(section[1])]) setGroupView({ group: groups[Number(section[1])], tab: section[2] === "cargo" ? "cargo" : section[2] === "stores" ? "stops" : "details" });
-    requestAnimationFrame(() => {
-      const element = document.getElementById(id);
-      for (let parent = element?.parentElement; parent; parent = parent.parentElement) if (parent instanceof HTMLDetailsElement) parent.open = true;
-      if (element instanceof HTMLDetailsElement) element.open = true;
-      element?.scrollIntoView({ block: "start", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
-      const focus = element?.querySelector<HTMLElement>(selector || "input:not(:disabled), select:not(:disabled), button:not(:disabled), summary");
-      if (activate) focus?.click();
-      (focus ?? element)?.focus({ preventScroll: true });
+  const mappingProblems = files.flatMap(importMappingProblems);
+  const storeConfirmed = (key: string) => Boolean(locations[key]?.verified || locations[key]?.store_verified || preview?.store_matches?.[key]?.status === "matched");
+  const confirmedStores = destinations.filter(source => storeConfirmed(source.key)).length;
+  const allTrucks = groups.flatMap(group => plans[group]?.trucks ?? []);
+  const sourceWarehouses = [...new Set(sourceRows.map(row => row.values.source_warehouse).filter((value): value is string => Boolean(value)))];
+  const totalCapacity = allTrucks.reduce((sum, truck) => sum + (Number(truck.capacity) || 0), 0);
+  const totalCbm = Number(displayCargoTotal(groups.flatMap(cargoLines).map(line => line.cbm)));
+  const enoughCapacity = totalCapacity >= totalCbm && allTrucks.length > 0;
+  const allDrivers = allTrucks.length > 0 && allTrucks.every(truck => Boolean(truck.driverId));
+  const showSavedStatus = draftStatus.startsWith("Draft saved") || draftStatus.startsWith("Reopened");
+  const autoMatchedPending = destinations.filter(source => preview?.store_matches?.[source.key]?.status === "matched" && preview.store_matches[source.key].id && !locations[source.key]?.store_id);
+  function confirmAutoMatched() {
+    setLocations(current => {
+      const next = { ...current };
+      for (const source of autoMatchedPending) {
+        const match = preview?.store_matches?.[source.key];
+        if (!match?.id) continue;
+        next[source.key] = { ...(current[source.key] ?? { address: "", province: source.province, city: source.city, latitude: "", longitude: "", verified: false, replace_verified: false }), store_id: match.id, customer_id: match.customer_id ?? current[source.key]?.customer_id };
+      }
+      return next;
     });
   }
-  // Validate/group a cargo plan once per trip, not once per source product.
-  const reviewGroups=new Map(groups.map(group=>{
-    const plan=plans[group],ready=cargoReady(group),placements=new Map<string,CargoPlan["placements"]>();
-    for(const placement of plan?.placements??[]){const line=placements.get(placement.line_key)??[];line.push(placement);placements.set(placement.line_key,line);}
-    return [group,{details:detailsForGroup(group),target:targets[group]??defaultTarget(),plan,ready,placements,tripNumber:tripNumberForGroup(group),truckLabels:ready?plan?.trucks.map(truck=>truck.label).join(", "):null,companyLabels:ready?plan?.trucks.map(truck=>truck.companyLabel).filter(Boolean).join(", "):null}] as const;
-  }));
-  const reviewRows: PreviewLine[] = validRows.map(row => {
-    const groupReview=reviewGroups.get(row.group)!;
-    const {details,plan,target}=groupReview, location = locations[destinationKey(row.values)];
-    const warehouse = row.values.source_warehouse ? preview?.warehouse_matches?.[row.values.source_warehouse] : undefined;
-    const selectedWarehouse = warehouse?.candidates.find(candidate => candidate.id === (target.warehouse_ids?.[row.values.source_warehouse || ""] || warehouse.id));
-    const values: Record<string, unknown> = { dispatch_number: target.mode === "dispatch" ? target.value : "Generated on save", trip_number: groupReview.tripNumber, trip_type: details.trip_type_name || null, plate_number: groupReview.truckLabels, trucking_company: groupReview.companyLabels, remarks: details.remarks || (!target.trip_details && target.mode !== "trip" ? `Source import: ${row.group}` : null), warehouse_code: selectedWarehouse?.code || null, warehouse_name: selectedWarehouse?.name || null, store_name: row.values.ship_to, customer_name: row.values.customer_name, dr_number: row.values.dr_number, sap_so_number: row.values.sap_so_number, customer_po_number: row.values.customer_po_number, internal_po_number: row.values.internal_po_number, source_product_category: row.values.product_category, customer_model: row.values.customer_model, quantity: row.values.quantity, cbm: row.values.cbm, source_province: row.values.province, source_city: row.values.city, ...row.master_values };
-    const reasons = [...row.warnings, ...(!row.values.customer_model ? ["Product code can be added later"] : []), ...(!row.values.quantity ? ["Quantity can be added later"] : []), ...(!row.values.cbm ? ["CBM can be added later"] : []), ...(!row.values.dr_number ? ["DR can be added later"] : []), ...(!location?.verified ? [!location?.address ? "Delivery address is missing or unverified" : "Delivery address is unverified"] : []), ...(location?.verified && (!location.latitude || !location.longitude) ? ["Store coordinates are missing"] : []), ...(!details.trip_type_id && !details.trip_type_name ? ["Trip type can be added later"] : []), ...(!details.loading_date || !details.estimated_delivery_date ? ["Trip dates can be added later"] : []), ...(!plan?.trucks.length ? ["Truck and driver can be assigned later"] : plan.trucks.some(truck => !truck.driverId) ? ["Driver can be assigned later"] : []), ...(plan?.trucks.length && !groupReview.ready ? ["Cargo allocation stays in the draft until it is complete"] : []), ...(history[row.source_identity]?.status === "missing" && !rowResolutions[row.source_identity]?.restore_missing_source ? ["Product not in master list"] : []), ...unresolvedGroupIssues.filter(issue => issue.startsWith(`${row.group}:`)).map(issue => issue.slice(row.group.length + 2)), ...(outcomes[row.source_identity]?.status === "failed" ? ["This product was not saved; review the server response in Advanced details"] : [])];
-    return { id: row.source_identity, group: row.group, groupLabel: row.values.ph_truck_reference || row.group, label: row.values.customer_model || row.values.dr_number || "Product", stop: destinationKey(row.values), values, dataVersion: { values, source: row.values, group: row.group, location: location || null, details, trucks: plan?.trucks || [], allocations: groupReview.placements.get(row.source_identity) || [], resolution: rowResolutions[row.source_identity] || null }, reasons: [...new Set(reasons)] };
-  });
-  const reviewFlaggedCount = reviewRows.filter(row => { const appearance = rowAppearance(annotations[row.id], reviewFingerprint(row.dataVersion || row.values, row.reasons), row.reasons); return row.reasons.length > 0 && !appearance.reviewed || appearance.manual && appearance.color !== "none"; }).length;
-  const activeGroup = groups.includes(groupView.group) ? groupView.group : groups[0];
-  const completionByGroup = Object.fromEntries(groups.map((group, index) => {
-    const rows = rawRows.filter(row => row.group.trim() === group);
-    const stops = [...new Map(rows.map(row => [destinationKey(row.values), row])).entries()].map(([key, row]) => ({ key, label: row.values.ship_to || "destination store", verified: confirmedStopAddress(locations[key]) }));
-    return [group, csvCompletion({ group, index, detailIssues: unresolvedGroupIssues.filter(issue => issue.startsWith(`${group}:`)).map(issue => issue.slice(group.length + 2)), stops, lines: cargoLines(group), plan: plans[group] ?? emptyCargoPlan(), cargoSaved: Boolean(cargoSaved[group]), dirty: detailsDirty })];
-  }));
-  const reviewIssues = blockingIssues(Object.values(completionByGroup));
-  function focusCompletionIssue(issue: CompletionIssue) {
-    if (issue.stop) {
-      const source = rawRows.find(row => row.group.trim() === issue.group && destinationKey(row.values) === issue.stop);
-      if (source) {
-        const memory = navigationForGroup(issue.group);
-        memory.selected = `${source.file_id}:${source.line}`; memory.members = [memory.selected]; memory.search = ""; memory.attention = false;
-      }
-    }
-    setVisitedTabs(current => ({ ...current, [issue.group]: [...new Set([...(current[issue.group] ?? []), issue.tab])] }));
-    setGroupView({ group: issue.group, tab: issue.tab }); activeStoreGroup.current = issue.group;
-    const unassigned = issue.tab === "cargo" && /DRs? unassigned/.test(issue.message);
-    revealSection(issue.section, issue.stop ? '.address-card button:not(:disabled), .address-card input:not(:disabled)' : /delivery is before/.test(issue.message) ? 'input[type="date"]' : unassigned ? '.cargo-truck-summary:first-child .cargo-truck-select' : /Plan without reserving/.test(issue.message) ? '.cargo-schedule-line input[type="checkbox"]' : undefined, unassigned);
-  }
-  function selectTab(tab: GroupTab) {
-    if (busy || saving) return;
-    const forward = completionTabs.indexOf(tab) > completionTabs.indexOf(groupView.tab);
-    const pending = forward ? blockingIssues([completionByGroup[activeGroup]], tab) : [];
-    if (pending.length) { setShowCompletionIssues(true); focusCompletionIssue(pending[0]); return; }
-    setVisitedTabs(current => ({ ...current, [activeGroup]: [...new Set([...(current[activeGroup] ?? []), groupView.tab, tab])] }));
-    setGroupView({ group: activeGroup, tab });
-    bodyRef.current?.scrollTo({ top: 0 });
-    requestAnimationFrame(() => bodyRef.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.focus({ preventScroll: true }));
-  }
-  const groupItems = groups.map(group => {
-    const rows = rawRows.filter(row => row.group === group), stops = [...new Set(rows.map(row => destinationKey(row.values)))];
-    const issues = blockingIssues([completionByGroup[group]]).length + rows.filter(row => row.errors.length).length;
-    return { key: group, lines: rows.length, stores: stops.length, cbm: displayCargoTotal(cargoLines(group).map(line => line.cbm)), issues, ready: !issues && !detailsDirty };
-  });
-  function selectGroup(group: string) { setGroupView(current => ({ ...current, group })); activeStoreGroup.current = group; bodyRef.current?.scrollTo({ top: 0 }); }
-  const { ref: dialogRef, close: onClose } = useTripModal<HTMLElement>({ onClose: onDismiss, onEscape: () => { void closeImport(); } });
+
+  const { ref: dialogRef, close: onClose } = useTripModal<HTMLElement>({ onClose: onDismiss, onEscape: () => { void closeImport(); }, active });
   return <div className={`${tripModalBackdrop} z-[2100]`}>
-    <section ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="bulk-trip-title" aria-describedby="bulk-trip-title-description" aria-busy={saving || busy} className={tripModalShell}>
-      <TripModalHeader id="bulk-trip-title" title="Add trip from CSV" description="Bring in your trip requests, review the details, and save with confidence." icon={<FileSpreadsheet className="h-6 w-6" />} disabled={saving || busy} onClose={() => void closeImport()} closeLabel="Close import">
-      </TripModalHeader>
-      <TripModalSteps labels={steps} current={phase} onJump={navigate} isDisabled={index => busy || saving || (index > 0 && !files.length) || (index > 1 && !draftLoaded)} label="CSV import steps" />
+    <section ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="bulk-trip-title" aria-describedby="bulk-trip-title-description" aria-busy={saving || busy} className={`${tripModalShell} csv-trip-modal`}>
+      <TripModalHeader id="bulk-trip-title" title="Add trip from CSV" description="Import trip requests in four steps." subtitle="Operations / Trips Â· Four quick steps" icon={<FileSpreadsheet className="h-6 w-6" />} disabled={saving || busy} onBack={onBack} onClose={() => void closeImport()} closeLabel="Close import" />
+      <TripModalSteps labels={steps} current={phase} onJump={navigate} isDisabled={index => busy || saving || (index > 0 && !preview)} label="CSV import steps" />
       <div ref={bodyRef} className="trip-flow-body" data-csv-phase={phase}>
-        <div key={phase} className="trip-step-panel space-y-4">
-        {saveWarning && phase !== 0 && <TripFormNotice tone="warning" title="Save warnings" onDismiss={() => setSaveWarning("")}>{saveWarning}</TripFormNotice>}
-        {error && phase !== 0 && <TripFormNotice tone="error" title="Check the import" onDismiss={() => setError("")}>{error}</TripFormNotice>}
-        {busy && <p role="status" className="flex items-center gap-2 text-sm text-slate-600"><Loader2 size={16} className="animate-spin" />Checking source rows...</p>}
-        
-        {phase === 0 && <>
-          <TripFileUpload files={files} disabled={locked || busy || saving} busy={busy} error={error} onFiles={selected => void load(selected)} />
-          <details className="group border-t border-slate-200 pt-3"><summary className="cursor-pointer text-sm font-medium text-slate-600 list-none flex items-center justify-between">Resume a saved import <ChevronRight className="h-4 w-4 group-open:rotate-90 transition-transform" /></summary><div className="mt-4 space-y-3"><button type="button" className={button} disabled={busy || saving} onClick={() => void savedImports()}>Load saved imports</button>{batches.map(batch => <div key={batch.id} className="flex flex-wrap items-center gap-2 rounded-xl bg-slate-50 p-3 text-xs border border-slate-200"><div className="min-w-0 flex-1"><strong className="text-slate-800">{batch.state}</strong><p className="text-slate-500">{batch.imported} products saved / {batch.awaiting_allocation} cargo plans pending</p>{batch.last_error && <p className="mt-1 text-amber-800">{batch.last_error}</p>}</div><button type="button" className={button} disabled={busy || saving} onClick={() => void resume(batch.id)}>Reopen</button></div>)}</div></details>
-        </>}
-        
-        {phase === 1 && files.length > 0 && <>
-          <div className="flex items-center justify-between gap-3"><h3>Review your source files</h3><span className="text-xs text-slate-500">{files.length} files · {rawRows.length} rows</span></div>
-          <CsvSourceTabs>{tab => tab === "mapping" ? <section aria-label="Column mapping">{files.map(file => <SmartImportMapping key={file.id} file={file} owner={profile?.id} disabled={locked || saving || busy} onMap={(index, field) => mapping(file.id, index, field)} onApply={assignments => applyMapping(file.id, assignments)} onGroup={field => suggestGroups(file.id, field)} />)}</section> : <TripImportPreview viewMode={tab} files={files} preview={preview} outcomes={outcomes} disabled={locked || saving} onEdit={editCell} onGroup={editGroup} />}</CsvSourceTabs>
-          {preview && <TripFormNotice tone={preview.invalid || preview.setup_required ? "warning" : "success"} title={preview.setup_required ? "Import setup needed" : "CSV checked"}>{preview.setup_required ? "An administrator needs to finish enabling trip imports. Your file and draft are safe." : preview.setup_message || `${preview.detected} rows checked / ${preview.valid} valid / ${preview.invalid} need correction / ${preview.duplicates} exact duplicates will be skipped.`}</TripFormNotice>}
-        </>}
-        
-        {phase === 2 && preview && <div className="space-y-4">
-          {files.filter(hasPhReferenceGroups).map(file => <div key={file.id} className="flex flex-wrap items-center gap-3 rounded-lg bg-blue-50 p-3 text-xs text-slate-600"><p className="min-w-0 flex-1"><strong>{file.name}</strong>: PH references can share a physical truck across stops. Combine these groups to plan cargo against one shared truck capacity.</p><button type="button" className={button} disabled={locked || saving || busy} onClick={() => setCombineFile(file.id)}>Combine PH groups</button>{locked && <p className="w-full">This batch has recorded rows. Its saved trip groups must stay unchanged; use a new import batch to plan a combined trip.</p>}</div>)}
-          {detailReadError && <TripFormNotice tone="warning" title="Saved trip details">{detailReadError}</TripFormNotice>}
-          {showCompletionIssues && reviewIssues.length > 0 && <section className="csv-completion-issues" role="alert" aria-label="Complete before reviewing"><h3>Complete before reviewing</h3><ul>{reviewIssues.map((issue, index) => <li key={`${issue.group}-${issue.tab}-${index}`}><button type="button" onClick={() => focusCompletionIssue(issue)}>{groups.length > 1 && <span>{issue.group} · </span>}<strong>{issue.tab === "details" ? "Details" : issue.tab === "stops" ? "Stops" : "Trucks & cargo"}</strong> – {issue.message}</button></li>)}</ul></section>}
-          {inheritedTarget?.mode === "dispatch" && <p className="text-sm text-slate-600">Selected dispatch: <strong>{inheritedTarget.value}</strong></p>}
-          <GroupRail items={groupItems} current={activeGroup} tab={groupView.tab} onSelect={selectGroup} onTab={selectTab} completion={completionByGroup[activeGroup]} visited={visitedTabs[activeGroup]}>
-          {accessToken && groups.filter(group => group === activeGroup).map(group => {
-            const index = groups.indexOf(group);
-            const allocationSession = allocationSessions.current[group] ??= createAllocationSession();
-            const target = targets[group] ?? defaultTarget(), details = detailsForGroup(group), groupRows = validRows.filter(row => row.group === group);
-            const sourceRows = rawRows.filter(row => row.group.trim() === group), plan = plans[group] ?? emptyCargoPlan();
-            const warehouses = [...new Set(groupRows.map(row => row.values.source_warehouse).filter((code): code is string => Boolean(code?.trim())))];
-            const ids = { details: `csv-trip-details-${index}`, destination: `csv-group-${index}-destination`, warehouses: `csv-group-${index}-warehouses`, stores: `csv-group-${index}-stores`, cargo: `csv-group-${index}-cargo` };
-            return <div key={group}>
-              {groupView.tab === "details" && <div className="group-details-fields">
-                  <ImportTripDetailsCard id={ids.details} token={accessToken} group={group} details={details} tripNumber={tripNumberForGroup(group)} disabled={locked || saving || busy} existingTrip={target.mode === "trip"} onChange={patch => updateTripDetails(group, patch)} onApplyAll={() => applyTripDetailsToAll(group)} />
-                  <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700"><input type="checkbox" className="mt-0.5 h-4 w-4 accent-[#2678b9]" disabled={locked || saving || busy} checked={target.allow_create} onChange={event => updateTarget(group, { allow_create: event.target.checked })} /><span><strong className="block">Create missing records</strong><span className="mt-1 block leading-5 text-slate-500">Allow customers, stores, products and source warehouses that are missing from the master lists to be created from reviewed source values. Existing matches are always reused; physical trucks must still be selected.</span></span></label>
-                  <details className="group-details-disclosure" id={ids.destination}><summary>Dispatch &amp; trip group <span>{target.mode === "new" ? "New dispatch" : "Existing destination"}</span></summary><div><ImportDispatchTarget group={group} target={target} existing={[...new Map([...existing, ...Object.values(detailRecords)].map(trip => [trip.id, trip])).values()]} disabled={locked || saving || busy} onChange={patch => updateTarget(group, patch)} onSearch={searchExisting} /></div></details>
-                  <details className="group-details-disclosure" id={ids.warehouses}><summary>Warehouses <span>{warehouses.length ? `${warehouses.length} source warehouses` : "No source warehouses"}</span></summary><div>
-                    <div className="space-y-4">{warehouses.length > 1 && <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">Several source warehouses: select the trip origin or split the trip group. Original line warehouses remain separate.</p>}
-                      <div className="space-y-2"><p className="text-xs font-medium text-slate-600">Origin warehouse</p><SearchableRelationshipEditor presentation="form" token={accessToken} kind="warehouses" autoFocus={false} value={warehouseLabels[group + "origin"] ?? (target.origin_warehouse_id || details.origin_warehouse_id ? "Selected origin warehouse" : "")} disabled={locked || saving || busy} onSelect={option => { setWarehouseLabels(current => ({ ...current, [group + "origin"]: option.label })); updateTarget(group, { origin_warehouse_id: option.id }); }} onCommitBlur={() => {}} onCancel={() => {}} /></div>
-                      {warehouses.map(code => { const matched = Boolean(target.warehouse_ids?.[code]), conflict = preview.warehouse_matches?.[code]?.status === "conflict";
-                        return <div key={code} className="grid items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:grid-cols-[minmax(8rem,auto)_minmax(0,1fr)]"><div className="space-y-2"><strong className="block break-words text-xs text-slate-700">Source: {code}</strong><StatusChip label={matched ? "Matched" : conflict ? "Conflict" : "Needs selection"} tone={matched ? "success" : conflict ? "danger" : "warning"} /></div><div className="min-w-0"><SourceWarehousePicker token={accessToken} source={code} matched={matched} conflict={conflict} disabledReason={saving || busy ? "Wait for the current operation to finish." : locked ? "This batch has recorded rows, or its save result could not be confirmed. Reopen the saved import to check its state. Saved destinations cannot be changed in this batch." : undefined} value={warehouseLabels[group + code] ?? preview.warehouse_matches?.[code]?.label ?? code} disabled={locked || saving || busy} onSelect={option => { setWarehouseLabels(current => ({ ...current, [group + code]: option.label })); updateTarget(group, { warehouse_ids: { ...target.warehouse_ids, [code]: option.id } }); }} /></div></div>;
-                      })}
-                      {!warehouses.length && <p className="text-xs text-slate-500">No source warehouse codes were supplied for this group.</p>}
-                    </div>
-                  </div></details>
-                  <div id={`csv-group-${index}-history`}><PreviousImportSummary token={accessToken} rows={preview.rows.filter(row => row.group === group && !row.errors.length)} history={history} resolutions={rowResolutions} skipped={skippedRows} disabled={saving || busy} onChange={updateRowResolution} onSkip={toggleSkip} /></div>
-              </div>}
-              {groupView.tab === "stops" && <section id={ids.stores} onFocusCapture={() => { activeStoreGroup.current = group; }} onPointerDownCapture={() => { activeStoreGroup.current = group; }} className="min-w-0 space-y-3">
-                    <p className="text-xs text-slate-500">Finding and confirming an address is optional. You can continue and add it later.</p>
-                    {detailsDirty && <TripFormNotice tone="warning" title="Store or product changes need checking">Apply changes to update the signed preview and cargo proposal before continuing. Original CSV values are preserved.</TripFormNotice>}
-                    <ImportStoreCards onImport={() => navigate(0)} navigation={navigationForGroup(group)} locationProgress={locationProgress} token={accessToken} rows={sourceRows} locations={locations} locationChecking={locationChecking} disabled={locked || saving || busy} identityDisabled={saving || busy} onLocations={next => { setLocations(next); setConfirmed(false); }} onEdit={editGroupDetails} onAdd={addDetailsProduct} onRemove={removeDetailsProduct} />
-                    {detailsDirty && <button type="button" className={button} disabled={busy || saving || locked} onClick={() => void applyDetails()}>{busy && <Loader2 size={15} className="animate-spin" />}Apply store &amp; product changes</button>}
-                  </section>}
-              {groupView.tab === "cargo" && <div id={ids.cargo}>
-                    <TripCargoPlanner onCapacity={value => setCapacityByGroup(current => current[group] === value ? current : { ...current, [group]: value })} session={allocationSession} token={accessToken} scheduleManaged={Boolean(details.loading_date && details.estimated_delivery_date)} onEditSchedule={locked || target.mode === "trip" ? undefined : () => { setGroupView({ group, tab: "details" }); revealSection(ids.details); }}
-                      existingTripId={target.mode === "trip" ? target.value : results.find(row => row.trip_id && preview.rows.some(source => source.group === group && source.source_identity === row.source_identity))?.trip_id}
-                      lines={cargoLines(group)} plan={plan} onChange={next => {
-                        setPlans(current => ({ ...current, [group]: next })); setConfirmed(false);
-                        if (!locked && target.mode !== "trip" && next.schedule && (next.schedule.loading_date !== (details.loading_date ?? "") || next.schedule.estimated_delivery_date !== (details.estimated_delivery_date ?? ""))) updateTripDetails(group, { loading_date: next.schedule.loading_date || null, estimated_delivery_date: next.schedule.estimated_delivery_date || null });
-                      }} disabled={saving || Boolean(cargoSaved[group])} />
-                  </div>}
+        <div className="csv-workspace"><main className="csv-main">
+          {error && <TripFormNotice tone="error" title="Check the import" onDismiss={() => setError("")}>{error}</TripFormNotice>}
+          {saveWarning && phase === 3 && <TripFormNotice tone="warning" title="Save warnings" onDismiss={() => setSaveWarning("")}>{saveWarning}</TripFormNotice>}
+          {busy && <p role="status" className="csv-busy"><Loader2 size={16} className="animate-spin" />Checking source rows…</p>}
+          {phase === 0 && <>
+            <TripFileUpload compactWhenLoaded files={files} disabled={locked || busy || saving} busy={busy} error="" onFiles={selected => void load(selected)} />
+            {files.length > 0 && <CsvPreviewTabs files={files} disabled={locked || busy || saving} onApply={applyMapping} />}
+            {mappingProblems.length > 0 && <section className="csv-card csv-correction" aria-label="Column corrections"><h3>Correct column mapping</h3><p>Map the required columns to continue.</p>{files.filter(file => importMappingProblems(file).length > 0).map(file => <SmartImportMapping key={file.id} file={file} owner={profile?.id} disabled={locked || saving || busy} onMap={(index, field) => mapping(file.id, index, field)} onApply={assignments => applyMapping(file.id, assignments)} onGroup={field => suggestGroups(file.id, field)} />)}</section>}
+            {preview && preview.invalid > 0 && <details className="csv-card csv-details"><summary>Correct {preview.invalid} source row{preview.invalid === 1 ? "" : "s"}</summary><TripImportPreview viewMode="mapped" files={files} preview={preview} outcomes={outcomes} disabled={locked || saving} onEdit={editCell} onGroup={editGroup} /></details>}
+            {preview && <p role="status" className="csv-muted">{preview.valid} of {preview.detected} rows ready{preview.invalid ? ` Â· ${preview.invalid} need correction` : ""}{preview.duplicates ? ` Â· ${preview.duplicates} exact duplicates will be skipped` : ""}.</p>}
+            <details className="csv-card csv-details"><summary>Resume a saved import <ChevronRight size={16} /></summary><div className="csv-saved-list"><button type="button" className={button} disabled={busy || saving} onClick={() => void savedImports()}>Load saved imports</button>{batches.map(batch => <div key={batch.id} className="csv-saved-row"><div><strong>{batch.state}</strong><p>{batch.imported} products saved / {batch.awaiting_allocation} cargo plans pending</p>{batch.last_error && <p className="csv-warning-text">{batch.last_error}</p>}</div><button type="button" className={button} disabled={busy || saving} onClick={() => void resume(batch.id)}>Reopen</button></div>)}</div></details>
+          </>}
+          {phase === 1 && preview && accessToken && groups.map(group => {
+            const target = targets[group] ?? defaultTarget(), details = detailsForGroup(group);
+            const warehouses = [...new Set(validRows.filter(row => row.group === group).map(row => row.values.source_warehouse).filter((value): value is string => Boolean(value)))];
+            const unmatched = warehouses.filter(code => !target.warehouse_ids?.[code]);
+            return <div key={group} className="csv-detail-group">
+              {groups.length > 1 && <h3>{group}</h3>}
+              <section className="csv-card"><h3>Dates</h3><div className="csv-two-fields"><label>Loading date<input type="date" value={details.loading_date || ""} disabled={locked || saving || target.mode === "trip"} onChange={event => updateTripDetails(group, { loading_date: event.target.value || null })} /></label><label>Estimated delivery<input type="date" value={details.estimated_delivery_date || ""} disabled={locked || saving || target.mode === "trip"} onChange={event => updateTripDetails(group, { estimated_delivery_date: event.target.value || null })} /></label></div></section>
+              <section className="csv-card"><h3>Dispatch</h3><ImportDispatchTarget group={group} target={target} existing={[...existing, ...Object.values(detailRecords)]} disabled={locked || saving || busy} onChange={patch => updateTarget(group, patch)} onSearch={searchExisting} /></section>
+              <details className="csv-card csv-details csv-optional-card"><summary>Optional details <span>Show 4 fields</span></summary><ImportTripDetailsCard hideDates token={accessToken} group={group} details={details} tripNumber={tripNumberForGroup(group)} disabled={locked || saving || busy} existingTrip={target.mode === "trip"} onChange={patch => updateTripDetails(group, patch)} onApplyAll={groups.length > 1 ? () => applyTripDetailsToAll(group) : undefined} /></details>
+              {(unmatched.length > 0 || warehouses.length > 1 && !target.origin_warehouse_id) && <section className="csv-card csv-correction" aria-label={`Warehouse matching for ${group}`}><h3>Warehouse correction Â· {group}</h3>{warehouses.length > 1 && !target.origin_warehouse_id && <label>Trip origin<SearchableRelationshipEditor presentation="form" token={accessToken} kind="warehouses" value={warehouseLabels[group + "origin"] ?? ""} autoFocus={false} disabled={locked || saving || busy} onSelect={option => { setWarehouseLabels(current => ({ ...current, [group + "origin"]: option.label })); updateTarget(group, { origin_warehouse_id: option.id }); }} onCommitBlur={() => {}} onCancel={() => {}} /></label>}{unmatched.map(code => <div key={code}><p>{code}</p><SourceWarehousePicker token={accessToken} source={code} matched={false} conflict={preview.warehouse_matches?.[code]?.status === "conflict"} value={warehouseLabels[group + code] ?? code} disabled={locked || saving || busy} onSelect={option => { setWarehouseLabels(current => ({ ...current, [group + code]: option.label })); updateTarget(group, { warehouse_ids: { ...target.warehouse_ids, [code]: option.id } }); }} /></div>)}</section>}
             </div>;
           })}
-          </GroupRail>
-        </div>}
-        
-        {phase === 3 && preview && <>
-          {groups.some(group => !(targets[group] ?? defaultTarget()).allow_create) && <TripFormNotice tone="warning" title="Missing master records will not be created" action={!locked && !saving && !busy ? <button type="button" className={button} onClick={() => { setGroupView({ group: activeGroup, tab: "details" }); navigate(2); }}>Review complete details</button> : undefined}>Creating records is off, so rows whose customer, store, product or source warehouse is not already in the master lists will fail. Turn on <strong>Create missing records</strong> in Complete details, or match each record in the preview before saving.</TripFormNotice>}
-          <ReviewPreviewTable token={accessToken || ""} rows={reviewRows} annotations={annotations} onAnnotations={setAnnotations}
-            excluded={(preview.rows.filter(row => row.errors.length || skippedRows.has(row.source_identity))).map(row => ({ id: row.source_identity, label: `${row.values.customer_model || row.values.dr_number || "Product"} · ${row.filename}`, reason: skippedRows.has(row.source_identity) ? "Skipped by you" : row.errors.join(" ") }))}
-            notices={<><PreviousImportSummary token={accessToken || ""} rows={preview.rows} history={history} resolutions={rowResolutions} skipped={skippedRows} disabled={saving || busy} onChange={updateRowResolution} onSkip={toggleSkip} />{preview.setup_required && <p role="status" className="text-xs text-amber-800">Trip import setup is still needed on this server. Your draft can be reviewed and retained.</p>}<details className="review-advanced"><summary>Advanced details</summary><p className="text-xs">The current import API excludes rows with invalid source values, missing Customer Name, Ship To, trip group, or all source identifiers. Product code, quantity and DR are not universally required by the optional-booking schema.</p>{groups.map(group => <ReviewSourceLines key={group} rows={preview.rows.filter(row => row.group === group)} outcomes={outcomes} />)}<ImportLocationNotices destinations={destinations} decisions={locations} checking={locationChecking} /></details></>} />
-          {(started || results.length > 0) && <ImportResultsPanel trips={new Set(results.filter(row => row.trip_created).map(row => row.trip_id).filter(Boolean)).size} imported={imported} skipped={skipped} failed={failed} invalid={preview.invalid} cargoSaved={Object.values(cargoSaved).filter(Boolean).length} batchId={batchId} finished={finished} retryDisabled={saveDisabled} retryReason={saveReason} onRetry={() => void save()} onDownload={downloadFailures} />}
-          {saving && <p role="status" className="text-xs text-slate-600">Processed {progress} source rows. Keep this window open.</p>}
-        </>}
-        </div>
-
+          {phase === 2 && preview && accessToken && <CsvStoreReview token={accessToken} destinations={destinations} matches={preview.store_matches} decisions={locations} disabled={saving || busy} onChange={setLocations} onError={setError} />}
+          {phase === 3 && preview && <>
+            <section className="csv-card csv-trucks-card"><h3>Trucks &amp; drivers</h3><p className="csv-muted">Choose trucks and drivers for each trip. Allocate products by CBM.</p>{groups.map(group => {
+              const plan = plans[group] ?? emptyCargoPlan(), details = detailsForGroup(group), lines = cargoLines(group), target = targets[group] ?? defaultTarget();
+              const allocationSession = allocationSessions.current[group] ??= createAllocationSession();
+              return <div key={group} className="csv-truck-group">{groups.length > 1 && <h4>{group}</h4>}<TripCargoPlanner simple token={accessToken || ""} session={allocationSession} lines={lines} plan={plan} scheduleManaged={Boolean(details.loading_date && details.estimated_delivery_date)} onEditSchedule={() => navigate(1)} existingTripId={target.mode === "trip" ? target.value : undefined} disabled={saving || Boolean(cargoSaved[group])} onChange={next => {
+                const schedule = next.schedule ?? { loading_date: details.loading_date ?? "", estimated_delivery_date: details.estimated_delivery_date ?? "", unreserved_confirmed: !details.loading_date || !details.estimated_delivery_date };
+                setPlans(current => ({ ...current, [group]: { ...next, schedule: { ...schedule, unreserved_confirmed: !schedule.loading_date || !schedule.estimated_delivery_date } } }));
+                if (!locked && target.mode !== "trip" && next.schedule && (next.schedule.loading_date !== (details.loading_date ?? "") || next.schedule.estimated_delivery_date !== (details.estimated_delivery_date ?? ""))) updateTripDetails(group, { loading_date: next.schedule.loading_date || null, estimated_delivery_date: next.schedule.estimated_delivery_date || null });
+              }} /></div>;
+            })}<div className="csv-capacity-summary"><span>{displayCargoTotal(groups.flatMap(cargoLines).map(line => line.cbm))} of {totalCapacity} CBM allocated</span><span className={enoughCapacity ? "csv-pill-success" : "csv-pill-warning"}>{enoughCapacity ? "Ready" : "Add capacity"}</span></div></section>
+            <section className="csv-review-card" aria-label="Review before saving"><div className="csv-review-total"><span>REVIEW Â· {groups.some(group => (targets[group] ?? defaultTarget()).mode !== "new") ? "EXISTING DISPATCH" : "NEW DISPATCH"}</span><strong>{displayCargoTotal(groups.flatMap(cargoLines).map(line => line.cbm))} <small>CBM</small></strong><div className="csv-review-track"><span style={{ width: `${totalCapacity > 0 ? Math.min(100, Math.round(totalCbm / totalCapacity * 100)) : 0}%` }} /></div><p>{totalCapacity > 0 ? Math.round(totalCbm / totalCapacity * 100) : 0}% of {totalCapacity} CBM Â· {allTrucks.map(truck => truck.label).join(", ") || "No trucks yet"}</p></div><div className="csv-review-stats"><div><span>Trips</span><strong>{groups.length}</strong></div><div><span>Trucks</span><strong>{allTrucks.length}</strong></div><div><span>Stores</span><strong>{destinations.length}</strong></div><div><span>Product rows</span><strong>{validRows.length}</strong></div></div></section>
+            {(preview.invalid > 0 || preview.setup_required || detailsDirty || customerIssues.length > 0 || unresolvedGroupIssues.length > 0 || groups.some(group => !cargoReady(group) && cargoLines(group).some(line => Number(line.cbm) > 0))) && <section className="csv-card csv-save-errors" role="alert"><h3>Fix before saving</h3>{preview.setup_required && <p>Trip import setup is unavailable on this server. Your file and draft are preserved.</p>}{preview.invalid > 0 && <button type="button" onClick={() => navigate(0)}>{preview.invalid} source rows need correction in Import &amp; preview.</button>}{detailsDirty && <button type="button" onClick={() => navigate(0)}>Edited rows need to be checked again.</button>}{customerIssues.map(source => <button key={source.key} type="button" onClick={() => navigate(2)}>{source.customer} / {source.shipTo}: choose a customer or enter its real code. Rows {validRows.filter(row => destinationKey(row.values) === source.key).map(row => row.line).join(", ")}.</button>)}{unresolvedGroupIssues.map(issue => <button key={issue} type="button" onClick={() => navigate(1)}>{issue}</button>)}{groups.filter(group => !cargoReady(group) && cargoLines(group).some(line => Number(line.cbm) > 0)).map(group => <p key={group}>{group}: finish truck and driver allocation above.</p>)}</section>}
+            {saving && <TripSaveProgress value={progress} operation={saveOperation} />}
+            <details className="csv-card csv-details csv-technical"><summary>Technical details</summary><p>Import batch {batchId}. Original CSV cells and source row identities are retained.</p>{detailReadError && <p role="alert">{detailReadError}</p>}{(preview.invalid > 0 || results.some(row => row.status === "failed")) && <button type="button" className={button} onClick={downloadFailures}><Download size={14} />Download failed rows</button>}{preview.rows.some(row => history[row.source_identity]?.status === "missing") && <PreviousImportSummary token={accessToken || ""} rows={preview.rows} history={history} resolutions={rowResolutions} skipped={skippedRows} disabled={saving || busy} onChange={updateRowResolution} onSkip={toggleSkip} />}{groups.map(group => <ReviewSourceLines key={group} rows={preview.rows.filter(row => row.group === group)} outcomes={outcomes} />)}<ImportLocationNotices destinations={destinations} decisions={locations} checking={locationChecking} /></details>
+          </>}
+        </main><div className="csv-side-column">
+          {phase === 0 && <CsvSidePanel title="Ready check" items={[{ label: files.length ? `${rawRows.length} rows loaded` : "File loaded", done: files.length > 0 }, { label: "Required columns mapped", done: files.length > 0 && !mappingProblems.length }, { label: "Store / ship-to column found", done: files.length > 0 && files.every(file => file.mapping.ship_to >= 0) }, { label: "Qty and CBM found", done: files.length > 0 && files.every(file => file.mapping.quantity >= 0 && file.mapping.cbm >= 0) }]} note="Trips are created only when you save." />}
+          {phase === 1 && <CsvSidePanel title="Nothing required" note="Every field here is optional. Set dates now, or add them later on the trip."><div className="csv-side-filled"><h4>Filled for you</h4><p>Origin warehouse: {sourceWarehouses.join(", ") || "not in file"}</p><p>Status: {[...new Set(groups.map(group => detailsForGroup(group).status))].join(", ") || "Planned"}</p><p>Trip number: {groups.some(group => (targets[group] ?? defaultTarget()).mode === "trip") ? "existing trip" : "generated on save"}</p></div></CsvSidePanel>}
+          {phase === 2 && <CsvSidePanel title="Stores" items={[{ label: `${confirmedStores} of ${destinations.length} confirmed`, done: confirmedStores === destinations.length && destinations.length > 0 }, { label: `${destinations.length - confirmedStores} still to review`, done: confirmedStores === destinations.length }]} note="Only stores without a clear match need a location pick."><button type="button" className="csv-side-action" disabled={!autoMatchedPending.length} onClick={confirmAutoMatched}>Confirm all auto-matched</button></CsvSidePanel>}
+          {phase === 3 && <CsvSidePanel title="Before saving" items={[{ label: "All stores confirmed", done: confirmedStores === destinations.length }, { label: "Trucks cover the total CBM", done: enoughCapacity }, { label: "Drivers assigned", done: allDrivers }]} note="Trips are created only when you save." />}
+        </div></div>
       </div>
-      <footer className={tripFooter}>
-        {files.length > 0 && <TripSummaryBar stops={preview ? stopCounts : new Set(rawRows.map(row => JSON.stringify([row.group, destinationKey(row.values)]))).size} qty={displayCargoTotal(preview ? groups.flatMap(cargoLines).map(line => line.quantity) : rawRows.map(row => row.values.quantity || "0"))} label="All trips" cbm={preview ? displayCargoTotal(groups.flatMap(cargoLines).map(line => line.cbm)) : displayCargoTotal(rawRows.map(row => row.values.cbm || "0"))} trucks={Object.values(plans).reduce((total, plan) => total + plan.trucks.length, 0)} capacity={displayCargoTotal(groups.map(group => capacityByGroup[group] ?? displayCargoTotal((plans[group]?.trucks ?? []).filter(truck => /^\d+(?:\.\d+)?$/.test(truck.capacity) && Number(truck.capacity) > 0).map(truck => truck.capacity))))} />}
-        <div className="trip-footer-row"><div className="trip-footer-meta"><span>{files.length ? `${files.length} file${files.length === 1 ? "" : "s"} · ${rawRows.length} rows` : "CSV / XLSX"}</span>{draftStatus && <span role="status" className="trip-footer-draft" title={draftStatus}>{draftStatus.startsWith("Draft saved") ? "Draft saved ✓" : draftStatus}</span>}{files.length > 0 && <button type="button" disabled={busy || saving} className="text-xs font-medium text-[#2678b9]" onClick={() => void persistDraft().catch(() => { })}>Save draft</button>}</div>
-          <div className="trip-footer-actions">
-            {phase === 1 && (busy || saving || !preview || preview.setup_required || !validRows.length) && <button type="button" className="trip-footer-hint" onClick={() => revealSection("csv-source-review")}>{busy ? "Checking rows…" : preview?.setup_required ? "Import setup needed" : !preview ? "Check CSV before continuing" : "Resolve source row errors"}</button>}
-            <button type="button" className={button} disabled={saving || busy} onClick={() => phase === 2 && groupView.tab !== "details" ? selectTab(groupView.tab === "cargo" ? "stops" : "details") : phase > 0 && !finished ? navigate(phase - 1) : void closeImport()}>{finished ? "Done" : phase ? "Back" : "Back to Add trip"}</button>{closeBlocked && <button type="button" className={button} onClick={onClose}>Close without saving</button>}
-            {preview && (preview.invalid > 0 || failed > 0) && <button type="button" className={button} onClick={downloadFailures}><Download size={16} />Download failed rows</button>}
-            {phase === 0 && files.length > 0 && <button type="button" className={primaryButton} onClick={() => navigate(1)}>Preview CSV <ChevronRight size={14} /></button>}
-            {phase === 1 && <>{!locked && <button type="button" className={button} disabled={busy || saving} onClick={() => void prepare()}>{preview ? "Recheck CSV" : "Check CSV"}</button>}<button type="button" className={primaryButton} disabled={busy || saving || !preview || !validRows.length} onClick={() => { setDraftLoaded(true); navigate(2); }}>Continue to details <ChevronRight size={14} /></button></>}
-            {phase === 2 && <button type="button" className={primaryButton} disabled={busy || saving || !rawRows.length} onClick={async () => { if (groupView.tab !== "cargo") { selectTab(groupView.tab === "details" ? "stops" : "cargo"); return; } if (detailsDirty && !await applyDetails()) return; navigate(3); }}>{groupView.tab === "details" ? "Next: Stops" : groupView.tab === "stops" ? "Next: Trucks & cargo" : "Review trip"}<ChevronRight size={14} /></button>}
-            {phase === 3 && <><span role="status" className="review-save-status">{finished ? "Saved" : `Ready · ${reviewFlaggedCount} rows flagged for review`}</span><button type="button" className={primaryButton} disabled={saveDisabled} onClick={() => void save()}>{saving ? "Saving…" : finished ? "Trip saved" : "Save trip"}</button></>}
-
-          </div>
-        </div>
-      </footer>
-      {combineFile && <TripPopover title="Combine PH reference groups" onClose={() => setCombineFile(null)}><div className="space-y-4 text-sm text-slate-600"><p>Plan all stops and PH references in this file together. Each physical truck can carry multiple DRs and stops up to its CBM capacity.</p><p>Group-specific truck assignments and trip settings will be reset. Source products, quantities, CBM, PH references, address decisions and recovery approvals are retained. Recheck the CSV, then choose the shared trucks and review the new allocation.</p><div className="flex flex-wrap justify-end gap-2"><button type="button" className={button} onClick={() => setCombineFile(null)}>Keep groups</button><button type="button" className={primaryButton} disabled={locked || saving || busy} onClick={() => { suggestGroups(combineFile, "file"); setCombineFile(null); }}>Combine and replan</button></div></div></TripPopover>}
+      <footer className={tripFooter}><div className="trip-footer-row"><span className="trip-footer-meta">{showSavedStatus ? "Draft saved" : draftStatus || (files.length ? "Saving draft…" : "")}</span><div className="trip-footer-actions"><button type="button" className={button} disabled={saving || busy} onClick={() => phase ? navigate(phase - 1) : void closeImport()}>{phase ? "Back" : "Cancel"}</button>{closeBlocked && <button type="button" className={button} onClick={onClose}>Close without latest draft</button>}{phase === 0 && files.length > 0 && <button type="button" className={primaryButton} disabled={busy || saving || mappingProblems.length > 0} onClick={() => preview ? navigate(1) : void prepare()}>{preview ? "Continue" : "Check rows"}<ChevronRight size={16} /></button>}{phase === 1 && <button type="button" className={primaryButton} disabled={busy || saving} onClick={() => navigate(2)}>Continue <ChevronRight size={16} /></button>}{phase === 2 && <button type="button" className={primaryButton} disabled={busy || saving} onClick={() => navigate(3)}>Continue <ChevronRight size={16} /></button>}{phase === 3 && <button type="button" className={primaryButton} disabled={saveDisabled} onClick={() => void save()}>{saving ? "Saving…" : "Save trip"}</button>}</div></div></footer>
     </section>
   </div>;
 }

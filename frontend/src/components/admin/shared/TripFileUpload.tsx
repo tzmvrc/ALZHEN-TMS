@@ -2,11 +2,12 @@ import { useId, useRef, useState } from "react";
 import { AlertCircle, CheckCircle2, FileSpreadsheet, FolderOpen, Loader2, Upload } from "lucide-react";
 import { tripPrimaryAction, tripSecondaryAction } from "./TripModalUI";
 
-type Props = { disabled: boolean; busy: boolean; error: string; files: readonly { id: string; name: string; headers: string[]; rows: readonly unknown[] }[]; onFiles: (files: FileList) => void };
-export default function TripFileUpload({ disabled, busy, error, files, onFiles }: Props) {
+type Props = { disabled: boolean; busy: boolean; error: string; files: readonly { id: string; name: string; headers: string[]; rows: readonly unknown[] }[]; onFiles: (files: FileList) => void; compactWhenLoaded?: boolean };
+export default function TripFileUpload({ disabled, busy, error, files, onFiles, compactWhenLoaded = false }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
   const helpId = useId();
+  if (compactWhenLoaded && files.length) return <section aria-label="Loaded trip request files" className="csv-loaded-files"><input ref={inputRef} aria-label="Replace trip files" type="file" multiple accept=".csv,.xlsx" disabled={disabled} className="sr-only" tabIndex={-1} onChange={event => { if (event.target.files?.length) onFiles(event.target.files); event.target.value = ""; }} />{files.map(file => <div key={file.id} className="csv-loaded-file"><FileSpreadsheet size={21} aria-hidden="true" /><div><strong>{file.name}</strong><span>{file.rows.length} rows · {file.headers.length} columns</span></div><span className="csv-pill-success">Loaded</span><button type="button" disabled={disabled || busy} onClick={() => inputRef.current?.click()}>Replace</button></div>)}</section>;
   return <section aria-label="Upload trip request files" aria-busy={busy} className="min-w-0">
     <div>
       <div data-dragging={dragging && !disabled} data-disabled={disabled} onDragEnter={event => { event.preventDefault(); if (!disabled && event.dataTransfer.types.includes("Files")) setDragging(true); }} onDragOver={event => { event.preventDefault(); event.dataTransfer.dropEffect = disabled ? "none" : "copy"; }} onDragLeave={event => { if (!(event.relatedTarget instanceof Node) || !event.currentTarget.contains(event.relatedTarget)) setDragging(false); }} onDrop={event => { event.preventDefault(); setDragging(false); if (!disabled && event.dataTransfer.files.length) onFiles(event.dataTransfer.files); }} className={`trip-upload-zone flex min-h-40 flex-col items-center justify-center rounded-xl border border-dashed px-4 py-6 text-center motion-reduce:transition-none sm:min-h-44 sm:px-8 ${error ? "border-rose-300 bg-rose-50/30" : "border-slate-300 bg-slate-50/70"}`}>

@@ -47,6 +47,30 @@ export function proposeAllocation({ lines, trucks, locked = {}, excludedTruckIds
   }
   const best = (amount: bigint) => [...remaining].filter(([, room]) => room >= amount).sort((a, b) => a[1] < b[1] ? -1 : a[1] > b[1] ? 1 : compare(a[0], b[0]))[0]?.[0];
   const place = (items: readonly CargoLine[], truck: string) => { for (const line of items) assignments.push({ line_key: line.key, truck_id: truck, quantity: line.quantity, allocated_cbm: line.cbm }); remaining.set(truck, remaining.get(truck)! - total(items)); };
+  const splitWholeUnits = (line: CargoLine) => {
+    const quantity = units(line.quantity), amount = units(line.cbm);
+    const quantityScale = line.quantity.trim().split(".")[1]?.length ?? 0;
+    const wholeUnit = 10n ** BigInt(quantityScale);
+    if (quantity <= 0n || quantity % wholeUnit) return false;
+    let unitsLeft = quantity / wholeUnit;
+    if (!unitsLeft || amount % unitsLeft) return false;
+    const perUnit = amount / unitsLeft;
+    if (!perUnit) return false;
+    const candidates = [...remaining].sort((a, b) => a[1] > b[1] ? -1 : a[1] < b[1] ? 1 : compare(a[0], b[0]));
+    const portions: { truck: string; count: bigint }[] = [];
+    for (const [truck, room] of candidates) {
+      const count = room / perUnit < unitsLeft ? room / perUnit : unitsLeft;
+      if (count > 0n) { portions.push({ truck, count }); unitsLeft -= count; }
+      if (!unitsLeft) break;
+    }
+    if (unitsLeft) return false;
+    for (const { truck, count } of portions) {
+      const cbm = count * perUnit;
+      assignments.push({ line_key: line.key, truck_id: truck, quantity: count.toString(), allocated_cbm: format(cbm) });
+      remaining.set(truck, remaining.get(truck)! - cbm);
+    }
+    return true;
+  };
   const unlocked = [...groups].filter(([key]) => !Object.hasOwn(locked, key)).sort(([a, x], [b, y]) => total(x) > total(y) ? -1 : total(x) < total(y) ? 1 : compare(a, b));
   for (const [key, items] of unlocked) {
     if (items.some(line => !valid(line))) { unassigned.push(...items); warnings.push({ group: key, code: "invalid", message: "Complete the quantities and CBM for this DR before allocating it." }); continue; }
@@ -62,10 +86,12 @@ export function proposeAllocation({ lines, trucks, locked = {}, excludedTruckIds
     for (const line of [...items].sort((a, b) => units(a.cbm) > units(b.cbm) ? -1 : units(a.cbm) < units(b.cbm) ? 1 : compare(a.key, b.key))) {
       const together = [...destinations].filter(id => remaining.get(id)! >= units(line.cbm)).sort((a, b) => remaining.get(a)! < remaining.get(b)! ? -1 : remaining.get(a)! > remaining.get(b)! ? 1 : compare(a, b))[0];
       const target = together ?? best(units(line.cbm));
-      if (target) { place([line], target); destinations.add(target); } else unassigned.push(line);
+      if (target) { place([line], target); destinations.add(target); }
+      else if (splitWholeUnits(line)) assignments.filter(item => item.line_key === line.key).forEach(item => destinations.add(item.truck_id));
+      else unassigned.push(line);
     }
     if (destinations.size > 1) warnings.push({ group: key, code: "split", message: "DR split across trucks" });
-    if (items.some(line => units(line.cbm) > maximum)) warnings.push({ group: key, code: "capacity", message: "A product line is larger than every truck. Add a larger truck or split that line manually." });
+    if (unassigned.some(line => items.includes(line) && units(line.cbm) > maximum)) warnings.push({ group: key, code: "capacity", message: "A product line is larger than every truck and cannot be split into whole units. Add a larger truck or adjust the allocation." });
   }
   const demand = total(lines), overflow = demand > capacity ? demand - capacity : 0n;
   if (overflow > 0n) warnings.unshift({ code: "capacity", message: `Over capacity by ${format(overflow)} CBM. Add a truck to distribute the rest.` });

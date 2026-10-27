@@ -5,11 +5,10 @@ import ProductsSection from "./shared/ProductsSection";
 import { createAllocationSession } from "./useAutoAllocation";
 import { TripModalHeader, TripModalSteps, tripModalBackdrop, tripModalShell, tripPrimaryAction, tripSecondaryAction, tripFooter } from "./shared/TripModalUI";
 import { useTripModal } from "./shared/useTripModal";
-import TripLiveSummary from "./shared/TripLiveSummary";
+import TripSaveProgress from "./shared/TripSaveProgress";
+import CsvSidePanel from "./CsvSidePanel";
 import { verifiedStoreCoordinates } from "../../services/trip-location.service";
-import StoreAddressReview from "./StoreAddressReview";
 import type { LocationDecision } from "./ImportDestinationReview";
-import { saveMasterData } from "../../services/master-data.service";
 import { focusRing } from "./shared/styles";
 import { useStoreWorkspaceMemory, invalidProduct, type StoreNavigationItem } from "./shared/storeWorkspace";
 import { nextCreationRequest, type CreationRequest } from "../../services/trip-creation-request";
@@ -20,7 +19,7 @@ import { cargoSignature, calculatedCbm, emptyCargoPlan, validateCargo, type Carg
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import {
   ChevronLeft, ChevronRight, ChevronDown, Plus, Trash2, X, Check, RefreshCw, Search,
-  Table2, Upload, Loader2, Truck
+  Table2, Loader2, Truck
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import SearchableRelationshipEditor from "./SearchableRelationshipEditor";
@@ -29,7 +28,6 @@ import { tripCapacity } from "./tripCsv";
 import type { TripPreviewRow } from "./TripTablePreview";
 import ImportStoreProductsPreview, { type StoreProductPreviewRow } from "./ImportStoreProductsPreview";
 import TripFormNotice from "./TripFormNotice";
-import BulkTripImport from "./BulkTripImport";
 
 export type NewTripPayload = {
   request_id: string;
@@ -91,9 +89,8 @@ type StopDraft = {
 };
 type TruckAssignmentDraft = { key: number; truckId: string; driverId: string; availabilityConfirmed?: boolean };
 
-const STATUSES = ["PLANNED", "LOADING", "IN_TRANSIT", "DELIVERED", "CANCELLED"];
 const EMPTY_LOOKUPS: Lookups = { "trip-types": [], warehouses: [], trucks: [], drivers: [], stores: [], products: [], customers: [] };
-const STEPS = ["Trip details", "Stores & products", "Assignments & Cargo"] as const;
+const STEPS = ["Trip details", "Stores & products", "Trucks", "Review & save"] as const;
 
 const inputBase =
   "min-w-0 w-full rounded-xl border border-slate-200 bg-white text-sm text-slate-800 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-[#2678b9] focus:ring-2 focus:ring-[#2678b9]/15 disabled:bg-slate-50 disabled:text-slate-500";
@@ -255,10 +252,9 @@ function Section({ title, description, children, className = "" }: { title: stri
 /* ───────────────────────────── main component ───────────────────────────── */
 
 export default function AddTripForm({
-  onClose: onDismiss, onSubmit, onImported,
-}: { onClose: () => void; onSubmit: (payload: NewTripPayload) => Promise<void>; onImported?: () => void }) {
+  onClose: onDismiss, onSubmit, onBack, active = true,
+}: { onClose: () => void; onSubmit: (payload: NewTripPayload) => Promise<void>; onImported?: () => void; onBack?: () => void; active?: boolean }) {
   const { accessToken } = useAuth();
-  const [bulkImportOpen, setBulkImportOpen] = useState(false);
   const [lookups, setLookups] = useState<Lookups>(EMPTY_LOOKUPS);
   const [loadingLookups, setLoadingLookups] = useState(true);
   const [lookupError, setLookupError] = useState("");
@@ -279,13 +275,12 @@ export default function AddTripForm({
   const [addingTripType, setAddingTripType] = useState(false);
   const [loadingDate, setLoadingDate] = useState("");
   const [etaDate, setEtaDate] = useState("");
-  const [status, setStatus] = useState("PLANNED");
+  const status = "PLANNED";
   const [warehouseId, setWarehouseId] = useState("");
   // A creation request is replay-safe only while its payload is unchanged.
   const creationRequest = useRef<CreationRequest>({ payload: "", id: "" });
   const [cargoPlan, setCargoPlan] = useState(emptyCargoPlan);
   const allocationSession = useRef(createAllocationSession());
-  const [capacityPreview, setCapacityPreview] = useState<string>();
   const [truckAssignments, setTruckAssignments] = useState<TruckAssignmentDraft[]>(() => [newTruckAssignment()]);
   const [truckPickerKey, setTruckPickerKey] = useState<number | null>(null);
   const availabilitySchedule = useRef({ loadingDate, etaDate });
@@ -302,8 +297,9 @@ export default function AddTripForm({
   const [step, setStep] = useState(0);
   const bodyRef = useRef<HTMLDivElement>(null);
   const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
+  const [saveOperation, setSaveOperation] = useState("Saving trip and its stops");
   const [error, setError] = useState("");
-  const [locationSaving, setLocationSaving] = useState<number | null>(null);
   const storeNavigation = useStoreWorkspaceMemory();
   const [stopsView, setStopsView] = useState<"edit" | "preview">("edit");
 
@@ -327,7 +323,7 @@ export default function AddTripForm({
   }, [accessToken]);
 
   useEffect(() => {
-    if (!accessToken) return; let live = true;
+    if (!accessToken || step !== 2) return; let live = true;
     queueMicrotask(() => {
       if (!live) return;
       setAvailabilityLoading(true); setAvailabilityError("");
@@ -349,16 +345,16 @@ export default function AddTripForm({
       }).catch(() => { if (live) { setAvailability([]); setAvailabilityError("Unable to check truck schedules. Retry before selecting a truck."); } }).finally(() => { if (live) setAvailabilityLoading(false); });
     }, 200);
     return () => { live = false; clearTimeout(timer); };
-  }, [accessToken, loadingDate, etaDate, availabilityRetry]);
+  }, [accessToken, loadingDate, etaDate, availabilityRetry, step]);
 
   useEffect(() => {
-    if (!accessToken) return; let current = true;
+    if (!accessToken || step !== 2) return; let current = true;
     queueMicrotask(() => { if (current) { setDriverScheduleLoading(true); setDriverScheduleError(""); } });
     const timer = setTimeout(() => {
       void fetchDriverAvailability(accessToken, loadingDate, etaDate).then(rows => { if (current) setDriverAvailability(rows); }).catch(cause => { if (current) setDriverScheduleError(cause instanceof Error ? cause.message : "Unable to check driver schedules."); }).finally(() => { if (current) setDriverScheduleLoading(false); });
     }, 200);
     return () => { current = false; clearTimeout(timer); };
-  }, [accessToken, loadingDate, etaDate, availabilityRetry]);
+  }, [accessToken, loadingDate, etaDate, availabilityRetry, step]);
 
   function rememberOption(kind: keyof Lookups, option: Option) { setLookups(current => ({ ...current, [kind]: [option, ...current[kind].filter(item => item.id !== option.id)] })); }
   
@@ -436,7 +432,6 @@ export default function AddTripForm({
   const cargoLines: CargoLine[] = populatedStops.flatMap(stop => stop.items.filter(hasItemData).map(item => ({ key: String(item.key), dr: item.dr, stop: labelOf(lookups.stores, stop.storeId) || stop.pendingDestination || stop.customer, label: item.newCode || labelOf(productOptions, item.productId) || item.dr || 'Product', quantity: item.qty, cbm: item.cbm })));
   const cargoTrucks: CargoTruck[] = selectedTruckAssignments.map(assignment => ({ id: assignment.truckId, label: labelOf(lookups.trucks, assignment.truckId) || assignment.truckId, capacity: lookups.trucks.find(truck => truck.id === assignment.truckId)?.values?.capacity_cbm || '', driverId: assignment.driverId, driverLabel: labelOf(lookups.drivers, assignment.driverId) || '' }));
   const assignedCapacity = capacityState.capacity;
-  const hasUnknownTruckCapacity = capacityState.unknown;
 
   function addCapacityTruck() {
     const empty = truckAssignments.find(assignment => !assignment.truckId), target = empty ?? newTruckAssignment();
@@ -453,7 +448,6 @@ export default function AddTripForm({
       ? { ...s, items: s.items.map((i) => (i.key === itemKey ? { ...i, ...patch } : i)) } : s));
 
   function pickStore(stopKey: number, storeId: string, option?: Option) {
-    if (locationSaving === stopKey) return;
     if (option) rememberOption("stores", option);
     const location = option?.values ?? lookups.stores.find((o) => o.id === storeId)?.values;
     const customer = lookups.customers.find((o) => o.id === location?.customer_id);
@@ -473,21 +467,6 @@ export default function AddTripForm({
       latitude: record?.latitude ?? "", longitude: record?.longitude ?? "", verified: matchingRecord && verifiedStoreCoordinates(record),
       store_verified: verifiedStoreCoordinates(record), pin_address_mismatch: !matchingRecord && Boolean(record?.latitude && record?.longitude), replace_verified: false };
   }
-  async function saveStopLocation(stop: StopDraft, reviewed?: LocationDecision) {
-    if (!accessToken || !stop.storeId || saving || locationSaving !== null) return;
-    const location = reviewed ?? stopLocation(stop);
-    if (!location.verified || location.pin_address_mismatch) return;
-    setLocationSaving(stop.key); setError("");
-    try {
-      const saved = await saveMasterData(accessToken, "stores", { location_review: true, replace_verified: location.replace_verified, pin_address_mismatch: location.pin_address_mismatch ?? false,
-        address: location.address, province: location.province, city: location.city, latitude: location.latitude, longitude: location.longitude, location_verified: true }, stop.storeId);
-      setStops(current => current.map(item => item.key === stop.key && item.storeId === stop.storeId ? { ...item, location: { ...location, verified: true, store_verified: true, replace_verified: false }, locationSaved: true } : item));
-      const old = lookups.stores.find(option => option.id === stop.storeId);
-      if (old) rememberOption("stores", { ...old, values: { ...old.values, address: String(saved.address ?? location.address), province: String(saved.province ?? location.province), city: String(saved.city ?? location.city), latitude: String(saved.latitude ?? location.latitude), longitude: String(saved.longitude ?? location.longitude), location_verified: "true" } });
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Unable to save the store location. Your review remains in this trip draft."); }
-    finally { setLocationSaving(null); }
-  }
-
   function pickProduct(stopKey: number, itemKey: number, productId: string, option?: Option) {
     if (option) rememberOption("products", option);
     const category = option?.values?.product_category ?? lookups.products.find((o) => o.id === productId)?.values?.product_category ?? "";
@@ -507,8 +486,9 @@ export default function AddTripForm({
     const assignedTruckIds = selectedTruckAssignments.map((assignment) => assignment.truckId);
     if (new Set(assignedTruckIds).size !== assignedTruckIds.length) return "Choose a different truck for each assignment.";
     if (truckAssignments.some((assignment) => assignment.driverId && !assignment.truckId)) return "Choose a truck before assigning a driver.";
-    // Never silently drop a cargo proposal: fix it or remove it before saving.
-    if (cargoPlan.placements.length) {
+    if (stops.some(stop => stop.items.some(item => hasItemData(item) && !storableItem(item)))) return "Correct product quantity and CBM before saving. No product row will be omitted.";
+    // A selected truck must carry every product row before the trip is saved.
+    if (cargoPlan.placements.length || (cargoLines.length && cargoTrucks.length)) {
       if (cargoTrucks.length > 1 && cargoTrucks.some(truck => !truck.driverId)) return "Assign a driver to every truck before confirming multi-truck cargo.";
       const cargoProblem = validateCargo(cargoLines, cargoTrucks, cargoPlan.placements);
       if (cargoProblem) return cargoProblem;
@@ -519,20 +499,21 @@ export default function AddTripForm({
   const storableItem = (item: ItemDraft) => [item.qty, item.unitCbm, item.cbm].every(value => !value.trim() || /^\d+(?:\.\d+)?$/.test(value.trim().replaceAll(",", "")) && Number.isFinite(num(value)) && num(value) >= 0);
 
   function goTo(target: number) {
-    if (saving || locationSaving !== null) return;
+    if (saving) return;
     if (target <= step) { setError(""); setStep(target); bodyRef.current?.scrollTo({ top: 0 }); return; }
-    const problem = target >= 2 ? validateTrip() : dispatchMode === "existing" && !existingDispatch ? "Choose the dispatch this trip belongs to." : etaDate && loadingDate && etaDate < loadingDate ? "Estimated delivery cannot be before loading." : "";
+    const problem = target >= 3 ? validateTrip() : dispatchMode === "existing" && !existingDispatch ? "Choose the dispatch this trip belongs to." : etaDate && loadingDate && etaDate < loadingDate ? "Estimated delivery cannot be before loading." : "";
     setError(problem);
     if (!problem) { setStep(target); bodyRef.current?.scrollTo({ top: 0 }); }
   }
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (locationSaving !== null) { setError("Wait for the store location save to finish before continuing."); return; }
+    if (savingRef.current) return;
     if (step < STEPS.length - 1) { goTo(step + 1); return; }
     const problem = validateTrip();
     if (problem) return setError(problem);
-    setError(""); setSaving(true);
+    savingRef.current = true;
+    setError(""); setSaveOperation("Saving trip, stops, trucks and cargo"); setSaving(true);
     try {
       const bundle = {
         dispatch_mode: dispatchMode,
@@ -555,9 +536,11 @@ export default function AddTripForm({
           driver_id: assignment.driverId || null,
           assignment_type: index === 0 ? "PRIMARY" : "ADDITIONAL",
         })),
-        stops: stops.filter(hasStopData).map((stop, index) => ({
+        stops: stops.filter(hasStopData).map((stop, index) => {
+          const location = stopLocation(stop);
+          return ({
           stop_sequence: index + 1,
-          location_review: stopLocation(stop).verified && stopLocation(stop).update_store_location !== undefined ? { ...stopLocation(stop), update_store_location: false } : undefined,
+          location_review: location.verified && location.update_store_location !== undefined ? { ...location, update_store_location: false } : undefined,
           destination: !stop.storeId && stop.pendingDestination ? { name: stop.pendingDestination, customer_id: stop.customerId || "", customer_name: stop.customer, province: stop.province, city: stop.city, address: stop.address } : undefined,
           store_id: stop.storeId || null,
           customer_id: lookups.stores.find((o) => o.id === stop.storeId)?.values?.customer_id || stop.customerId || null,
@@ -584,12 +567,13 @@ export default function AddTripForm({
               cbm: item.cbm.trim() || null,
             };
           }),
-        })),
+        }); }),
       } satisfies Omit<NewTripPayload, "request_id">;
       // An identical retry replays the same creation request so a lost response
       // cannot create a second trip; any edit receives a fresh request identity.
       creationRequest.current = nextCreationRequest(creationRequest.current, bundle);
       await onSubmit({ request_id: creationRequest.current.id, ...bundle });
+      setSaveOperation("Trip saved");
       onClose();
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : "Unable to create the trip.";
@@ -598,8 +582,8 @@ export default function AddTripForm({
         setError(dispatchMode === "existing"
           ? "Someone just added a trip to this dispatch. The trip number has been updated — review it and create the trip again."
           : "That dispatch reference was just taken. A new one has been generated — review it and create the trip again.");
-      } else setError(message);
-    } finally { setSaving(false); }
+      } else setError(`${message} Check the details and try Save trip again. Your entries are still here.`);
+    } finally { savingRef.current = false; setSaving(false); }
   }
 
   const isLast = step === STEPS.length - 1;
@@ -628,56 +612,44 @@ export default function AddTripForm({
 
   const storeItems: StoreNavigationItem[] = stops.map(stop => {
     const total = stopTotals(stop), products = stop.items.filter(hasItemData);
-    const verified = stopLocation(stop).verified;
     return { id: `stop:${stop.key}`, title: labelOf(lookups.stores, stop.storeId) || stop.pendingDestination || "Select a destination store", customer: stop.customer, city: stop.city, province: stop.province,
       products: products.length, qty: total.qty, cbm: total.cbm,
-      status: products.some(item => invalidProduct({ customer_model: productLabel(item), quantity: item.qty, cbm: item.cbm })) ? "attention" : !stop.storeId || !stop.city.trim() || !stop.province.trim() || !verified ? "location" : "ready",
+      status: products.some(item => invalidProduct({ customer_model: productLabel(item), quantity: item.qty, cbm: item.cbm })) ? "attention" : !stop.storeId || !stop.address.trim() ? "location" : "ready",
       members: [`stop:${stop.key}`, ...stop.items.map(item => `item:${item.key}`)],
       searchText: [labelOf(lookups.stores, stop.storeId), stop.pendingDestination, stop.customer, stop.city, stop.province, ...stop.items.flatMap(item => [productLabel(item), item.dr])].join(" ") };
   });
 
   /* ───────────────────────────── render ───────────────────────────── */
   const addStop = () => { const stop = newStop(); storeNavigation.selected = `stop:${stop.key}`; storeNavigation.members = [`stop:${stop.key}`]; storeNavigation.search = ""; setStops(list => [...list, stop]); };
-  const storeToolbar = <>
-                  <button type="button" aria-pressed={stopsView === "preview"} title={stopsView === "preview" ? "Edit stops" : "Table preview"} onClick={() => setStopsView(stopsView === "preview" ? "edit" : "preview")} className="stops-view-toggle"><Table2 size={14} /><span>{stopsView === "preview" ? "Edit stops" : "Table preview"}</span></button>
-                  <button type="button" onClick={() => setBulkImportOpen(true)} disabled={saving || locationSaving !== null}
-                    className="stops-import-button" title="Import CSV / XLSX">
-                    <Upload className="h-4 w-4" /><span>Import CSV / XLSX</span>
-                  </button>
-  </>;
+  const storeToolbar = <button type="button" aria-pressed={stopsView === "preview"} title={stopsView === "preview" ? "Edit stops" : "Table preview"} onClick={() => setStopsView(stopsView === "preview" ? "edit" : "preview")} className="stops-view-toggle"><Table2 size={14} /><span>{stopsView === "preview" ? "Edit stops" : "Table preview"}</span></button>;
   const excludedManualRows = stops.flatMap((stop, index) => stop.items.filter(item => hasItemData(item) && !storableItem(item)).map(item => `Stop ${index + 1}: ${productLabel(item) || item.dr || "Product line"} — invalid quantity or CBM`));
-  const manualFlags = Number(!tripTypeId && !newTripType.trim()) + Number(!loadingDate || !etaDate) + Number(!selectedTruckAssignments.length) + populatedStops.filter(stop => !stopLocation(stop).verified).length + Number(cargoTrucks.length > 0 && Boolean(validateCargo(cargoLines, cargoTrucks, cargoPlan.placements)));
-  const liveSummary = { capacity: capacityPreview, dispatch: previewTrip.dispatch || "Generated on save", tripNumber: previewTrip.trip || "Generated on save", tripType: tripTypeLabel || "", status: sentence(status), loadingDate, etaDate, stops: populatedStops.length, lines: cargoLines, trucks: cargoTrucks };
-  const { ref: dialogRef, close: onClose } = useTripModal<HTMLFormElement>({ onClose: onDismiss, active: !bulkImportOpen, onEscape: () => { if (!saving && locationSaving === null) onClose(); } });
-  if (bulkImportOpen) return <BulkTripImport initialTripDetails={{ trip_type_id: newTripType.trim() ? null : tripTypeId || null, trip_type_name: newTripType.trim() || labelOf(lookups["trip-types"], tripTypeId), status, loading_date: loadingDate || null, estimated_delivery_date: etaDate || null, remarks: remarks || null, origin_warehouse_id: warehouseId || null }} initialTarget={dispatchMode === "existing" && existingDispatch ? { mode: "dispatch", value: existingNo, allow_create: true } : undefined} onClose={() => setBulkImportOpen(false)} onComplete={onClose} onImported={() => onImported?.()} />;
+  const manualStoresReady = populatedStops.length > 0 && populatedStops.every(stop => Boolean(stop.storeId || stop.pendingDestination));
+  const manualProductsReady = totals.lines > 0 && excludedManualRows.length === 0;
+  const manualCapacityReady = totals.cbm === 0 || totals.cbm <= assignedCapacity && selectedTruckAssignments.length > 0;
+  const manualDriversReady = selectedTruckAssignments.length === 0 || selectedTruckAssignments.every(assignment => Boolean(assignment.driverId));
+  const manualPercent = assignedCapacity > 0 ? Math.round(totals.cbm / assignedCapacity * 100) : 0;
+  const { ref: dialogRef, close: onClose } = useTripModal<HTMLFormElement>({ onClose: onDismiss, active, onEscape: () => { if (!saving) onClose(); } });
   
   return (
     <div className={`${tripModalBackdrop} z-[2000]`}>
       <form noValidate ref={dialogRef} tabIndex={-1} onSubmit={submit} role="dialog" aria-modal="true" aria-labelledby="add-trip-title" aria-describedby="add-trip-title-description"
         aria-busy={saving}
-        className={tripModalShell}>
+        className={`${tripModalShell} csv-trip-modal manual-trip-modal`}>
 
         {/* Shared header and navigation keep both planning flows consistent. */}
-        <TripModalHeader id="add-trip-title" title="Add trip" description="A clear plan. Every stop, product and assignment in one place." icon={<Truck className="h-6 w-6" />} disabled={saving || locationSaving !== null} onClose={onClose} closeLabel="Close">
-          {step > 0 && <div className="flex min-w-0 flex-wrap gap-2 font-mono"><span className="truncate" title={dispatchRef}>{dispatchRef || "Dispatch on save"}</span><span className="truncate" title={tripReference}>{tripReference || "Trip on save"}</span></div>}
-        </TripModalHeader>
+        <TripModalHeader id="add-trip-title" title="Add trip manually" description="Create a trip in four steps." subtitle="Operations / Trips · Four quick steps" icon={<Truck className="h-6 w-6" />} disabled={saving} onBack={onBack} onClose={onClose} closeLabel="Close" />
         <Tabs current={step} onJump={goTo} disabled={saving} />
 
         {/* body */}
-        <div ref={bodyRef} className="trip-flow-body">
-          <div className="mx-auto max-w-5xl">
-          <div key={step} className="trip-step-panel space-y-6">
+        <div ref={bodyRef} className="trip-flow-body" data-manual-phase={step}>
+          <div className="csv-workspace"><main key={step} className="csv-main manual-main">
             {error && <div id="manual-trip-errors"><TripFormNotice tone="error" title="Check the trip details" onDismiss={() => setError("")}>{error}</TripFormNotice></div>}
-            {step === 2 && capacityState.full && <TripFormNotice tone="warning" title={capacityState.exceeded ? "Truck capacity exceeded" : "Truck capacity is full"} action={<button type="button" onClick={addCapacityTruck} className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-white/70 px-3 py-1.5 text-xs font-semibold hover:bg-white"><Plus className="h-3.5 w-3.5" />Add another truck</button>}>
-              <p>{fmt(totals.cbm)} CBM of cargo / {fmt(assignedCapacity)} CBM capacity.</p><p>{capacityState.exceeded ? `Add a truck for the remaining ${fmt(capacityState.overflow)} CBM before loading.` : "Add another truck if you need to load more cargo."} You can still save this as a planned trip.</p>
-            </TripFormNotice>}
-            {step === 2 && selectedTruckAssignments.length > 0 && hasUnknownTruckCapacity && <TripFormNotice tone="warning" title="Truck capacity is missing">At least one selected truck has no CBM capacity recorded. Check its capacity before loading.</TripFormNotice>}
             {lookupError && <TripFormNotice tone="warning" title="Some lists could not load">{lookupError} You can continue with blank fields and complete them later.</TripFormNotice>}
 
             {/* ── step 1: trip ── */}
             {step === 0 && (
-              <div className="trip-step-content">
-                <section aria-label="Dispatch setup" className="trip-section">
+              <div className="manual-step-stack">
+                <section aria-label="Dispatch setup" className="trip-section manual-card">
                   <h3>Dispatch</h3>
                   <div className="trip-dispatch-row">
                     <div className="flex gap-1 rounded-lg bg-slate-100 p-1" role="group" aria-label="Dispatch">{([["new", "New"], ["existing", "Existing"]] as const).map(([mode, label]) => <button key={mode} type="button" aria-pressed={dispatchMode === mode} onClick={() => switchDispatchMode(mode)} className={`rounded-md px-4 py-1 text-xs ${dispatchMode === mode ? "bg-white font-semibold text-[#0b2341]" : "text-slate-500"}`}>{label}</button>)}</div>
@@ -687,11 +659,8 @@ export default function AddTripForm({
                   {dispatchError && <div className="mt-3"><TripFormNotice tone="warning" title="Dispatch reference unavailable" action={<button type="button" onClick={() => setDispatchRetry(value => value + 1)} className={tripSecondaryAction}>Try again</button>}>{dispatchError}{dispatchMode === "new" && " A reference will be generated when you save."}</TripFormNotice></div>}
                 </section>
 
-                <section aria-label="Schedule" className="trip-section"><div className="mb-3 flex items-center gap-2"><h3>Schedule</h3><span className="rounded bg-slate-100 px-2 py-0.5 text-[11px] text-slate-500">Optional fields</span></div>
+                <section aria-label="Schedule" className="trip-section manual-card"><div className="mb-3 flex items-center gap-2"><h3>Trip details</h3></div>
                   <div className="trip-schedule-grid">
-                    <Field label="Trip no.">
-                      <input readOnly aria-label="Generated trip number" value={tripReference} placeholder={dispatchLoading ? "Generating trip number…" : tripReferenceStatus === "setup_required" ? "Trip numbering not yet enabled" : "Generated when you save"} className={`${input} font-mono bg-slate-50 text-slate-500`} />
-                    </Field>
                     <Field label="Trip type">
                       {addingTripType ? (
                         <div className="flex items-center gap-1.5">
@@ -705,10 +674,6 @@ export default function AddTripForm({
                           onAddNew={() => { setTripTypeId(""); setAddingTripType(true); }} addNewLabel="Add a new trip type" />
                       )}
                     </Field>
-                    <Field label="Status">
-                      <Dropdown value={status} onChange={(v) => setStatus(v || "PLANNED")}
-                        options={STATUSES.map((s) => ({ id: s, label: sentence(s) }))} placeholder="Choose status" />
-                    </Field>
                     <Field label="Loading date" >
                       <input type="date" value={loadingDate} onChange={(e) => setLoadingDate(e.target.value)} className={input} />
                     </Field>
@@ -717,13 +682,16 @@ export default function AddTripForm({
                       {etaDate && loadingDate && etaDate < loadingDate && <span id="trip-delivery-error" role="alert" className="mt-2 block text-xs leading-5 text-rose-700">Choose a delivery date on or after the loading date.</span>}
                     </Field>
                   </div>
+                  <p className="mt-3 text-xs text-slate-500">Trip number is assigned automatically. New trips start as planned.</p>
                 </section>
+                <details className="csv-card csv-details"><summary>Optional details</summary><div className="manual-optional-fields"><Field label="Origin warehouse">{accessToken && <SearchableRelationshipEditor presentation="form" token={accessToken} kind="warehouses" value={labelOf(lookups.warehouses, warehouseId) ?? ""} autoFocus={false} disabled={saving} onSelect={option => { rememberOption("warehouses", option); setWarehouseId(option.id); }} onCommitBlur={() => {}} onCancel={() => {}} />}</Field><Field label="Notes"><input value={remarks} onChange={event => setRemarks(event.target.value)} className={input} placeholder="Anything the delivery team should know" /></Field></div></details>
               </div>
             )}
 
             {/* ── step 2: stores & products ── */}
             {step === 1 && (
-              <div className="space-y-6">
+              <div className="manual-stores-card">
+                <div className="manual-stores-heading"><h3>Stores &amp; products</h3><span>{populatedStops.length} stores · {totals.lines} product rows</span></div>
                 {stopsView === "preview" ? (
                   populatedStops.length > 0
                     ? <ImportStoreProductsPreview rows={storePreviewRows} navigation={storeNavigation} toolbar={storeToolbar} onAdd={addStop} disabled={saving} />
@@ -739,14 +707,11 @@ export default function AddTripForm({
                       const storeName = labelOf(lookups.stores, stop.storeId) || stop.pendingDestination || "";
                       const lineCount = stop.items.filter(hasItemData).length;
                       
-                      return <StoreEditor key={stop.key} number={si + 1} name={storeName} summary={`${lineCount} product${lineCount === 1 ? "" : "s"} · ${fmt(t.qty, 0)} qty · ${fmt(t.cbm)} CBM`} editing={stop.editLocation} disabled={saving || locationSaving === stop.key} formDisabled={saving || locationSaving === stop.key}
+                      return <StoreEditor key={stop.key} number={si + 1} name={storeName} summary={`${lineCount} product${lineCount === 1 ? "" : "s"} · ${fmt(t.qty, 0)} qty · ${fmt(t.cbm)} CBM`} editing={stop.editLocation} disabled={saving} formDisabled={saving}
                         onEdit={() => updateStop(stop.key, { editLocation: !stop.editLocation })}
                         actions={stops.length > 1 && <button type="button" disabled={saving} onClick={() => setStops(list => list.filter(candidate => candidate.key !== stop.key))} aria-label={`Remove stop ${si + 1}`} className="store-remove"><Trash2 size={14} /></button>}
-                        deliveryStore={<DeliveryStoreField key={stop.key} name={storeName} selected={Boolean(stop.storeId)} disabled={saving || locationSaving === stop.key}>{onPicked => accessToken && <SearchableRelationshipEditor presentation="form" token={accessToken} kind="stores" value={storeName} customerId={stop.customerId} createDefaults={{ address: stop.address, city: stop.city, province: stop.province }} autoFocus={false} disabled={saving || locationSaving === stop.key} onSelect={option => { pickStore(stop.key, option.id, option); onPicked(); }} onCommitBlur={() => {}} onCancel={() => {}} />}</DeliveryStoreField>}
-                        address={accessToken && <StoreAddressReview compact token={accessToken} source={{ key: `manual:${stop.key}:${stop.storeId}`, shipTo: storeName || stop.pendingDestination || "Delivery store", customer: stop.customer, province: stop.province, city: stop.city }} decision={stopLocation(stop)} disabled={saving || locationSaving === stop.key} sourceAddress={stop.address} storeSaved={stop.locationSaved} onSaveStore={reviewed => saveStopLocation(stop, reviewed)} onChange={patch => {
-                                const location = { ...stopLocation(stop), ...patch };
-                                updateStop(stop.key, { location, locationSaved: stop.locationSaved && !(["address", "province", "city", "latitude", "longitude", "verified"] as const).some(field => patch[field] !== undefined && patch[field] !== stopLocation(stop)[field]), address: location.address, province: location.province, city: location.city });
-                              }} />}
+                        deliveryStore={<DeliveryStoreField key={stop.key} name={storeName} selected={Boolean(stop.storeId)} disabled={saving}>{onPicked => accessToken && <SearchableRelationshipEditor presentation="form" token={accessToken} kind="stores" value={storeName} customerId={stop.customerId} createDefaults={{ address: stop.address, city: stop.city, province: stop.province }} autoFocus={false} disabled={saving} onSelect={option => { pickStore(stop.key, option.id, option); onPicked(); }} onCommitBlur={() => {}} onCancel={() => {}} />}</DeliveryStoreField>}
+                        address={<div className="trip-delivery-address"><span>Delivery address</span><p>{[stop.address, stop.city, stop.province].filter(Boolean).join(", ") || "Choose a store to fill its address."}</p></div>}
                         details={stop.editLocation && (
                               <div className="grid gap-4 sm:grid-cols-2">
                                 <Field label="Customer name"><input value={stop.customer} onChange={(e) => updateStop(stop.key, { customer: e.target.value })} className={input} /></Field>
@@ -833,72 +798,31 @@ export default function AddTripForm({
 
             {/* ── step 3: assignments & cargo ── */}
             {step === 2 && (
-              <div className="trip-assignments">
+              <div className="trip-assignments trip-simple-assignments">
                 
                 {/* Left Column: Truck & Driver Assignments */}
                 <div className="trip-assignment-fields space-y-6">
-                  <Section title="Assignments">
+                  <Section title="Trucks & drivers">
                     {selectedTruckAssignments.length > 0 && (availabilityLoading || availabilityError) && <p className="mb-3 text-xs text-amber-800">{availabilityLoading ? "Checking truck availability. Optional details can be completed later." : "Truck availability could not be checked."}{availabilityError && <button type="button" className="ml-2 underline" onClick={() => setAvailabilityRetry(value => value + 1)}>Retry availability</button>}</p>}
                     {selectedTruckAssignments.some(assignment => assignment.driverId) && (driverScheduleLoading || driverScheduleError) && <p className="mb-3 text-xs text-amber-800">{driverScheduleLoading ? "Checking driver availability. This does not prevent saving a planned trip." : "Driver availability could not be checked. The server will validate assignments when saving."}</p>}
-                    <div className="mb-5">
-                      <Field label="Origin warehouse">
-                        {accessToken && (
-                          <div className="min-w-0">
-                            <SearchableRelationshipEditor presentation="form" token={accessToken} kind="warehouses" value={labelOf(lookups.warehouses, warehouseId) ?? ""} autoFocus={false} disabled={saving} onSelect={option => { rememberOption("warehouses", option); setWarehouseId(option.id); }} onCommitBlur={() => {}} onCancel={() => {}} />
-                          </div>
-                        )}
-                      </Field>
-                    </div>
-
-                    <div className="space-y-4">
+                    <div className="trip-simple-manual-trucks">
                       {truckAssignments.map((assignment, index) => {
-                        const truckState = availability.find(truck => truck.id === assignment.truckId);
-                        const chosenTruck = lookups.trucks.find((truck) => truck.id === assignment.truckId);
+                        const chosenTruck = lookups.trucks.find(truck => truck.id === assignment.truckId);
                         const capacity = Number(chosenTruck?.values?.capacity_cbm);
-                        
-                        return (
-                          <div key={assignment.key} data-truck-fields="" className="space-y-4">
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="text-xs font-semibold text-slate-800">{index === 0 ? "Primary Truck" : `Additional Truck #${index}`}</span>
-                              {truckAssignments.length > 1 && (
-                                <button type="button" onClick={() => setTruckAssignments((current) => current.filter((item) => item.key !== assignment.key))}
-                                  className="text-xs text-rose-600 hover:underline">Remove</button>
-                              )}
-                            </div>
-                            
-                            <Field label="Truck">
-                              <button type="button" aria-label={chosenTruck ? `Change truck ${chosenTruck.label}` : "Choose truck"} className={tripSecondaryAction} disabled={saving} onClick={() => setTruckPickerKey(assignment.key)}>{chosenTruck?.label || "Choose truck"}</button>
-                              {truckPickerKey === assignment.key && accessToken && <TruckPicker token={accessToken} start={loadingDate} end={etaDate} selectedIds={truckAssignments.filter(other => other.key !== assignment.key).map(other => other.truckId).filter(Boolean)} onClose={() => setTruckPickerKey(null)} onSelect={option => { rememberOption("trucks", option); setTruckPickerKey(null); setTruckAssignments(current => current.map(item => item.key !== assignment.key ? item : { ...item, truckId: option.id, driverId: current.some(other => other.key !== item.key && other.driverId === option.values?.default_driver_id) || driverAvailability.some(driver => driver.id === option.values?.default_driver_id && driver.availability === "CONFLICT") ? "" : option.values?.default_driver_id || "", availabilityConfirmed: false })); }} />}
-
-                            </Field>
-                            
-                            {truckState?.availability === "REVIEW" && <p className="text-xs text-amber-800">Schedule needs review. You can save this planned trip without dates.</p>}
-                            {truckState?.availability === "CONFLICT" && <p className="text-xs text-rose-700">Conflicting assignment. Choose another truck.</p>}
-                            
-                            <Field label="Change driver">
-                              <Dropdown value={assignment.driverId} onChange={(driverId) => setTruckAssignments((current) => current.map((item) => item.key === assignment.key ? { ...item, driverId } : item))}
-                                options={lookups.drivers.filter(driver => !truckAssignments.some(other => other.key !== assignment.key && other.driverId === driver.id) && !driverAvailability.some(state => state.id === driver.id && state.availability === "CONFLICT"))}
-                                placeholder="Assign driver later" loading={loadingLookups} disabled={!assignment.truckId} />{assignment.driverId && <button type="button" className="text-xs text-[#2678b9]" onClick={() => setTruckAssignments(current => current.map(item => item.key === assignment.key ? { ...item, driverId: "" } : item))}>Assign later</button>}
-                            </Field>
-                            {chosenTruck && (
-                              <p className="text-xs text-slate-500 bg-slate-50 p-2 rounded-lg">
-                                {chosenTruck.secondary || "Truck"} {Number.isFinite(capacity) && capacity > 0 ? ` · ${fmt(capacity)} CBM capacity` : ""}
-                              </p>
-                            )}
-                          </div>
-                        );
+                        const truckState = availability.find(truck => truck.id === assignment.truckId);
+                        return <div key={assignment.key} data-truck-fields="" className="trip-simple-manual-truck">
+                          <div><strong>Truck {index + 1}</strong><span>{Number.isFinite(capacity) && capacity > 0 ? `${fmt(capacity)} CBM capacity` : ""}</span></div>
+                          <button type="button" aria-label={chosenTruck ? `Change truck ${chosenTruck.label}` : "Choose truck"} className={tripSecondaryAction} disabled={saving} onClick={() => setTruckPickerKey(assignment.key)}>{chosenTruck?.label || "Choose truck"}</button>
+                          {truckPickerKey === assignment.key && accessToken && <TruckPicker token={accessToken} start={loadingDate} end={etaDate} selectedIds={truckAssignments.filter(other => other.key !== assignment.key).map(other => other.truckId).filter(Boolean)} onClose={() => setTruckPickerKey(null)} onSelect={option => { rememberOption("trucks", option); setTruckPickerKey(null); setTruckAssignments(current => current.map(item => item.key !== assignment.key ? item : { ...item, truckId: option.id, driverId: current.some(other => other.key !== item.key && other.driverId === option.values?.default_driver_id) || driverAvailability.some(driver => driver.id === option.values?.default_driver_id && driver.availability === "CONFLICT") ? "" : option.values?.default_driver_id || "", availabilityConfirmed: false })); }} />}
+                          <label>Driver<Dropdown value={assignment.driverId} onChange={driverId => setTruckAssignments(current => current.map(item => item.key === assignment.key ? { ...item, driverId } : item))} options={lookups.drivers.filter(driver => !truckAssignments.some(other => other.key !== assignment.key && other.driverId === driver.id) && !driverAvailability.some(state => state.id === driver.id && state.availability === "CONFLICT"))} placeholder="Choose driver" loading={loadingLookups} disabled={!assignment.truckId} /></label>
+                          {truckAssignments.length > 1 && <button type="button" onClick={() => setTruckAssignments(current => current.filter(item => item.key !== assignment.key))} aria-label={`Remove truck ${index + 1}`} className="trip-simple-remove"><Trash2 size={16} /></button>}
+                          {truckState?.availability === "CONFLICT" && <p role="alert">This truck is booked for the selected dates.</p>}
+                        </div>;
                       })}
-                    </div>
-                    
-                    <button type="button" onClick={() => { addCapacityTruck(); setAvailabilityRetry(value => value + 1); }} className="mt-4 w-full rounded-xl border border-slate-200 bg-white py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 shadow-sm transition">
+                    </div>                    <button type="button" onClick={() => { addCapacityTruck(); setAvailabilityRetry(value => value + 1); }} className="mt-4 w-full rounded-xl border border-slate-200 bg-white py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 shadow-sm transition">
                       + Add another truck
                     </button>
 
-                    <div className="mt-5">
-                      <Field label="Trip Remarks">
-                        <input value={remarks} onChange={(e) => setRemarks(e.target.value)} className={input} placeholder="Anything the team should know" />
-                      </Field>
-                    </div>
                   </Section>
                 </div>
 
@@ -906,7 +830,7 @@ export default function AddTripForm({
                 <div className="min-w-0">
                   {accessToken && cargoLines.length > 0 && selectedTruckAssignments.length > 0 ? (
                     <div className="min-w-0">
-                      <TripCargoPlanner token={accessToken} lines={cargoLines} plan={cargoPlan} onChange={setCargoPlan} fixedTrucks={cargoTrucks} truckTypes={Object.fromEntries(lookups.trucks.map(truck => [truck.id, truck.values?.truck_type || ""]))} onCapacity={setCapacityPreview} session={allocationSession.current} excludedTruckIds={cargoTrucks.filter(truck => availability.some(state => state.id === truck.id && state.availability === "CONFLICT") || driverAvailability.some(state => state.id === truck.driverId && state.availability === "CONFLICT")).map(truck => truck.id)} onAddTruck={addCapacityTruck} disabled={saving} />
+                      <TripCargoPlanner simple token={accessToken} lines={cargoLines} plan={cargoPlan} onChange={setCargoPlan} fixedTrucks={cargoTrucks} truckTypes={Object.fromEntries(lookups.trucks.map(truck => [truck.id, truck.values?.truck_type || ""]))} session={allocationSession.current} excludedTruckIds={cargoTrucks.filter(truck => availability.some(state => state.id === truck.id && state.availability === "CONFLICT") || driverAvailability.some(state => state.id === truck.driverId && state.availability === "CONFLICT")).map(truck => truck.id)} onAddTruck={addCapacityTruck} disabled={saving} />
                     </div>
                   ) : (
                     <p className="py-3 text-xs text-slate-500">Add a truck and product lines to distribute cargo.</p>
@@ -914,28 +838,38 @@ export default function AddTripForm({
                 </div>
               </div>
             )}
-        {excludedManualRows.length > 0 && <details className="manual-excluded"><summary>Excluded rows ({excludedManualRows.length})</summary>{excludedManualRows.map((reason, index) => <p key={index}>{reason}</p>)}</details>}
-          </div>
-          </div>
+            {step === 3 && <div className="manual-step-stack">
+              <section className="csv-review-card" aria-label="Review before saving"><div className="csv-review-total"><span>REVIEW · {dispatchMode === "existing" ? "EXISTING DISPATCH" : "NEW DISPATCH"}</span><strong>{fmt(totals.cbm, 4)} <small>CBM</small></strong><div className="csv-review-track"><span style={{ width: `${assignedCapacity > 0 ? Math.min(100, manualPercent) : 0}%` }} /></div><p>{manualPercent}% of {fmt(assignedCapacity)} CBM · {previewTrip.plate || "No trucks yet"}</p></div><div className="csv-review-stats"><div><span>Trip</span><strong>1</strong></div><div><span>Trucks</span><strong>{selectedTruckAssignments.length}</strong></div><div><span>Stores</span><strong>{populatedStops.length}</strong></div><div><span>Product rows</span><strong>{totals.lines}</strong></div></div></section>
+              <section className="csv-card manual-review-details"><h3>Trip summary</h3><p>Dispatch: {dispatchRef || "Generated on save"}</p><p>Trip no.: {tripReference || "Generated on save"}</p>{tripTypeLabel && <p>Trip type: {tripTypeLabel}</p>}{loadingDate && <p>Loading: {loadingDate}</p>}{etaDate && <p>Estimated delivery: {etaDate}</p>}</section>
+              {(populatedStops.length > 0 || excludedManualRows.length > 0) && <details className="csv-card csv-details"><summary>Technical details</summary>
+                {populatedStops.length > 0 && <ol className="trip-review-stops">{populatedStops.map((stop, index) => <li key={stop.key}><strong>{index + 1}. {labelOf(lookups.stores, stop.storeId) || stop.pendingDestination || "Store to assign"}</strong><span>{[stop.address, stop.city, stop.province].filter(Boolean).join(", ") || "Address to add"}</span><small>{stop.items.filter(hasItemData).length} products · {fmt(stopTotals(stop).cbm)} CBM</small></li>)}</ol>}
+                {excludedManualRows.map((reason, index) => <p key={index} className="text-rose-700">{reason}</p>)}
+              </details>}{saving && <TripSaveProgress value={null} operation={saveOperation} />}
+            </div>}
+          </main><div className="csv-side-column">
+            {step === 0 && <CsvSidePanel title="Trip setup" items={[{ label: dispatchMode === "new" ? "New dispatch" : "Existing dispatch selected", done: dispatchMode === "new" || Boolean(existingDispatch) }, { label: "Dates in order", done: !etaDate || !loadingDate || etaDate >= loadingDate }, { label: "Trip number generated on save", done: true }]} note="Set the details you know now. Optional fields can be added later." />}
+            {step === 1 && <CsvSidePanel title="Stores & products" items={[{ label: `${populatedStops.length} store${populatedStops.length === 1 ? "" : "s"} entered`, done: manualStoresReady }, { label: `${totals.lines} product row${totals.lines === 1 ? "" : "s"} entered`, done: totals.lines > 0 }, { label: "Product quantities and CBM valid", done: manualProductsReady }]} note="Choose a store, then add product rows. You can return to any stop before saving." />}
+            {step === 2 && <CsvSidePanel title="Truck allocation" items={[{ label: `${selectedTruckAssignments.length} truck${selectedTruckAssignments.length === 1 ? "" : "s"} selected`, done: selectedTruckAssignments.length > 0 || totals.cbm === 0 }, { label: "Capacity covers total CBM", done: manualCapacityReady }, { label: "Drivers assigned", done: manualDriversReady }]} note="Cargo is allocated across the trucks you select." />}
+            {step === 3 && <CsvSidePanel title="Before saving" items={[{ label: dispatchMode === "new" ? "New dispatch ready" : "Existing dispatch selected", done: dispatchMode === "new" || Boolean(existingDispatch) }, { label: "Product rows valid", done: excludedManualRows.length === 0 }, { label: "Truck capacity checked", done: manualCapacityReady }, { label: "Drivers assigned", done: manualDriversReady }]} note="The trip is created only when you save." />}
+          </div></div>
         </div>
 
         {/* footer */}
         <footer className={tripFooter}>
-          <TripLiveSummary {...liveSummary} />
           <div className="trip-footer-row">
-            <span className="text-xs text-slate-500">{isLast ? `Ready · ${manualFlags} details flagged for review` : `Step ${step + 1} of ${STEPS.length}`}</span>
+            <span className="trip-footer-meta">Step {step + 1} of {STEPS.length}</span>
             <div className="trip-footer-actions">
               {error && <button type="button" className="trip-footer-hint" onClick={() => document.getElementById("manual-trip-errors")?.scrollIntoView({ block: "start" })}>Review the trip details</button>}
-              {(saving || locationSaving !== null) && <span className="text-xs text-slate-500">{saving ? "Saving trip…" : "Wait for the location save"}</span>}
+              {saving && <span className="text-xs text-slate-500">{saveOperation}</span>}
                 {step === 0 ? (
-                  <button type="button" onClick={onClose} disabled={saving || locationSaving !== null} className={tripSecondaryAction}>Cancel</button>
+                  <button type="button" onClick={onClose} disabled={saving} className={tripSecondaryAction}>Cancel</button>
                 ) : (
                   <button type="button" onClick={() => goTo(Math.max(0, step - 1))} disabled={saving} className={tripSecondaryAction}>
                     <ChevronLeft className="h-4 w-4" /> Back
                   </button>
                 )}
-                <button type="submit" disabled={saving || locationSaving !== null} className={`${tripPrimaryAction} min-w-36`}>
-                  {saving ? <><Loader2 className="h-4 w-4 animate-spin" />Saving trip…</> : isLast ? "Save trip" : <>Next <ChevronRight className="h-4 w-4" /></>}
+                <button type="submit" disabled={saving} className={`${tripPrimaryAction} min-w-36`}>
+                   {saving ? <><Loader2 className="h-4 w-4 animate-spin" />Saving trip…</> : isLast ? "Save trip" : <>Continue <ChevronRight className="h-4 w-4" /></>}
                 </button>
             </div>
           </div>

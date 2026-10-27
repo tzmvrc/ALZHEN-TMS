@@ -25,6 +25,16 @@ test("one oversized DR splits by product lines and displays a warning", () => {
   const result = proposeAllocation({ lines: [line("1", "DR1", "6"), line("2", "DR1", "5")], trucks: [truck("A", "6"), truck("B", "6")] });
   assert.equal(result.assignments.length, 2); assert.equal(result.unassigned.length, 0); assert.ok(result.warnings.some(w => w.code === "split"));
 });
+test("one oversized product row splits exact whole units across two trucks", () => {
+  const source = { ...line("row-1", "", "3"), quantity: "3" };
+  const result = proposeAllocation({ lines: [source], trucks: [truck("A", "2"), truck("B", "2")] });
+  assert.deepEqual(result.assignments, [
+    { line_key: "row-1", truck_id: "A", quantity: "2", allocated_cbm: "2" },
+    { line_key: "row-1", truck_id: "B", quantity: "1", allocated_cbm: "1" },
+  ]);
+  assert.equal(result.unassigned.length, 0);
+  assert.ok(result.warnings.some(warning => warning.code === "split"));
+});
 test("unknown capacity is not assignable", () => {
   const result = proposeAllocation({ lines: [line("1", "DR1", "3")], trucks: [truck("A", "")] });
   assert.equal(result.assignments.length, 0); assert.equal(result.unassigned.length, 1); assert.ok(result.warnings.some(w => w.code === "unknown"));

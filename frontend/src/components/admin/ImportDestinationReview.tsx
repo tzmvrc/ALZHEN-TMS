@@ -8,7 +8,7 @@ import { SectionCard } from "./shared";
 import { fieldControl } from "./shared/styles";
 
 export type DestinationSource = { key: string; customer: string; shipTo: string; province: string; city: string };
-export type LocationDecision = { customer_id?: string; store_id?: string; store_label?: string; store_verified?: boolean; address: string; province: string; city: string; latitude: string; longitude: string; verified: boolean; replace_verified: boolean; lookup?: TripLocationLookup; pin_address_mismatch?: boolean; update_store_location?: boolean };
+export type LocationDecision = { customer_id?: string; customer_label?: string; customer_code?: string; store_id?: string; store_label?: string; store_verified?: boolean; address: string; province: string; city: string; latitude: string; longitude: string; verified: boolean; replace_verified: boolean; lookup?: TripLocationLookup; pin_address_mismatch?: boolean; update_store_location?: boolean };
 
 export const destinationKey = customerStoreKey;
 export function recoverDestinationDecisions(saved: Record<string, LocationDecision> = {}) {

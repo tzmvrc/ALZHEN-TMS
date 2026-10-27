@@ -22,7 +22,9 @@ import { useToast } from "../../../components/ui/Toast";
 import { useRegisterTopbarAction } from "../../../components/admin/topbarActions";
 import { WORKSPACE_SHEETS } from "../../../services/trips-workspace";
 import type {NewTripPayload} from "../../../components/admin/AddTripForm";
+import AddTripChoice from "../../../components/admin/AddTripChoice";
 const AddTripForm=lazy(()=>import("../../../components/admin/AddTripForm"));
+const BulkTripImport=lazy(()=>import("../../../components/admin/BulkTripImport"));
 import type { AdminNotificationTarget } from "../../../services/notification.service";
 
 const titleMap: Record<string, [string, string]> = {
@@ -505,6 +507,10 @@ export default memo(ResourceView);
 
 function AddTripButton({ onCreated }: { onCreated: (reference: string) => void }) {
   const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState<"choice" | "manual" | "import">("choice");
+  const [manualVisited, setManualVisited] = useState(false);
+  const [importVisited, setImportVisited] = useState(false);
+  const closeLauncher = () => { setOpen(false); setMode("choice"); setManualVisited(false); setImportVisited(false); };
   const { addToast } = useToast();
 
   const { accessToken } = useAuth();
@@ -513,17 +519,22 @@ function AddTripButton({ onCreated }: { onCreated: (reference: string) => void }
     const trip = await createTrip(accessToken, payload);
     const reference = String(trip.dispatch_number ?? payload.trip.dispatch_number);
     onCreated(reference);
+    window.dispatchEvent(new Event("alzhen:trip-imported"));
     addToast({
       variant: "success",
-      title: "Trip saved",
-      description: `${reference} was saved to the database. The Trips table is refreshing for this dispatch.`,
+      title: "Trip added successfully!",
+      description: `${reference} is ready in the Trips view.`,
     });
   };
 
   return (
     <>
-      {WORKSPACE_SHEETS.map((sheet) => <AddTripActionRegistration key={sheet.key} scope={`trips:${sheet.title}`} onClick={() => setOpen(true)} />)}
-      {open && <Suspense fallback={<div role="status" aria-label="Opening trip form" className="fixed inset-0 z-50 al-modal-backdrop"/>}><AddTripForm onClose={() => setOpen(false)} onSubmit={createTripHandler} onImported={() => window.dispatchEvent(new Event("alzhen:trip-imported"))} /></Suspense>}
+      {WORKSPACE_SHEETS.map((sheet) => <AddTripActionRegistration key={sheet.key} scope={`trips:${sheet.title}`} onClick={() => { setMode("choice"); setOpen(true); }} />)}
+      {open && <>
+        {manualVisited && <div hidden={mode !== "manual"}><Suspense fallback={<div role="status" aria-label="Opening manual trip form" className="fixed inset-0 z-50 al-modal-backdrop"/>}><AddTripForm active={mode === "manual"} onBack={() => setMode("choice")} onClose={closeLauncher} onSubmit={createTripHandler} onImported={() => window.dispatchEvent(new Event("alzhen:trip-imported"))} /></Suspense></div>}
+        {importVisited && <div hidden={mode !== "import"}><Suspense fallback={<div role="status" aria-label="Opening CSV import" className="fixed inset-0 z-50 al-modal-backdrop"/>}><BulkTripImport active={mode === "import"} onBack={() => setMode("choice")} onClose={closeLauncher} onComplete={closeLauncher} onImported={() => window.dispatchEvent(new Event("alzhen:trip-imported"))} /></Suspense></div>}
+        {mode === "choice" && <AddTripChoice onManual={() => { setManualVisited(true); setMode("manual"); }} onImport={() => { setImportVisited(true); setMode("import"); }} onClose={closeLauncher} />}
+      </>}
     </>
   );
 }

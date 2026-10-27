@@ -20,7 +20,7 @@ export function useTripModal<T extends HTMLElement>({ onClose, onEscape = onClos
     const frame = requestAnimationFrame(() => dialog.querySelector<HTMLElement>("[data-trip-initial-focus]")?.focus({ preventScroll: true }));
     const onKey = (event: KeyboardEvent) => {
       if (event.defaultPrevented) return;
-      const dialogs = document.querySelectorAll('[aria-modal="true"]');
+      const dialogs = [...document.querySelectorAll<HTMLElement>('[aria-modal="true"]')].filter(element => element.getClientRects().length > 0);
       if (dialogs[dialogs.length - 1] !== dialog) return;
       if (event.key === "Escape") { event.preventDefault(); callbacks.current.onEscape(); return; }
       if (event.key !== "Tab") return;

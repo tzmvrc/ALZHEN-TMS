@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Check, X } from "lucide-react";
+import { ArrowLeft, Check, X } from "lucide-react";
 import { focusRing } from "./styles";
 import "./trip-modal.css";
 
@@ -9,12 +9,13 @@ export const tripPrimaryAction = `trip-primary inline-flex min-h-10 items-center
 export const tripSecondaryAction = `trip-secondary inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-[#0b2341] transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 ${focusRing}`;
 export const tripFooter = "trip-flow-footer shrink-0 border-t border-slate-200 bg-white";
 
-type HeaderProps = { id: string; title: string; description: string; icon: ReactNode; children?: ReactNode; disabled?: boolean; onClose: () => void; closeLabel: string };
-export function TripModalHeader({ id, title, description, icon, children, disabled, onClose, closeLabel }: HeaderProps) {
+type HeaderProps = { id: string; title: string; description: string; subtitle?: string; icon: ReactNode; children?: ReactNode; disabled?: boolean; onBack?: () => void; onClose: () => void; closeLabel: string };
+export function TripModalHeader({ id, title, description, subtitle, icon, children, disabled, onBack, onClose, closeLabel }: HeaderProps) {
   return <header className="trip-flow-header">
+    {onBack && <button type="button" className={`trip-header-back ${focusRing}`} disabled={disabled} onClick={onBack} aria-label="Back to Add Trip options"><ArrowLeft aria-hidden="true" size={17} /><span>Back</span></button>}
     <span aria-hidden="true" className="trip-header-icon">{icon}</span>
-    <h2 id={id} tabIndex={-1} data-trip-initial-focus className="min-w-0 text-lg font-semibold text-[#0b2341] outline-none">{title}</h2>
-    <span className="trip-header-breadcrumb">Operations / Trips</span>
+    {subtitle ? <div className="trip-header-heading"><h2 id={id} tabIndex={-1} data-trip-initial-focus className="min-w-0 text-lg font-semibold text-[#0b2341] outline-none">{title}</h2><p className="trip-header-subtitle">{subtitle}</p></div> : <h2 id={id} tabIndex={-1} data-trip-initial-focus className="min-w-0 text-lg font-semibold text-[#0b2341] outline-none">{title}</h2>}
+    {!subtitle && <span className="trip-header-breadcrumb">Operations / Trips</span>}
     <p id={`${id}-description`} className="sr-only">{description}</p>
     <div className="trip-header-meta">{children}</div>
     <button type="button" disabled={disabled} aria-label={closeLabel} onClick={onClose} className={`trip-close ${focusRing}`}><X aria-hidden="true" size={18} /></button>
