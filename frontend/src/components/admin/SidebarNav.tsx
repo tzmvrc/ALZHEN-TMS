@@ -23,6 +23,8 @@ import { usePageSection } from "./pageSection";
 import { useTopbarSearch } from "./topbarSearch";
 import { useTopbarView } from "./topbarView";
 import TopbarFilterButton from "./TopbarFilterButton";
+import TableViewers from "./TableViewers";
+import {useSidebarPresence} from "./sidebarPresence";
 import { useTopbarActions } from "./topbarActions";
 
 export type WorkspaceName = "Operational Admin" | "Client Website";
@@ -165,6 +167,14 @@ export default function SidebarNav({
     : activeId === "database" ? `database:${databaseSection || "Warehouses"}`
     : activeId === "truckers" ? `users:${usersSection || "Admin & Staff"}`
     : activeId === "billing" ? `billing:${billingSection || "Invoices"}` : activeId;
+  const presenceTable = activeId === "trips" ? ({
+    "Master List":"trips", "Dispatch Monitoring":"dispatch-monitoring", "Dispatch Report":"dispatch",
+    "Trip Booking":"trip-booking", "Store Calling":"store-calling", "Transmittal Tracker":"transmittal-tracker",
+  } as Record<string,string>)[tripSection || "Master List"]
+    : activeId === "database" ? `master:${({"Warehouses":"warehouses","Trucks":"trucks","Trucking Companies":"trucking-companies","Stores":"stores","Store Contacts":"store-contacts","Products":"products"} as Record<string,string>)[databaseSection || "Warehouses"] ?? "warehouses"}`
+    : activeId === "truckers" ? `users:${usersSection === "Truckers" ? "truckers" : "staff"}`
+    : null;
+  const visiblePresenceTable = useSidebarPresence() ?? presenceTable;
   const searchConfig = useTopbarSearch(searchScope);
   const viewConfig = useTopbarView(searchScope);
   const topbarActions = useTopbarActions(searchScope);
@@ -231,6 +241,7 @@ export default function SidebarNav({
         {/* {hasCalendar && <button type="button" onClick={() => navigate("calendar")} aria-label="Calendar" title="Calendar" aria-current={activeId === "calendar" ? "page" : undefined} className={`al-sidebar-item ${activeId === "calendar" ? "al-sidebar-item-active" : ""}`}><CalendarDays aria-hidden="true" size={18}/></button>} */}
         {navItems.slice(3).map((entry) => <button key={entry.id} type="button" onClick={() => navigate(entry.id)} aria-current={entry.id === activeId ? "page" : undefined} aria-label={entry.label} title={entry.label} className={`al-sidebar-item ${entry.id === activeId ? "al-sidebar-item-active" : ""}`}><span>{entry.icon}</span>{!!entry.badge && <span className="al-sidebar-badge">{entry.badge}</span>}</button>)}
       </nav>}
+      {visiblePresenceTable && <div className="al-sidebar-viewers" aria-label="People viewing this table"><TableViewers key={visiblePresenceTable} table={visiblePresenceTable} sidebar/></div>}
       <div className="al-sidebar-profile">
         <div ref={sidebarProfileRef} className="relative">
           <button type="button" aria-label="User menu" aria-expanded={profileOpen} aria-haspopup="menu" onClick={() => toggleProfile("sidebar")} className={focusRing}><span className="al-profile-avatar flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-[#0b2341] text-xs font-semibold text-white">{avatarContent}</span></button>

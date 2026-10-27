@@ -14,6 +14,7 @@ import { reportColumnAppearance } from "./ReportSpreadsheetUtils";
 import { useSpreadsheetRowHeights } from "./useSpreadsheetRowHeights";
 import { SPREADSHEET_GUTTER_WIDTH, SPREADSHEET_PANEL_CLASS, SPREADSHEET_ATTACHED_VIEWPORT_CLASS, SpreadsheetFooter, SpreadsheetDetailsAction, spreadsheetFeedbackMessage, SpreadsheetBlankRows, SpreadsheetRowNumber, useSpreadsheetViewport, useSpreadsheetFeedback } from "./SpreadsheetPresentation";
 import { CollaborativeCell } from "./CollaborativeCell";
+import {useRegisterSidebarPresence} from "./sidebarPresence";
 import EditStepNavigation from "./EditStepNavigation";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
 import { LoaderCircle } from "lucide-react";
@@ -541,6 +542,7 @@ function readOperationsColumnLayout(storageKey = OPERATIONS_COLUMN_STORAGE_KEY) 
 }
 
 export function OperationsEventsTable({ rows, loading, hasLoaded, loadError, token, profileId, canManageReports = false, onOpenTrip, onSaved, toolbarActions, toolbarLeading, onInteractionCheck, serverPage }: { toolbarLeading?: ReactNode; rows: OperationsEventRow[]; loading: boolean; hasLoaded: boolean; loadError: string | null; token: string; profileId?: string; canManageReports?: boolean; onOpenTrip?: (tripId: string, stopId?: string | null) => void; onSaved: () => void | Promise<void>; toolbarActions?: ReactNode; onInteractionCheck?: (check: () => boolean) => void; serverPage?: {onLoadMore:()=>Promise<void>;loadingMore:boolean;hasMore:boolean;query:OperationsPageOptions;pagination:OperationsReportData["pagination"];pending:boolean;onChange:(next:OperationsPageOptions)=>void} }) {
+  useRegisterSidebarPresence("operations");
   const filter = (serverPage?.query.filter ?? "All") as EventFilter;
   const [localSearch, setLocalSearch] = useState(serverPage?.query.search ?? "");
   const search=localSearch;

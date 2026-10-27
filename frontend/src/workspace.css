@@ -136,6 +136,7 @@ body { background: var(--al-outer); }
 .al-search-filter > button:disabled { opacity:.45; cursor:not-allowed; }
 .al-search-filter-menu { position:absolute; top:calc(100% + 8px); right:0; z-index:1200; width:max-content; min-width:200px; max-width:min(280px,calc(100vw - 24px)); max-height:min(360px,60vh); overflow:auto; padding:5px; border:1px solid var(--al-border); border-radius:12px; background:#fff; box-shadow:0 12px 32px rgba(11,35,67,.12); }
 .al-search-filter-menu button { display:flex; width:100%; align-items:center; justify-content:space-between; gap:18px; min-height:34px; padding:6px 10px; border-radius:8px; color:#52657c; font-size:12px; text-align:left; white-space:nowrap; }
+.al-search-filter-menu button span:first-child { min-width:0; overflow:hidden; text-overflow:ellipsis; }
 .al-search-filter-menu button:hover,.al-search-filter-menu button[aria-checked="true"] { background:#e9eef5; color:#0b2343; }
 .al-search-filter-menu button:focus-visible { outline:2px solid #0b2343; outline-offset:-2px; }
 .al-quick-search:has(.al-search-filter) input { padding-right:28px; }
