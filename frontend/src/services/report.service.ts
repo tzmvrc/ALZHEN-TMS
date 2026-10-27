@@ -58,6 +58,7 @@ export type ReportPageOptions = {
   sortBy: string;
   sortOrder: "asc" | "desc";
   filters: Record<string, string>;
+  cardMeta?: boolean;
 };
 
 export type ReportPageBundle = {
@@ -108,6 +109,7 @@ function reportPageCacheKey(reportKey: ReportKey, token: string, options: Report
     options.search.trim(),
     options.sortBy,
     options.sortOrder,
+    Boolean(options.cardMeta),
     Object.fromEntries(Object.entries(options.filters).sort(([left], [right]) => left.localeCompare(right))),
   ]);
 }
@@ -380,6 +382,7 @@ export async function fetchReportRows(
     sort_order: options.sortOrder,
   });
   if(options.selectionOnly)params.set("selection_only","true");
+  if(options.cardMeta && !options.selectionOnly)params.set("card_meta","true");
   if (options.search.trim()) params.set("search", options.search.trim());
   if (!params.get("sort_by")) params.delete("sort_by");
   if(options.filters.trip_id) params.set("trip_id",options.filters.trip_id);

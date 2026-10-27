@@ -19,12 +19,13 @@ type Props = {
   role: string;
   children: ReactNode;
   hideSectionTab?: boolean;
+  cardsOnly?: boolean;
   searchScope?: string;
 };
 
 const tabClass = "max-w-[15rem] shrink-0 truncate border-b-2 px-3 py-1.5 text-xs font-semibold transition";
 
-export default function FlexibleTableSectionTabs({ sectionKey, sectionLabel, accessToken, role, children, hideSectionTab = false, searchScope }: Props) {
+export default function FlexibleTableSectionTabs({ sectionKey, sectionLabel, accessToken, role, children, hideSectionTab = false, cardsOnly = false, searchScope }: Props) {
   const cached=accessToken?getCachedSectionFlexibleTables(accessToken,sectionKey):null;
   const [connected, setConnected] = useState<FlexTable[]>(cached??[]);
   const [activeTableId, setActiveTableId] = useState<string | null>(null);
@@ -72,6 +73,8 @@ export default function FlexibleTableSectionTabs({ sectionKey, sectionLabel, acc
   if (!accessToken || !["ADMIN", "STAFF"].includes(role)) {
     return <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">Flexible tables are available to ADMIN and STAFF accounts.</div>;
   }
+
+  if (cardsOnly) return <div className="space-y-2">{children}</div>;
 
   return <div className="space-y-2">
     {(!hideSectionTab || connected.length > 0) && <div className="flex min-w-0 items-center gap-1 border-b border-slate-200">

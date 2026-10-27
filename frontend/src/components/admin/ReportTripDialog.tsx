@@ -15,7 +15,7 @@ export default function ReportTripDialog({token,onClose,onComplete,onSubmitted}:
     void fetchAssignedOperations(token).then(value=>{if(!cancelled)setData(value);}).catch(cause=>{if(!cancelled)setError(cause instanceof Error?cause.message:"Unable to load assigned trips.");}).finally(()=>{if(!cancelled)setLoading(false);});
     return()=>{cancelled=true;previous?.focus();};
   },[token]);
-  return <div className="fixed inset-0 z-[2200] flex items-center justify-center bg-slate-950/50 p-3" ref={container} onKeyDown={event=>{
+  return <div className="fixed inset-0 z-[2200] flex items-center justify-center p-3 al-modal-backdrop" ref={container} onKeyDown={event=>{
     if(event.key!=="Tab")return;
     const items=Array.from(container.current?.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled),textarea:not(:disabled),select:not(:disabled),[tabindex="0"]')??[]);
     if(!items.length)return;

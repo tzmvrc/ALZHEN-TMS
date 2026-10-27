@@ -1,6 +1,14 @@
 import {ChevronLeft,ChevronRight} from "lucide-react";
 import { useEffect, useRef, type RefObject } from "react";
 
+function tableScrollRange(viewport: HTMLElement) {
+  const table = viewport.querySelector("table");
+  const available = Math.max(0, viewport.scrollWidth - viewport.clientWidth);
+  if (!table) return available;
+  const tableRight = table.getBoundingClientRect().right - viewport.getBoundingClientRect().left + viewport.scrollLeft;
+  return Math.max(0, Math.min(available, tableRight - viewport.clientWidth));
+}
+
 /** Compact native scrollbar; synchronization never rerenders the grid. */
 export default function SheetHorizontalScrollbar({ workspace, sheet, arrows=false }: { workspace: RefObject<HTMLElement | null>; sheet: string; arrows?:boolean }) {
   const track = useRef<HTMLDivElement>(null);
@@ -12,8 +20,9 @@ export default function SheetHorizontalScrollbar({ workspace, sheet, arrows=fals
   const scroll=(direction:number)=>{
     const viewport=getViewport();if(!viewport)return;
     const distance=direction*Math.max(80,Math.round(viewport.clientWidth*.15));
-    if(window.matchMedia("(prefers-reduced-motion: reduce)").matches)viewport.scrollLeft+=distance;
-    else viewport.scrollBy({left:distance,behavior:"smooth"});
+    const target=Math.max(0,Math.min(tableScrollRange(viewport),viewport.scrollLeft+distance));
+    if(window.matchMedia("(prefers-reduced-motion: reduce)").matches)viewport.scrollLeft=target;
+    else viewport.scrollTo({left:target,behavior:"smooth"});
   };
   const startHold=(direction:number)=>{
     stopHold();held.current=false;
@@ -22,7 +31,7 @@ export default function SheetHorizontalScrollbar({ workspace, sheet, arrows=fals
       const advance=(time:number)=>{
         const viewport=getViewport();if(!viewport){stopHold();return;}
         const position=viewport.scrollLeft;
-        viewport.scrollLeft+=direction*Math.min(32,time-previous)*.75;previous=time;
+        viewport.scrollLeft=Math.max(0,Math.min(tableScrollRange(viewport),position+direction*Math.min(32,time-previous)*.75));previous=time;
         if(viewport.scrollLeft===position){stopHold();return;}
         holdFrame.current=requestAnimationFrame(advance);
       };
@@ -42,6 +51,7 @@ export default function SheetHorizontalScrollbar({ workspace, sheet, arrows=fals
       let synchronizedViewport = viewport.scrollLeft;
       let viewportRange = 0, barRange = 0;
       const syncPosition = () => {
+        if(viewport.scrollLeft>viewportRange)viewport.scrollLeft=viewportRange;
         bar.scrollLeft = viewportRange > 0 ? viewport.scrollLeft / viewportRange * barRange : 0;
         synchronizedPosition = bar.scrollLeft;
         synchronizedViewport = viewport.scrollLeft;
@@ -52,8 +62,8 @@ export default function SheetHorizontalScrollbar({ workspace, sheet, arrows=fals
         frame = 0;
         // Hidden/retained sheets must not reset their saved scroll position.
         if(!bar.clientWidth||!viewport.clientWidth)return;
-        content.style.width = `${Math.max(bar.clientWidth, bar.clientWidth * viewport.scrollWidth / viewport.clientWidth)}px`;
-        viewportRange = Math.max(0,viewport.scrollWidth - viewport.clientWidth);
+        viewportRange = tableScrollRange(viewport);
+        content.style.width = `${bar.clientWidth * (1 + viewportRange / viewport.clientWidth)}px`;
         barRange = Math.max(0,bar.scrollWidth - bar.clientWidth);
         syncPosition();
       };
@@ -71,7 +81,7 @@ export default function SheetHorizontalScrollbar({ workspace, sheet, arrows=fals
         const delta=event.deltaX||((overBar||event.shiftKey)?event.deltaY:0);
         if (!delta) return;
         const previous = viewport.scrollLeft;
-        viewport.scrollLeft += delta * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? viewport.clientWidth : 1);
+        viewport.scrollLeft = Math.max(0,Math.min(tableScrollRange(viewport),previous+delta * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? viewport.clientWidth : 1)));
         if (viewport.scrollLeft !== previous) {
           // Diagonal trackpad gestures keep their vertical component in the grid.
           if(!overBar&&!event.shiftKey&&event.deltaY)viewport.scrollTop+=event.deltaY*(event.deltaMode===1?16:event.deltaMode===2?viewport.clientHeight:1);

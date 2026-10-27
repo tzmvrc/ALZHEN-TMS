@@ -122,7 +122,7 @@ export function ReportColumnColorDialog({ columnName, color, onChange, onReset, 
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [onClose]);
   if (typeof document === "undefined") return null;
-  return createPortal(<div className="fixed inset-0 z-[2000] flex items-center justify-center bg-slate-900/20 p-4 backdrop-blur-[2px]" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+  return createPortal(<div className="fixed inset-0 z-[2000] flex items-center justify-center p-4 al-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
     <section role="dialog" aria-modal="true" aria-labelledby="report-column-color-title" className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl">
       <div className="flex items-start justify-between gap-3"><div><h2 id="report-column-color-title" className="text-sm font-semibold text-slate-900">Edit Column</h2><p className="mt-1 text-xs text-slate-500">Choose a display color for {columnName}.</p></div><button type="button" title="Close" aria-label="Close column color dialog" onClick={onClose} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100"><X className="h-4 w-4" /></button></div>
       <div className="mt-4 flex items-center gap-3"><input aria-label="Column display color" type="color" value={color || "#eaf2fb"} onChange={(event) => onChange(event.target.value)} className="h-9 w-12 cursor-pointer rounded border border-slate-200 bg-white p-1" /><span className="text-xs text-slate-600">Color is shared with authorized users of this table.</span></div>
@@ -303,7 +303,7 @@ export function ReportDropdownOptionsDialog({ token, field, options, onClose, on
   };
 
   if (typeof document === "undefined") return null;
-  return createPortal(<div className="fixed inset-0 z-[2000] flex items-center justify-center bg-slate-900/20 p-4 backdrop-blur-[2px]" onMouseDown={(event) => { if (event.target === event.currentTarget) close(); }}>
+  return createPortal(<div className="fixed inset-0 z-[2000] flex items-center justify-center p-4 al-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) close(); }}>
     <section role="dialog" aria-modal="true" aria-labelledby="report-dropdown-manager-title" className="max-h-[min(80vh,640px)] w-full max-w-lg overflow-y-auto rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl">
       <div className="flex items-start justify-between gap-3"><div><h2 id="report-dropdown-manager-title" className="text-sm font-semibold text-slate-900">Configure dropdown</h2><p className="mt-1 text-xs text-slate-600">Column: {field.replace(/_/g," ")} ? Input type: Dropdown</p><p className="mt-1 text-xs text-slate-500">Edit several labels or add options, then save once. Requests run in sequence; a failure can leave earlier changes saved.</p></div><button type="button" title="Close" aria-label="Close option manager" disabled={busy} onClick={close} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 disabled:opacity-50"><X className="h-4 w-4" /></button></div>
       {error && <p role="alert" className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700">{error}</p>}{notice && <p role="status" className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-700">{notice}</p>}

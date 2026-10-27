@@ -49,7 +49,7 @@ export default function VehicleManagementModal({ onClose, onSaved }: { onClose: 
     } finally { setSaving(false); }
   };
 
-  return <div className="fixed inset-0 z-[2000] flex items-end justify-center bg-slate-900/20 p-0 backdrop-blur-[2px] sm:items-center sm:p-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) onClose(); }}>
+  return <div className="fixed inset-0 z-[2000] flex items-end justify-center p-0 sm:items-center sm:p-4 al-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) onClose(); }}>
     <form onSubmit={(event) => void submit(event)} role="dialog" aria-modal="true" aria-labelledby="vehicle-modal-title" className="max-h-[94vh] w-full max-w-2xl overflow-y-auto rounded-t-2xl border border-slate-200 bg-white p-5 shadow-[0_24px_60px_rgba(11,35,65,0.28)] sm:rounded-2xl">
       <header className="flex items-start justify-between gap-3">
         <div><h2 id="vehicle-modal-title" className="text-lg font-semibold text-[#0b2341]">Add vehicle</h2><p className="mt-1 text-xs text-slate-500">Enter the vehicle details.</p></div>

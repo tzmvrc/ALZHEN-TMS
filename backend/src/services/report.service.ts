@@ -662,6 +662,92 @@ async function attachGeneratedTripNumbers(rows: Record<string, unknown>[], suppl
   }
 }
 
+/** Resolve progress from every trip linked to each dispatch on this page, not
+ * merely from the product lines that happened to land in the current window. */
+async function attachCardMetadata(rows: Record<string, unknown>[]) {
+  const tripIds = [...new Set(rows.map(row => row.trip_id ?? row._trip_id).filter((id): id is string => typeof id === "string" && isValidUuid(id)))];
+  const dispatchNumbers = [...new Set(rows.map(row => row.dispatch_number).filter((value): value is string => typeof value === "string" && Boolean(value.trim())).map(value => value.trim()))];
+  const driverIds = [...new Set(rows.map(row => row.driver_id ?? row._driver_id).filter((id): id is string => typeof id === "string" && isValidUuid(id)))];
+  const stopCounts = new Map<string, {total:number;completed:number}>();
+  const deliveryDateByTrip = new Map<string,string>();
+  const tripsByDispatch = new Map<string, Set<string>>();
+  const tripById = new Map<string, {dispatch_number:string|null;estimated_delivery_date:string|null}>();
+  let tripsAvailable = true;
+  if (dispatchNumbers.length) for (let index=0; index<dispatchNumbers.length; index+=100) {
+    const batch=dispatchNumbers.slice(index,index+100);
+    for (let offset=0;;offset+=1000) {
+      const {data,error}=await supabaseAdmin.from("trips").select("id,dispatch_number,estimated_delivery_date").in("dispatch_number",batch).order("id").range(offset,offset+999);
+      if(error){console.warn("Card dispatch progress unavailable",{code:error.code});tripsAvailable=false;break;}
+      for(const trip of data??[]){
+        const id=String(trip.id),number=String(trip.dispatch_number??"").trim();
+        tripById.set(id,{dispatch_number:number||null,estimated_delivery_date:trip.estimated_delivery_date??null});
+        if(number){const linked=tripsByDispatch.get(number)??new Set<string>();linked.add(id);tripsByDispatch.set(number,linked);}
+      }
+      if((data?.length??0)<1000)break;
+    }
+    if(!tripsAvailable)break;
+  }
+  const missingTripIds=tripIds.filter(id=>!tripById.has(id));
+  if (missingTripIds.length) {
+    const {data,error}=await supabaseAdmin.from("trips").select("id,dispatch_number,estimated_delivery_date").in("id",missingTripIds);
+    if(error){console.warn("Card trip progress unavailable",{code:error.code});tripsAvailable=false;}
+    else for(const trip of data??[]){
+      const id=String(trip.id),number=String(trip.dispatch_number??"").trim();
+      tripById.set(id,{dispatch_number:number||null,estimated_delivery_date:trip.estimated_delivery_date??null});
+      if(number){const linked=tripsByDispatch.get(number)??new Set<string>();linked.add(id);tripsByDispatch.set(number,linked);}
+    }
+  }
+  for(const [id,trip] of tripById)if(trip.estimated_delivery_date)deliveryDateByTrip.set(id,trip.estimated_delivery_date);
+  const linkedTripIds=[...tripById.keys()];
+  for(let index=0;tripsAvailable&&index<linkedTripIds.length;index+=100) {
+    const ids=linkedTripIds.slice(index,index+100);
+    for (let offset=0;;offset+=1000) {
+      const {data,error}=await supabaseAdmin.from("trip_stops")
+        .select("id,trip_id,delivery_status,finish_unloading_time")
+        .in("trip_id",ids).is("archived_at",null).order("id").range(offset,offset+999);
+      if (error) { console.warn("Card stop progress unavailable", {code:error.code});stopCounts.clear();tripsAvailable=false;break; }
+      for (const stop of data ?? []) {
+        const id = String(stop.trip_id);
+        const count = stopCounts.get(id) ?? {total:0,completed:0};
+        count.total += 1;
+        if (["COMPLETED","DELIVERED","FINISHED"].includes(String(stop.delivery_status ?? "").toUpperCase()) || stop.finish_unloading_time) count.completed += 1;
+        stopCounts.set(id,count);
+      }
+      if ((data?.length ?? 0) < 1000) break;
+    }
+    if(!tripsAvailable)break;
+  }
+  const photoByDriver = new Map<string,string>();
+  if (driverIds.length) {
+    const {data:drivers,error:driversError} = await supabaseAdmin.from("drivers").select("id,profile_id").in("id",driverIds);
+    if (!driversError) {
+      const profileIds = [...new Set((drivers ?? []).map(driver => driver.profile_id).filter((id): id is string => typeof id === "string" && isValidUuid(id)))];
+      if (profileIds.length) {
+        const {data:profiles,error:profilesError} = await supabaseAdmin.from("profiles").select("id,profile_picture_path").in("id",profileIds);
+        if (!profilesError) {
+          const paths = (profiles ?? []).map(profile => profile.profile_picture_path).filter((path): path is string => typeof path === "string" && !/^https?:\/\//i.test(path));
+          const signed = await signStoragePaths("profile-pictures",paths,60*60);
+          const photoByProfile = new Map((profiles ?? []).map(profile => [String(profile.id), typeof profile.profile_picture_path === "string" ? /^https?:\/\//i.test(profile.profile_picture_path) ? profile.profile_picture_path : signed.get(profile.profile_picture_path) ?? null : null]));
+          for (const driver of drivers ?? []) {
+            const photo = photoByProfile.get(String(driver.profile_id));
+            if (photo) photoByDriver.set(String(driver.id),photo);
+          }
+        }
+      }
+    }
+  }
+  for (const row of rows) {
+    const tripId = String(row.trip_id ?? row._trip_id);
+    const dispatchNumber=typeof row.dispatch_number==="string"?row.dispatch_number.trim():"";
+    const linked=dispatchNumber?tripsByDispatch.get(dispatchNumber):null;
+    const ids=linked?.size?[...linked]:tripById.has(tripId)?[tripId]:[];
+    row.card_stop_total = tripsAvailable&&ids.length?ids.reduce((total,id)=>total+(stopCounts.get(id)?.total??0),0):null;
+    row.card_stop_completed = tripsAvailable&&ids.length?ids.reduce((total,id)=>total+(stopCounts.get(id)?.completed??0),0):null;
+    row.card_delivery_date = ids.map(id=>deliveryDateByTrip.get(id)).filter((date):date is string=>Boolean(date)).sort().at(-1)??null;
+    row.driver_photo_url = photoByDriver.get(String(row.driver_id ?? row._driver_id)) ?? null;
+  }
+}
+
 export async function getReportData(
   reportKey: string,
   query: ReportQueryParams = {},
@@ -866,6 +952,9 @@ export async function getReportData(
           for (const row of enriched) row.route = typeof row.trip_id === "string" ? routes.get(row.trip_id) ?? null : null;
         }).catch(() => { for (const row of enriched) row.route = null; console.warn("Report route enrichment unavailable", {reportKey:key}); }) : Promise.resolve(),
       ]);
+      if (getQueryString(query.card_meta) === "true" && ["combined", "dispatch", "dispatch-monitoring", "trip-booking", "store-calling"].includes(key)) {
+        await attachCardMetadata(enriched);
+      }
       for(const row of enriched)for(const field of Object.keys(row))if(field.startsWith("_parent_"))delete row[field];
       return {
         rows: enriched,

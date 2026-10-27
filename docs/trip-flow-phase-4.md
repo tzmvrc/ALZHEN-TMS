@@ -11,7 +11,7 @@ The old step 3 displayed all groups' trip details, then all dispatch controls, t
 Each trip group now has a header with its source line count/status chips, a sticky desktop progress checklist, and these sections in order:
 
 1. Trip details, including the existing Apply to all groups action.
-2. Dispatch & trip group: segmented New dispatch / Existing dispatch / Append to existing trip controls, an inline searchable result combobox, and the labelled Create missing records checkbox with its explanation.
+2. Dispatch & trip group: segmented New dispatch / Existing dispatch / Append to existing trip controls and an inline searchable result combobox. The labelled **Create missing records** checkbox and its explanation now sit directly above this collapsible section, and a new import defaults it on because leaving it off makes every row whose customer, store, product or source warehouse is not already saved fail. Existing matches are always reused; unchecking it again is supported. The Review & save step warns when it is off with a shortcut back here, and failed saves group identical causes and name the affected source rows instead of repeating the same server message per row.
 3. Warehouses: explicit origin selector and one row per source code, with Matched / Conflict / Needs selection chips. No warehouse is guessed or automatically created.
 4. Collapsible source-history/recovery attention panel, preserving `ImportSourceRecovery` and all explicit approvals/matches.
 5. Group-scoped Stores & products, reusing the Phase 2 rail/table and Phase 3 location picker.

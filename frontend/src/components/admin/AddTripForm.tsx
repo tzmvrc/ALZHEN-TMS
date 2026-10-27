@@ -12,6 +12,7 @@ import type { LocationDecision } from "./ImportDestinationReview";
 import { saveMasterData } from "../../services/master-data.service";
 import { focusRing } from "./shared/styles";
 import { useStoreWorkspaceMemory, invalidProduct, type StoreNavigationItem } from "./shared/storeWorkspace";
+import { nextCreationRequest, type CreationRequest } from "../../services/trip-creation-request";
 import { SectionCard, StoreMasterDetail, StatusChip } from "./shared";
 import TripCargoPlanner from "./TripCargoPlanner";
 import { cargoSignature, calculatedCbm, emptyCargoPlan, validateCargo, type CargoLine, type CargoTruck } from "../../services/cargo-planning";
@@ -280,7 +281,8 @@ export default function AddTripForm({
   const [etaDate, setEtaDate] = useState("");
   const [status, setStatus] = useState("PLANNED");
   const [warehouseId, setWarehouseId] = useState("");
-  const [creationRequestId] = useState(() => crypto.randomUUID());
+  // A creation request is replay-safe only while its payload is unchanged.
+  const creationRequest = useRef<CreationRequest>({ payload: "", id: "" });
   const [cargoPlan, setCargoPlan] = useState(emptyCargoPlan);
   const allocationSession = useRef(createAllocationSession());
   const [capacityPreview, setCapacityPreview] = useState<string>();
@@ -363,7 +365,8 @@ export default function AddTripForm({
   /* Preview independent DISPATCH and TRIP references for the selected date. */
   const refDate = loadingDate || todayLocal();
   useEffect(() => {
-    if (!accessToken) return;
+    // Existing-dispatch trips inherit their trip number; no new reference is needed.
+    if (!accessToken || dispatchMode === "existing") return;
     let active = true;
     queueMicrotask(() => { if (active) { setDispatchLoading(true); setDispatchError(""); setDispatchNo(""); setTripReference(""); } });
     getNextTripReferences(accessToken, dispatchPrefix(refDate))
@@ -504,6 +507,12 @@ export default function AddTripForm({
     const assignedTruckIds = selectedTruckAssignments.map((assignment) => assignment.truckId);
     if (new Set(assignedTruckIds).size !== assignedTruckIds.length) return "Choose a different truck for each assignment.";
     if (truckAssignments.some((assignment) => assignment.driverId && !assignment.truckId)) return "Choose a truck before assigning a driver.";
+    // Never silently drop a cargo proposal: fix it or remove it before saving.
+    if (cargoPlan.placements.length) {
+      if (cargoTrucks.length > 1 && cargoTrucks.some(truck => !truck.driverId)) return "Assign a driver to every truck before confirming multi-truck cargo.";
+      const cargoProblem = validateCargo(cargoLines, cargoTrucks, cargoPlan.placements);
+      if (cargoProblem) return cargoProblem;
+    }
     return "";
   }
 
@@ -525,10 +534,9 @@ export default function AddTripForm({
     if (problem) return setError(problem);
     setError(""); setSaving(true);
     try {
-      await onSubmit({
-        request_id: creationRequestId,
+      const bundle = {
         dispatch_mode: dispatchMode,
-        cargo_plan: cargoPlan.placements.length && loadingDate && etaDate && (cargoTrucks.length === 1 || cargoTrucks.every(truck => truck.driverId)) && !validateCargo(cargoLines, cargoTrucks, cargoPlan.placements) ? { ...cargoPlan, trucks: cargoTrucks, signature: cargoSignature(cargoLines, cargoTrucks), confirmed: true } : undefined,
+        cargo_plan: cargoPlan.placements.length ? { ...cargoPlan, trucks: cargoTrucks, signature: cargoSignature(cargoLines, cargoTrucks), confirmed: true } : undefined,
         trip: {
           dispatch_number: dispatchRef.trim() || null,
           trip_number: tripNumber,
@@ -577,7 +585,11 @@ export default function AddTripForm({
             };
           }),
         })),
-      });
+      } satisfies Omit<NewTripPayload, "request_id">;
+      // An identical retry replays the same creation request so a lost response
+      // cannot create a second trip; any edit receives a fresh request identity.
+      creationRequest.current = nextCreationRequest(creationRequest.current, bundle);
+      await onSubmit({ request_id: creationRequest.current.id, ...bundle });
       onClose();
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : "Unable to create the trip.";
@@ -653,7 +665,8 @@ export default function AddTripForm({
 
         {/* body */}
         <div ref={bodyRef} className="trip-flow-body">
-          <div className="mx-auto max-w-5xl space-y-6">
+          <div className="mx-auto max-w-5xl">
+          <div key={step} className="trip-step-panel space-y-6">
             {error && <div id="manual-trip-errors"><TripFormNotice tone="error" title="Check the trip details" onDismiss={() => setError("")}>{error}</TripFormNotice></div>}
             {step === 2 && capacityState.full && <TripFormNotice tone="warning" title={capacityState.exceeded ? "Truck capacity exceeded" : "Truck capacity is full"} action={<button type="button" onClick={addCapacityTruck} className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-white/70 px-3 py-1.5 text-xs font-semibold hover:bg-white"><Plus className="h-3.5 w-3.5" />Add another truck</button>}>
               <p>{fmt(totals.cbm)} CBM of cargo / {fmt(assignedCapacity)} CBM capacity.</p><p>{capacityState.exceeded ? `Add a truck for the remaining ${fmt(capacityState.overflow)} CBM before loading.` : "Add another truck if you need to load more cargo."} You can still save this as a planned trip.</p>
@@ -902,6 +915,7 @@ export default function AddTripForm({
               </div>
             )}
         {excludedManualRows.length > 0 && <details className="manual-excluded"><summary>Excluded rows ({excludedManualRows.length})</summary>{excludedManualRows.map((reason, index) => <p key={index}>{reason}</p>)}</details>}
+          </div>
           </div>
         </div>
 

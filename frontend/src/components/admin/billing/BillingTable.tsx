@@ -23,7 +23,7 @@ export default function BillingTable<R extends {id:string}>({name,rows,columns,f
  const currentSelected=selected?new Set(selected):new Set(rows.filter(row=>selection.has(row.id)).map(row=>row.id));
  const checked=visible.length>0&&visible.every(row=>selection.has(row.id));
  const toggle=(id:string)=>{const next=new Set(currentSelected);if(next.has(id))next.delete(id);else next.add(id);choose(next);};
- return <section className={`${SPREADSHEET_PANEL_CLASS} min-w-0`} aria-label={name}>
+ return <section data-billing-panel className={`${SPREADSHEET_PANEL_CLASS} min-w-0`} aria-label={name}>
   <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 bg-white p-2">
    <div className="ml-auto flex flex-wrap items-center gap-2">{currentSelected.size>0&&<><span className="text-xs text-blue-700">{currentSelected.size} selected</span><button type="button" className="text-xs text-slate-500 underline" onClick={()=>choose(new Set())}>Clear</button></>}{actions}</div>
   </div>

@@ -39,7 +39,7 @@ export default function OffloadCleanupNotice({ token, enabled, version }: { toke
   if (!enabled || !rows.length && !error && !open) return null;
   return <>
     <button ref={trigger} type="button" aria-label="Review image cleanup" title="Review image cleanup" onClick={() => setOpen(true)} className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"><Image aria-hidden="true" className="h-4 w-4" /></button>
-    {open && createPortal(<div className="fixed inset-0 z-[2100] flex items-center justify-center bg-slate-900/30 p-4" onMouseDown={event => { if (event.target === event.currentTarget) close(); }}>
+    {open && createPortal(<div className="fixed inset-0 z-[2100] flex items-center justify-center p-4 al-modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) close(); }}>
       <section role="dialog" aria-modal="true" aria-labelledby="report-cleanup-title" onKeyDown={event => { if (event.key === "Escape") close(); }} className="max-h-[80vh] w-full max-w-md overflow-auto rounded-xl bg-white p-5 shadow-xl">
         <header className="flex items-center justify-between gap-3"><h2 id="report-cleanup-title" className="font-semibold text-[#0b2341]">Report image cleanup</h2><button type="button" autoFocus disabled={Boolean(busy)} onClick={close} aria-label="Close image cleanup" className="rounded p-1 text-slate-500 disabled:opacity-40"><X className="h-4 w-4" /></button></header>
         <p className="mt-2 text-sm text-slate-600">Deleted reports may still have images awaiting cleanup. Retrying preserves ownership and retention checks.</p>

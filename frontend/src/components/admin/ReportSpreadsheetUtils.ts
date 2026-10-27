@@ -14,7 +14,7 @@ export const REPORT_COLUMN_COLORS = [
   "#f8fafc", "#cbd5e1", "#64748b", "#1e293b",
 ];
 
-export const REPORT_GRID_VIEWPORT_CLASS = "spreadsheet-viewport relative min-h-0 min-w-0 overflow-auto overscroll-contain rounded-[10px] border border-[#e4e9f0] bg-white";
+export const REPORT_GRID_VIEWPORT_CLASS = "spreadsheet-viewport relative min-h-0 min-w-0 overflow-auto overscroll-contain rounded-[18px] border border-[#e4e9f0] bg-white";
 export const REPORT_GRID_HEADER_CELL_CLASS = "sticky top-0 z-30 whitespace-normal break-words border-b border-r border-[#e8ecf1] bg-[#f3f5f8] px-2.5 py-1 align-middle text-[11px] leading-4 font-semibold tracking-normal text-[#0b2343] last:border-r-0";
 export const REPORT_GRID_BODY_CELL_CLASS = "border-b border-r border-[#e8ecf1] px-2.5 py-1 align-middle text-[12px] leading-5 text-[#24354b] last:border-r-0";
 export const REPORT_GRID_ROW_CLASS = "border-b border-[#e8ecf1] transition-colors last:border-0 hover:bg-[#f5f7fa]";

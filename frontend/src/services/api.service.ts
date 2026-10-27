@@ -217,6 +217,10 @@ async function request<T>(
         "IMPORT_RECOVERY_SETUP_REQUIRED",
         "MASTER_LIST_SETUP_REQUIRED",
         "TRIP_LOCATION_FOLLOWUP_REQUIRED",
+        // Trip save failures carry the reason (field, constraint or conflict).
+        "TRIP_CREATE_FAILED",
+        "TRIP_WORKFLOW_CONFLICT",
+        "TRIP_WORKFLOW_INVALID",
       ];
       if (endpoint.startsWith("/trips") && tripWorkflowErrors.includes(code ?? "") && payload?.message) {
         throw new ApiError(payload.message, response.status, code);
@@ -242,7 +246,7 @@ async function request<T>(
       throw new ApiError(
         "Something went wrong. Please try again later.",
         response.status,
-        payload?.error?.code,
+        code,
       );
     }
 

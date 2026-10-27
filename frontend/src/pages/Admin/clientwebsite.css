@@ -617,7 +617,7 @@
 @media(max-width:800px) { .cw-sidebar { grid-template-columns:repeat(3,minmax(0,1fr)); } .cw-sidebar>button { font-size:12px; padding:10px 6px; } }
 
 .cw-dialog { width:min(600px,calc(100vw - 28px)); max-height:86dvh; padding:0; border:0; border-radius:18px; margin:auto; color:#18334b; background:#fff; box-shadow:0 24px 90px #092c4950; }
-.cw-dialog::backdrop { background:rgb(15 23 42 / 20%); backdrop-filter:blur(2px); }
+
 .cw-dialog .cw-editor { position:static; width:100%; border:0; padding:20px; box-shadow:none; }
 .cw-dialog .cw-editor-heading h2,.cw-confirm h2 { font-size:21px; line-height:1.3; }
 .cw-dialog .cw-editor input,.cw-dialog .cw-editor select,.cw-dialog .cw-editor textarea { padding:9px 11px; }

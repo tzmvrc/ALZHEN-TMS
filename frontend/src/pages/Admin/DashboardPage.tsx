@@ -29,7 +29,6 @@ const UserProfilePage = lazy(() => import("./views/UserProfilePage"));
 const OverviewView = lazy(() => import("./views/OverviewView"));
 import RequestReviewModal from "../../components/admin/RequestDetail";
 import LiveTripPingsProvider from "../../components/admin/LiveTripPingsProvider";
-import DriverUpdateToast from "../../components/admin/DriverUpdateToast";
 const ResourceView = lazy(() => import("./views/ResourceView"));
 const BillingView = lazy(() => import("./views/BillingView"));
 const ClientWebsiteWorkspace = lazy(() => import("./clientwebsite"));
@@ -291,7 +290,7 @@ export default function DashboardPage({
       setNotificationItems(next);
       if (initialLoaded && !item.read_at)
         setNotificationCount((count) => count + 1);
-      if (!item.metadata?.recovered && !item.read_at) setNewNotification(item);
+      if (!item.metadata?.recovered && !item.read_at && item.metadata?.event_kind !== "driver_update") setNewNotification(item);
     };
 
     const unsubscribe = subscribeToTable(
@@ -582,16 +581,9 @@ export default function DashboardPage({
 
   return (
     <LiveTripPingsProvider>
-    <div className="al-workspace relative min-h-screen overflow-x-hidden text-slate-900">
+    <div className="al-workspace relative min-h-screen text-slate-900">
       <RequestReviewModal/>
       {(["ADMIN", "STAFF"] as unknown[]).includes(profile?.role) && newNotification && (
-        newNotification.metadata?.event_kind === "driver_update" ? (
-          <DriverUpdateToast
-            item={newNotification}
-            onOpen={() => void openToastNotification(newNotification)}
-            onDismiss={() => setNewNotification(null)}
-          />
-        ) : (
         <div
           role="status"
           aria-live="polite"
@@ -621,7 +613,6 @@ export default function DashboardPage({
             </button>
           </div>
         </div>
-        )
       )}
 
       <div data-delivery-workspace={route.tripId?true:undefined} className="al-workspace-grid relative z-10 w-full">

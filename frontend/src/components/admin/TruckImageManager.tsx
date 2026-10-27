@@ -69,7 +69,7 @@ export default function TruckImageManager({ token, truckId, truckLabel, onClose 
   };
 
   return <>
-    <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-slate-900/20 p-4 backdrop-blur-[2px]" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !mutationLock.current) onClose(); }}>
+    <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4 al-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !mutationLock.current) onClose(); }}>
       <section role="dialog" aria-modal="true" aria-labelledby="truck-images-title" className="max-h-[90vh] w-full max-w-3xl overflow-hidden rounded-2xl bg-white shadow-2xl">
         <header className="flex items-center justify-between border-b border-slate-100 px-5 py-4"><div><h2 id="truck-images-title" className="font-semibold text-[#0b2341]">Truck images</h2><p className="mt-0.5 text-xs text-slate-500">{truckLabel} · {images.length} image{images.length === 1 ? "" : "s"}</p></div><button type="button" disabled={busy} onClick={onClose} className="rounded-full p-2 text-slate-500 hover:bg-slate-100" aria-label="Close truck images"><X className="h-4 w-4" /></button></header>
         <div className="max-h-[calc(90vh-75px)] overflow-y-auto p-5">
@@ -80,6 +80,6 @@ export default function TruckImageManager({ token, truckId, truckLabel, onClose 
         </div>
       </section>
     </div>
-    {preview && <div className="fixed inset-0 z-[2100] flex items-center justify-center bg-slate-900/20 p-4 backdrop-blur-[2px]" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setPreview(null); }}><div role="dialog" aria-label={`Preview ${preview.file_name}`} className="relative max-h-full max-w-full"><button type="button" onClick={() => setPreview(null)} className="absolute -right-3 -top-3 rounded-full bg-white p-2 text-slate-700 shadow" aria-label="Close image preview"><X className="h-4 w-4" /></button><img src={preview.signed_url} alt={preview.file_name} className="max-h-[85vh] max-w-[90vw] rounded-lg object-contain" /><p className="mt-2 text-center text-sm text-white">{preview.file_name}</p></div></div>}
+    {preview && <div className="fixed inset-0 z-[2100] flex items-center justify-center p-4 al-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setPreview(null); }}><div role="dialog" aria-label={`Preview ${preview.file_name}`} className="relative max-h-full max-w-full"><button type="button" onClick={() => setPreview(null)} className="absolute -right-3 -top-3 rounded-full bg-white p-2 text-slate-700 shadow" aria-label="Close image preview"><X className="h-4 w-4" /></button><img src={preview.signed_url} alt={preview.file_name} className="max-h-[85vh] max-w-[90vw] rounded-lg object-contain" /><p className="mt-2 text-center text-sm text-white">{preview.file_name}</p></div></div>}
   </>;
 }

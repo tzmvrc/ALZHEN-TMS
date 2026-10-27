@@ -319,9 +319,9 @@ export default function RequestsView() {
     <div className="w-full space-y-3">
       <h1 className="sr-only">Requests</h1>
 
-      <div className="w-full rounded-3xl bg-white ring-1 ring-slate-900/[0.05] shadow-[0_1px_2px_rgba(11,35,65,0.03)]">
+      <div className={view === "board" ? "w-full" : "al-table-surface w-full overflow-hidden rounded-[18px] border border-[#e4e9f0] bg-white"}>
       {view === "board" ? (
-        <div className="grid grid-cols-1 gap-4 p-4 md:grid-cols-3">
+        <div data-view-panel className="grid grid-cols-1 gap-4 py-2 md:grid-cols-3">
           {COLUMNS.map((column) => {
             const rows = filtered.filter((request) => request.status === column.id);
             return (
@@ -355,9 +355,9 @@ export default function RequestsView() {
           })}
         </div>
       ) : filtered.length === 0 ? (
-        <p className="px-6 py-16 text-center text-sm text-slate-500">No requests found.</p>
+        <p data-view-panel className="px-6 py-16 text-center text-sm text-slate-500">No requests found.</p>
       ) : (
-        <div>
+        <div data-view-panel>
           <RequestListHeader />
           <ul className="divide-y divide-slate-100/80 pb-1">
             {filtered.map((request) => (

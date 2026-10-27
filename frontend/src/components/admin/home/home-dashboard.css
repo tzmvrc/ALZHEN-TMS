@@ -120,7 +120,8 @@
 .home-command-center table { border-collapse:collapse; width:100%; text-align:left; font-size:11px; }
 .home-command-center thead { background:#f6f8fb; }
 .home-command-center th { font-weight:600; color:var(--home-muted); font-size:10px; letter-spacing:.25px; white-space:nowrap; }
-.home-command-center td,.home-command-center th { padding:13px 16px; border-top:1px solid #eaf0f5; }
+.home-command-center td,.home-command-center th { padding:10px 14px; border-top:1px solid #e8ecf1; border-right:1px solid #e8ecf1; }
+.home-command-center tr > :last-child { border-right:0; }
 .home-command-center tbody tr:hover { background:#f8fbfd; }
 .home-dispatch-table tbody tr[aria-selected=true] { background:#ecf4fb; }
 .home-dispatch-table th:first-child,.home-dispatch-table td:first-child { padding-left:24px; }

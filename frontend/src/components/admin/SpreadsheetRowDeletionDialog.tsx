@@ -22,7 +22,7 @@ export function SpreadsheetRowDeletionDialog({token,targets,onClose,onDeleted}:{
   }catch{if(alive.current){const message="Unable to delete the selected line items. Please try again.";setError(message);toast?.addToast({title:message,variant:"error"});}}
   finally{lock.current=false;if(alive.current)setBusy(false);}
  };
- return <div className="fixed inset-0 z-[2200] flex items-center justify-center bg-slate-900/30 p-4" onMouseDown={event=>{if(event.target===event.currentTarget)close();}}><section role="alertdialog" aria-modal="true" aria-label="Delete selected line items" aria-busy={busy} onKeyDown={event=>{if(event.key==="Escape"){event.preventDefault();event.stopPropagation();close();}}} className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-5 shadow-xl">
+ return <div className="fixed inset-0 z-[2200] flex items-center justify-center p-4 al-modal-backdrop" onMouseDown={event=>{if(event.target===event.currentTarget)close();}}><section role="alertdialog" aria-modal="true" aria-label="Delete selected line items" aria-busy={busy} onKeyDown={event=>{if(event.key==="Escape"){event.preventDefault();event.stopPropagation();close();}}} className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-5 shadow-xl">
   <h2 className="text-sm font-semibold text-slate-900">Delete {pending.length} selected line item{pending.length===1?"":"s"}?</h2>
   <p className="mt-2 text-sm text-slate-600">Only the selected cargo line items will be removed. Trips and delivery stops will remain. This action cannot be undone.</p>
   {pending.length>20&&<p role="alert" className="mt-2 text-xs text-rose-700">Select at most 20 unique line items per operation.</p>}

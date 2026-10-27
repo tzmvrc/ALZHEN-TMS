@@ -66,7 +66,9 @@ export default function BulkTripImport({ onClose: onDismiss, onComplete, onImpor
   const [inheritedTarget, setInheritedTarget] = useState(initialTarget);
   const [tripDetails, setTripDetails] = useState<TripDetails | undefined>(initialTripDetails ?? initialTarget?.trip_details);
   const defaultTarget = (): ImportTarget => {
-    const target: ImportTarget = inheritedTarget ? { ...inheritedTarget } : { mode: "new", value: "", allow_create: false };
+    // New imports create missing masters from reviewed source values by default;
+    // existing matches are reused and the control stays visible and reversible.
+    const target: ImportTarget = inheritedTarget ? { ...inheritedTarget } : { mode: "new", value: "", allow_create: true };
     const hasDetails = tripDetails && (tripDetails.trip_type_id || tripDetails.trip_type_name || tripDetails.loading_date || tripDetails.estimated_delivery_date || tripDetails.remarks || tripDetails.origin_warehouse_id || tripDetails.status !== "PLANNED");
     return hasDetails && tripDetails && target.mode !== "trip" ? { ...target, trip_details: { ...tripDetails }, origin_warehouse_id: target.origin_warehouse_id ?? tripDetails.origin_warehouse_id ?? undefined } : target;
   };
@@ -323,6 +325,12 @@ export default function BulkTripImport({ onClose: onDismiss, onComplete, onImpor
     editDetails([...expanded.values()]);
   }
 
+  /** Name the cause and the exact control that resolves a missing master record. */
+  function explainImportFailure(message: string) {
+    if (/A customer code is needed/i.test(message)) return `${message} Select the existing customer in Complete details → Stops (Edit details), or add the customer with its code in Master Data first.`;
+    if (/No verified master match|no exact match/i.test(message)) return `${message} Turn on “Create missing records” in Complete details, or match the customer, store and product in the preview.`;
+    return message;
+  }
   async function save() {
     if (!preview || !draftLoaded || !accessToken || !validRows.length || savingRef.current) return;
     if (detailsDirty) { setError("Check the latest source edits before saving. Your draft is safe."); return; }
@@ -362,7 +370,21 @@ export default function BulkTripImport({ onClose: onDismiss, onComplete, onImpor
           setOutcomes(current => ({ ...current, ...Object.fromEntries(result.rows.map(row => [row.source_identity, row])) }));
           processed += chunk.length; setProgress(processed);
         }
-        if (groupFailed) { failures.push(...validRows.filter(row => row.group === group && (latestOutcomes[row.source_identity]?.status === "failed" || latestOutcomes[row.source_identity]?.status === "skipped" && !latestOutcomes[row.source_identity]?.line_item_id)).map(row => latestOutcomes[row.source_identity]?.error || `${row.filename}, CSV row ${row.line}: source import failed.`)); continue; }
+        if (groupFailed) {
+          // One actionable message per cause, with the affected rows named. Avoid
+          // repeating the same server error once for every source row.
+          const failedRows = validRows.filter(row => row.group === group && (latestOutcomes[row.source_identity]?.status === "failed" || latestOutcomes[row.source_identity]?.status === "skipped" && !latestOutcomes[row.source_identity]?.line_item_id));
+          const byCause = new Map<string, typeof failedRows>();
+          for (const row of failedRows) {
+            const cause = explainImportFailure(latestOutcomes[row.source_identity]?.error || `${row.filename}, CSV row ${row.line}: source import failed.`);
+            byCause.set(cause, [...(byCause.get(cause) ?? []), row]);
+          }
+          for (const [cause, rows] of byCause) {
+            const named = rows.slice(0, 3).map(row => `${row.filename} row ${row.line}`).join(", ");
+            failures.push(`${rows.length} row${rows.length === 1 ? "" : "s"} not saved (${named}${rows.length > 3 ? ` +${rows.length - 3} more` : ""}): ${cause}`);
+          }
+          continue;
+        }
         const newlyOwned = validRows.filter(row => row.group === group && ownsSource(row, latestHistory) && Boolean(latestOutcomes[row.source_identity]?.line_item_id));
         if (!newlyOwned.length) continue;
         if (cargoReady(group) && plans[group]?.placements.some(placement => !newlyOwned.some(row => row.source_identity === placement.line_key))) { failures.push(`${group}: duplicate cargo was skipped. Recalculate and confirm the remaining cargo before retrying.`); continue; }
@@ -395,7 +417,7 @@ export default function BulkTripImport({ onClose: onDismiss, onComplete, onImpor
         refreshOnClose.current = true;
       }
       if (addressesDeferred) setSaveWarning("Map-pin saving is unavailable on this server. Reviewed addresses and coordinates remain in the draft; store locations were not updated by the fallback.");
-      setError(`${cause instanceof Error ? cause.message : "Import interrupted."} Retry this batch; completed rows are protected from duplicates.`);
+      setError(`${explainImportFailure(cause instanceof Error ? cause.message : "Import interrupted.")} Retry this batch; completed rows are protected from duplicates.`);
     } finally {
       // A Save attempt alone must not freeze an untouched batch. Reconcile with
       // the server before unlocking: a lost response may still have committed.
@@ -507,7 +529,7 @@ export default function BulkTripImport({ onClose: onDismiss, onComplete, onImpor
       ...(!locked ? warehouses.filter(source => !target.warehouse_ids?.[source]).map(source => `${group}: match source warehouse ${source}.`) : []),
     ];
   });
-  const steps = ["Upload CSV", "Preview & import", "Complete details", "Review & save"];
+  const steps = ["Upload CSV", "Preview & map", "Complete details", "Review & save"];
   const finished = !locationRetryRequired && results.length > 0 && validRows.every(row => history[row.source_identity]?.status !== "missing" && Boolean(outcomes[row.source_identity]?.line_item_id) && ["imported", "skipped"].includes(outcomes[row.source_identity]?.status ?? "")) && groups.every(group => !cargoLines(group).length || !cargoReady(group) || (cargoSaved[group] && (!plans[group].trucks.some(truck => truck.companyId) || companiesSaved[group])));
   const saveDisabled = finished || busy || saving || !validRows.length;
   const saveReason = finished ? "This batch is complete." : !validRows.length ? "No rows accepted by the current import endpoint." : "Ready. Optional details are saved as warnings.";
@@ -604,13 +626,13 @@ export default function BulkTripImport({ onClose: onDismiss, onComplete, onImpor
       </TripModalHeader>
       <TripModalSteps labels={steps} current={phase} onJump={navigate} isDisabled={index => busy || saving || (index > 0 && !files.length) || (index > 1 && !draftLoaded)} label="CSV import steps" />
       <div ref={bodyRef} className="trip-flow-body" data-csv-phase={phase}>
+        <div key={phase} className="trip-step-panel space-y-4">
         {saveWarning && phase !== 0 && <TripFormNotice tone="warning" title="Save warnings" onDismiss={() => setSaveWarning("")}>{saveWarning}</TripFormNotice>}
         {error && phase !== 0 && <TripFormNotice tone="error" title="Check the import" onDismiss={() => setError("")}>{error}</TripFormNotice>}
         {busy && <p role="status" className="flex items-center gap-2 text-sm text-slate-600"><Loader2 size={16} className="animate-spin" />Checking source rows...</p>}
         
         {phase === 0 && <>
           <TripFileUpload files={files} disabled={locked || busy || saving} busy={busy} error={error} onFiles={selected => void load(selected)} />
-          <ol aria-label="How CSV import works" className="trip-upload-steps">{["Upload files", "Review & map columns", "Complete trip details", "Review & save"].map((label, index) => <li key={label}><span>{index + 1}.</span>{label}</li>)}</ol>
           <details className="group border-t border-slate-200 pt-3"><summary className="cursor-pointer text-sm font-medium text-slate-600 list-none flex items-center justify-between">Resume a saved import <ChevronRight className="h-4 w-4 group-open:rotate-90 transition-transform" /></summary><div className="mt-4 space-y-3"><button type="button" className={button} disabled={busy || saving} onClick={() => void savedImports()}>Load saved imports</button>{batches.map(batch => <div key={batch.id} className="flex flex-wrap items-center gap-2 rounded-xl bg-slate-50 p-3 text-xs border border-slate-200"><div className="min-w-0 flex-1"><strong className="text-slate-800">{batch.state}</strong><p className="text-slate-500">{batch.imported} products saved / {batch.awaiting_allocation} cargo plans pending</p>{batch.last_error && <p className="mt-1 text-amber-800">{batch.last_error}</p>}</div><button type="button" className={button} disabled={busy || saving} onClick={() => void resume(batch.id)}>Reopen</button></div>)}</div></details>
         </>}
         
@@ -636,6 +658,7 @@ export default function BulkTripImport({ onClose: onDismiss, onComplete, onImpor
             return <div key={group}>
               {groupView.tab === "details" && <div className="group-details-fields">
                   <ImportTripDetailsCard id={ids.details} token={accessToken} group={group} details={details} tripNumber={tripNumberForGroup(group)} disabled={locked || saving || busy} existingTrip={target.mode === "trip"} onChange={patch => updateTripDetails(group, patch)} onApplyAll={() => applyTripDetailsToAll(group)} />
+                  <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700"><input type="checkbox" className="mt-0.5 h-4 w-4 accent-[#2678b9]" disabled={locked || saving || busy} checked={target.allow_create} onChange={event => updateTarget(group, { allow_create: event.target.checked })} /><span><strong className="block">Create missing records</strong><span className="mt-1 block leading-5 text-slate-500">Allow customers, stores, products and source warehouses that are missing from the master lists to be created from reviewed source values. Existing matches are always reused; physical trucks must still be selected.</span></span></label>
                   <details className="group-details-disclosure" id={ids.destination}><summary>Dispatch &amp; trip group <span>{target.mode === "new" ? "New dispatch" : "Existing destination"}</span></summary><div><ImportDispatchTarget group={group} target={target} existing={[...new Map([...existing, ...Object.values(detailRecords)].map(trip => [trip.id, trip])).values()]} disabled={locked || saving || busy} onChange={patch => updateTarget(group, patch)} onSearch={searchExisting} /></div></details>
                   <details className="group-details-disclosure" id={ids.warehouses}><summary>Warehouses <span>{warehouses.length ? `${warehouses.length} source warehouses` : "No source warehouses"}</span></summary><div>
                     <div className="space-y-4">{warehouses.length > 1 && <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">Several source warehouses: select the trip origin or split the trip group. Original line warehouses remain separate.</p>}
@@ -668,23 +691,25 @@ export default function BulkTripImport({ onClose: onDismiss, onComplete, onImpor
         </div>}
         
         {phase === 3 && preview && <>
+          {groups.some(group => !(targets[group] ?? defaultTarget()).allow_create) && <TripFormNotice tone="warning" title="Missing master records will not be created" action={!locked && !saving && !busy ? <button type="button" className={button} onClick={() => { setGroupView({ group: activeGroup, tab: "details" }); navigate(2); }}>Review complete details</button> : undefined}>Creating records is off, so rows whose customer, store, product or source warehouse is not already in the master lists will fail. Turn on <strong>Create missing records</strong> in Complete details, or match each record in the preview before saving.</TripFormNotice>}
           <ReviewPreviewTable token={accessToken || ""} rows={reviewRows} annotations={annotations} onAnnotations={setAnnotations}
             excluded={(preview.rows.filter(row => row.errors.length || skippedRows.has(row.source_identity))).map(row => ({ id: row.source_identity, label: `${row.values.customer_model || row.values.dr_number || "Product"} · ${row.filename}`, reason: skippedRows.has(row.source_identity) ? "Skipped by you" : row.errors.join(" ") }))}
             notices={<><PreviousImportSummary token={accessToken || ""} rows={preview.rows} history={history} resolutions={rowResolutions} skipped={skippedRows} disabled={saving || busy} onChange={updateRowResolution} onSkip={toggleSkip} />{preview.setup_required && <p role="status" className="text-xs text-amber-800">Trip import setup is still needed on this server. Your draft can be reviewed and retained.</p>}<details className="review-advanced"><summary>Advanced details</summary><p className="text-xs">The current import API excludes rows with invalid source values, missing Customer Name, Ship To, trip group, or all source identifiers. Product code, quantity and DR are not universally required by the optional-booking schema.</p>{groups.map(group => <ReviewSourceLines key={group} rows={preview.rows.filter(row => row.group === group)} outcomes={outcomes} />)}<ImportLocationNotices destinations={destinations} decisions={locations} checking={locationChecking} /></details></>} />
           {(started || results.length > 0) && <ImportResultsPanel trips={new Set(results.filter(row => row.trip_created).map(row => row.trip_id).filter(Boolean)).size} imported={imported} skipped={skipped} failed={failed} invalid={preview.invalid} cargoSaved={Object.values(cargoSaved).filter(Boolean).length} batchId={batchId} finished={finished} retryDisabled={saveDisabled} retryReason={saveReason} onRetry={() => void save()} onDownload={downloadFailures} />}
           {saving && <p role="status" className="text-xs text-slate-600">Processed {progress} source rows. Keep this window open.</p>}
         </>}
+        </div>
 
       </div>
       <footer className={tripFooter}>
         {files.length > 0 && <TripSummaryBar stops={preview ? stopCounts : new Set(rawRows.map(row => JSON.stringify([row.group, destinationKey(row.values)]))).size} qty={displayCargoTotal(preview ? groups.flatMap(cargoLines).map(line => line.quantity) : rawRows.map(row => row.values.quantity || "0"))} label="All trips" cbm={preview ? displayCargoTotal(groups.flatMap(cargoLines).map(line => line.cbm)) : displayCargoTotal(rawRows.map(row => row.values.cbm || "0"))} trucks={Object.values(plans).reduce((total, plan) => total + plan.trucks.length, 0)} capacity={displayCargoTotal(groups.map(group => capacityByGroup[group] ?? displayCargoTotal((plans[group]?.trucks ?? []).filter(truck => /^\d+(?:\.\d+)?$/.test(truck.capacity) && Number(truck.capacity) > 0).map(truck => truck.capacity))))} />}
         <div className="trip-footer-row"><div className="trip-footer-meta"><span>{files.length ? `${files.length} file${files.length === 1 ? "" : "s"} · ${rawRows.length} rows` : "CSV / XLSX"}</span>{draftStatus && <span role="status" className="trip-footer-draft" title={draftStatus}>{draftStatus.startsWith("Draft saved") ? "Draft saved ✓" : draftStatus}</span>}{files.length > 0 && <button type="button" disabled={busy || saving} className="text-xs font-medium text-[#2678b9]" onClick={() => void persistDraft().catch(() => { })}>Save draft</button>}</div>
           <div className="trip-footer-actions">
-            {phase === 1 && (busy || saving || !preview || preview.setup_required || !validRows.length) && <button type="button" className="trip-footer-hint" onClick={() => revealSection("csv-source-review")}>{busy ? "Checking rows…" : preview?.setup_required ? "Import setup needed" : !preview ? "Check CSV before importing" : "Resolve source row errors"}</button>}
+            {phase === 1 && (busy || saving || !preview || preview.setup_required || !validRows.length) && <button type="button" className="trip-footer-hint" onClick={() => revealSection("csv-source-review")}>{busy ? "Checking rows…" : preview?.setup_required ? "Import setup needed" : !preview ? "Check CSV before continuing" : "Resolve source row errors"}</button>}
             <button type="button" className={button} disabled={saving || busy} onClick={() => phase === 2 && groupView.tab !== "details" ? selectTab(groupView.tab === "cargo" ? "stops" : "details") : phase > 0 && !finished ? navigate(phase - 1) : void closeImport()}>{finished ? "Done" : phase ? "Back" : "Back to Add trip"}</button>{closeBlocked && <button type="button" className={button} onClick={onClose}>Close without saving</button>}
             {preview && (preview.invalid > 0 || failed > 0) && <button type="button" className={button} onClick={downloadFailures}><Download size={16} />Download failed rows</button>}
             {phase === 0 && files.length > 0 && <button type="button" className={primaryButton} onClick={() => navigate(1)}>Preview CSV <ChevronRight size={14} /></button>}
-            {phase === 1 && <>{!locked && <button type="button" className={button} disabled={busy || saving} onClick={() => void prepare()}>{preview ? "Recheck CSV" : "Check CSV"}</button>}<button type="button" className={primaryButton} disabled={busy || saving || !preview || !validRows.length} onClick={() => { setDraftLoaded(true); navigate(2); }}>Import CSV <ChevronRight size={14} /></button></>}
+            {phase === 1 && <>{!locked && <button type="button" className={button} disabled={busy || saving} onClick={() => void prepare()}>{preview ? "Recheck CSV" : "Check CSV"}</button>}<button type="button" className={primaryButton} disabled={busy || saving || !preview || !validRows.length} onClick={() => { setDraftLoaded(true); navigate(2); }}>Continue to details <ChevronRight size={14} /></button></>}
             {phase === 2 && <button type="button" className={primaryButton} disabled={busy || saving || !rawRows.length} onClick={async () => { if (groupView.tab !== "cargo") { selectTab(groupView.tab === "details" ? "stops" : "cargo"); return; } if (detailsDirty && !await applyDetails()) return; navigate(3); }}>{groupView.tab === "details" ? "Next: Stops" : groupView.tab === "stops" ? "Next: Trucks & cargo" : "Review trip"}<ChevronRight size={14} /></button>}
             {phase === 3 && <><span role="status" className="review-save-status">{finished ? "Saved" : `Ready · ${reviewFlaggedCount} rows flagged for review`}</span><button type="button" className={primaryButton} disabled={saveDisabled} onClick={() => void save()}>{saving ? "Saving…" : finished ? "Trip saved" : "Save trip"}</button></>}
 

@@ -1,0 +1,43 @@
+/* The Logout confirmation is the visual reference for every modal backdrop. */
+:root {
+  --al-modal-backdrop-color: rgb(15 23 42 / 20%);
+  --al-modal-backdrop-filter: blur(2px);
+}
+
+.al-modal-backdrop {
+  background-color: var(--al-modal-backdrop-color);
+  -webkit-backdrop-filter: var(--al-modal-backdrop-filter);
+  backdrop-filter: var(--al-modal-backdrop-filter);
+}
+
+/* A dialog opened from another dialog owns the only visible blur layer. */
+.al-modal-backdrop:has(.al-modal-backdrop),
+.al-modal-backdrop:has(~ .al-modal-backdrop),
+body:has(> .al-modal-backdrop) > :not(.al-modal-backdrop) .al-modal-backdrop,
+body:has(dialog:not(.trip-popover):not(.all-stops-overlay)[open]) .al-modal-backdrop {
+  background-color: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+dialog::backdrop {
+  background: var(--al-modal-backdrop-color);
+  -webkit-backdrop-filter: var(--al-modal-backdrop-filter);
+  backdrop-filter: var(--al-modal-backdrop-filter);
+}
+
+/* These dialogs open inside an existing modal and use its backdrop. */
+dialog.trip-popover::backdrop,
+dialog.all-stops-overlay::backdrop {
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+@media print {
+  .al-modal-backdrop {
+    background-color: transparent;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}

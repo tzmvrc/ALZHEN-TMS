@@ -1,8 +1,10 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import {createPortal} from "react-dom";
 import {
   Bell,
   CalendarDays,
   Download,
+  FileSpreadsheet,
   Globe2,
   HelpCircle,
   LayoutGrid,
@@ -112,11 +114,17 @@ export default function SidebarNav({
   const [profilePosition, setProfilePosition] = useState({ left: 80, bottom: 14 });
   const [notifPosition, setNotifPosition] = useState({ left: 80, top: 80 });
   const [failedAvatarUrl, setFailedAvatarUrl] = useState<string | null>(null);
+  const [sidebarTooltip, setSidebarTooltip] = useState<{label:string;left:number;top:number;visible:boolean}|null>(null);
+  const tooltipExitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mobileNavRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
   const sidebarProfileRef = useRef<HTMLDivElement>(null);
   const topbarSearchRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => () => {
+    if (tooltipExitTimer.current) clearTimeout(tooltipExitTimer.current);
+  }, []);
 
   useEffect(() => {
     const closeOutside = (event: PointerEvent) => {
@@ -130,8 +138,9 @@ export default function SidebarNav({
       setMobileNavOpen(false);
       setProfileOpen(false);
       setNotifOpen(false);
+      setSidebarTooltip(null);
     };
-    const closeOnResize = () => { setProfileOpen(false); setNotifOpen(false); };
+    const closeOnResize = () => { setProfileOpen(false); setNotifOpen(false); setSidebarTooltip(null); };
     document.addEventListener("pointerdown", closeOutside);
     document.addEventListener("keydown", closeOnEscape);
     window.addEventListener("resize", closeOnResize);
@@ -148,11 +157,24 @@ export default function SidebarNav({
     : userName ? avatarLabel : <UserCircle2 className="h-5 w-5" />;
 
   const navigate = (id: string) => {
+    if (tooltipExitTimer.current) clearTimeout(tooltipExitTimer.current);
+    setSidebarTooltip(null);
     setMobileNavOpen(false);
     setNotifOpen(false);
     setProfileOpen(false);
     onNavigate(id);
   };
+  const showSidebarTooltip = (label:string, element:HTMLElement) => {
+    if (tooltipExitTimer.current) clearTimeout(tooltipExitTimer.current);
+    const bounds=element.getBoundingClientRect();
+    setSidebarTooltip({label,left:bounds.right+12,top:bounds.top+bounds.height/2,visible:true});
+  };
+  const hideSidebarTooltip = () => {
+    if (tooltipExitTimer.current) clearTimeout(tooltipExitTimer.current);
+    setSidebarTooltip(current => current ? {...current,visible:false} : null);
+    tooltipExitTimer.current = setTimeout(() => setSidebarTooltip(null), 160);
+  };
+  const activeNavIndex = navItems.findIndex(entry => entry.id === activeId);
   const pageTitle = activeId.startsWith("trip-detail:") ? "Trip details"
     : activeId.startsWith("profile:") ? "Profile"
     : ({ settings: "Settings", pod: "POD & Documents", notifications: "Notifications", reports: "Reports" } as Record<string, string>)[activeId]
@@ -232,22 +254,18 @@ export default function SidebarNav({
 
   return (
     <>
-    <aside className="al-sidebar" aria-label="Primary navigation">
+    <aside className="al-sidebar" aria-label="Primary navigation" onScroll={() => setSidebarTooltip(null)}>
       <div className="al-sidebar-brand"><img src={logo} alt="ALZHEN TMS" /></div>
-      <nav aria-label="Primary" className="al-sidebar-group">
-        {navItems.slice(0, 3).map((entry) => <button key={entry.id} type="button" onClick={() => navigate(entry.id)} aria-current={entry.id === activeId ? "page" : undefined} aria-label={entry.label} title={entry.label} className={`al-sidebar-item ${entry.id === activeId ? "al-sidebar-item-active" : ""}`}><span>{entry.icon}</span>{!!entry.badge && <span className="al-sidebar-badge">{entry.badge}</span>}</button>)}
+      <nav aria-label="Primary" className="al-sidebar-group" data-has-active={activeNavIndex >= 0} style={{"--al-active-index": Math.max(activeNavIndex, 0)} as CSSProperties}>
+        {navItems.map((entry) => <button key={entry.id} type="button" onClick={() => navigate(entry.id)} onMouseEnter={event => showSidebarTooltip(entry.label,event.currentTarget)} onMouseLeave={hideSidebarTooltip} onFocus={event => showSidebarTooltip(entry.label,event.currentTarget)} onBlur={hideSidebarTooltip} aria-describedby={sidebarTooltip?.visible && sidebarTooltip.label===entry.label?"al-sidebar-tooltip":undefined} aria-current={entry.id === activeId ? "page" : undefined} aria-label={entry.label} className={`al-sidebar-item ${entry.id === activeId ? "al-sidebar-item-active" : ""}`}><span>{entry.icon}</span>{!!entry.badge && <span className="al-sidebar-badge">{entry.badge}</span>}</button>)}
       </nav>
-      {(navItems.length > 3 || hasCalendar) && <nav aria-label="Management" className="al-sidebar-group">
-        {/* {hasCalendar && <button type="button" onClick={() => navigate("calendar")} aria-label="Calendar" title="Calendar" aria-current={activeId === "calendar" ? "page" : undefined} className={`al-sidebar-item ${activeId === "calendar" ? "al-sidebar-item-active" : ""}`}><CalendarDays aria-hidden="true" size={18}/></button>} */}
-        {navItems.slice(3).map((entry) => <button key={entry.id} type="button" onClick={() => navigate(entry.id)} aria-current={entry.id === activeId ? "page" : undefined} aria-label={entry.label} title={entry.label} className={`al-sidebar-item ${entry.id === activeId ? "al-sidebar-item-active" : ""}`}><span>{entry.icon}</span>{!!entry.badge && <span className="al-sidebar-badge">{entry.badge}</span>}</button>)}
-      </nav>}
       {visiblePresenceTable && <div className="al-sidebar-viewers" aria-label="People viewing this table"><TableViewers key={visiblePresenceTable} table={visiblePresenceTable} sidebar/></div>}
       <div className="al-sidebar-profile">
         <div ref={sidebarProfileRef} className="relative">
-          <button type="button" aria-label="User menu" aria-expanded={profileOpen} aria-haspopup="menu" onClick={() => toggleProfile("sidebar")} className={focusRing}><span className="al-profile-avatar flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-[#0b2341] text-xs font-semibold text-white">{avatarContent}</span></button>
+          <button type="button" aria-label="User menu" aria-describedby={sidebarTooltip?.visible && sidebarTooltip.label==="Profile"?"al-sidebar-tooltip":undefined} aria-expanded={profileOpen} aria-haspopup="menu" onMouseEnter={event => showSidebarTooltip("Profile",event.currentTarget)} onMouseLeave={hideSidebarTooltip} onFocus={event => showSidebarTooltip("Profile",event.currentTarget)} onBlur={hideSidebarTooltip} onClick={() => { setSidebarTooltip(null); toggleProfile("sidebar"); }} className={focusRing}><span className="al-profile-avatar flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-[#0b2341] text-xs font-semibold text-white">{avatarContent}</span></button>
           {renderProfileMenu("sidebar")}
         </div>
-        <button type="button" aria-label="Logout" title="Logout" onClick={() => { setProfileOpen(false); onLogout(); }} className={`al-sidebar-logout ${focusRing}`}><LogOut aria-hidden="true" size={18}/></button>
+        <button type="button" aria-label="Logout" aria-describedby={sidebarTooltip?.visible && sidebarTooltip.label==="Logout"?"al-sidebar-tooltip":undefined} onMouseEnter={event => showSidebarTooltip("Logout",event.currentTarget)} onMouseLeave={hideSidebarTooltip} onFocus={event => showSidebarTooltip("Logout",event.currentTarget)} onBlur={hideSidebarTooltip} onClick={() => { setSidebarTooltip(null); setProfileOpen(false); onLogout(); }} className={`al-sidebar-logout ${focusRing}`}><LogOut aria-hidden="true" size={18}/></button>
       </div>
     </aside>
     <header aria-label="Application header" className="al-topbar">
@@ -271,6 +289,7 @@ export default function SidebarNav({
             <button type="button" title={viewConfig.gridLabel ?? "Grid view"} aria-label={viewConfig.gridLabel ?? "Grid view"} aria-pressed={viewConfig.value === "grid"} onClick={() => viewConfig.onChange("grid")}><LayoutGrid aria-hidden="true" size={16}/></button>
             <button type="button" title={viewConfig.tableLabel ?? "Table view"} aria-label={viewConfig.tableLabel ?? "Table view"} aria-pressed={viewConfig.value === "table"} onClick={() => viewConfig.onChange("table")}><Table2 aria-hidden="true" size={16}/></button>
           </div>}
+          {topbarActions?.prepare && <button type="button" className="al-topbar-primary-action" title={topbarActions.prepare.label} aria-label={topbarActions.prepare.label} disabled={topbarActions.prepare.disabled} onClick={topbarActions.prepare.onClick}><FileSpreadsheet aria-hidden="true" size={16}/><span>{topbarActions.prepare.label}</span></button>}
           {topbarActions?.export && <button type="button" className="al-topbar-primary-action" title={topbarActions.export.label} aria-label={topbarActions.export.label} disabled={topbarActions.export.disabled} onClick={topbarActions.export.onClick}><Download aria-hidden="true" size={16}/><span>{topbarActions.export.label}</span></button>}
           {topbarActions?.add && <button type="button" className="al-topbar-primary-action" title={topbarActions.add.label} aria-label={topbarActions.add.label} disabled={topbarActions.add.disabled} onClick={topbarActions.add.onClick}><Plus aria-hidden="true" size={17}/><span>{topbarActions.add.label}</span></button>}
         </div>
@@ -330,6 +349,7 @@ export default function SidebarNav({
         </div>
       </div>
     </header>
+    {sidebarTooltip && createPortal(<div id="al-sidebar-tooltip" role="tooltip" className="al-sidebar-tooltip" data-visible={sidebarTooltip.visible} style={{left:sidebarTooltip.left,top:sidebarTooltip.top}}>{sidebarTooltip.label}</div>,document.body)}
     </>
   );
 }

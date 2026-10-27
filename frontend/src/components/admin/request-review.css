@@ -1,5 +1,5 @@
 
-.request-review-backdrop{position:fixed;inset:0;z-index:2000;display:flex;align-items:center;justify-content:center;padding:20px;background:rgb(7 27 48 / .4);backdrop-filter:blur(3px)}
+.request-review-backdrop{position:fixed;inset:0;z-index:2000;display:flex;align-items:center;justify-content:center;padding:20px}
 .request-review-modal{display:flex;flex-direction:column;width:min(1240px,100%);max-height:calc(100dvh - 40px);min-width:0;background:#fff;border-radius:18px;box-shadow:0 25px 90px #071b3055;color:#0b2341;outline:none;font-size:13px}
 .request-review-modal :is(button,input,select,textarea,summary):focus-visible{outline:2px solid #2678b9;outline-offset:2px}
 .request-review-header{display:flex;justify-content:space-between;gap:16px;padding:20px 24px 14px;border-bottom:1px solid #e4ebf2}

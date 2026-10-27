@@ -8,7 +8,7 @@ export function Card({
 }: HTMLAttributes<HTMLDivElement>) {
   return (
     <div
-      className={`rounded-[18px] border border-[#e9edf4] bg-white p-5 shadow-[0_5px_20px_-18px_rgba(23,36,59,0.18)] ${className}`}
+      className={`al-card rounded-[18px] border border-[#e9edf4] bg-white p-5 shadow-[0_5px_20px_-18px_rgba(23,36,59,0.18)] ${className}`}
       {...props}
     >
       {children}

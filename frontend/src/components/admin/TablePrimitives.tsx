@@ -59,7 +59,7 @@ export function TableSkeleton({
   toolbarActions?: ReactNode;
 }) {
   return (
-    <div role="status" aria-label="Loading report table" aria-busy="true" className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+    <div role="status" aria-label="Loading report table" aria-busy="true" className="overflow-hidden rounded-[18px] border border-[#e4e9f0] bg-white">
       {showToolbar && <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 p-3"><div aria-hidden="true" className="h-8 w-44 animate-pulse rounded bg-slate-100" /><div className="flex items-center gap-2"><div aria-hidden="true" className="h-10 w-48 animate-pulse rounded-lg bg-slate-100" /><div aria-hidden="true" className="h-8 w-20 animate-pulse rounded bg-slate-100" />{toolbarActions}</div></div>}
       <div className="overflow-x-auto">
         <table aria-hidden="true" className="min-w-full table-fixed border-separate border-spacing-0 text-left text-sm" style={columnWidths ? { width: columnWidths.reduce((sum, width) => sum + width, 0) } : undefined}>

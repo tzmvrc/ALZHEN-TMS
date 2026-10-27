@@ -3,7 +3,7 @@ import { Check, X } from "lucide-react";
 import { focusRing } from "./styles";
 import "./trip-modal.css";
 
-export const tripModalBackdrop = "trip-flow-backdrop fixed inset-0 flex items-center justify-center bg-[#061426]/55 backdrop-blur-sm sm:p-4 lg:p-6";
+export const tripModalBackdrop = "al-modal-backdrop trip-flow-backdrop fixed inset-0 flex items-center justify-center sm:p-4 lg:p-6";
 export const tripModalShell = "trip-flow flex min-w-0 w-full flex-col overflow-hidden bg-white text-slate-800";
 export const tripPrimaryAction = `trip-primary inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-transparent bg-[#0b2341] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#163b63] disabled:cursor-not-allowed disabled:opacity-50 ${focusRing}`;
 export const tripSecondaryAction = `trip-secondary inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-[#0b2341] transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 ${focusRing}`;

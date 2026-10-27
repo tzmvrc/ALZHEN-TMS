@@ -92,7 +92,7 @@ function RequestReview({request,onClose}:{request:DispatchRequest;onClose:()=>vo
     else setErrors(["The request changed. Close and reopen it before reviewing again."]);
   }
   const units=draft.items.reduce((sum,item)=>sum+Number(item.qty||0),0),cbm=draft.items.reduce((sum,item)=>sum+Number(item.totalCbm||0),0);
-  return createPortal(<PendingCellContext.Provider value={setPendingCell}><div className="request-review-backdrop" onMouseDown={event=>{if(event.target===event.currentTarget)closeRef.current();}}>
+  return createPortal(<PendingCellContext.Provider value={setPendingCell}><div className="al-modal-backdrop request-review-backdrop" onMouseDown={event=>{if(event.target===event.currentTarget)closeRef.current();}}>
     <div ref={dialog} role="dialog" aria-modal="true" aria-labelledby="request-review-title" aria-describedby="request-demo-notice" tabIndex={-1} className="request-review-modal">
       <header className="request-review-header"><div><p className="request-review-kicker"><Mail size={14}/>Email request review <span>Demo</span><span>{request.status}</span></p><h2 id="request-review-title">{request.emailSubject||request.reference}</h2><p>{request.fromName||request.fromEmail} · {request.fromEmail} · {date(request.receivedAt)} PHT</p></div><button type="button" aria-label="Close request review" onClick={()=>closeRef.current()}><X size={20}/></button></header>
       <p id="request-demo-notice" className="request-demo-notice">Session-only sample. Edits and review actions update this browser session; they do not create trips, send email, or save to Supabase.</p>

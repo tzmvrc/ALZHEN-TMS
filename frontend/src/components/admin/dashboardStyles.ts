@@ -135,7 +135,7 @@ export const surface = {
 
 /* Shared table tokens: every table page (trips, reports, users, database...) uses these */
 export const tableUi = {
-  shell: "overflow-hidden rounded-[10px] border border-[#e4e9f0] bg-white",
+  shell: "al-table-surface overflow-hidden rounded-[18px] border border-[#e4e9f0] bg-white",
   toolbar: "flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between",
   search: "h-10 w-full rounded-full border border-[#e4e9f0] bg-white pl-10 pr-4 text-sm text-slate-700 outline-none placeholder:text-slate-400 focus:border-[#0b2343]/60 focus:ring-2 focus:ring-[#0b2343]/15",
   select: "h-10 appearance-none rounded-full border border-[#e4e9f0] bg-white pl-4 pr-9 text-sm text-slate-600 outline-none transition focus:border-[#0b2343]/60 focus:ring-2 focus:ring-[#0b2343]/15",
@@ -145,7 +145,7 @@ export const tableUi = {
   th: REPORT_GRID_HEADER_CELL_CLASS,
   td: REPORT_GRID_BODY_CELL_CLASS,
   tdStrong: `${REPORT_GRID_BODY_CELL_CLASS} font-medium text-[#0b2341]`,
-  row: "border-b border-[#edf0f5] transition-colors last:border-0 hover:bg-[#f0f5fc]",
+  row: "border-b border-[#e8ecf1] transition-colors last:border-0 hover:bg-[#f5f7fa]",
   footer: "flex items-center justify-between border-t border-slate-100 px-5 py-3 text-xs text-slate-400",
   pageBtn: "inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-500 transition hover:bg-[#f2f6fa] hover:text-[#0b2341] disabled:cursor-not-allowed disabled:opacity-30",
   empty: "px-4 py-16 text-center text-sm text-slate-400",

@@ -5,7 +5,7 @@ import { ToastContext } from "../ui/toast-context";
 
 export const SPREADSHEET_GUTTER_WIDTH = 52;
 export const SPREADSHEET_NUMBER_GUTTER_WIDTH = SPREADSHEET_GUTTER_WIDTH - 20;
-export const SPREADSHEET_PANEL_CLASS = "min-w-0 overflow-hidden rounded-[10px] border border-[#e4e9f0] bg-white";
+export const SPREADSHEET_PANEL_CLASS = "al-spreadsheet-panel min-w-0 overflow-hidden rounded-[18px] border border-[#e4e9f0] bg-white";
 export const SPREADSHEET_ATTACHED_VIEWPORT_CLASS = "!rounded-none !border-0";
 
 export function SpreadsheetFooter({ total, page = 1, totalPages = 1, children, label = "Table pagination" }: {

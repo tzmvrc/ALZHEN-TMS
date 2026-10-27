@@ -52,16 +52,10 @@ import {useRegisterTopbarAction} from "./topbarActions";
 import {SpreadsheetHiddenColumns} from "./SpreadsheetWorkspace";
 import TransactionCleanupNotice from "./TransactionCleanupNotice";
 import {
-  Building2,
-  CalendarDays,
-  ArrowUpRight,
   ChevronDown,
-  Package,
   ArrowDown,
   ArrowUp,
   ArrowUpDown,
-  Truck,
-  UserRound,
   GripVertical,
 } from "lucide-react";
 import type ExcelJS from "exceljs";
@@ -69,6 +63,7 @@ import { useAuth } from "../../context/AuthContext";
 import { TRIP_EDIT_STEPS, REPORT_EDIT_STEPS, tripEditFieldStep, tripEditFieldChanged, validateTripEditField } from "../../services/trip-edit-wizard";
 import WholeTripDeletionDialog from "./WholeTripDeletionDialog";
 import FlexibleTableSectionTabs from "./FlexibleTableSectionTabs";
+import DispatchVisualCards, {DispatchCardsSkeleton} from "./DispatchVisualCards";
 import { ApiError, invalidateApiCache } from "../../services/api.service";
 import {
   fetchReportPage,
@@ -641,368 +636,6 @@ function matchesEditedRecord(
   }
 }
 
-function statusStyle(value: string): string {
-  const status = value.toLowerCase();
-  if (/complete|delivered|confirmed|contacted|ready/.test(status)) {
-    return "bg-emerald-50 text-emerald-800 ring-emerald-200";
-  }
-  if (/delay|incident|cancel|reject|backload|offload/.test(status)) {
-    return "bg-amber-50 text-amber-800 ring-amber-200";
-  }
-  if (/progress|transit|active|assigned/.test(status)) {
-    return "bg-[#e6f0f9] text-[#1d5f94] ring-[#b9d4ea]";
-  }
-  return "bg-slate-100 text-slate-700 ring-slate-200";
-}
-
-function statusDot(value: string): string {
-  const status = value.toLowerCase();
-  if (/complete|delivered|confirmed|contacted|ready/.test(status)) {
-    return "bg-emerald-500";
-  }
-  if (/delay|incident|cancel|reject|backload|offload/.test(status)) {
-    return "bg-amber-500";
-  }
-  if (/progress|transit|active|assigned/.test(status)) return "bg-[#2678b9]";
-  return "bg-slate-400";
-}
-
-function firstValue(rows: ReportRow[], ...keys: string[]): string {
-  for (const row of rows) {
-    const value = rowText(row, ...keys);
-    if (value) return value;
-  }
-  return "";
-}
-
-function uniqueValues(rows: ReportRow[], ...keys: string[]): string[] {
-  const seen = new Set<string>();
-  for (const row of rows) {
-    const value = rowText(row, ...keys);
-    if (value) seen.add(value);
-  }
-  return [...seen];
-}
-
-/* The trip reports return one row per line item. In Visual mode we show one
-   card per trip, so rows that share a trip_id are folded together. */
-function groupRows(rows: ReportRow[], byTrip: boolean): ReportRow[][] {
-  const groups = new Map<string, ReportRow[]>();
-  rows.forEach((row, index) => {
-    const tripId = rowText(row, "_trip_id", "trip_id");
-    const key = byTrip && tripId ? `trip:${tripId}` : `row:${index}`;
-    const list = groups.get(key);
-    if (list) list.push(row);
-    else groups.set(key, [row]);
-  });
-  return [...groups.values()];
-}
-
-function ReportVisualCards({
-  rows,
-  columns,
-  reportKey,
-  onOpenTrip,
-}: {
-  rows: ReportRow[];
-  columns: ReportColumn[];
-  reportKey: ReportKey;
-  onOpenTrip?: (tripId: string, stopId?: string | null) => void;
-}) {
-  const isStoreCall = reportKey === "store-calling";
-  const groups = groupRows(rows, !isStoreCall);
-  const titleFor = (key: string) =>
-    columns.find((column) => column.key === key)?.title ??
-    key.replaceAll("_", " ");
-
-  const shownKeys = new Set([
-    "dispatch_number",
-    "store_call_id",
-    "trip_id",
-    "trip_status",
-    "delivery_status",
-    "confirmation_status",
-    "status",
-    "letter_status",
-    "warehouse_name",
-    "ship_from",
-    "warehouse_code",
-    "wh_code",
-    "store_name",
-    "ship_to",
-    "customer_name",
-    "loading_date",
-    "date_assigned",
-    "date_of_contact",
-    "plate_number",
-    "driver_name",
-    "assigned_to",
-    "product_name",
-    "product_model",
-    "model_code",
-    "sku",
-    "trucking_company",
-    "city",
-    "province",
-  ]);
-  const extraColumns = columns.filter((column) => !shownKeys.has(column.key));
-
-  return (
-    <div className="grid gap-4 p-4 md:grid-cols-2 2xl:grid-cols-3">
-      {groups.map((group, index) => {
-        const row = group[0];
-        const identity =
-          firstValue(group, "dispatch_number", "store_call_id", "trip_id") ||
-          `Record ${index + 1}`;
-        const statusTags: Array<readonly [string, string]> = isStoreCall
-          ? [
-              ["Call", firstValue(group, "status")],
-              ["Confirmation", firstValue(group, "confirmation_status")],
-            ]
-          : [
-              ["Trip", firstValue(group, "trip_status", "status")],
-              ["Delivery", firstValue(group, "delivery_status")],
-              ["Letter", firstValue(group, "letter_status")],
-            ];
-        const primaryStatus =
-          statusTags.find(([, value]) => value)?.[1] || "Status not recorded";
-        const otherTags = statusTags.filter(
-          ([, value]) => Boolean(value) && value !== primaryStatus,
-        );
-        const from = firstValue(
-          group,
-          "warehouse_name",
-          "ship_from",
-          "warehouse_code",
-          "wh_code",
-        );
-        const stores = uniqueValues(
-          group,
-          "store_name",
-          "ship_to",
-          "customer_name",
-        );
-        const destination =
-          stores.length === 0
-            ? ""
-            : stores.length === 1
-              ? stores[0]
-              : `${stores[0]} +${stores.length - 1} more`;
-        const place = [
-          firstValue(group, "city"),
-          firstValue(group, "province"),
-        ]
-          .filter(Boolean)
-          .join(", ");
-        const date = firstValue(
-          group,
-          "loading_date",
-          "date_assigned",
-          "date_of_contact",
-        );
-        const plate = firstValue(group, "plate_number");
-        const driver = firstValue(group, "driver_name", "assigned_to");
-        const carrier = firstValue(group, "trucking_company");
-        const products = uniqueValues(
-          group,
-          "product_name",
-          "product_model",
-          "model_code",
-          "sku",
-        );
-        const showExtras = group.length === 1 && extraColumns.length > 0;
-        const tripId = firstValue(group, "_trip_id", "trip_id");
-
-        return (
-          <article
-            key={`${identity}-${index}`}
-            className="group relative flex min-w-0 flex-col overflow-hidden rounded-3xl border border-slate-200/70 bg-white shadow-[0_2px_5px_rgba(11,35,65,0.035),0_12px_28px_-18px_rgba(11,35,65,0.2)] transition duration-200 hover:-translate-y-0.5 hover:border-[#b9d4ea] hover:shadow-[0_16px_34px_-20px_rgba(11,35,65,0.3)] motion-reduce:transition-none">
-            <span aria-hidden="true" className={`absolute inset-x-0 top-0 h-1 ${statusDot(primaryStatus)}`} />
-            <header className="flex items-start justify-between gap-3 px-4 pt-4">
-              <div className="min-w-0">
-                <p className="text-[11px] font-medium text-slate-400">
-                  {isStoreCall ? "Store call" : "Dispatch"}
-                </p>
-                <h3
-                  className="mt-0.5 truncate text-base font-extrabold tracking-tight text-[#0b2341]"
-                  title={identity}>
-                  {identity}
-                </h3>
-              </div>
-              <div className="flex shrink-0 items-center gap-1.5">
-                <span
-                  className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ring-inset ${statusStyle(primaryStatus)}`}>
-                  <span
-                    aria-hidden="true"
-                    className={`h-1.5 w-1.5 rounded-full ${statusDot(primaryStatus)}`}
-                  />
-                  {primaryStatus.replaceAll("_", " ")}
-                </span>
-                {tripId && onOpenTrip && (
-                  <button
-                    type="button"
-                    onClick={() => onOpenTrip(tripId)}
-                    title="View trip details"
-                    aria-label={`View trip details for ${identity}`}
-                    className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#f2f6fa] text-slate-600 transition hover:bg-[#ffd43b] hover:text-[#0b2341] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0b2341]/40">
-                    <ArrowUpRight aria-hidden="true" className="h-4 w-4" />
-                  </button>
-                )}
-              </div>
-            </header>
-
-            {otherTags.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 px-4 pt-2.5">
-                {otherTags.map(([label, value]) => (
-                  <span
-                    key={label}
-                    className="inline-flex items-center gap-1 rounded-full bg-[#f2f6fa] px-2 py-0.5 text-[10px] font-medium text-slate-600">
-                    <span className="text-slate-400">{label}</span>
-                    {value.replaceAll("_", " ")}
-                  </span>
-                ))}
-              </div>
-            )}
-
-            <div className="space-y-3 p-4">
-              <div className="rounded-2xl border border-[#dbe7f3] bg-gradient-to-r from-[#f4f8fc] to-[#edf4fa] p-3.5">
-                <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3">
-                  <div className="min-w-0">
-                    <p className="text-[10px] font-medium text-slate-400">
-                      Origin
-                    </p>
-                    <p
-                      className="truncate text-[13px] font-semibold text-[#0b2341]"
-                      title={from}>
-                      {from || "Not recorded"}
-                    </p>
-                  </div>
-                  <span aria-hidden="true" className="flex w-24 items-center">
-                    <span
-                      className={`h-2 w-2 shrink-0 rounded-full ${statusDot(primaryStatus)}`}
-                    />
-                    <span className="h-px flex-1 border-t border-dashed border-slate-300" />
-                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white text-[#0b2341] shadow-sm">
-                      <Truck className="h-3.5 w-3.5" />
-                    </span>
-                    <span className="h-px flex-1 border-t border-dashed border-slate-300" />
-                    <span className="h-2 w-2 shrink-0 rounded-full border-2 border-slate-300 bg-white" />
-                  </span>
-                  <div className="min-w-0 text-right">
-                    <p className="text-[10px] font-medium text-slate-400">
-                      {isStoreCall ? "Store" : "Destination"}
-                    </p>
-                    <p
-                      className="truncate text-[13px] font-semibold text-[#0b2341]"
-                      title={stores.join(", ")}>
-                      {destination || "Not recorded"}
-                    </p>
-                  </div>
-                </div>
-                {place && (
-                  <p className="mt-2 truncate text-right text-[11px] text-slate-500">
-                    {place}
-                  </p>
-                )}
-              </div>
-
-              <div className="grid grid-cols-2 gap-2.5">
-                <VisualFact
-                  icon={CalendarDays}
-                  label="Date"
-                  value={displayValue(date, "date") || "Not recorded"}
-                />
-                <VisualFact
-                  icon={Truck}
-                  label="Truck"
-                  value={plate || "Not assigned"}
-                />
-                <VisualFact
-                  icon={UserRound}
-                  label={isStoreCall ? "Assigned to" : "Driver"}
-                  value={driver || "Not assigned"}
-                />
-                <VisualFact
-                  icon={Building2}
-                  label="Carrier"
-                  value={carrier || "Not recorded"}
-                />
-              </div>
-
-              {products.length > 0 && (
-                <div className="flex items-start gap-3 rounded-2xl border border-amber-200/80 bg-gradient-to-br from-[#fff8dc] to-[#fff3bf] p-3.5">
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-[#0b2341] shadow-sm">
-                    <Package aria-hidden="true" className="h-4 w-4" />
-                  </span>
-                  <div className="min-w-0">
-                    <p className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wide text-[#8a6d00]">
-                      Cargo <span className="rounded-full bg-white/80 px-2 py-0.5 normal-case tracking-normal text-[#0b2341]">{group.length} line{group.length === 1 ? "" : "s"}</span>
-                    </p>
-                    <p className="mt-1 break-words text-[13px] font-semibold leading-snug text-[#0b2341]">
-                      {products.slice(0, 2).join(", ")}
-                      {products.length > 2
-                        ? ` +${products.length - 2} more`
-                        : ""}
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {showExtras && (
-                <details className="rounded-2xl border border-slate-100 px-3 py-1">
-                  <summary className="cursor-pointer py-1.5 text-xs font-medium text-[#1d5f94] hover:text-[#0b2341]">
-                    More record information ({extraColumns.length})
-                  </summary>
-                  <dl className="grid gap-x-4 gap-y-2 pb-2 pt-1 sm:grid-cols-2">
-                    {extraColumns.map((column) => (
-                      <div key={column.key} className="min-w-0">
-                        <dt className="text-[10px] font-medium text-slate-400">
-                          {titleFor(column.key)}
-                        </dt>
-                        <dd className="mt-0.5 break-words text-xs text-slate-700">
-                          {displayValue(row[column.key], column.type,column.key) ||
-                            "Not recorded"}
-                        </dd>
-                      </div>
-                    ))}
-                  </dl>
-                </details>
-              )}
-            </div>
-
-          </article>
-        );
-      })}
-    </div>
-  );
-}
-
-function VisualFact({
-  icon: Icon,
-  label,
-  value,
-}: {
-  icon: typeof CalendarDays;
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="flex min-w-0 items-center gap-2.5 rounded-xl border border-slate-100 bg-slate-50/80 px-2.5 py-2">
-      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[#e6f0f9] text-[#2678b9]">
-        <Icon aria-hidden="true" className="h-4 w-4" />
-      </span>
-      <div className="min-w-0">
-        <p className="text-[10px] font-medium text-slate-400">{label}</p>
-        <p
-          className="truncate text-[12px] font-bold text-[#0b2341]"
-          title={value}>
-          {value}
-        </p>
-      </div>
-    </div>
-  );
-}
-
 export default function ReportDataView({
   initialReport = "combined",
   notificationTarget,
@@ -1192,6 +825,7 @@ export default function ReportDataView({
   const sourceHeaderGroups = useMemo(() => allTripRecords ? [...new Map(columns.flatMap(column => column.sourceHeader ? [[column.sourceHeader.group, column.sourceHeader] as const] : [])).values()] : [], [allTripRecords, columns]);
   const headerFormatting = useSpreadsheetHeaderFormatting(transactionView ? "trips" : `report:${reportKey}`, sharedDesign.canEdit, sharedDesign.columns, (key, header) => { void sharedDesign.save(key, { header }, getColumnWidth(key)); }, (key, alias) => { void sharedDesign.save(key, { alias }, getColumnWidth(key)); }, (key, input) => { void sharedDesign.save(key, { input }, getColumnWidth(key)); }, fixedHeaders);
   const tableViewportRef = useRef<HTMLDivElement>(null);
+  const visualLoadMoreRef = useRef<HTMLDivElement>(null);
   const autoFit = useSheetAutoFit(tableViewportRef, columns, rows);
   const columnLayout=useMemo<ReportColumnLayout>(()=>{
     const design=sharedDesign.columns;
@@ -1314,7 +948,7 @@ export default function ReportDataView({
   const renderedGridColumns = gridColumns;
   const spreadsheetPadding = useSpreadsheetViewport(tableViewportRef, displayedRows.length, viewMode === "table");
   const presentationColumns=useMemo<ReportColumn[]>(()=>renderedGridColumns.length?renderedGridColumns:Array.from({length:5},(_,index)=>({key:`__loading_${index}`,title:"",type:"action"})),[renderedGridColumns]);
-  const infiniteRows=viewMode==="table";
+  const infiniteRows=transactionView||viewMode==="table";
   const sheetRowOffset=infiniteRows?0:(page-1)*50;
   const virtualGridRows=useMemo(()=>Array.from({length:spreadsheetPadding.count},(_,index)=>({id:`virtual:${transactionView?"trips":reportKey}:slot:${sheetRowOffset+displayedRows.length+index+1}`})),[spreadsheetPadding.count,transactionView,reportKey,sheetRowOffset,displayedRows.length]);
   const issueTripIds=useMemo(()=>displayedRows.flatMap(row=>typeof (row.trip_id??row._trip_id)==="string"?[String(row.trip_id??row._trip_id)]:[]),[displayedRows]);
@@ -1341,11 +975,12 @@ export default function ReportDataView({
     appliedSearch: effectiveSearch,
     page,
     reportKey,
+    viewMode,
     retryVersion,
     sortBy: activeSortBy,
     sortOrder,
   });
-  const snapshotKey = JSON.stringify({ accessToken, activeSortBy, appliedFilters: queryFilters, appliedSearch: effectiveSearch, page, reportKey, sortOrder });
+  const snapshotKey = JSON.stringify({ accessToken, activeSortBy, appliedFilters: queryFilters, appliedSearch: effectiveSearch, page, reportKey, sortOrder, viewMode });
   const pageOptions = useMemo(() => ({
     page,
     limit: 50,
@@ -1353,7 +988,8 @@ export default function ReportDataView({
     sortBy: activeSortBy,
     sortOrder,
     filters: queryFilters,
-  }), [activeSortBy, queryFilters, effectiveSearch, page, sortOrder]);
+    cardMeta: transactionView || viewMode === "visual",
+  }), [activeSortBy, queryFilters, effectiveSearch, page, sortOrder, viewMode, transactionView]);
   const formulas=useOperationalFormulas({viewport:tableViewportRef,token:accessToken,table:transactionView?"trips":`report:${reportKey}`,rows:displayedRows,columns:formulaColumns,identity:physicalRowIdentity,sourceEditor:prepareFormulaSource,virtualRows:virtualGridRows,onSelect:syncGridCellSelection,rowOffset:sheetRowOffset,canEdit:["ADMIN","STAFF"].includes(profile?.role??"")&&!headerFormatting.key,paused:Boolean(editingCell||editModalOpen||fillGesture)});
   const formulaFocusIndex=useMemo(()=>formulas.selectedIdentity?(formulaRowLookup.get(formulas.selectedIdentity)?.index??-1):-1,[formulas.selectedIdentity,formulaRowLookup]);
   const windowColumns=useMemo(()=>renderedGridColumns.map(column=>({key:column.key,width:columnLayout.widths?.[column.key]??defaultReportColumnWidth(column)})),[renderedGridColumns,columnLayout.widths]);
@@ -1838,7 +1474,14 @@ export default function ReportDataView({
   const loadMoreRowsRef=useRef(loadMoreRows);loadMoreRowsRef.current=loadMoreRows;
   useEffect(()=>setMoreRowsError(""),[snapshotKey]);
   useSpreadsheetFeedback(moreRowsError,"error");
-  useSpreadsheetInfiniteScroll(tableViewportRef,{queryKey:snapshotKey,enabled:infiniteRows,hasMore:hasMoreRows,loading:loadingMore||loadedQueryKey!==queryKey,blocked:Boolean(moreRowsError||editingCell||editModalOpen||formulas.draftPending||formulas.busy||productDrafts.length||physicalDeletion||rowDeletion),revision:rows.length,onLoadMore:()=>loadMoreRowsRef.current()});
+  useSpreadsheetInfiniteScroll(tableViewportRef,{queryKey:snapshotKey,enabled:infiniteRows&&viewMode==="table",hasMore:hasMoreRows,loading:loadingMore||loadedQueryKey!==queryKey,blocked:Boolean(moreRowsError||editingCell||editModalOpen||formulas.draftPending||formulas.busy||productDrafts.length||physicalDeletion||rowDeletion),revision:rows.length,onLoadMore:()=>loadMoreRowsRef.current()});
+  useEffect(() => {
+    const target=visualLoadMoreRef.current;
+    if(viewMode!=="visual"||!infiniteRows||!target||!hasMoreRows||loadingMore||loadedQueryKey!==queryKey||moreRowsError)return;
+    const observer=new IntersectionObserver(entries=>{if(entries[0]?.isIntersecting)void loadMoreRowsRef.current();},{rootMargin:"320px"});
+    observer.observe(target);
+    return()=>observer.disconnect();
+  },[viewMode,infiniteRows,hasMoreRows,loadingMore,loadedQueryKey,queryKey,moreRowsError,rows.length]);
 
   useEffect(() => {
     if (!accessToken) return;
@@ -3129,7 +2772,7 @@ export default function ReportDataView({
     navigatedSearch.current = searchNeedle;
     scrollToTableColumn(viewport, header);
   }, [searchNeedle, isLoading, displayedRows, renderedGridColumns]);
-  const showVisualCards = viewMode === "visual" && !isLoading;
+  const showVisualCards = viewMode === "visual";
   useSpreadsheetFeedback(collaboration.notice?.text, "warning");
   useSpreadsheetFeedback(cellSaveState && (cellSaveState.status === "error" || cellSaveState.status === "warning") ? cellSaveState.message : null, cellSaveState?.status === "error" ? "error" : cellSaveState?.status === "warning" ? "warning" : "success");
   useSpreadsheetFeedback(activeError, "error");
@@ -3173,7 +2816,7 @@ export default function ReportDataView({
       const { ExcelJS, JSZip } = await loadExportLibraries();
       const keys = exportMode === "current-report" ? [reportKey] : reportKeys;
       const datasets = await Promise.all(
-        keys.map(async (key) => ({ key, ...(await fetchAllReportRows(key, accessToken, allTripRecords && key === "dispatch-monitoring",exportMode==="current-report"?pageOptions:undefined)) })),
+        keys.map(async (key) => ({ key, ...(await fetchAllReportRows(key, accessToken, allTripRecords && key === "dispatch-monitoring",exportMode==="current-report"?{...pageOptions,cardMeta:false}:undefined)) })),
       );
       if (exportMode === "all-workbook") {
         const workbook = new ExcelJS.Workbook();
@@ -3219,7 +2862,7 @@ export default function ReportDataView({
   return (
     <TripIssuesProvider token={accessToken} enabled={Boolean(transactionView&&accessToken)} tripIds={issueTripIds} onChanged={()=>{if(appliedFilters.issue_filter && appliedFilters.issue_filter !== "All")scheduleRealtimeRefreshRef.current();}}>
     <div className="space-y-2">
-      <div className={REPORT_TOOLBAR_ROW_CLASS}>
+      <div className={REPORT_TOOLBAR_ROW_CLASS} style={showVisualCards ? {display:"none"} : undefined}>
         {pageTitle && (
           <h1 className="sr-only">{pageTitle}</h1>
         )}
@@ -3314,7 +2957,7 @@ export default function ReportDataView({
       {rowContext && accessToken && <TripRowContextDialog token={accessToken} initial={selectedProductParent()} action={rowContext} onClose={() => setRowContext(null)} onChosen={parent => { if (rowContext === "parent") addProductRows(parent); else { invalidateReportData(reportKey); setRetryVersion(version=>version+1); setNewRowsMessage(rowContext === "stop" ? "Delivery stop saved. Select it to add product rows." : "Truck assignment saved. Choose cargo allocation in Trip details."); } }} />}
       {transactionView && (productDrafts.length > 0 || newRowsMessage) && <div role="status" className="flex flex-wrap items-center justify-between gap-2 border-y border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-900"><span>{newRowsMessage}</span>{productDrafts.length > 0 && <div className="flex gap-3"><button type="button" disabled={newRowsBusy} onClick={() => void saveProductDrafts()} className="rounded bg-[#ffd43b] px-3 py-1.5 font-semibold">{newRowsBusy ? "Saving rows?" : "Save new rows"}</button><button type="button" disabled={newRowsBusy} onClick={cancelProductDrafts}>Cancel new rows</button></div>}</div>}
       {exportModalOpen && (
-        <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-slate-900/20 p-4 backdrop-blur-[2px]">
+        <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4 al-modal-backdrop">
           <section role="dialog" aria-modal="true" aria-labelledby="report-export-title" className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl">
             <h2 id="report-export-title" className="text-lg font-semibold text-[#0b2341]">Export reports</h2>
             <p className="mt-1 text-sm text-slate-500">Exports use report access already granted to your account and include all pages of report data.</p>
@@ -3342,7 +2985,7 @@ export default function ReportDataView({
       {wholeTripIds&&accessToken&&<WholeTripDeletionDialog token={accessToken} tripIds={wholeTripIds} onClose={()=>setWholeTripIds(null)} onDeleted={(ids)=>{ids.forEach(id=>deletedTripIds.current.add(id));const retain=(current:ReportRow[])=>current.filter(row=>!deletedTripIds.current.has(String(row.trip_id)));setRows(retain);setSelectionRecords(retain);const removedKeys=selectionRows.filter(row=>deletedTripIds.current.has(String(row.trip_id))).flatMap(row=>{const key=getReportRowKey(reportKey,row);return key?[key]:[];});reportSelection.setVisible(removedKeys,false);if(!retain(displayedRows).length&&page>1)setPage(page-1);setRetryVersion(v=>v+1);}}/>}
       {transactionView && accessToken && <TransactionCleanupNotice key={accessToken} token={accessToken} version={retryVersion} />}
       {editModalOpen && editModalRecord && (
-        <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-slate-900/20 p-4 backdrop-blur-[2px]" onMouseDown={(event) => {
+        <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4 al-modal-backdrop" onMouseDown={(event) => {
           if (event.target === event.currentTarget) closeRowEdit();
         }}>
           <section role="dialog" aria-modal="true" aria-labelledby="report-row-edit-title" onKeyDown={event=>{if(event.key==="Escape"){event.stopPropagation();closeRowEdit();}}} className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
@@ -3432,6 +3075,7 @@ export default function ReportDataView({
         sectionLabel={REPORTS[reportKey].title}
         searchScope={topbarSearchScope}
         hideSectionTab
+        cardsOnly={showVisualCards}
         accessToken={accessToken}
         role={profile?.role ?? ""}>
       <section
@@ -3439,20 +3083,22 @@ export default function ReportDataView({
       >
 
         <>
-          {columns.some(column => column.fieldCategory) && <div aria-label="Column responsibilities" className="flex flex-wrap items-center gap-4 border-b border-slate-100 bg-white px-3 py-1 text-[10px] text-slate-500">{Object.entries(FIELD_CATEGORIES).map(([key, item]) => <button type="button" key={key} className="inline-flex items-center gap-1.5 rounded px-1 py-1 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-blue-500" onClick={() => { const column = renderedGridColumns.find(column => column.fieldCategory === key); const header = column && headerCellRefs.current.get(column.key); if (header && tableViewportRef.current) scrollToTableColumn(tableViewportRef.current, header); }}><span className="h-2 w-2 rounded-sm" style={{backgroundColor:item.background,border:'1px solid '+item.color}} />{item.label}</button>)}</div>}
-          {sourceHeaderGroups.length > 0 && <div aria-label="Original Excel header color groups" className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-slate-100 bg-white px-3 py-1 text-[10px] text-slate-600">{sourceHeaderGroups.map(group => <button type="button" key={group.group} className="inline-flex items-center gap-1.5 rounded px-1 py-1 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-blue-500" onClick={() => { const column = renderedGridColumns.find(column => column.sourceHeader?.group === group.group); const header = column && headerCellRefs.current.get(column.key); if (header && tableViewportRef.current) scrollToTableColumn(tableViewportRef.current, header); }}><span aria-hidden="true" className="h-2.5 w-2.5 rounded-sm border border-slate-300" style={{ backgroundColor: group.background }} />{group.label}</button>)}</div>}
+          {!showVisualCards && columns.some(column => column.fieldCategory) && <div aria-label="Column responsibilities" className="flex flex-wrap items-center gap-4 border-b border-slate-100 bg-white px-3 py-1 text-[10px] text-slate-500">{Object.entries(FIELD_CATEGORIES).map(([key, item]) => <button type="button" key={key} className="inline-flex items-center gap-1.5 rounded px-1 py-1 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-blue-500" onClick={() => { const column = renderedGridColumns.find(column => column.fieldCategory === key); const header = column && headerCellRefs.current.get(column.key); if (header && tableViewportRef.current) scrollToTableColumn(tableViewportRef.current, header); }}><span className="h-2 w-2 rounded-sm" style={{backgroundColor:item.background,border:'1px solid '+item.color}} />{item.label}</button>)}</div>}
+          {!showVisualCards && sourceHeaderGroups.length > 0 && <div aria-label="Original Excel header color groups" className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-slate-100 bg-white px-3 py-1 text-[10px] text-slate-600">{sourceHeaderGroups.map(group => <button type="button" key={group.group} className="inline-flex items-center gap-1.5 rounded px-1 py-1 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-blue-500" onClick={() => { const column = renderedGridColumns.find(column => column.sourceHeader?.group === group.group); const header = column && headerCellRefs.current.get(column.key); if (header && tableViewportRef.current) scrollToTableColumn(tableViewportRef.current, header); }}><span aria-hidden="true" className="h-2.5 w-2.5 rounded-sm border border-slate-300" style={{ backgroundColor: group.background }} />{group.label}</button>)}</div>}
           {headerFormatting.configuration}{!showVisualCards && <ReportCellFormattingToolbar selectedFontSize={selectedFormats[0]?.fontSize ?? 12} formulaBar={formulas.bar} advanced selectionIsItalic={selectedFormats.length>0&&selectedFormats.every(f=>f.italic)} selectionIsUnderlined={selectedFormats.length>0&&selectedFormats.every(f=>f.underline)} selectedCellCount={sharedDesign.canEdit&&columns.length?selectedFormatCellKeys.size:0} selectionIsBold={selectionIsBold} selectedTextColor={selectedTextColor} selectedBackgroundColor={selectedBackgroundColor} onApply={applyCellFormat} {...headerFormatting.toolbarProps} />}
           <div ref={tableViewportRef} onPointerDownCapture={event=>{if(event.button===2&&(event.target as Element).closest("tbody td"))event.preventDefault();rangeDrag.onPointerDownCapture(event);}} onClickCapture={rangeDrag.onClickCapture} onPaste={(event) => void handleReportPaste(event)} onCopy={handleReportCopy} className={`${!showVisualCards ? `${REPORT_GRID_VIEWPORT_CLASS} ${SPREADSHEET_ATTACHED_VIEWPORT_CLASS}` : "relative min-h-48 w-full min-w-0 max-w-full overflow-x-auto overscroll-x-contain"} w-full`}>
-            {activeError && <div role="alert" className="border-b border-rose-100 px-3 py-2 text-xs text-rose-700">{activeError} Your current data and drafts are preserved. Use Retry loading.</div>}
+            {activeError && <div role="alert" className="flex flex-wrap items-center gap-2 border-b border-rose-100 px-3 py-2 text-xs text-rose-700">{activeError} Your current data and drafts are preserved.{showVisualCards && <button type="button" onClick={() => { if (accessToken) retryReportRead(reportKey, accessToken); setRetryVersion(value => value + 1); }} className="rounded-full border border-rose-200 px-2 py-1 font-medium hover:bg-rose-50">Retry loading</button>}</div>}
             {showVisualCards ? (
-              displayedRows.length === 0 ? (
+              isLoading ? <DispatchCardsSkeleton/> : displayedRows.length === 0 ? (
                 null
               ) : (
-                <ReportVisualCards
+                <DispatchVisualCards
                   rows={displayedRows}
                   columns={columns}
                   reportKey={reportKey}
                   onOpenTrip={onOpenTrip}
+                  groupByDispatch={transactionView}
+                  loadingMore={loadingMore}
                 />
               )
             ) : (
@@ -3859,9 +3505,10 @@ export default function ReportDataView({
               </table>
             )}
           </div>
+          {showVisualCards&&infiniteRows&&hasMoreRows&&!moreRowsError&&<div ref={visualLoadMoreRef} aria-hidden="true" className="h-px"/>}
           {!infiniteRows&&(pageCount>1||page>1)&&<div aria-label="Table pagination" className="flex items-center justify-end gap-2 border-t border-slate-200 px-3 py-1 text-[11px] text-slate-500"><button type="button" disabled={isLoading||page<=1||Boolean(editingCell||editModalOpen||fillGesture||formulas.draftPending)} onClick={()=>setPage(current=>Math.max(1,current-1))} className="rounded-sm border px-2 py-1 disabled:opacity-40">Previous</button><label>Page <input key={page} aria-label="Go to page" inputMode="numeric" defaultValue={page} disabled={isLoading||Boolean(editingCell||editModalOpen||fillGesture||formulas.draftPending)} onKeyDown={event=>{if(event.key==="Enter")event.currentTarget.blur();}} onBlur={event=>{const next=Number(event.target.value);if(Number.isInteger(next)&&next>=1&&next<=pageCount)setPage(next);else event.target.value=String(page);}} className="w-12 rounded-sm border border-slate-200 px-1 text-center"/></label><span>of {pageCount}</span><button type="button" disabled={isLoading||page>=pageCount||Boolean(editingCell||editModalOpen||fillGesture||formulas.draftPending)} onClick={()=>setPage(current=>Math.min(pageCount,current+1))} className="rounded-sm border px-2 py-1 disabled:opacity-40">Next</button></div>}
           {infiniteRows&&moreRowsError&&<div role="alert" className="flex shrink-0 items-center justify-center gap-2 border-t border-amber-100 bg-white py-1 text-xs text-amber-800"><span>{moreRowsError}</span><button type="button" disabled={loadingMore} onClick={()=>{setMoreRowsError('');void loadMoreRowsRef.current();}} className="rounded px-2 py-1 text-blue-700">Retry loading</button></div>}
-          {infiniteRows&&loadingMore&&<div role="status" className="flex shrink-0 justify-center border-t border-slate-100 bg-white py-1 text-xs text-slate-500">Loading more rows...</div>}
+          {infiniteRows&&loadingMore&&!showVisualCards&&<div role="status" className="flex shrink-0 justify-center border-t border-slate-100 bg-white py-1 text-xs text-slate-500">Loading more rows...</div>}
           <SpreadsheetHiddenColumns sheet={transactionView?"trips":reportKey} columns={hiddenColumns.map(column=>({...column,title:headerFormatting.title(column.key,column.title)}))} onRestore={restoreReportColumn} onRestoreAll={() => saveColumnLayout({ ...columnLayout, order: layoutColumnKeys, hidden: [] })} />
         </>
       </section>

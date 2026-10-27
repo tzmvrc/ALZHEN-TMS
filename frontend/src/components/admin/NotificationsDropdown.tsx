@@ -1,5 +1,7 @@
 import { useRef, useState } from "react";
+import { CheckCheck } from "lucide-react";
 import NotificationActivityIcon from "./NotificationActivityIcon";
+import DriverUpdateCard from "./DriverUpdateCard";
 import { useAuth } from "../../context/AuthContext";
 import {
   markNotificationAsRead,
@@ -68,33 +70,43 @@ export default function NotificationsDropdown({
       role="dialog"
       aria-label="Notifications"
       style={placement ? {...placement,maxHeight:`calc(100dvh - ${placement.top + 12}px)`} : {maxHeight:'calc(100dvh - 120px)'}}
-      className={`${placement ? "fixed z-[1200]" : "absolute right-0 top-full z-50 mt-3"} w-[min(380px,calc(100vw-2rem))] overflow-x-hidden overflow-y-auto rounded-2xl border border-slate-200/80 bg-white shadow-[0_24px_48px_-12px_rgba(15,23,42,0.22)]`}>
-      <div className="px-4 pb-2 pt-4">
+      className={`${placement ? "fixed z-[1200]" : "absolute right-0 top-full z-50 mt-3"} flex w-[min(380px,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-[0_24px_48px_-12px_rgba(15,23,42,0.22)]`}>
+      <div className="shrink-0 px-4 pb-2 pt-4">
         <h2 className="text-[17px] font-semibold tracking-tight text-[#0b2341]">
           Notifications
         </h2>
-        {items.some(item => !item.read_at) && onMarkAllRead && (
-          <button type="button" onClick={onMarkAllRead} className="mt-1 text-xs font-medium text-[#2678b9] hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#2678b9]">Mark all read</button>
-        )}
-        <div className="mt-3 flex gap-1.5">
-          {(["all", "unread"] as const).map((value) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() => setFilter(value)}
-              aria-pressed={filter === value}
-              className={`rounded-full px-3 py-1 text-[12px] font-medium capitalize transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0b2341]/40 ${
-                filter === value
-                  ? "bg-[#ffd43b] text-[#0b2341]"
-                  : "text-slate-500 hover:bg-slate-100"
-              }`}>
-              {value}
+        <div className="mt-3 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-1.5">
+            {(["all", "unread"] as const).map((value) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setFilter(value)}
+                aria-pressed={filter === value}
+                className={`rounded-full px-3 py-1 text-[12px] font-medium capitalize transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0b2343]/40 ${
+                  filter === value
+                    ? "bg-[#0b2343] text-white"
+                    : "text-slate-500 hover:bg-slate-100"
+                }`}>
+                {value}
               </button>
-          ))}
+            ))}
+          </div>
+          {items.some(item => !item.read_at) && onMarkAllRead && (
+            <button
+              type="button"
+              onClick={onMarkAllRead}
+              aria-label="Mark all as read"
+              title="Mark all as read"
+              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#0b2343] text-white transition-colors duration-200 hover:bg-[#17385f] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0b2343]/40 focus-visible:ring-offset-2"
+            >
+              <CheckCheck aria-hidden="true" className="h-4 w-4" />
+            </button>
+          )}
         </div>
       </div>
 
-      <div className="max-h-[min(420px,60vh)] overflow-y-auto px-2 pb-2">
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-3">
         {(error || actionError) && (
           <p role="alert" className="mx-2 mb-2 rounded-xl bg-rose-50 px-3 py-2 text-[12px] text-rose-800">
             {actionError || error}
@@ -112,43 +124,35 @@ export default function NotificationsDropdown({
             </p>
           )
         ) : (
-          <ul>
+          <ul className="space-y-2">
             {visible.map((item) => (
               <li key={item.id}>
-                <button
-                  type="button"
-                  onClick={() => void openItem(item)}
-                  className="flex w-full items-start gap-3 rounded-xl px-2.5 py-2.5 text-left transition-colors hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0b2341]/40">
-                  <NotificationActivityIcon item={item} />
-                  <span className="min-w-0 flex-1">
-                    <span
-                      className={`line-clamp-2 block text-[13px] ${
-                        item.read_at ? "text-slate-600" : "font-medium text-slate-900"
-                      }`}>
-                      {item.message}
+                {item.metadata?.event_kind === "driver_update" ? (
+                  <DriverUpdateCard item={item} timeLabel={timeAgo(item.created_at)} onOpen={() => void openItem(item)} />
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => void openItem(item)}
+                    className="flex w-full items-start gap-3 rounded-xl px-2.5 py-2.5 text-left transition-colors hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0b2341]/40">
+                    <NotificationActivityIcon item={item} />
+                    <span className="min-w-0 flex-1">
+                      <span className={`line-clamp-2 block text-[13px] ${item.read_at ? "text-slate-600" : "font-medium text-slate-900"}`}>
+                        {item.message}
+                      </span>
+                      <time className={`mt-0.5 block text-[11px] ${item.read_at ? "text-slate-400" : "font-medium text-[#2678b9]"}`}>
+                        {timeAgo(item.created_at)}
+                      </time>
                     </span>
-                    {item.metadata?.event_kind === "driver_update" && <span className="mt-0.5 block text-[11px] font-medium text-[#2678b9]">Driver update</span>}
-                    <time
-                      className={`mt-0.5 block text-[11px] ${
-                        item.read_at ? "text-slate-400" : "font-medium text-[#2678b9]"
-                      }`}>
-                      {timeAgo(item.created_at)}
-                    </time>
-                  </span>
-                  {!item.read_at && (
-                    <span
-                      aria-label="Unread"
-                      className="mt-3 h-2.5 w-2.5 shrink-0 rounded-full bg-[#2678b9]"
-                    />
-                  )}
-                </button>
+                    {!item.read_at && <span aria-label="Unread" className="mt-3 h-2.5 w-2.5 shrink-0 rounded-full bg-[#2678b9]" />}
+                  </button>
+                )}
               </li>
             ))}
           </ul>
         )}
       </div>
 
-      <div className="border-t border-slate-100 p-2">
+      <div className="shrink-0 border-t border-slate-100 p-2">
         <button
           type="button"
           onClick={onViewAll}

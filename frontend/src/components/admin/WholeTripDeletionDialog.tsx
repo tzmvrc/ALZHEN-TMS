@@ -46,7 +46,7 @@ function Confirmation({token,tripIds,onClose,onDeleted}:Props){
   }catch(e){if(!committed&&active.current){const message=wholeTripDeletionErrorMessage(e);setError(message);toast?.addToast({notificationKey,title:"Unable to delete trip",description:message,variant:"error",duration:4500});}}
   finally{inFlight.current=false;if(active.current){setBusy(false);}}
  };
- return <div className="fixed inset-0 z-[2200] flex items-center justify-center bg-slate-900/30 p-4"><section
+ return <div className="fixed inset-0 z-[2200] flex items-center justify-center p-4 al-modal-backdrop"><section
   ref={dialog} tabIndex={-1} role="alertdialog" aria-modal="true" aria-busy={busy} aria-labelledby="whole-trip-delete-title" aria-describedby="whole-trip-delete-warning"
   onKeyDown={event=>{
    if(event.key==="Escape"){event.stopPropagation();event.preventDefault();if(!busy)close();}

@@ -35,7 +35,7 @@ export default function TripTablePreview({ rows, title, description, productColu
   const start = (currentPage - 1) * 50;
   return <section aria-label={title} className="min-w-0 space-y-3 rounded-xl border border-slate-200 bg-white p-3 sm:p-4">
     <div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h4 className="text-sm font-semibold text-[#0b2341]">{title}</h4><span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">Not saved</span></div><p className="mt-1 text-xs leading-5 text-slate-500">{description}</p></div><button type="button" aria-pressed={showAll} onClick={() => setShowAll(value => !value)} className="shrink-0 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-medium text-[#2678b9] hover:bg-slate-50">{showAll ? "Show key columns" : "Show all columns"}</button></div>
-    <div className={`${tableUi.shell} !rounded-lg border border-slate-200 !shadow-none !ring-0`}>
+    <div className={`${tableUi.shell} !shadow-none !ring-0`}>
       <div className="max-h-80 overflow-auto focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-blue-400" tabIndex={0} role="region" aria-label={`${title} rows`}>
         <table style={{ tableLayout: "fixed", width: 56 + visibleColumns.reduce((sum, column) => sum + width(column.key), 0), minWidth: "100%" }} className="text-left text-xs" aria-label={title}>
           <colgroup><col style={{ width: 56 }} />{visibleColumns.map(column => <col key={column.key} style={{ width: width(column.key) }} />)}</colgroup>

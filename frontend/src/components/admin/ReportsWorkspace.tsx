@@ -5,6 +5,7 @@ import RetainedFeature from "./RetainedFeature";
 import { useAuth } from "../../context/AuthContext";
 import { workspaceSheet, WORKSPACE_SHEETS, type WorkspaceSheet } from "../../services/trips-workspace";
 import { setPageSection } from "./pageSection";
+import {useStoredPageView} from "./topbarView";
 
 type Props = ComponentProps<typeof ReportDataView>;
 // Active-tab changes should not rerender every previously visited grid. Activity
@@ -12,6 +13,7 @@ type Props = ComponentProps<typeof ReportDataView>;
 const WorkspaceReport = memo(lazy(()=>import("./ReportDataView")));
 const WorkspaceTracker = memo(lazy(()=>import("./TransmittalTrackerView")));
 const SHEET_TABS = [...WORKSPACE_SHEETS, {key:"transmittal" as const,title:"Transmittal Tracker",description:"Monitor delivery documents, transmittal references, and shipping progress."}];
+const REPORT_VIEW_MODES = ["visual", "table"] as const;
 
 /** One retained physical report instance per sheet; no data/model merging. */
 export default function ReportsWorkspace(props: Props) {
@@ -46,9 +48,13 @@ export default function ReportsWorkspace(props: Props) {
 
   const footerContext=useMemo(()=>({activeSheet:active,registerHiddenColumns}),[active,registerHiddenColumns]);
   const activeTitle=SHEET_TABS.find(sheet=>sheet.key===active)!.title;
+  const [activeView]=useStoredPageView(`trips:${activeTitle}`, "table", REPORT_VIEW_MODES);
+  const cardView=active!=="transmittal"&&activeView==="visual";
   useEffect(()=>setPageSection("trips",activeTitle),[activeTitle]);
   return <section ref={workspaceRef} data-trips-workspace aria-label="Trips spreadsheet workspace" className="min-w-0">
+    {props.toolbarActions}
     <SpreadsheetSheetHeader title={activeTitle} />
+    <div className={cardView ? "min-w-0" : "al-table-shell min-w-0 overflow-hidden rounded-[18px] border border-[#e4e9f0] bg-white"}>
     <SpreadsheetBottomControlsContext.Provider value={footerContext}>
     {WORKSPACE_SHEETS.map(sheet => <RetainedFeature key={sheet.key} active={active === sheet.key}>
       <div role="tabpanel" id={`trip-sheet-${sheet.key}`} aria-labelledby={`trip-tab-${sheet.key}`}>
@@ -56,13 +62,12 @@ export default function ReportsWorkspace(props: Props) {
           transactionView={sheet.key === "trips"} allTripRecords={sheet.key === "trips"} ongoingOnly={sheet.key === "trips" ? false : props.ongoingOnly} showReportPicker={false} showExport
           notificationTarget={props.notificationTarget?.reportKey === sheet.report || sheet.key === "trips" && props.notificationTarget?.reportKey === "combined" ? {...props.notificationTarget!,reportKey:sheet.report} : null}
           onReportScopeChange={undefined} toolbarLeading={undefined}
-          toolbarActions={sheet.key === "trips" ? props.toolbarActions : undefined}
           createdTripReference={sheet.key === "trips" ? props.createdTripReference : undefined} />
       </div>
     </RetainedFeature>)}
     <RetainedFeature active={active === "transmittal"}><div role="tabpanel" id="trip-sheet-transmittal" aria-labelledby="trip-tab-transmittal"><WorkspaceTracker /></div></RetainedFeature>
     </SpreadsheetBottomControlsContext.Provider>
-    <SpreadsheetBottomToolbar workspace={workspaceRef} sheet={active} hiddenColumnsControl={footerHiddenColumns?.sheet===active?footerHiddenColumns.control:null}>
+    {!cardView && <SpreadsheetBottomToolbar workspace={workspaceRef} sheet={active} hiddenColumnsControl={footerHiddenColumns?.sheet===active?footerHiddenColumns.control:null}>
     <nav data-sheet-tabs role="tablist" aria-label="Trip workspace sheets" className="flex min-w-0 flex-1 flex-nowrap items-stretch overflow-x-auto overflow-y-hidden whitespace-nowrap">
       {SHEET_TABS.map(sheet => <button key={sheet.key} id={`trip-tab-${sheet.key}`} role="tab" aria-selected={active === sheet.key} aria-controls={`trip-sheet-${sheet.key}`} type="button" onClick={() => choose(sheet.key)} onKeyDown={event => {
         if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
@@ -71,6 +76,7 @@ export default function ReportsWorkspace(props: Props) {
         choose(SHEET_TABS[next].key); document.getElementById(`trip-tab-${SHEET_TABS[next].key}`)?.focus();
       }} className={`relative flex-none whitespace-nowrap border-b-2 px-3 py-1 text-[11px] leading-5 focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-[#0b2343] ${active === sheet.key ? "border-[#0b2343] bg-white font-semibold text-[#0b2343]" : "border-transparent bg-[#f3f5f8] text-slate-500 hover:bg-white"}`}>{sheet.title}</button>)}
     </nav>
-    </SpreadsheetBottomToolbar>
+    </SpreadsheetBottomToolbar>}
+    </div>
   </section>;
 }

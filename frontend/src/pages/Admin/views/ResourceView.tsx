@@ -20,6 +20,7 @@ const TruckersView=lazy(()=>import("./TruckersView"));
 import { createTrip } from "../../../services/trip.service";
 import { useToast } from "../../../components/ui/Toast";
 import { useRegisterTopbarAction } from "../../../components/admin/topbarActions";
+import { WORKSPACE_SHEETS } from "../../../services/trips-workspace";
 import type {NewTripPayload} from "../../../components/admin/AddTripForm";
 const AddTripForm=lazy(()=>import("../../../components/admin/AddTripForm"));
 import type { AdminNotificationTarget } from "../../../services/notification.service";
@@ -504,7 +505,6 @@ export default memo(ResourceView);
 
 function AddTripButton({ onCreated }: { onCreated: (reference: string) => void }) {
   const [open, setOpen] = useState(false);
-  useRegisterTopbarAction("trips:Master List", "add", { label: "Add Trip", onClick: () => setOpen(true) });
   const { addToast } = useToast();
 
   const { accessToken } = useAuth();
@@ -522,9 +522,15 @@ function AddTripButton({ onCreated }: { onCreated: (reference: string) => void }
 
   return (
     <>
-      {open && <Suspense fallback={<div role="status" aria-label="Opening trip form" className="fixed inset-0 z-50 bg-slate-900/10"/>}><AddTripForm onClose={() => setOpen(false)} onSubmit={createTripHandler} onImported={() => window.dispatchEvent(new Event("alzhen:trip-imported"))} /></Suspense>}
+      {WORKSPACE_SHEETS.map((sheet) => <AddTripActionRegistration key={sheet.key} scope={`trips:${sheet.title}`} onClick={() => setOpen(true)} />)}
+      {open && <Suspense fallback={<div role="status" aria-label="Opening trip form" className="fixed inset-0 z-50 al-modal-backdrop"/>}><AddTripForm onClose={() => setOpen(false)} onSubmit={createTripHandler} onImported={() => window.dispatchEvent(new Event("alzhen:trip-imported"))} /></Suspense>}
     </>
   );
+}
+
+function AddTripActionRegistration({ scope, onClick }: { scope: string; onClick: () => void }) {
+  useRegisterTopbarAction(scope, "add", { label: "Add Trip", onClick });
+  return null;
 }
 
 function BillingFilterBar({
