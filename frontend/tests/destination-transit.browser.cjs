@@ -1,0 +1,29 @@
+const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
+const assert=require('node:assert/strict');
+(async()=>{
+ const browser=await chromium.launch({headless:true,executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe'}),page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[],writes=[];await page.context().grantPermissions(['geolocation']);await page.context().setGeolocation({latitude:14,longitude:121,accuracy:10});page.setDefaultTimeout(12000);page.on('pageerror',e=>errors.push(e.message));
+ const id=n=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`,time=h=>`2026-10-29T${String(h).padStart(2,'0')}:00:00Z`;
+ const ws={assignment:{id:id(1),trip_id:id(2),truck:{plate_number:'ISOLATED',truck_type:'10W'},trip:{dispatch_number:'SAFE FIXTURE',status:'IN_PROGRESS'}},stops:[1,2,3].map(n=>({id:id(10+n),stop_sequence:n,dr_number:'DR-'+n,store:{name:'Destination '+n}})),cargo:[],warehouse:{name:'Origin'},milestones:[...['WAREHOUSE_ARRIVAL','LOADING_STARTED','LOADING_FINISHED','WAREHOUSE_DEPARTURE'].map((type,i)=>({id:id(20+i),event_type:type,event_time:time(i),trip_stop_id:null})),...[1,2].map(n=>({id:id(30+n),event_type:'STOP_DEPARTURE',event_time:time(n+3),trip_stop_id:id(10+n)}))],pods:[]};
+ await page.route('**/src/context/AuthContext.tsx*',r=>r.fulfill({contentType:'text/javascript',body:`const profile={id:'${id(3)}',role:'TRUCKER',first_name:'Fixture',last_name:'Driver'};export const useAuth=()=>({profile,accessToken:'isolated'});`}));
+ await page.route('**/src/components/ui/Toast.tsx*',r=>r.fulfill({contentType:'text/javascript',body:'const addToast=()=>{};export const useToast=()=>({addToast});'}));
+ await page.route('**/src/components/admin/LocationSharing.tsx*',r=>r.fulfill({contentType:'text/javascript',body:'export default function Fixture(){return null;}'}));
+ await page.route('**/src/services/collaboration.service.ts*',r=>r.fulfill({contentType:'text/javascript',body:'export const subscribeCollaborationEvents=()=>()=>{};export const joinCollaborationRoom=()=>()=>{};'}));
+ await page.route('**/api/**',async r=>{
+  const path=new URL(r.request().url()).pathname,method=r.request().method();let data=null;
+  if(method==='POST'){assert(path.endsWith('/events'));const input=r.request().postDataJSON();assert.equal(input.type,'IN_TRANSIT');assert.equal(input.stop_id,id(13));assert.ok(r.request().headers()['idempotency-key']);writes.push(input);data={id:id(40),trip_id:id(2),assignment_id:id(1),trip_stop_id:id(13),event_type:'IN_TRANSIT',event_time:time(7),created_at:time(7),delivery_metadata:{},attachments:[]};ws.milestones.push(data);}
+  else if(path.endsWith('/notifications'))data={notifications:[],unreadCount:0};
+  else if(path.endsWith('/receipts'))data=[];
+  else if(path.endsWith('/events'))data={rows:ws.milestones.map(e=>({...e,trip_id:id(2),assignment_id:id(1),attachments:[],delivery_metadata:{}})).reverse(),next:null};
+  else if(path.includes('/submissions/'))data=null;
+  else data=ws;
+  await r.fulfill({contentType:'application/json',body:JSON.stringify({success:true,data})});
+ });
+ const mount=async()=>page.evaluate(async()=>{const source=await(await fetch('/src/main.tsx')).text(),driver=await(await fetch('/src/pages/Driver/DeliveryCompanion.tsx')).text(),React=(await import(source.match(/from ["']([^"']*\/react\.js[^"']*)["']/)[1])).default,DOM=await import(source.match(/from ["']([^"']*react-dom_client\.js[^"']*)["']/)[1]),router=await import(driver.match(/from ["']([^"']*react-router-dom[^"']*)["']/)[1]);await import('/src/index.css');const {default:Companion}=await import('/src/pages/Driver/DeliveryCompanion.tsx');(DOM.createRoot??DOM.default.createRoot)(document.body.appendChild(document.createElement('div'))).render(React.createElement(router.BrowserRouter,null,React.createElement(Companion)));const service=await import('/src/services/delivery.service.ts');service.cacheDeliveryGps('00000000-0000-4000-8000-000000000001',{latitude:14,longitude:121,accuracy_meters:10,captured_at:new Date().toISOString()});});
+ try{
+  await page.goto('http://localhost:5173/tests/table-fixture.html');await mount();const panel=page.getByRole('region',{name:'Next delivery action'});await panel.getByRole('button',{name:'On the Way',exact:true}).waitFor();assert.equal(writes.length,0);
+  await panel.getByRole('button',{name:'On the Way',exact:true}).click();const sheet=page.getByRole('dialog',{name:'On the Way',exact:true});await sheet.waitFor();await sheet.locator('.delivery-sheet-footer .delivery-primary').click();await sheet.waitFor({state:'hidden'});await panel.getByRole('button',{name:'Share My Location',exact:true}).click();await panel.getByRole('button',{name:'Arrived at Delivery Stop',exact:true}).waitFor();assert.equal(writes.length,1);assert.equal(await panel.locator('h2').innerText(),'On the Way');
+  assert.equal(await page.evaluate(async()=>{const {readDeliveryOutbox}=await import('/src/services/delivery-outbox.ts');return(await readDeliveryOutbox('00000000-0000-4000-8000-000000000003')).length;}),0);
+  await page.reload();await mount();await panel.getByRole('button',{name:'Share My Location',exact:true}).click();await panel.getByRole('button',{name:'Arrived at Delivery Stop',exact:true}).waitFor();assert.equal(writes.length,1);await page.setViewportSize({width:390,height:844});assert.equal(await panel.evaluate(n=>n.scrollWidth<=n.clientWidth),true);
+  assert.deepEqual(errors,[]);console.log(JSON.stringify({passed:true,checks:['Stop 2 completion requires explicit On the Way for Stop 3','outbox sends exact stop/assignment and one idempotency key','server acknowledgement clears queue and advances to Arrived','current stage and refresh retain explicit On the Way','mobile action fits viewport'],fixtureWrites:writes.length,productionWrites:0},null,2));
+ }finally{await browser.close();}
+})().catch(e=>{console.error(e);process.exitCode=1;});

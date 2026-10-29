@@ -1,0 +1,10 @@
+import {useEffect,useRef,useState} from 'react';
+import {File,Image as ImageIcon} from 'lucide-react';
+import {apiGetCached,type ApiResponse} from '../../services/api.service';
+export default function StorageThumbnail({token,bucket,file,onOpen}:{token:string;bucket:string;file:{id:string;name:string;mime_type:string|null};onOpen?:()=>void}){
+ const ref=useRef<HTMLSpanElement>(null),[visible,setVisible]=useState(false),[url,setUrl]=useState(''),[failed,setFailed]=useState(false),image=!!file.mime_type?.startsWith('image/'),supported=/^image\/(jpeg|png|webp|avif|gif)$/.test(file.mime_type??'');
+ useEffect(()=>{const node=ref.current;if(!node||!supported)return;if(!('IntersectionObserver' in window)){setVisible(true);return;}const observer=new IntersectionObserver(entries=>{if(entries.some(e=>e.isIntersecting)){setVisible(true);observer.disconnect();}},{rootMargin:'64px'});observer.observe(node);return()=>observer.disconnect();},[supported]);
+ useEffect(()=>{if(!visible||!supported)return;let live=true;void apiGetCached<ApiResponse<{url:string}>>(`/storage-management/buckets/${encodeURIComponent(bucket)}/objects/${file.id}/preview?thumbnail=1`,token,240000).then(r=>{if(live&&r.success&&r.data)setUrl(r.data.url);}).catch(()=>{if(live)setFailed(true);});return()=>{live=false;};},[visible,supported,token,bucket,file.id]);
+ const content=<span ref={ref} className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-slate-50 text-slate-400">{url&&!failed?<img src={url} alt={file.name} loading="lazy" decoding="async" width={40} height={40} onError={()=>setFailed(true)} className="h-full w-full object-contain"/>:image?<ImageIcon size={19} aria-hidden/>:<File size={19} aria-hidden/>}</span>;
+ return image&&onOpen?<button type="button" onClick={onOpen} aria-label={`Preview thumbnail ${file.name}`} className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg focus-visible:outline-2 focus-visible:outline-blue-500">{content}</button>:content;
+}

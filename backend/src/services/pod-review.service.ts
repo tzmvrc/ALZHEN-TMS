@@ -3,6 +3,7 @@ import { ApiError } from "../utils/api-response.js";
 import { isValidUuid } from "../utils/validation.js";
 import { POD_FIELDS } from "./pod-interpretation.service.js";
 import { getSignedTripReceipt } from "./trip-receipt.service.js";
+import {collaborationEvents} from './collaboration-events.js';
 
 type Actor = {profileId:string;role:string};
 export const podReviewEnabled = () => process.env.POD_REVIEW_ENABLED === "true";
@@ -40,10 +41,10 @@ export async function decidePodReceipt(actor:Actor,tripId:string,receiptId:strin
   if(!podReviewEnabled())throw new ApiError("POD approval is awaiting the approved database migration. OCR/manual verification remains available.",503,"POD_REVIEW_DISABLED");
   if(!isValidUuid(tripId)||!isValidUuid(receiptId))throw new ApiError("Invalid receipt or trip ID.",400,"POD_REVIEW_INVALID");
   const decision=validatePodDecision(input);
-  const {data:receipt,error:readError}=await supabaseAdmin.from("trip_images").select("id,trip_id,trip_stop_id,kind").eq("id",receiptId).eq("trip_id",tripId).eq("kind","receipt").maybeSingle();
+  const {data:receipt,error:readError}=await supabaseAdmin.from("trip_images").select("id,trip_id,trip_stop_id,kind,delivery_event_id").eq("id",receiptId).eq("trip_id",tripId).eq("kind","receipt").maybeSingle();
   if(readError)throw new ApiError("Unable to verify the selected receipt.",503,"POD_REVIEW_UNCONFIRMED");
   if(!receipt?.trip_stop_id)throw new ApiError("A receipt linked to an exact transaction is required.",404,"POD_RECEIPT_NOT_FOUND");
-  const {data,error}=await supabaseAdmin.rpc("review_pod_receipt_v1",{
+  const {data,error}=await supabaseAdmin.rpc(receipt.delivery_event_id?"review_pod_submission_v1":"review_pod_receipt_v1",{
     p_actor_id:actor.profileId,p_request_id:decision.request_id,p_trip_id:tripId,p_stop_id:receipt.trip_stop_id,p_receipt_id:receiptId,
     p_expected_review_version:decision.expected_review_version,p_expected_ocr_version:decision.expected_ocr_version,
     p_decision:decision.decision,p_reason:decision.reason,p_reviewed_fields:decision.reviewed_fields,p_pod_record_id:decision.pod_record_id,
@@ -61,5 +62,6 @@ export async function decidePodReceipt(actor:Actor,tripId:string,receiptId:strin
   // a locally invented status; a failed read is safe to retry with the same ID.
   const updated=await getSignedTripReceipt(tripId,receiptId);
   if(!updated)throw new ApiError("Decision may be saved; reload or retry the same request before continuing.",503,"POD_REVIEW_UNCONFIRMED");
+  collaborationEvents.emit('commit',{source:'pod_review_events',recordId:data.event_id,tripId,stopId:receipt.trip_stop_id,version:null,fields:[],actorId:actor.profileId,eventId:`pod-review:${data.event_id}`,operation:'INSERT'});
   return {outcome:data,receipt:updated};
 }

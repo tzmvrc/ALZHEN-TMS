@@ -1,3 +1,4 @@
+import storageManagementRoutes from './routes/storage-management.routes.js';
 import operationalEmailRoutes from './routes/operational-email.routes.js';
 import {reportReadTiming} from "./utils/report-read-timing.js";
 import express from "express";
@@ -56,6 +57,7 @@ app.use("/api/notifications", notificationRoutes);
 app.use("/api/operational-emails", operationalEmailRoutes);
 app.use("/api/tracking", trackingRoutes);
 app.use("/api/delivery", deliveryRoutes);
+app.use("/api/storage-management",storageManagementRoutes);
 app.use("/api/master-data", masterDataRoutes);
 app.use("/api/calendar", calendarRoutes);
 app.use("/api/flexible-tables", flexibleTableRoutes);

@@ -60,6 +60,7 @@ type BookingPage = {
 type DetailState = {
   trip: TripRecord;
   assignments: TripAssignmentRecord[];
+  assignmentsReady?: boolean;
   stops: TripChildRecord[];
   lineItems: TripChildRecord[];
   events: TripEvent[];
@@ -537,6 +538,12 @@ export default function TripDetailView({
     const generation=apiCacheGeneration();
     void (async () => {
       try {
+        // Start the small selector read alongside the core trip request. Capture
+        // rejection immediately while the authorized trip response is pending.
+        const assignmentRead = fetchTripAssignments(accessToken, tripId).then(
+          value => ({ status: 'fulfilled' as const, value }),
+          reason => ({ status: 'rejected' as const, reason }),
+        );
         const tripResponse = await fetchTripDetail(accessToken, tripId);
         if(!active)return;
         const cached=previousDetail.current.scope===scope?previousDetail.current.value:null;
@@ -545,7 +552,14 @@ export default function TripDetailView({
         const [stopsResult, itemsResult, assignmentsResult, eventsResult, operationsResult] = await Promise.allSettled([
           fetchTripStops(accessToken, tripId),
           fetchTripLineItems(accessToken, tripId),
-          fetchTripAssignments(accessToken, tripId),
+          assignmentRead.then(result => {
+            if (result.status === 'rejected') throw result.reason;
+            // Publish independently of cargo, events and operational reports.
+            if (active) setDetailState(current => current.scope === scope && current.value
+              ? { ...current, value: { ...current.value, assignments: result.value, assignmentsReady: true } }
+              : current);
+            return result.value;
+          }),
           fetchTripEvents(accessToken, tripId),
           fetchTripOperations(accessToken, tripId, "metadata"),
         ]);
@@ -582,6 +596,7 @@ export default function TripDetailView({
             trip_type: tripResponse.trip_type?.name,
           },
           assignments,
+          assignmentsReady: assignmentsResult.status === 'fulfilled' || previous?.assignmentsReady,
           stops,
           lineItems,
           events,
@@ -754,7 +769,7 @@ export default function TripDetailView({
         </p>
       )}
 
-      {trip&&<TripTrackingWorkspace trip={trip} assignments={assignments} stops={stops} events={orderedEvents} origin={originName} destination={destinationText} progress={progress} totalCbm={totalCbm} totalQty={totalQty} onManage={id=>{setConvoyInitial(id);setConvoyOpen(true);}} refreshKey={retry} loading={isLoading} operations={detail?.operations??null} bookingRows={bookingRows} operationsError={detail?.sectionErrors.find(message=>message.startsWith('Operational reports:'))} onOpenReport={openReportSection}/>}
+      {trip&&<TripTrackingWorkspace trip={trip} assignments={assignments} assignmentsLoading={!detail?.assignmentsReady&&isLoading} stops={stops} events={orderedEvents} origin={originName} destination={destinationText} progress={progress} totalCbm={totalCbm} totalQty={totalQty} onManage={id=>{setConvoyInitial(id);setConvoyOpen(true);}} refreshKey={retry} loading={isLoading} operations={detail?.operations??null} bookingRows={bookingRows} operationsError={detail?.sectionErrors.find(message=>message.startsWith('Operational reports:'))} onOpenReport={openReportSection}/>}
       {library==='operations'&&<TripWorkspaceDialog title="Operational report management" onClose={()=>setLibrary(null)}><p className="trip-empty-note">Reports are initially searched by this dispatch. Shared historical records retain their original scope.</p><Suspense fallback={<p role="status">Loading reports...</p>}><OperationsReportsView mode="management" initialSearch={dispatchNumber} onOpenTrip={(id,stopId)=>{setLibrary(null);const params=new URLSearchParams(id===tripId?window.location.search:'');params.delete('event');if(stopId)params.set('stop',stopId);navigate(`/trips/${encodeURIComponent(id)}${params.size?`?${params}`:''}`);}}/></Suspense></TripWorkspaceDialog>}
 
       {/* Products / stops / activity beside trip photos */}

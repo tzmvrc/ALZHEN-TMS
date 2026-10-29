@@ -27,6 +27,7 @@ export default function TruckerDetailDrawer({
   trucker: {
     id: string;
     driver_id?: string;
+    profile_id?: string;crew_role?:"DRIVER"|"HELPER";
     full_name: string;
     status: string | null;
     contact_number: string | null;
@@ -92,7 +93,7 @@ export default function TruckerDetailDrawer({
               {canAssignTruck && <button type="button" onClick={() => { setAssigning(value => !value); setAssignmentNotice(""); }} disabled={savingAssignment} aria-expanded={assigning} className="inline-flex items-center gap-2 rounded-full bg-[#ffd43b] px-3 py-2 text-xs font-semibold text-[#0b2341]"><Plus className="h-3.5 w-3.5" />Assign truck</button>}
             </div></div>
             {assignmentNotice && <p role="status" className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-800">{assignmentNotice}</p>}
-            {assigning && <DriverTruckAssignmentForm driverId={trucker.driver_id ?? trucker.id} onCancel={() => setAssigning(false)} onBusyChange={setSavingAssignment} onSaved={() => { setAssigning(false); setAssignmentNotice("Current truck assignment updated."); onAssigned?.(); }} />}
+            {assigning && trucker.profile_id && <DriverTruckAssignmentForm profileId={trucker.profile_id} onCancel={() => setAssigning(false)} onBusyChange={setSavingAssignment} onSaved={() => { setAssignmentNotice("Truck crew updated."); onAssigned?.(); }} />}
           </section>}
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
             <section className="rounded-2xl border border-slate-200/80 bg-white p-3.5">

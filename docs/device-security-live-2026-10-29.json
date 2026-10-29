@@ -1,0 +1,48 @@
+{
+  "tag": "mvtg7fdi",
+  "checks": [
+    "Laptop A first login queues once; validation/refresh and repeat login do not duplicate",
+    "Concurrent Laptop B sign-ins queue once despite identical Chrome/Windows metadata; Active Sessions includes both devices",
+    "Laptop C queues another alert; explicit device forget permits a fresh Laptop A alert",
+    "Driver and Helper device histories are independent; Driver second device revokes prior Driver session only",
+    "Configured SMTP provider accepted all four account-addressed alerts; durable states are SENT"
+  ],
+  "smtp": [
+    {
+      "id": "243a9e63-47d5-4340-b1c0-378c94a7e3cf",
+      "state": "SENT",
+      "error_code": null
+    },
+    {
+      "id": "fd9ab9d3-3076-428b-8cd0-5b66ed1be513",
+      "state": "SENT",
+      "error_code": null
+    },
+    {
+      "id": "c0f66173-8314-4f8a-b921-91832bff0c74",
+      "state": "SENT",
+      "error_code": null
+    },
+    {
+      "id": "70033117-b5f4-419d-8075-f28344c65691",
+      "state": "SENT",
+      "error_code": null
+    }
+  ],
+  "inbox": "Confirmed in INBOX by exact Message-ID",
+  "accountIds": [
+    {
+      "id": "2e53c73a-5fa0-48fe-aab6-cc306c75ed25",
+      "label": "staff"
+    },
+    {
+      "id": "f1112f17-e24f-4400-9814-70e079e7adbe",
+      "label": "driver"
+    },
+    {
+      "id": "88ba3111-0fba-4d36-96c1-3a2689f4bc8b",
+      "label": "helper"
+    }
+  ],
+  "cleanedUp": true
+}

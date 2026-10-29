@@ -1,3 +1,5 @@
+import {userAssignmentOptions,changeUserAssignment} from '../services/user-assignment.service.js';
+import {helperAssignmentOptions,changeHelperAssignment} from '../services/helper-assignment.service.js';
 import {accountOverview} from "../services/account-overview.service.js";
 import {changeAccountPassword} from "../services/account-security.service.js";
 import {ApiError} from "../utils/api-response.js";
@@ -17,6 +19,10 @@ router.get('/directory',authMiddleware,requireRole('ADMIN','STAFF'),handle(req=>
 router.post('/delete-records',authMiddleware,requireRole('ADMIN'),handle(req=>users.deactivateUsers(actor(req),req.body?.ids)));
 router.get('/drivers/:driverId/available-trucks',authMiddleware,requireRole('ADMIN','STAFF'),handle(req=>users.availableDriverTrucks(actor(req),String(req.params.driverId),req.query)));
 router.put('/drivers/:driverId/current-truck',authMiddleware,requireRole('ADMIN','STAFF'),handle(req=>users.currentDriverTruck(actor(req),String(req.params.driverId),req.body?.truck_id)));
+router.get('/:id/assignment-options',authMiddleware,requireRole('ADMIN','STAFF'),handle(req=>userAssignmentOptions(actor(req),String(req.params.id),req.query)));
+router.put('/:id/assignment',authMiddleware,requireRole('ADMIN','STAFF'),handle(req=>changeUserAssignment(actor(req),String(req.params.id),req.body??{})));
+router.get('/:id/crew-options',authMiddleware,requireRole('ADMIN'),handle(req=>helperAssignmentOptions(actor(req),String(req.params.id),req.query)));
+router.put('/:id/crew-assignment',authMiddleware,requireRole('ADMIN'),handle(req=>changeHelperAssignment(actor(req),String(req.params.id),req.body??{})));
 router.get('/:id/profile',authMiddleware,handle(req=>users.profileRecord(actor(req),String(req.params.id))));
 router.patch('/:id/profile',authMiddleware,handle(req=>users.patchProfile(actor(req),String(req.params.id),req.body??{})));
 router.get('/:id/activity',authMiddleware,handle(req=>users.userActivity(actor(req),String(req.params.id),req.query)));

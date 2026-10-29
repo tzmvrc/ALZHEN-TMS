@@ -7,6 +7,7 @@ async(page)=>{
  page.on('pageerror',e=>errors.push(e.message));
  await page.route('**/src/context/AuthContext.tsx*',r=>r.fulfill({contentType:'text/javascript',body:"const auth={profile:{id:'fixture',role:'ADMIN'},accessToken:'fixture'};export const useAuth=()=>auth;"}));
  await page.route('**/src/services/collaboration.service.ts*',r=>r.fulfill({contentType:'text/javascript',body:"const listeners=new Set();window.emitPodFixture=e=>listeners.forEach(f=>f(e));export const subscribeCollaborationEvents=f=>{listeners.add(f);return()=>listeners.delete(f)};export const collaborationSnapshot=()=>({bridgeHealthy:true,connected:true});export const joinCollaborationRoom=()=>()=>{};"}));
+ await page.route('**/src/services/realtime.service.ts*',r=>r.fulfill({contentType:'text/javascript',body:'export const subscribeToAdminRealtime=()=>()=>{};'}));
  for(const path of ['admin/RoadRoutingPanel','delivery/DeliveryCargoSummary'])await page.route(`**/src/components/${path}.tsx*`,r=>r.fulfill({contentType:'text/javascript',body:'export default function Review(){return null}'}));
  await page.route('**/api/**',async r=>{
   const req=r.request(),u=new URL(req.url()),path=u.pathname;let data=[];
@@ -17,6 +18,7 @@ async(page)=>{
    else throw Error('Unexpected write '+path);
   }else if(path.endsWith('/convoy'))data={assignments,stops,cargo:[],allocations:[],responsibilities:[]};
   else if(path.endsWith('/events'))data=eventRows;
+  else if(path.includes('/delivery/assignments/'))data={assignment:assignments[0],cargo:[],stops:[{id:stop,store:{name:'Fixture destination'}}],milestones:[],pods:[]};
   else if(path.endsWith('/receipts'))data=receipts;
   else if(path.endsWith('/pod-review-capabilities'))data={enabled:true};
   else if(path.includes('/reports/operations/trips/'))data=ops;
@@ -31,9 +33,9 @@ async(page)=>{
  const progressBar=page.getByRole('progressbar',{name:'Overall delivery progress'});await progressBar.waitFor();assert(await progressBar.getAttribute('aria-valuenow')==='0','Planned milestones should show zero');
  eventRows=[{id:id(80),trip_id:trip,assignment_id:assignment,trip_stop_id:null,event_type:'WAREHOUSE_ARRIVAL',event_time:'2026-10-27T01:00:00Z'}];await page.evaluate(trip=>window.emitPodFixture({kind:'commit',commit:{tripId:trip,source:'trip_events'}}),trip);await page.waitForFunction(()=>document.querySelector('[aria-label="Overall delivery progress"]')?.getAttribute('aria-valuenow')==='5');
  eventRows.push({id:id(81),trip_id:trip,assignment_id:assignment,trip_stop_id:stop,event_type:'CUSTOM_STATUS',event_time:'2026-10-27T01:01:00Z',delivery_metadata:{title:'Traffic'}});await page.evaluate(trip=>window.emitPodFixture({kind:'commit',commit:{tripId:trip,source:'trip_events'}}),trip);await page.waitForTimeout(500);assert(await progressBar.getAttribute('aria-valuenow')==='5','Custom status increased progress');
- const panel=page.locator('.trip-pod-review');await panel.getByRole('combobox',{name:'POD document',exact:true}).waitFor();
+ const panel=page.locator('.trip-pod-review');await panel.getByRole('tablist',{name:'POD submissions',exact:true}).waitFor();
  assert(await page.getByRole('navigation',{name:'Trip management actions'}).getByRole('button',{name:/POD review/i}).count()===0,'Old toolbar POD review remains');
- assert(await panel.getByRole('combobox').locator('option').count()===2,'Other truck document leaked into selected assignment');
+ assert(await panel.getByRole('tablist',{name:'POD submissions'}).getByRole('tab').count()===2,'Other truck document leaked into selected assignment');
  await panel.getByText('Fixture Driver',{exact:true}).waitFor();await panel.getByRole('button',{name:'Enlarge POD document',exact:true}).click();const viewer=page.getByRole('dialog',{name:'Evidence image preview',exact:true});await viewer.waitFor();
  for(const size of [{width:1440,height:1000},{width:320,height:600},{width:390,height:700},{width:768,height:800}]){await page.setViewportSize(size);assert(await viewer.evaluate(e=>{const r=e.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth&&r.top>=0&&r.bottom<=innerHeight&&Math.abs((r.left+r.right)/2-innerWidth/2)<2&&Math.abs((r.top+r.bottom)/2-innerHeight/2)<2}),'Viewer not centered/fitted '+size.width);}
  await page.setViewportSize({width:390,height:800});const gestureStage=viewer.locator('.al-image-stage');await gestureStage.locator('img').evaluate(img=>img.decode());await gestureStage.hover();await page.mouse.wheel(0,-180);await page.waitForTimeout(100);assert(parseInt(await viewer.locator('output').textContent())>100,'Wheel zoom failed');await viewer.getByRole('button',{name:'Reset zoom',exact:true}).click();
@@ -41,12 +43,12 @@ async(page)=>{
  await viewer.getByRole('button',{name:'Zoom in',exact:true}).click();await viewer.getByText('125%',{exact:true}).waitFor();
  const stage=viewer.locator('.al-image-stage'),bounds=await stage.boundingBox();await page.mouse.move(bounds.x+bounds.width/2,bounds.y+bounds.height/2);await page.mouse.down();await page.mouse.move(bounds.x+bounds.width/2+25,bounds.y+bounds.height/2+25);await page.mouse.up();assert(await stage.locator('img').evaluate(e=>Math.abs(new DOMMatrixReadOnly(getComputedStyle(e).transform).m42)+Math.abs(new DOMMatrixReadOnly(getComputedStyle(e).transform).m41)>0),'Zoomed image did not pan');
  await viewer.getByRole('button',{name:'Reset zoom',exact:true}).click();await viewer.getByText('100%',{exact:true}).waitFor();await page.keyboard.press('Escape');await viewer.waitFor({state:'detached'});
- await page.setViewportSize({width:1440,height:1000});await panel.getByLabel('Receiver / signature',{exact:true}).fill('Verified Receiver');await panel.getByRole('button',{name:'Confirm receipt',exact:true}).click();await panel.getByText('Saved',{exact:true}).waitFor();
- await panel.getByRole('button',{name:'Approve POD',exact:true}).click();assert(writes.length===1,'Approval saved before confirmation');await panel.getByRole('button',{name:'Confirm decision',exact:true}).click();await panel.getByText('POD decision: APPROVED',{exact:true}).waitFor();
- await panel.getByRole('combobox',{name:'POD document'}).selectOption(id(11));await panel.getByText('Photo unavailable',{exact:true}).waitFor();await panel.getByRole('button',{name:'Reject POD',exact:true}).click();await panel.getByLabel('POD rejection reason',{exact:true}).fill('Fixture unreadable document');await panel.getByRole('button',{name:'Confirm decision',exact:true}).click();await panel.getByText('POD decision: REJECTED',{exact:true}).waitFor();
+ await page.setViewportSize({width:1440,height:1000});await panel.getByLabel('Receiver / signature',{exact:true}).fill('Verified Receiver');await panel.getByRole('button',{name:'Save receipt details',exact:true}).click();await panel.getByText('Receipt details saved',{exact:true}).waitFor();
+ await panel.getByRole('button',{name:'Confirm Receipt',exact:true}).click();assert(writes.length===1,'Approval saved before confirmation');await panel.getByRole('button',{name:'Confirm decision',exact:true}).click();await panel.locator('[data-pod-status=APPROVED]').waitFor();
+ await panel.getByRole('tablist',{name:'POD submissions'}).getByRole('tab').nth(1).click();await panel.getByText('Photo unavailable',{exact:true}).waitFor();await panel.getByRole('button',{name:'Reject POD',exact:true}).click();await panel.getByLabel('POD rejection reason',{exact:true}).fill('Fixture unreadable document');await panel.getByRole('button',{name:'Confirm decision',exact:true}).click();await panel.locator('[data-pod-status=REJECTED]').waitFor();
  // A missed image arriving later is reconciled from authoritative records.
  receipts[1].signed_url=image;await page.evaluate(trip=>window.emitPodFixture({kind:'commit',commit:{tripId:trip,source:'trip_images'}}),trip);await panel.getByRole('button',{name:'Enlarge POD document',exact:true}).waitFor();
  for(const width of [320,360,390,430,768]){await page.setViewportSize({width,height:800});assert(await panel.evaluate(e=>e.scrollWidth<=e.clientWidth+1),'Inline POD panel overflow '+width);}
- await page.setViewportSize({width:1440,height:1000});await panel.screenshot({path:'.playwright-mcp/pod-inline-review.png'});assert(errors.length===0,errors.join('; '));
+ await page.setViewportSize({width:1440,height:1000});await panel.screenshot({path:'.playwright-mcp/pod-completion/inline-review.png'});assert(errors.length===0,errors.join('; '));
  return {passed:true,productionWrites:0,writes:writes.map(w=>w.body.decision??'OCR'),checks:['inline two-column review','assignment isolation','uploader/DR metadata','milestone-based Realtime progress','centered mobile viewer','wheel and pinch zoom','zoom/pan/reset/Escape','OCR correction','approval/rejection confirmation','missing-file state','Realtime image recovery','responsive panel']};
 }

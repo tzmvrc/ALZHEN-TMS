@@ -6,6 +6,7 @@ export type CreateUserProfileInput = {
   first_name: string;
   last_name: string;
   role: "ADMIN" | "STAFF" | "TRUCKER";
+  crew_role?:"DRIVER"|"HELPER"|null;
   is_admin: boolean;
   created_by: string;
   profile_picture_path?: string | null;

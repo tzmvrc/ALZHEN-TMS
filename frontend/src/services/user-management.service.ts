@@ -2,12 +2,13 @@ import { apiGetCached, apiPatch, apiPost,invalidateApiCache,getCachedApiResponse
 import {fetchTruckers,getCachedTruckers,type TruckerListItem} from "./trucker.service";
 
 export type ManagedUser = {
+  crew_role?:"DRIVER"|"HELPER"|null;
   account_status?:string;deactivated_at?:string|null;
   id: string; first_name: string | null; last_name: string | null; role: "ADMIN" | "STAFF" | "TRUCKER";
   contact_number?:string|null; is_admin: boolean; email: string | null; profile_picture_path: string | null; profile_picture_url?: string | null;
   driver: { id: string; contact_number: string | null; license_number: string | null; trucking_company_id: string | null; status: string | null; notes: string | null } | null;
 };
-export type UserInput = { first_name: string; last_name: string; email: string; password?: string; role: "ADMIN" | "STAFF" | "TRUCKER"; is_admin: boolean; contact_number?: string; license_number?: string; trucking_company_id?: string | null; driver_status?: string; driver_notes?: string };
+export type UserInput = {crew_role?:string|null; first_name: string; last_name: string; email: string; password?: string; role: "ADMIN" | "STAFF" | "TRUCKER"; is_admin: boolean; contact_number?: string; license_number?: string; trucking_company_id?: string | null; driver_status?: string; driver_notes?: string };
 
 async function unwrap<T>(promise: Promise<ApiResponse<T>>, fallback: string) {
   const response = await promise;

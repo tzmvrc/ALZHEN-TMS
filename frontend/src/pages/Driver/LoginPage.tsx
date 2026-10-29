@@ -1,4 +1,5 @@
-import {rememberedEmail,rememberEmail} from '../../services/remembered-login';
+import RememberedAccountCard from '../../components/auth/RememberedAccountCard';
+import {rememberedEmail,rememberedAccount} from '../../services/remembered-login';
 import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { Eye, EyeOff } from "lucide-react";
@@ -10,11 +11,12 @@ export default function DriverLoginPage() {
   const navigate = useNavigate();
   const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState(rememberedEmail);
-  const [remember,setRemember]=useState(()=>Boolean(rememberedEmail()));
+  const [useAnother,setUseAnother]=useState(false);
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const { addToast } = useToast();
-  const { login } = useAuth();
+  const { login,profile,accessToken,loading } = useAuth();
+  const saved=rememberedAccount(),showQuick=!useAnother&&!!saved&&!loading&&!!accessToken&&profile?.id===saved.id;
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -35,7 +37,7 @@ export default function DriverLoginPage() {
 
     try {
       const session = await login(trimmedEmail, trimmedPassword, "TRUCKER");
-      rememberEmail(trimmedEmail,remember);
+      setPassword("");
       const nextPath = getRoleBasedHomePath(session.profile.role);
 
       addToast({
@@ -132,7 +134,8 @@ export default function DriverLoginPage() {
           </div>
 
           {/* Form */}
-          <form
+          {showQuick&&<RememberedAccountCard onAnother={()=>{setUseAnother(true);setEmail('');setPassword('');}}/>}
+          {!showQuick&&<form
             autoComplete="on"
             onSubmit={handleSubmit}
             className="mt-4 space-y-3">
@@ -189,7 +192,7 @@ export default function DriverLoginPage() {
               </div>
             </div>
 
-<label className="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" checked={remember} onChange={e=>setRemember(e.target.checked)}/>Remember Me</label>
+
             {/* Submit */}
             <button
               type="submit"
@@ -197,8 +200,9 @@ export default function DriverLoginPage() {
               className="mt-1 w-full cursor-pointer rounded-full bg-[#0b2343] py-2.5 text-sm font-semibold text-white transition hover:bg-[#17385f] focus:outline-none focus:ring-2 focus:ring-[#0b2343] focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-70 sm:py-3.5">
               {submitting ? "Signing in…" : "Login to Portal"}
             </button>
-          </form>
+          </form>}
 
+          {useAnother&&saved&&<button type="button" onClick={()=>{setUseAnother(false);setPassword('');}} className="mt-4 min-h-11 w-full text-sm font-medium text-[#0b2341] underline underline-offset-4">Back to saved account</button>}
           {/* Footer */}
           <p className="mt-4 text-center text-[11px] text-slate-500 sm:text-xs">
             Having trouble signing in?{" "}

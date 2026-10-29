@@ -24,7 +24,7 @@ test("POD HTTP reads accept Admin/Staff, deny Trucker access to administrative r
   assert.ok(table in data,`Unexpected table: ${table}`);const filters:Array<(row:Record<string,unknown>)=>boolean>=[];let single=false;
   const q={select:()=>q,order:()=>q,eq:(key:string,value:unknown)=>{filters.push(row=>row[key]===value);return q;},maybeSingle:()=>{single=true;return q;},then:(resolve:(value:unknown)=>unknown,reject:(error:unknown)=>unknown)=>{const rows=data[table].filter(row=>filters.every(f=>f(row)));return Promise.resolve({data:single?rows[0]??null:rows,error:null}).then(resolve,reject);}};return q;
  }) as typeof original;
- db.rpc=(async()=>{rpcCalls++;throw Error("No review writes expected");}) as typeof rpc;
+ db.rpc=(async(name:string)=>{if(name==='check_device_session_v1')return {data:'ACTIVE',error:null};rpcCalls++;throw Error("No review writes expected");}) as typeof rpc;
  db.storage.from=(()=>({createSignedUrl:async()=>{signed++;return {data:{signedUrl:"https://isolated.test/synthetic-only"},error:null};}})) as typeof storage;
  const app=express();app.use(express.json());app.use(router);const server=createServer(app);
  await new Promise<void>(resolve=>server.listen(0,"127.0.0.1",resolve));const address=server.address();if(!address||typeof address==="string")throw Error("port");

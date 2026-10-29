@@ -19,7 +19,7 @@ export async function login(req: Request, res: Response) {
       });
     }
 
-    const result = await loginAppUser(email, password,browserMetadata(req.get('user-agent')??'',req.body?.device_identifier));
+    const result = await loginAppUser(email, password,browserMetadata(req.get('user-agent')??'',req.body?.device_identifier,req.ip));
 
     return res.status(200).json({
       success: true,

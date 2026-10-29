@@ -1,3 +1,4 @@
+import {startLoginSecurityWorker} from './services/login-security.service.js';
 import {startOperationalEmailWorker} from './services/operational-email.service.js';
 import {startTransactionImageCleanupWorker} from './services/transaction-deletion.service.js';
 import {startMasterImageCleanupWorker} from "./services/master-image-cleanup.service.js";
@@ -12,9 +13,9 @@ if(!Number.isInteger(PORT)||PORT<1||PORT>65535)throw new Error("PORT must be an 
 const server=createServer(app);
 void attachCollaborationServer(server).then(collaboration=>{
   let stopTracking=()=>{};let stopUsers=()=>{};let stopMasterImages=()=>{};let stopTripImages=()=>{};let stopEmail=()=>{};
-  let closing=false;
+  let stopSecurity=()=>{};let closing=false;
   const shutdown=(exitCode=0)=>{
-    if(closing)return;closing=true;stopTracking();stopUsers();stopMasterImages();stopTripImages();stopEmail();
+    if(closing)return;closing=true;stopTracking();stopUsers();stopMasterImages();stopTripImages();stopEmail();stopSecurity();
     const deadline=setTimeout(()=>process.exit(exitCode),5000);deadline.unref();
     void collaboration.close().catch(()=>{console.error("Backend shutdown could not finish cleanly.");}).finally(()=>process.exit(exitCode));
   };
@@ -26,7 +27,7 @@ void attachCollaborationServer(server).then(collaboration=>{
   });
   server.listen(PORT, () => {
     // Start workers only after the listener successfully binds.
-    stopTracking=startTrackingWorker();stopUsers=startUserMaintenanceWorker();stopMasterImages=startMasterImageCleanupWorker();stopTripImages=startTransactionImageCleanupWorker();stopEmail=startOperationalEmailWorker();
+    stopSecurity=startLoginSecurityWorker();stopTracking=startTrackingWorker();stopUsers=startUserMaintenanceWorker();stopMasterImages=startMasterImageCleanupWorker();stopTripImages=startTransactionImageCleanupWorker();stopEmail=startOperationalEmailWorker();
     console.log(`Server running on http://localhost:${PORT}`);
     console.log(JSON.stringify({whole_trip_delete_enabled:process.env.WHOLE_TRIP_DELETE_ENABLED==="true",workers:Number(process.env.WEB_CONCURRENCY??1),shared_confirmation_configured:Boolean(process.env.SOCKET_REDIS_URL)}));
   });

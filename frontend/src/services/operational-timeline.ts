@@ -4,9 +4,10 @@ import type {TripEvent,TripRecord} from './trip.service';
 import type {OperationsReportData,ReportEvidence,ScopeReport} from './operations-report.service';
 import type {DeliveryEvent} from './delivery.service';
 import type {assignmentWorkspace} from './trip-workspace-data';
-import {deliveryLabel} from './delivery.service';
+import {deliveryEventLabel} from './delivery.service';
+import {submissionReviewStatus,podReviewLabel,type PodReviewStatus} from './pod-review-state';
 
-export type OperationalMilestone={key:string;title:string;type:string;time:string|null;stopId:string|null;location:string;scope:'assignment'|'trip-wide';event?:DeliveryEvent;remarks?:string|null;files:ReportEvidence[];report?:ScopeReport;reportType?:'LOADING'|'UNLOADING'|'BACKLOAD'|'OFFLOAD';reportId?:string;pending?:boolean;activity?:boolean;derived?:boolean;ongoing?:boolean;podStatus?:string;completionApproved?:boolean};
+export type OperationalMilestone={key:string;title:string;type:string;time:string|null;stopId:string|null;location:string;scope:'assignment'|'trip-wide';event?:DeliveryEvent;remarks?:string|null;files:ReportEvidence[];report?:ScopeReport;reportType?:'LOADING'|'UNLOADING'|'BACKLOAD'|'OFFLOAD';reportId?:string;pending?:boolean;activity?:boolean;derived?:boolean;ongoing?:boolean;podStatus?:string;podReviewStatus?:PodReviewStatus|null;completionApproved?:boolean};
 export type OperationalPhase={key:string;title:string;subtitle:string;milestones:OperationalMilestone[]};
 const validTime=(v:unknown):string|null=>typeof v==='string'&&Number.isFinite(Date.parse(v))?v:null;
 const canonical=(type:string)=>['STORE_ARRIVAL','DELIVERY_ARRIVAL'].includes(type)?'ARRIVED':type;
@@ -26,25 +27,21 @@ export function isOperationalReport(m:OperationalMilestone){
 export const isOperationalIncident=(m:OperationalMilestone)=>isOperationalReport(m)||/INCIDENT|ACCIDENT|BREAKDOWN|TRAFFIC|DELAY/.test(m.type)||/traffic|accident|breakdown|road closure|delay/i.test(m.title);
 export function milestoneTone(m:OperationalMilestone):'pending'|'blue'|'amber'|'red'|'green'{
  if(m.pending||!m.time)return 'pending';
+ if(m.type==='POD_SUBMITTED')return m.podReviewStatus==='APPROVED'?'green':m.podReviewStatus==='REJECTED'?'red':'amber';
  if(m.ongoing)return 'blue';
- if(m.type==='STOP_DEPARTURE'&&m.completionApproved===false)return 'amber';
+ if(m.type==='POD_REJECTED')return 'red';
+ if(m.type==='POD_APPROVED')return 'green';
  const title=`${m.type} ${m.title}`;
  if(/accident|breakdown|serious|fault/i.test(title))return 'red';
  if(/traffic|delay|waiting|road closure/i.test(title))return 'amber';
  return m.activity||m.type==='CUSTOM_STATUS'||m.type==='INCIDENT'?'blue':'green';
 }
 const chronological=(a:OperationalMilestone,b:OperationalMilestone)=>Date.parse(a.time??'')-Date.parse(b.time??'')||(a.type==='IN_TRANSIT'?-1:b.type==='IN_TRANSIT'?1:a.key.localeCompare(b.key));
-/** Keep required milestones in sequence and insert custom activity by its saved time. */
+/** Sort persisted activity by timestamp; append unrecorded future steps in workflow order. */
 export function mergeOperationalActivity(base:OperationalMilestone[],activity:OperationalMilestone[]){
- // Keep required steps in workflow order even when historical timestamps differ.
- const merged=[...base],known=new Set(base.map(m=>m.key));
- for(const m of [...activity].filter(m=>m.time&&!known.has(m.key)).sort(chronological)){
-  const next=merged.findIndex(n=>n.time&&Date.parse(n.time)>Date.parse(m.time!));
-  if(next>=0)merged.splice(next,0,m);
-  else {let last=-1;for(const [i,n]of merged.entries())if(n.time)last=i;merged.splice(last+1,0,m);}
-  known.add(m.key);
- }
- return merged;
+ const merged=[...new Map([...base,...activity].map(m=>[m.key,m])).values()];
+ const recorded=merged.filter(m=>m.time).sort(chronological),unrecorded=merged.filter(m=>!m.time);
+ return [...recorded,...unrecorded];
 }
 export function operationalPhases({events,assignmentId,trip,data,operations,origin,podStates=[]}:{events:TripEvent[];assignmentId:string;trip:TripRecord;data:ReturnType<typeof assignmentWorkspace>;operations:OperationsReportData|null;origin:string;podStates?:ConfirmedProgressState[]}):OperationalPhase[]{
  const unique=new Map<string,TripEvent>();
@@ -57,7 +54,8 @@ export function operationalPhases({events,assignmentId,trip,data,operations,orig
   const event:DeliveryEvent={id:e.id,trip_id:e.trip_id,assignment_id:e.assignment_id??null,trip_stop_id:e.trip_stop_id??null,event_type:e.event_type,event_time:e.event_time,created_at:raw.created_at??'',device_time:raw.device_time??null,recorded_by:e.recorded_by??'',latitude:e.latitude==null?null:Number(e.latitude),longitude:e.longitude==null?null:Number(e.longitude),accuracy_meters:raw.accuracy_meters??null,verification_method:raw.verification_method??'',notes:e.notes??null,delivery_metadata:raw.delivery_metadata??{},delivery_version:raw.delivery_version??0,actor:raw.actor,attachments:raw.attachments??[],demonstration:raw.demonstration||/\[ALZHEN_.*DEMO|SIMULATED|^DEMO_/.test(`${e.notes??''} ${e.event_type}`)};
   const reportId=event.delivery_metadata.report_id,kind=event.delivery_metadata.report_type?.toUpperCase()??event.event_type.match(/^(LOADING|UNLOADING|BACKLOAD|OFFLOAD)_/)?.[1];
   const reportType=kind==='LOADING'||kind==='UNLOADING'||kind==='BACKLOAD'||kind==='OFFLOAD'?kind:undefined;
-  return {key:e.id,title:event.delivery_metadata.title||deliveryLabel(e.event_type),type:canonical(e.event_type),time:validTime(e.event_time),stopId:e.trip_stop_id??null,location:data.stops.find(s=>s.id===e.trip_stop_id)?.name??origin,scope,event,remarks:e.notes,files:reportId?reportFiles(reportId):[],report:reportRows.find(r=>r.id===reportId),reportId,reportType};
+  const podReviewStatus=e.event_type==='POD_SUBMITTED'?submissionReviewStatus(event.attachments):null;
+  return {key:e.id,title:deliveryEventLabel(event),type:canonical(e.event_type),time:validTime(e.event_time),stopId:e.trip_stop_id??null,location:data.stops.find(s=>s.id===e.trip_stop_id)?.name??origin,scope,event,...(event.delivery_metadata.pod_review_event_id?{activity:true}:{}),remarks:e.notes,files:reportId?reportFiles(reportId):[],report:reportRows.find(r=>r.id===reportId),reportId,reportType,...(e.event_type==='POD_SUBMITTED'?{podReviewStatus,podStatus:podReviewLabel(podReviewStatus)}:{})};
  };
  const scopedOnly=data.stops.some(s=>s.shared)||rows.some(e=>e.assignment_id&&e.assignment_id!==assignmentId);
  const used=new Set<string>();
@@ -77,15 +75,17 @@ export function operationalPhases({events,assignmentId,trip,data,operations,orig
    const saved=milestone(step.type,step.title,stop.id,stop.name,step.type==='POD_SUBMITTED'?state?.pod_submitted_at:stop[step.field as keyof typeof stop]);
    // A projection is already scoped to this assignment, including legacy receipt records.
    if(step.type==='POD_SUBMITTED'&&!saved.time&&validTime(state?.pod_submitted_at)){saved.time=validTime(state?.pod_submitted_at);saved.scope='assignment';saved.pending=false;}
-   return {...saved,title:step.title,...(step.type==='POD_SUBMITTED'?{podStatus:state?.pod_approved?'Approved':saved.time?(state?.pod_status==='REJECTED'?'Rejected - upload replacement':'Uploaded - approval pending'):'Not uploaded'}:{}),...(step.type==='STOP_DEPARTURE'?{completionApproved:state?.pod_approved??false}: {})};
+   return {...saved,title:step.title,...(step.type==='POD_SUBMITTED'&&!saved.time?{podStatus:'Not uploaded'}:{}),...(step.type==='STOP_DEPARTURE'?{completionApproved:state?.pod_approved??false}: {})};
   })];
-  // This visual stage is activated by a confirmed departure; it is not a second event.
-  const previous=phases.at(-1)!,source=previous.milestones.find(m=>m.type===(previous.key==='loading'?'WAREHOUSE_DEPARTURE':'STOP_DEPARTURE')&&m.time);
-  if(!steps[0].time&&source){steps[0]={...steps[0],time:source.time,pending:false,derived:true,ongoing:!steps[1].time,scope:source.scope,event:source.event,remarks:'Activated by saved departure.'};}
+  // Older reached stops have no explicit travel record; omit, never fabricate one.
+  if(!steps[0].time&&steps.some(m=>m.type==='ARRIVED'&&m.time))steps.shift();
   const report=operations?.unloading.find(r=>r.trip_stop_id===stop.id),remarks=operations?.stops.find(s=>s.id===stop.id)?.remarks;
   if(report&&(remarks||reportFiles(report.id).length))steps.push({key:`unloading-report:${report.id}`,title:'Unloading report',type:'UNLOADING_REPORT',time:null,stopId:stop.id,location:stop.name,scope:'trip-wide',remarks,files:reportFiles(report.id),reportType:'UNLOADING',reportId:report.id});
   phases.push({key:stop.id,title:`Delivery stop ${stop.sequence}`,subtitle:stop.name,milestones:steps});
  }
+ // Preserve every additional submission/replacement as its own reviewable event.
+ for(const event of owned.filter(e=>e.event_type==='POD_SUBMITTED'&&!used.has(e.id))){const phase=phases.find(p=>p.key===event.trip_stop_id);if(phase){phase.milestones=mergeOperationalActivity(phase.milestones,[{...normalize(event),activity:true}]);used.add(event.id);}}
+ for(const event of owned){const request=event.delivery_metadata?.pod_replacement_request;if(!request||request.resolved_by)continue;const phase=phases.find(p=>p.key===event.trip_stop_id);if(phase)phase.milestones=mergeOperationalActivity(phase.milestones,[{key:`pod-required:${request.receipt_id}`,title:'Upload POD — Admin Request',type:'POD_REPLACEMENT_REQUIRED',time:validTime(request.requested_at),stopId:event.trip_stop_id??null,location:phase.subtitle,scope:'assignment',files:[],activity:true,pending:true,podStatus:'Replacement required',remarks:request.reason}]);}
  const reports:OperationalMilestone[]=[],activity:OperationalMilestone[]=[];
  for(const e of rows.filter(e=>!used.has(e.id)&&!['PARTIAL_UNLOAD','ASSIGNMENT_COMPLETED','POD_SUBMITTED'].includes(e.event_type))){
   const shared=!e.assignment_id&&!e.notes?.match(/\[assignment:[0-9a-f-]{36}\]/i);
@@ -121,8 +121,8 @@ export function operationalPhases({events,assignmentId,trip,data,operations,orig
 }
 
 export function operationalProgress(phase:OperationalPhase){
- const required=phase.milestones.filter(m=>['WAREHOUSE_ARRIVAL','LOADING_STARTED','LOADING_FINISHED','WAREHOUSE_DEPARTURE'].includes(m.type)||DELIVERY_STOP_STEPS.some(step=>step.type===m.type));
- const complete=required.length>0&&required.every(m=>!!m.time&&(m.type!=='STOP_DEPARTURE'||m.completionApproved!==false))&&phase.milestones.some(m=>/^(WAREHOUSE_DEPARTURE|STOP_DEPARTURE)$/.test(m.type)&&m.time&&m.scope==='assignment');
+ const required=phase.milestones.filter(m=>!m.activity&&(['WAREHOUSE_ARRIVAL','LOADING_STARTED','LOADING_FINISHED','WAREHOUSE_DEPARTURE'].includes(m.type)||DELIVERY_STOP_STEPS.some(step=>step.type===m.type)));
+ const complete=required.length>0&&required.every(m=>!!m.time)&&phase.milestones.some(m=>/^(WAREHOUSE_DEPARTURE|STOP_DEPARTURE)$/.test(m.type)&&m.time&&m.scope==='assignment');
  let latest=-1;
  for(const [i,m] of phase.milestones.entries())if(m.time&&(latest<0||Date.parse(m.time)>=Date.parse(phase.milestones[latest].time!)))latest=i;
  return {complete,index:complete?Math.max(0,phase.milestones.length-1):Math.max(0,latest),latest};

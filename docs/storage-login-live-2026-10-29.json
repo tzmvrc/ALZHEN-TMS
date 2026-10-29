@@ -1,0 +1,568 @@
+{
+  "runs": [
+    {
+      "fixtures": {
+        "tag": "mvtbp4al"
+      },
+      "accounts": [
+        {
+          "id": "3688fe73-0813-4b4e-a329-154d00f13cf7",
+          "email": "storage-login-mvtbp4al-admin@alzhentest.example",
+          "label": "admin",
+          "status": "DEACTIVATED_AND_BANNED"
+        },
+        {
+          "id": "268dc048-ed08-45de-9be7-693880bbb89e",
+          "email": "storage-login-mvtbp4al-staff@alzhentest.example",
+          "label": "staff",
+          "status": "DEACTIVATED_AND_BANNED"
+        },
+        {
+          "id": "35bf3b5f-04a3-4957-9701-4cebc18f9237",
+          "email": "storage-login-mvtbp4al-driver@alzhentest.example",
+          "label": "driver",
+          "status": "DEACTIVATED_AND_BANNED"
+        },
+        {
+          "id": "27b5ce5b-f7c7-46fd-acc4-a16d701d6070",
+          "email": "storage-login-mvtbp4al-helper@alzhentest.example",
+          "label": "helper",
+          "status": "DEACTIVATED_AND_BANNED"
+        },
+        {
+          "id": "fa166f1c-cbe9-4eb3-8915-b6e620ac897b",
+          "email": "storage-login-mvtbp4al-helper-two@alzhentest.example",
+          "label": "helper-two",
+          "status": "DEACTIVATED_AND_BANNED"
+        }
+      ],
+      "checks": [
+        "Admin lists real buckets; Staff, Driver and Helper denied listing/deletion"
+      ],
+      "temporaryObjects": [
+        "admin-storage-tests/mvtbp4al/preview.png"
+      ]
+    },
+    {
+      "fixtures": {
+        "tag": "mvtbtdru"
+      },
+      "accounts": [
+        {
+          "id": "3688fe73-0813-4b4e-a329-154d00f13cf7",
+          "email": "storage-login-mvtbp4al-admin@alzhentest.example",
+          "label": "admin",
+          "status": "DEACTIVATED_AND_BANNED"
+        },
+        {
+          "id": "268dc048-ed08-45de-9be7-693880bbb89e",
+          "email": "storage-login-mvtbp4al-staff@alzhentest.example",
+          "label": "staff",
+          "status": "DEACTIVATED_AND_BANNED"
+        },
+        {
+          "id": "35bf3b5f-04a3-4957-9701-4cebc18f9237",
+          "email": "storage-login-mvtbp4al-driver@alzhentest.example",
+          "label": "driver",
+          "status": "DEACTIVATED_AND_BANNED"
+        },
+        {
+          "id": "27b5ce5b-f7c7-46fd-acc4-a16d701d6070",
+          "email": "storage-login-mvtbp4al-helper@alzhentest.example",
+          "label": "helper",
+          "status": "DEACTIVATED_AND_BANNED"
+        },
+        {
+          "id": "fa166f1c-cbe9-4eb3-8915-b6e620ac897b",
+          "email": "storage-login-mvtbp4al-helper-two@alzhentest.example",
+          "label": "helper-two",
+          "status": "DEACTIVATED_AND_BANNED"
+        }
+      ],
+      "checks": [
+        "Admin lists real buckets; Staff, Driver and Helper denied listing/deletion"
+      ],
+      "temporaryObjects": [
+        "admin-storage-tests/mvtbtdru/preview.png",
+        "admin-storage-tests/mvtbtdru/bulk.png"
+      ]
+    },
+    {
+      "fixtures": {
+        "tag": "mvtc20zr",
+        "truck": "23e86f1d-f1bf-4059-9d02-2219420d8f0a",
+        "trip": "7d3d6336-3041-4632-a98e-2df61a023eb5",
+        "assignment": "beb3f01b-61bd-4e05-92c9-bf28cb8d6cfd"
+      },
+      "accounts": [
+        {
+          "id": "3688fe73-0813-4b4e-a329-154d00f13cf7",
+          "email": "storage-login-mvtbp4al-admin@alzhentest.example",
+          "label": "admin",
+          "status": "DEACTIVATED_AND_BANNED"
+        },
+        {
+          "id": "268dc048-ed08-45de-9be7-693880bbb89e",
+          "email": "storage-login-mvtbp4al-staff@alzhentest.example",
+          "label": "staff",
+          "status": "DEACTIVATED_AND_BANNED"
+        },
+        {
+          "id": "35bf3b5f-04a3-4957-9701-4cebc18f9237",
+          "email": "storage-login-mvtbp4al-driver@alzhentest.example",
+          "label": "driver",
+          "status": "DEACTIVATED_AND_BANNED"
+        },
+        {
+          "id": "27b5ce5b-f7c7-46fd-acc4-a16d701d6070",
+          "email": "storage-login-mvtbp4al-helper@alzhentest.example",
+          "label": "helper",
+          "status": "DEACTIVATED_AND_BANNED"
+        },
+        {
+          "id": "fa166f1c-cbe9-4eb3-8915-b6e620ac897b",
+          "email": "storage-login-mvtbp4al-helper-two@alzhentest.example",
+          "label": "helper-two",
+          "status": "DEACTIVATED_AND_BANNED"
+        }
+      ],
+      "checks": [
+        "Admin lists real buckets; Staff, Driver and Helper denied listing/deletion",
+        "real private image preview works and retained isolated POD cannot be deleted",
+        "two unreferenced temporary files deleted exactly once with Admin audit records and idempotent retry",
+        "two Helpers join an occupied assignment; primary Driver and single assignment remain unchanged; exclusive Helper master ownership is blocked"
+      ],
+      "temporaryObjects": [
+        "admin-storage-tests/mvtc20zr/preview.png",
+        "admin-storage-tests/mvtc20zr/bulk.png"
+      ]
+    },
+    {
+      "fixtures": {
+        "tag": "mvtc5ts8",
+        "truck": "30d7d282-aebe-400a-bdc7-89c4d85ef648",
+        "trip": "597beb67-d752-4628-8de9-f826fc0f6254",
+        "assignment": "4688bbc2-ecd0-4f10-88f8-9bfd89c27b17"
+      },
+      "accounts": [
+        {
+          "id": "3688fe73-0813-4b4e-a329-154d00f13cf7",
+          "email": "storage-login-mvtbp4al-admin@alzhentest.example",
+          "label": "admin",
+          "status": "DEACTIVATED_AND_BANNED"
+        },
+        {
+          "id": "268dc048-ed08-45de-9be7-693880bbb89e",
+          "email": "storage-login-mvtbp4al-staff@alzhentest.example",
+          "label": "staff",
+          "status": "DEACTIVATED_AND_BANNED"
+        },
+        {
+          "id": "35bf3b5f-04a3-4957-9701-4cebc18f9237",
+          "email": "storage-login-mvtbp4al-driver@alzhentest.example",
+          "label": "driver",
+          "status": "DEACTIVATED_AND_BANNED"
+        },
+        {
+          "id": "27b5ce5b-f7c7-46fd-acc4-a16d701d6070",
+          "email": "storage-login-mvtbp4al-helper@alzhentest.example",
+          "label": "helper",
+          "status": "DEACTIVATED_AND_BANNED"
+        },
+        {
+          "id": "fa166f1c-cbe9-4eb3-8915-b6e620ac897b",
+          "email": "storage-login-mvtbp4al-helper-two@alzhentest.example",
+          "label": "helper-two",
+          "status": "DEACTIVATED_AND_BANNED"
+        }
+      ],
+      "checks": [
+        "Admin lists real buckets; Staff, Driver and Helper denied listing/deletion",
+        "real private image preview works and retained isolated POD cannot be deleted",
+        "two unreferenced temporary files deleted exactly once with Admin audit records and idempotent retry",
+        "two Helpers join an occupied assignment; primary Driver and single assignment remain unchanged; exclusive Helper master ownership is blocked"
+      ],
+      "temporaryObjects": [
+        "admin-storage-tests/mvtc5ts8/preview.png",
+        "admin-storage-tests/mvtc5ts8/bulk.png"
+      ]
+    },
+    {
+      "fixtures": {
+        "tag": "mvtchta7"
+      },
+      "accounts": [
+        {
+          "id": "10a5ccc0-4042-4288-94c0-cd205f170c35",
+          "email": "storage-login-mvtchta7-admin@alzhentest.example",
+          "label": "admin",
+          "status": "DEACTIVATED_AND_BANNED"
+        },
+        {
+          "id": "268dc048-ed08-45de-9be7-693880bbb89e",
+          "email": "storage-login-mvtbp4al-staff@alzhentest.example",
+          "label": "staff",
+          "status": "DEACTIVATED_AND_BANNED"
+        },
+        {
+          "id": "35bf3b5f-04a3-4957-9701-4cebc18f9237",
+          "email": "storage-login-mvtbp4al-driver@alzhentest.example",
+          "label": "driver",
+          "status": "DEACTIVATED_AND_BANNED"
+        },
+        {
+          "id": "27b5ce5b-f7c7-46fd-acc4-a16d701d6070",
+          "email": "storage-login-mvtbp4al-helper@alzhentest.example",
+          "label": "helper",
+          "status": "DEACTIVATED_AND_BANNED"
+        },
+        {
+          "id": "fa166f1c-cbe9-4eb3-8915-b6e620ac897b",
+          "email": "storage-login-mvtbp4al-helper-two@alzhentest.example",
+          "label": "helper-two",
+          "status": "DEACTIVATED_AND_BANNED"
+        }
+      ],
+      "checks": [
+        "revoked saved app session requires credentials; display identity never bypasses server authorization"
+      ],
+      "temporaryObjects": []
+    },
+    {
+      "fixtures": {
+        "tag": "mvtcomy9"
+      },
+      "accounts": [
+        {
+          "id": "15a14f23-e63c-4dd0-8869-8b2e1ddf045e",
+          "email": "storage-login-mvtcomy9-admin@alzhentest.example",
+          "label": "admin",
+          "status": "DEACTIVATED_AND_BANNED"
+        },
+        {
+          "id": "268dc048-ed08-45de-9be7-693880bbb89e",
+          "email": "storage-login-mvtbp4al-staff@alzhentest.example",
+          "label": "staff",
+          "status": "DEACTIVATED_AND_BANNED"
+        },
+        {
+          "id": "35bf3b5f-04a3-4957-9701-4cebc18f9237",
+          "email": "storage-login-mvtbp4al-driver@alzhentest.example",
+          "label": "driver",
+          "status": "DEACTIVATED_AND_BANNED"
+        },
+        {
+          "id": "27b5ce5b-f7c7-46fd-acc4-a16d701d6070",
+          "email": "storage-login-mvtbp4al-helper@alzhentest.example",
+          "label": "helper",
+          "status": "DEACTIVATED_AND_BANNED"
+        },
+        {
+          "id": "fa166f1c-cbe9-4eb3-8915-b6e620ac897b",
+          "email": "storage-login-mvtbp4al-helper-two@alzhentest.example",
+          "label": "helper-two",
+          "status": "DEACTIVATED_AND_BANNED"
+        }
+      ],
+      "checks": [
+        "revoked saved app session requires credentials; display identity never bypasses server authorization"
+      ],
+      "temporaryObjects": []
+    },
+    {
+      "fixtures": {
+        "tag": "mvtcpykw"
+      },
+      "accounts": [
+        {
+          "id": "7ca85161-ee03-42b9-8ea5-8af6a220ebf7",
+          "email": "storage-login-mvtcpykw-admin@alzhentest.example",
+          "label": "admin",
+          "status": "DEACTIVATED_AND_BANNED"
+        },
+        {
+          "id": "268dc048-ed08-45de-9be7-693880bbb89e",
+          "email": "storage-login-mvtbp4al-staff@alzhentest.example",
+          "label": "staff",
+          "status": "DEACTIVATED_AND_BANNED"
+        },
+        {
+          "id": "35bf3b5f-04a3-4957-9701-4cebc18f9237",
+          "email": "storage-login-mvtbp4al-driver@alzhentest.example",
+          "label": "driver",
+          "status": "DEACTIVATED_AND_BANNED"
+        },
+        {
+          "id": "27b5ce5b-f7c7-46fd-acc4-a16d701d6070",
+          "email": "storage-login-mvtbp4al-helper@alzhentest.example",
+          "label": "helper",
+          "status": "DEACTIVATED_AND_BANNED"
+        },
+        {
+          "id": "fa166f1c-cbe9-4eb3-8915-b6e620ac897b",
+          "email": "storage-login-mvtbp4al-helper-two@alzhentest.example",
+          "label": "helper-two",
+          "status": "DEACTIVATED_AND_BANNED"
+        }
+      ],
+      "checks": [
+        "revoked saved app session requires credentials; display identity never bypasses server authorization",
+        "admin: real browser sign-in, first prompt, persisted quick login and Forget clears SDK session, no password stored",
+        "staff: real browser sign-in, first prompt, declined preference suppresses subsequent prompt, no password stored",
+        "driver: real browser sign-in, first prompt, declined preference suppresses subsequent prompt, no password stored",
+        "helper: real browser sign-in, first prompt, persisted quick login and Forget clears SDK session, no password stored"
+      ],
+      "temporaryObjects": []
+    },
+    {
+      "fixtures": {
+        "tag": "mvte550x"
+      },
+      "accounts": [
+        {
+          "id": "25ae77e9-26f1-4c7f-a178-9f817743126d",
+          "email": "storage-login-mvte550x-admin@alzhentest.example",
+          "label": "admin",
+          "status": "DEACTIVATED_AND_BANNED"
+        },
+        {
+          "id": "268dc048-ed08-45de-9be7-693880bbb89e",
+          "email": "storage-login-mvtbp4al-staff@alzhentest.example",
+          "label": "staff",
+          "status": "DEACTIVATED_AND_BANNED"
+        },
+        {
+          "id": "35bf3b5f-04a3-4957-9701-4cebc18f9237",
+          "email": "storage-login-mvtbp4al-driver@alzhentest.example",
+          "label": "driver",
+          "status": "DEACTIVATED_AND_BANNED"
+        },
+        {
+          "id": "27b5ce5b-f7c7-46fd-acc4-a16d701d6070",
+          "email": "storage-login-mvtbp4al-helper@alzhentest.example",
+          "label": "helper",
+          "status": "DEACTIVATED_AND_BANNED"
+        },
+        {
+          "id": "fa166f1c-cbe9-4eb3-8915-b6e620ac897b",
+          "email": "storage-login-mvtbp4al-helper-two@alzhentest.example",
+          "label": "helper-two",
+          "status": "DEACTIVATED_AND_BANNED"
+        }
+      ],
+      "checks": [],
+      "temporaryObjects": []
+    },
+    {
+      "fixtures": {
+        "tag": "mvte6v7s",
+        "truck": "378a461f-b2bb-4c44-9805-4bbc8bdff253",
+        "trip": "ab10776f-9143-4745-9d9c-5b11efcdee5e",
+        "assignment": "b7d73832-4695-401a-8f96-7ee24facf5f6"
+      },
+      "accounts": [
+        {
+          "id": "2be350a8-1983-4fdd-838c-2602553fde60",
+          "email": "storage-login-mvte6v7s-admin@alzhentest.example",
+          "label": "admin",
+          "status": "DEACTIVATED_AND_BANNED"
+        },
+        {
+          "id": "268dc048-ed08-45de-9be7-693880bbb89e",
+          "email": "storage-login-mvtbp4al-staff@alzhentest.example",
+          "label": "staff",
+          "status": "DEACTIVATED_AND_BANNED"
+        },
+        {
+          "id": "35bf3b5f-04a3-4957-9701-4cebc18f9237",
+          "email": "storage-login-mvtbp4al-driver@alzhentest.example",
+          "label": "driver",
+          "status": "DEACTIVATED_AND_BANNED"
+        },
+        {
+          "id": "27b5ce5b-f7c7-46fd-acc4-a16d701d6070",
+          "email": "storage-login-mvtbp4al-helper@alzhentest.example",
+          "label": "helper",
+          "status": "DEACTIVATED_AND_BANNED"
+        },
+        {
+          "id": "fa166f1c-cbe9-4eb3-8915-b6e620ac897b",
+          "email": "storage-login-mvtbp4al-helper-two@alzhentest.example",
+          "label": "helper-two",
+          "status": "DEACTIVATED_AND_BANNED"
+        },
+        {
+          "id": "a20b5c1d-1f24-472b-8e43-be3085dc8654",
+          "email": "storage-login-mvte6v7s-other@alzhentest.example",
+          "label": "driver-other",
+          "status": "DEACTIVATED_AND_BANNED"
+        }
+      ],
+      "checks": [
+        "Admin lists real buckets; Staff, Driver and Helper denied listing/deletion",
+        "real private image preview works and retained isolated POD cannot be deleted",
+        "real private 96px signed thumbnail renders",
+        "two unreferenced temporary files deleted exactly once with Admin audit records and idempotent retry",
+        "two Helpers join an occupied assignment; primary Driver and single assignment remain unchanged; exclusive Helper master ownership is blocked",
+        "shared assignment dropdown includes occupied trucks for Helpers, excludes occupied Driver slots, preserves Helpers on explicit Driver release/reclaim, and refuses a stale Driver claim",
+        "revoked saved app session requires credentials; display identity never bypasses server authorization",
+        "admin: real browser sign-in, first prompt, persisted quick login and Forget clears SDK session, no password stored",
+        "staff: real browser sign-in, first prompt, declined preference suppresses subsequent prompt, no password stored",
+        "driver: real browser sign-in, first prompt, declined preference suppresses subsequent prompt, no password stored",
+        "helper: real browser sign-in, first prompt, persisted quick login and Forget clears SDK session, no password stored"
+      ],
+      "temporaryObjects": [
+        "admin-storage-tests/mvte6v7s/preview.png",
+        "admin-storage-tests/mvte6v7s/bulk.png"
+      ]
+    },
+    {
+      "fixtures": {
+        "tag": "mvtf8u7b"
+      },
+      "accounts": [
+        {
+          "id": "c295f765-7199-4ff9-99a9-b9b40f1f1877",
+          "email": "storage-login-mvtf8u7b-admin@alzhentest.example",
+          "label": "admin",
+          "status": "DEACTIVATED_AND_BANNED"
+        },
+        {
+          "id": "268dc048-ed08-45de-9be7-693880bbb89e",
+          "email": "storage-login-mvtbp4al-staff@alzhentest.example",
+          "label": "staff",
+          "status": "DEACTIVATED_AND_BANNED"
+        },
+        {
+          "id": "35bf3b5f-04a3-4957-9701-4cebc18f9237",
+          "email": "storage-login-mvtbp4al-driver@alzhentest.example",
+          "label": "driver",
+          "status": "DEACTIVATED_AND_BANNED"
+        },
+        {
+          "id": "27b5ce5b-f7c7-46fd-acc4-a16d701d6070",
+          "email": "storage-login-mvtbp4al-helper@alzhentest.example",
+          "label": "helper",
+          "status": "DEACTIVATED_AND_BANNED"
+        },
+        {
+          "id": "fa166f1c-cbe9-4eb3-8915-b6e620ac897b",
+          "email": "storage-login-mvtbp4al-helper-two@alzhentest.example",
+          "label": "helper-two",
+          "status": "DEACTIVATED_AND_BANNED"
+        },
+        {
+          "id": "a20b5c1d-1f24-472b-8e43-be3085dc8654",
+          "email": "storage-login-mvte6v7s-other@alzhentest.example",
+          "label": "driver-other",
+          "status": "DEACTIVATED_AND_BANNED"
+        }
+      ],
+      "checks": [],
+      "temporaryObjects": []
+    },
+    {
+      "fixtures": {
+        "tag": "mvtfb9ya"
+      },
+      "accounts": [
+        {
+          "id": "4406f6b2-c47b-4115-b6e4-11e58ed383c8",
+          "email": "storage-login-mvtfb9ya-admin@alzhentest.example",
+          "label": "admin",
+          "status": "DEACTIVATED_AND_BANNED"
+        },
+        {
+          "id": "268dc048-ed08-45de-9be7-693880bbb89e",
+          "email": "storage-login-mvtbp4al-staff@alzhentest.example",
+          "label": "staff",
+          "status": "DEACTIVATED_AND_BANNED"
+        },
+        {
+          "id": "35bf3b5f-04a3-4957-9701-4cebc18f9237",
+          "email": "storage-login-mvtbp4al-driver@alzhentest.example",
+          "label": "driver",
+          "status": "DEACTIVATED_AND_BANNED"
+        },
+        {
+          "id": "27b5ce5b-f7c7-46fd-acc4-a16d701d6070",
+          "email": "storage-login-mvtbp4al-helper@alzhentest.example",
+          "label": "helper",
+          "status": "DEACTIVATED_AND_BANNED"
+        },
+        {
+          "id": "fa166f1c-cbe9-4eb3-8915-b6e620ac897b",
+          "email": "storage-login-mvtbp4al-helper-two@alzhentest.example",
+          "label": "helper-two",
+          "status": "DEACTIVATED_AND_BANNED"
+        },
+        {
+          "id": "a20b5c1d-1f24-472b-8e43-be3085dc8654",
+          "email": "storage-login-mvte6v7s-other@alzhentest.example",
+          "label": "driver-other",
+          "status": "DEACTIVATED_AND_BANNED"
+        }
+      ],
+      "checks": [
+        "remembered valid session automatically restores dashboard; revoked session shows credentials without stale card",
+        "admin: real browser sign-in, first prompt, automatic valid-session login and revoked-session reauthentication, no password stored",
+        "staff: real browser sign-in, first prompt, declined preference suppresses subsequent prompt, no password stored",
+        "driver: real browser sign-in, first prompt, declined preference suppresses subsequent prompt, no password stored"
+      ],
+      "temporaryObjects": []
+    },
+    {
+      "fixtures": {
+        "tag": "mvtfdu4f"
+      },
+      "accounts": [
+        {
+          "id": "16837d1f-798b-4127-bac4-f6847288cfe7",
+          "email": "storage-login-mvtfdu4f-admin-edited@alzhentest.example",
+          "label": "admin",
+          "status": "DEACTIVATED_AND_BANNED"
+        },
+        {
+          "id": "268dc048-ed08-45de-9be7-693880bbb89e",
+          "email": "storage-login-mvtbp4al-staff-edited@alzhentest.example",
+          "label": "staff",
+          "status": "DEACTIVATED_AND_BANNED"
+        },
+        {
+          "id": "35bf3b5f-04a3-4957-9701-4cebc18f9237",
+          "email": "storage-login-mvtbp4al-driver-edited@alzhentest.example",
+          "label": "driver",
+          "status": "DEACTIVATED_AND_BANNED"
+        },
+        {
+          "id": "27b5ce5b-f7c7-46fd-acc4-a16d701d6070",
+          "email": "storage-login-mvtbp4al-helper-edited@alzhentest.example",
+          "label": "helper",
+          "status": "DEACTIVATED_AND_BANNED"
+        },
+        {
+          "id": "fa166f1c-cbe9-4eb3-8915-b6e620ac897b",
+          "email": "storage-login-mvtbp4al-helper-two@alzhentest.example",
+          "label": "helper-two",
+          "status": "DEACTIVATED_AND_BANNED"
+        },
+        {
+          "id": "a20b5c1d-1f24-472b-8e43-be3085dc8654",
+          "email": "storage-login-mvte6v7s-other@alzhentest.example",
+          "label": "driver-other",
+          "status": "DEACTIVATED_AND_BANNED"
+        }
+      ],
+      "checks": [
+        "Admin, Staff, Driver and Helper partial phone edits persist without clearing names; Auth email updates persist; privileged Staff/Helper edits denied",
+        "remembered valid session automatically restores dashboard; revoked session shows credentials without stale card",
+        "admin: real browser sign-in, first prompt, automatic valid-session login and revoked-session reauthentication, no password stored",
+        "staff: real browser sign-in, first prompt, declined preference suppresses subsequent prompt, no password stored",
+        "driver: real browser sign-in, first prompt, declined preference suppresses subsequent prompt, no password stored",
+        "remembered valid session automatically restores dashboard; revoked session shows credentials without stale card",
+        "helper: real browser sign-in, first prompt, automatic valid-session login and revoked-session reauthentication, no password stored"
+      ],
+      "temporaryObjects": []
+    }
+  ]
+}

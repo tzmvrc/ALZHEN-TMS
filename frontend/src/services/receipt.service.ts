@@ -17,6 +17,9 @@ export async function savePodDecision(token:string,tripId:string,receiptId:strin
   if(!response.success||!response.data)throw new Error(response.message??"Decision could not be confirmed. Retry the same request.");
   invalidateApiCache(`/trips/${encodeURIComponent(tripId)}`);
   invalidateApiCache("/reports/pod-status");invalidateApiCache("/reports/transmittal-tracker");invalidateReportData("combined");
+  invalidateApiCache('/delivery/current');
+  if(response.data.receipt.assignment_id)invalidateApiCache(`/delivery/assignments/${encodeURIComponent(response.data.receipt.assignment_id)}`);
+  window.dispatchEvent(new CustomEvent('pod-review-saved',{detail:{tripId,receipt:response.data.receipt}}));
   return response.data;
 }
 
@@ -34,7 +37,9 @@ export async function interpretReceiptText(token:string, tripId:string, receiptI
 }
 
 export type TripReceipt = {
-  assignment_id?:string|null;uploaded_by?:string|null;uploader_name?:string|null;
+  replaces_receipt_id?:string|null;pod_reviewer_name?:string|null;
+  delivery_event_id?:string|null;display_order?:number;
+  assignment_id?:string|null;uploaded_by?:string|null;uploader_name?:string|null;uploader_crew_role?:'DRIVER'|'HELPER'|null;
   mime_type?:string|null;
   id: string;
   trip_id: string;

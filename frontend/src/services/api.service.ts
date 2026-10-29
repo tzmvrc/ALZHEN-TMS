@@ -135,6 +135,7 @@ async function request<T>(
   options: RequestInit = {},
   token?: string,
   timeoutMs?: number,
+  onProgress?: (data: unknown) => void,
 ): Promise<T> {
   const headers = new Headers(options.headers ?? {});
 
@@ -169,7 +170,19 @@ async function request<T>(
     throw error;
   }
 
-  const payload = (await response.json().catch(() => null)) as {
+  let decoded: unknown;
+  if(response.ok&&onProgress&&response.headers.get('Content-Type')?.includes('application/x-ndjson')&&response.body){
+    const reader=response.body.getReader(),decoder=new TextDecoder();let buffer='',finished=false;
+    const line=(value:string)=>{if(!value.trim())return;const entry=JSON.parse(value);if(entry.progress)onProgress(entry.data);else{decoded=entry;finished=true;}};
+    try{while(true){const part=await reader.read();if(part.done)break;buffer+=decoder.decode(part.value,{stream:true});if(buffer.length>200000)throw Error('Receipt response exceeded its safe limit.');let end:number;while((end=buffer.indexOf('\n'))>=0){line(buffer.slice(0,end));buffer=buffer.slice(end+1);}}line(buffer+decoder.decode());if(!finished)throw Error('Receipt reading was interrupted. Retry or review manually.');}
+    finally{reader.releaseLock();}
+    if((decoded as {success?:boolean})?.success===false)throw new ApiError((decoded as {message?:string}).message||'Receipt reading is unavailable.',503,(decoded as {error?:{code?:string}}).error?.code);
+  }else try{decoded=await response.json();}catch(error){
+    if(timeoutSignal?.aborted)throw new ApiError("The request took too long. Check your connection and try again.",408);
+    if(options.signal?.aborted)throw error;
+    decoded=null;
+  }
+  const payload = decoded as {
     success?: boolean;
     code?: string;
     error?: { code?: string };
@@ -225,6 +238,7 @@ async function request<T>(
       if (endpoint.startsWith("/trips") && tripWorkflowErrors.includes(code ?? "") && payload?.message) {
         throw new ApiError(payload.message, response.status, code);
       }
+      if(endpoint.startsWith("/storage-management/")&&code==="STORAGE_UNCONFIRMED"&&payload?.message)throw new ApiError(payload.message,response.status,code);
       if (endpoint.startsWith("/reports/") && code === "REPORT_READ_TIMEOUT" && payload?.message) {
         throw new ApiError(payload.message, response.status, code);
       }
@@ -379,6 +393,9 @@ export async function apiUpload<T>(
   fileName: string,
   token?: string,
   extraHeaders: Record<string, string> = {},
+  timeoutMs?: number,
+  signal?: AbortSignal,
+  onProgress?: (data: unknown) => void,
 ): Promise<T> {
   const headers = new Headers(extraHeaders);
   headers.set("Content-Type", contentType);
@@ -389,8 +406,11 @@ export async function apiUpload<T>(
       method: "POST",
       headers,
       body,
+      signal,
     },
     token,
+    timeoutMs,
+    onProgress,
   );
 }
 

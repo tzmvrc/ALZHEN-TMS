@@ -34,6 +34,7 @@ export async function attachCollaborationServer(http:HttpServer,options:Options=
   seen.set(key,Date.now());if(seen.size>5000)seen.delete(seen.keys().next().value!);
   if(event.draftOnly){io.to("management").emit("cell:saved-notice",event);return;}
   io.to("management").emit(event.version===null?"table:invalidated":"cell:committed",event);
+  if(event.source==='trip_truck_crew_members')void supabaseAdmin.from('trip_truck_crew_members').select('profile_id').eq('assignment_id',event.recordId).then(result=>{for(const member of result.data??[])io.to(`user:${member.profile_id}`).emit('trucker:changed',{kind:'assignments'});});
   // Only locally connected authorized trip subscribers receive Trucker signals.
   // Every instance has the durable DB bridge; Redis relays management/presence.
   for(const socket of io.of("/").sockets.values()){
@@ -42,7 +43,7 @@ export async function attachCollaborationServer(http:HttpServer,options:Options=
    const signalKey=`${socket.id}:${event.eventId}`;
    if(truckerSeen.has(signalKey))continue;truckerSeen.set(signalKey,Date.now());
    if(truckerSeen.size>5000)truckerSeen.delete(truckerSeen.keys().next().value!);
-   void canTrip(actor,event.tripId).then(allowed=>{if(!socket.connected)return;if(!allowed)void socket.leave(`trip:${event.tripId}`);socket.emit("trucker:changed",{kind:allowed?"trip":"assignments"});}).catch(()=>{truckerSeen.delete(signalKey);});
+   void canTrip(actor,event.tripId).then(allowed=>{if(!socket.connected)return;if(!allowed)void socket.leave(`trip:${event.tripId}`);socket.emit("trucker:changed",{kind:allowed?"trip":"assignments",assignmentId:event.assignmentId});}).catch(()=>{truckerSeen.delete(signalKey);});
   }
  };
  collaborationEvents.on("commit",emitCommit);
@@ -163,7 +164,7 @@ export async function attachCollaborationServer(http:HttpServer,options:Options=
   channel.on("postgres_changes",{schema:"public",table:"trip_events",event:"*"},payload=>{
    const record=(payload.eventType==="DELETE"?payload.old:payload.new) as Record<string,unknown>;
    if(typeof record.id!=="string"||typeof record.trip_id!=="string")return;
-   emitCommit({source:"trip_events",recordId:record.id,tripId:record.trip_id,fields:[],actorId:null,version:null,operation:payload.eventType,eventId:`delivery:${record.id}:${record.delivery_version??0}`});
+   emitCommit({source:"trip_events",recordId:record.id,tripId:record.trip_id,assignmentId:typeof record.assignment_id==="string"?record.assignment_id:undefined,fields:[],actorId:null,version:null,operation:payload.eventType,eventId:`delivery:${record.id}:${record.delivery_version??0}`});
    if(payload.eventType==="INSERT"&&!record.assignment_id)void notifyDriverActivity("trip_events",record.id).catch(error=>console.warn("Driver event notification deferred:",error instanceof Error?error.message:error));
   });
   for(const source of Object.keys(SOURCE_FIELDS))channel.on("postgres_changes",{schema:"public",table:source,event:"*"},payload=>{

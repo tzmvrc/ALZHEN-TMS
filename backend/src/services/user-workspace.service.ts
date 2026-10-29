@@ -1,3 +1,4 @@
+import {helperMemberships} from './helper-assignment.service.js';
 import {assertPicturePermission,commitAccountPicture} from "./account-picture.service.js";
 import {wakeUserMaintenance} from './user-maintenance.service.js';
 import {supabaseAdmin} from "../config/supabase.js";
@@ -11,7 +12,7 @@ export function userId(id:string){if(!valid(id))throw new ApiError("Invalid user
 function assertView(actor:Actor,id:string){userId(id);if(actor.id!==id&&actor.role!=="ADMIN")throw new ApiError("You cannot view this profile or activity history.",403);}
 function rpcError(error:any){if(!error)return;console.error("User workspace operation failed",{code:error.code});throw new ApiError(error.code==='42501'?"This action is not permitted for this account.":error.code==='23505'?"The truck is already assigned to another driver. Refresh and choose another truck.":error.code==='P0002'?"The selected account or driver is no longer available.":error.code==='23514'||error.code==='22023'?"Review the selected values and account status before saving.":"The operation could not be completed. Your changes have not been confirmed.",error.code==='42501'?403:400);}
 export async function profileRecord(actor:Actor,id:string){
- assertView(actor,id);const {data,error}=await db.from('profiles').select('id,first_name,last_name,role,is_admin,contact_number,created_at,updated_at,deactivated_at,profile_picture_path,drivers(id,contact_number,license_number,trucking_company_id,status,notes,assigned_truck_id,trucking_companies(id,name),trucks!drivers_assigned_truck_id_fkey(id,truck_type,plate_number))').eq('id',id).maybeSingle();
+ assertView(actor,id);const {data,error}=await db.from('profiles').select('id,first_name,last_name,role,crew_role,is_admin,contact_number,created_at,updated_at,deactivated_at,profile_picture_path,drivers(id,contact_number,license_number,trucking_company_id,status,notes,assigned_truck_id,trucking_companies(id,name),trucks!drivers_assigned_truck_id_fkey(id,truck_type,plate_number))').eq('id',id).maybeSingle();
  if(error||!data)throw new ApiError("Profile is unavailable.",404);
  const [auth,authUser]=await Promise.all([db.from('v_managed_users_directory').select('email').eq('id',id).maybeSingle(),supabaseAdmin.auth.admin.getUserById(id).catch(()=>({data:{user:null},error:null}))]);const driver=Array.isArray(data.drivers)?data.drivers[0]:data.drivers;let picture=null;
  if(data.profile_picture_path){if(/^https?:\/\//.test(data.profile_picture_path))picture=data.profile_picture_path;else{const signed=await supabaseAdmin.storage.from('profile-pictures').createSignedUrl(data.profile_picture_path,3600);picture=signed.data?.signedUrl??null;}}
@@ -21,15 +22,27 @@ export async function userSheet(actor:Actor,query:Record<string,unknown>){
  if(!['ADMIN','STAFF'].includes(actor.role))throw new ApiError('Access denied.',403);
  const category=query.category==='truckers'?'truckers':'staff';if(category==='staff'&&actor.role!=='ADMIN')throw new ApiError('Admin access required.',403);
  const page=Math.max(1,Math.floor(Number(query.page)||1)),limit=30;
- const sort=typeof query.sort==='string'&&['first_name','last_name','role','created_at','contact_number','email','plate_number','driver_status','license_number'].includes(query.sort)?query.sort:'created_at';
+ const sort=typeof query.sort==='string'&&['first_name','last_name','role','created_at','contact_number','email','plate_number','driver_status','license_number','crew_role'].includes(query.sort)?query.sort:'created_at';
  let request=db.from('v_managed_users_directory').select('*',{count:'exact'}).is('deactivated_at',null).in('role',category==='staff'?['ADMIN','STAFF']:['TRUCKER']).order(sort,{ascending:query.direction==='asc'}).order('id').range((page-1)*limit,page*limit-1);
- const filter=buildIlikeOrFilter(['first_name','last_name','contact_number','email','plate_number','license_number'],query.search);if(filter)request=request.or(filter);
+ const filter=buildIlikeOrFilter(['crew_role','first_name','last_name','contact_number','email','plate_number','license_number'],query.search);if(filter)request=request.or(filter);
  const {data,error,count}=await request;if(error)throw new ApiError('Unable to load users. Retry loading.',502);
- const rows=(data??[]).map((row:any)=>query.selection_only==='true'?{id:row.id,is_admin:row.is_admin,created_at:row.created_at,role:row.role}:{...row,trucking_companies:row.trucking_company_name?{name:row.trucking_company_name}:null});
+ const memberships=category==='truckers'?await helperMemberships((data??[]).map((row:any)=>row.id)):[];
+ const rows=(data??[]).map((row:any)=>query.selection_only==='true'?{id:row.id,is_admin:row.is_admin,created_at:row.created_at,role:row.role}:{...row,crew_assignments:memberships.filter(m=>m.profile_id===row.id),trucking_companies:row.trucking_company_name?{name:row.trucking_company_name}:null});
  return {rows,pagination:{page,limit,total:count??0,totalPages:Math.max(1,Math.ceil((count??0)/limit))}};
 }
 export async function patchProfile(actor:Actor,id:string,patch:Record<string,unknown>){
- assertView(actor,id);const {error}=await db.rpc('user_profile_patch_v1',{p_actor:actor.id,p_subject:id,p_patch:patch});rpcError(error);
+ assertView(actor,id);
+ if(Object.prototype.hasOwnProperty.call(patch,'email')){
+  if(actor.role!=='ADMIN')throw new ApiError('Admin access required.',403);
+  if(Object.keys(patch).length!==1||typeof patch.email!=='string'||! /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(patch.email)||patch.email.length>254)throw new ApiError('Enter a valid email address.',400);
+  const before=await db.auth.admin.getUserById(id);if(before.error||!before.data.user)throw new ApiError('Account unavailable.',404);
+  const changed=await db.auth.admin.updateUserById(id,{email:patch.email.trim().toLowerCase(),email_confirm:true});if(changed.error)throw new ApiError('Email could not be changed. Check the address is not already in use.',409);
+  const audit=await db.from('audit_logs').insert({user_id:actor.id,action:'USER_EMAIL_CHANGED',entity_type:'profiles',entity_id:id,old_data:{email:before.data.user.email},new_data:{email:changed.data.user.email}});
+  if(audit.error)throw new ApiError('Email changed but audit confirmation failed. Refresh before retrying.',503);
+  return {id,email:changed.data.user.email};
+ }
+ if(patch.contact_number!=null&&(typeof patch.contact_number!=='string'||!/^\+?[\d ()-]{7,25}$/.test(patch.contact_number)))throw new ApiError('Enter a valid phone number.',400);
+ const {error}=await db.rpc('user_profile_patch_v1' ,{p_actor:actor.id,p_subject:id,p_patch:patch});rpcError(error);
  const value=await profileRecord(actor,id);return {...value,driver_id:value.driver?.id??null,contact_number:value.driver?.contact_number??value.contact_number,license_number:value.driver?.license_number??null,driver_notes:value.driver?.notes??null,driver_status:value.driver?.status??null,trucking_company_id:value.driver?.trucking_company_id??null,trucking_companies:value.driver?.trucking_companies??null,assigned_truck_id:value.driver?.assigned_truck_id??null,plate_number:value.driver?.trucks?.plate_number??null,truck_type:value.driver?.trucks?.truck_type??null};
 }
 export async function currentDriverTruck(actor:Actor,driverId:string,truckId:unknown){

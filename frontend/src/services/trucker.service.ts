@@ -23,6 +23,7 @@ export type TruckerListItem = {
 };
 
 export type TruckerDetail = {
+ crew_role?:"DRIVER"|"HELPER";
   id: string;
   driver_id: string;
   profile_id: string;

@@ -1,3 +1,4 @@
+import {activeCrewAssignmentIds} from './truck-crew.service.js';
 import { supabaseAdmin,supabaseAuth } from "../config/supabase.js";
 import { assertActiveTruckerSession,assertAdminStaffSession } from "./app-session.service.js";
 import {checkDeviceSession} from './device-session.service.js';
@@ -28,8 +29,5 @@ export async function canJoinTrip(actor:SocketActor,tripId:string){
  const trip=await supabaseAdmin.from("trips").select("id").eq("id",tripId).maybeSingle();
  if(trip.error||!trip.data)return false;
  if(actor.role!=="TRUCKER")return true;
- const driver=await supabaseAdmin.from("drivers").select("id").eq("profile_id",actor.id).maybeSingle();
- if(driver.error||!driver.data)return false;
- const assignment=await supabaseAdmin.from("trip_truck_assignments").select("id").eq("trip_id",tripId).eq("driver_id",driver.data.id).is("unassigned_at",null).limit(1);
- return !assignment.error&&Boolean(assignment.data?.length);
+ return (await activeCrewAssignmentIds(actor.id,tripId)).length>0;
 }

@@ -2,6 +2,7 @@ import { supabaseAdmin } from "../config/supabase.js";
 import { ApiError } from "../utils/api-response.js";
 import { isValidUuid } from "../utils/validation.js";
 import { interpretPodText, matchPodTransaction } from "./pod-interpretation.service.js";
+import {validatePodProductSelections} from './pod-product-selection.service.js';
 
 function uuid(value: string) {
   if (!isValidUuid(value)) throw new ApiError("Invalid receipt or trip identifier.", 400, "INVALID_RECEIPT_ID");
@@ -32,7 +33,9 @@ async function signedReceipt(row: Record<string, unknown>) {
   return {
     id: row.id, trip_id: row.trip_id, trip_stop_id: row.trip_stop_id,
     dr_number: row.dr_number, file_name: row.file_name, signed_url: error?null:data?.signedUrl??null,
-    assignment_id:row.assignment_id??null,uploaded_by:row.uploaded_by??null,uploader_name:row.uploader_name??null,
+    assignment_id:row.assignment_id??null,uploaded_by:row.uploaded_by??null,uploader_name:row.uploader_name??null,uploader_crew_role:row.uploader_crew_role??null,
+    delivery_event_id:row.delivery_event_id??null,display_order:row.display_order??0,
+    replaces_receipt_id:row.replaces_receipt_id??null,pod_reviewer_name:row.pod_reviewer_name??null,
     mime_type: row.mime_type??(String(row.storage_path).endsWith(".pdf")?"application/pdf":null),
     uploaded_at: row.created_at, ocr_text: row.ocr_text, ocr_confidence: row.ocr_confidence,
     ocr_version: row.ocr_version, reviewed_at: row.reviewed_at, reviewed_by: row.reviewed_by,
@@ -46,10 +49,16 @@ export async function listTripReceipts(tripId: string) {
   const { data, error } = await supabaseAdmin.from("trip_images").select("*")
     .eq("trip_id", tripId).eq("kind", "receipt").order("created_at", { ascending: false });
   if (error) fail(error);
-  const ids=[...new Set((data??[]).map(r=>r.uploaded_by).filter(Boolean))];
+  const ids=[...new Set((data??[]).flatMap(r=>[r.uploaded_by,r.pod_reviewed_by]).filter(Boolean))];
   const people=ids.length?await supabaseAdmin.from('profiles').select('id,first_name,last_name').in('id',ids):{data:[]};
-  return Promise.all((data??[]).map(row=>signedReceipt({...row,uploader_name:people.data?.filter(p=>p.id===row.uploaded_by).map(p=>[p.first_name,p.last_name].filter(Boolean).join(' '))[0]??null})));
+  const eventIds=[...new Set((data??[]).map(row=>row.delivery_event_id).filter(Boolean))];
+  const events=eventIds.length?await supabaseAdmin.from('trip_events').select('id,delivery_metadata').eq('trip_id',tripId).in('id',eventIds):{data:[],error:null};
+  if(events.error)fail(events.error);
+  const name=(id:string)=>people.data?.filter(p=>p.id===id).map(p=>[p.first_name,p.last_name].filter(Boolean).join(' '))[0]??null;
+  return Promise.all((data??[]).map(row=>{const meta=events.data?.find(event=>event.id===row.delivery_event_id)?.delivery_metadata;const actor=meta?.actor_snapshot;return signedReceipt({...row,uploader_name:actor?.profile_id===row.uploaded_by?actor.name:name(row.uploaded_by),uploader_crew_role:actor?.profile_id===row.uploaded_by?actor.crew_role:null,pod_reviewer_name:name(row.pod_reviewed_by),replaces_receipt_id:meta?.replaces_receipt_id??null});}));
 }
+
+export async function signReceiptRows(rows:Record<string,unknown>[]){return Promise.all(rows.map(signedReceipt));}
 
 async function getReceipt(tripId: string, receiptId: string) {
   uuid(tripId); uuid(receiptId);
@@ -106,6 +115,8 @@ export async function saveAdminReceiptText(tripId: string, receiptId: string, pr
   }
   const current = await getReceipt(tripId, receiptId);
   if (current.ocr_version !== input.expected_version) throw new ApiError("This receipt changed. Reload it before saving your edits.", 409, "RECEIPT_CONFLICT");
+  if(current.pod_review_status==='APPROVED'||current.pod_review_status==='REJECTED')throw new ApiError('This submission has already been reviewed. Its receipt details are read-only.',409,'RECEIPT_CONFLICT');
+  if(current.assignment_id)await validatePodProductSelections(text.ocr_text,current.assignment_id,tripId);
   // An automatic scan must never replace a reviewed transcription.
   if (!input.reviewed && current.reviewed_at) return signedReceipt(current);
   const timestamp = new Date().toISOString();

@@ -26,20 +26,20 @@ test('custom updates made during loading stay between loading milestones even wh
  assert.deepEqual(phases[0].milestones.filter(m=>m.time).map(m=>m.key),['start','status','depart']);
 });
 
-test('confirmed warehouse departure activates On the Way before travel updates without another event',()=>{
+test('warehouse departure does not fabricate an On the Way event',()=>{
  const phases=operationalPhases(input([event('depart','WAREHOUSE_DEPARTURE',10),event('traffic','CUSTOM_STATUS',11,'Traffic'),event('arrive','ARRIVED',12)]));
  const delivery=phases.find(p=>p.key===stop)!;
- assert.deepEqual(delivery.milestones.filter(m=>m.time).map(m=>m.type),['IN_TRANSIT','CUSTOM_STATUS','ARRIVED']);
- assert.equal(delivery.milestones[0].derived,true);assert.equal(delivery.milestones[0].event?.id,'depart');
- const traveling=operationalPhases(input([event('depart','WAREHOUSE_DEPARTURE',10)]));assert.equal(milestoneTone(traveling[1].milestones[0]),'blue');
+ assert.deepEqual(delivery.milestones.filter(m=>m.time).map(m=>m.type),['CUSTOM_STATUS','ARRIVED']);
+ assert.equal(delivery.milestones.some(m=>m.type==='IN_TRANSIT'),false);
+ const traveling=operationalPhases(input([event('depart','WAREHOUSE_DEPARTURE',10)]));assert.equal(milestoneTone(traveling[1].milestones[0]),'pending');
  const planned=operationalPhases(input([]));assert.equal(planned[1].milestones[0].time,null);
 });
 
-test('next assigned stop takes its travel activation from the previous stop departure',()=>{
+test('next assigned stop requires its own explicit travel event',()=>{
  const source=input([event('depart','WAREHOUSE_DEPARTURE',10),event('leave','STOP_DEPARTURE',12)]);
  source.data.stops.push({id:'next-stop',name:'Next destination',sequence:2});
  const next=operationalPhases(source).find(p=>p.key==='next-stop')!;
- assert.equal(next.milestones[0].type,'IN_TRANSIT');assert.equal(next.milestones[0].event?.id,'leave');assert.equal(next.milestones[0].time,'2026-10-27T12:00:00Z');
+ assert.equal(next.milestones[0].type,'IN_TRANSIT');assert.equal(next.milestones[0].event,undefined);assert.equal(next.milestones[0].time,null);
 });
 
 

@@ -2,6 +2,8 @@ import {roadPositionLabel,warehouseEstimate} from '../../services/road-routing';
 import RoadProgress from '../ui/RoadProgress';
 import {confirmedOperationalProgress,confirmedStateProgress} from '../../services/operational-progress';
 import ReceiptReviewCard from './ReceiptReviewCard';
+import type {TripReceipt} from '../../services/receipt.service';
+import {eventsWithPodReviews} from '../../services/pod-submissions';
 import {useCallback,useEffect,useMemo,useRef,useState} from 'react';
 import {motion,useReducedMotion} from 'motion/react';
 import {useSearchParams} from 'react-router-dom';
@@ -24,8 +26,8 @@ import {TruckJourneyIllustration} from './home/HomePrimitives';
 import './trip-tracking.css';
 import './trip-operational-workspace.css';
 
-export default function TripTrackingWorkspace({trip,assignments,stops,events,origin,destination,progress:_progress,totalCbm,totalQty,onManage,refreshKey,loading=false,operations:initialOperations=null,bookingRows=[],operationsError,onOpenReport}:{
- trip:TripRecord;assignments:TripAssignmentRecord[];stops:TripChildRecord[];events:TripEvent[];origin:string;destination:string;progress:number;totalCbm:number;totalQty:number;onManage:(assignmentId?:string)=>void;refreshKey:number;loading?:boolean;operations?:OperationsReportData|null;bookingRows?:Record<string,unknown>[];operationsError?:string|null;onOpenReport:(target:TripRecordTarget)=>void;
+export default function TripTrackingWorkspace({trip,assignments,assignmentsLoading=false,stops,events,origin,destination,progress:_progress,totalCbm,totalQty,onManage,refreshKey,loading=false,operations:initialOperations=null,bookingRows=[],operationsError,onOpenReport}:{
+ trip:TripRecord;assignments:TripAssignmentRecord[];assignmentsLoading?:boolean;stops:TripChildRecord[];events:TripEvent[];origin:string;destination:string;progress:number;totalCbm:number;totalQty:number;onManage:(assignmentId?:string)=>void;refreshKey:number;loading?:boolean;operations?:OperationsReportData|null;bookingRows?:Record<string,unknown>[];operationsError?:string|null;onOpenReport:(target:TripRecordTarget)=>void;
 }){
  const reduced=useReducedMotion();
  const reveal={hidden:{opacity:reduced?1:0,y:reduced?0:8},visible:{opacity:1,y:0,transition:{duration:reduced?0:.24}}};
@@ -37,10 +39,17 @@ export default function TripTrackingWorkspace({trip,assignments,stops,events,ori
  const convoy=snapshot?.scope===scope?snapshot.data:null;
  const [operationSnapshot,setOperationSnapshot]=useState<{scope:string;seed:OperationsReportData|null;data:OperationsReportData}|null>(null);
  const operations=operationSnapshot?.scope===scope&&operationSnapshot.seed===initialOperations?operationSnapshot.data:initialOperations;
- const trucks=convoy?.assignments??assignments,allStops=convoy?.stops??stops;
+ const trucks=(convoy?.assignments??assignments).filter(a=>a.trip_id===tripId),allStops=convoy?.stops??stops;
  const activeTrucks=trucks.filter(a=>!a.unassigned_at),pending=!convoy&&!error;
- const showTruckSelector=!!convoy&&!loading&&new Set(activeTrucks.map(a=>a.truck_id??a.truck?.id).filter(id=>typeof id==='string'&&id.length>0)).size>1;
- const selectedId=query.get('assignment')||activeTrucks[0]?.id||trucks[0]?.id||'';
+ const showTruckSelector=trucks.length>0;
+ const selectorLoading=!showTruckSelector&&(assignmentsLoading||pending);
+ const [selectionSnapshot,setSelectionSnapshot]=useState<{scope:string;id:string}|null>(null);
+ const requestedId=query.get('assignment');
+ const rememberedId=selectionSnapshot?.scope===scope?selectionSnapshot.id:null;
+ const selectedId=trucks.some(a=>a.id===requestedId)?requestedId!:trucks.some(a=>a.id===rememberedId)?rememberedId!:activeTrucks[0]?.id||trucks[0]?.id||'';
+ // The assignment endpoint and convoy can return different row orders. Keep
+ // the first usable selection stable when the richer response arrives.
+ useEffect(()=>{if(selectedId)setSelectionSnapshot(previous=>previous?.scope===scope&&previous.id===selectedId?previous:{scope,id:selectedId});},[scope,selectedId]);
  const selected=trucks.find(a=>a.id===selectedId),road=roads.find(r=>r.assignmentId===selectedId&&r.tripId===tripId);
  const selectedData=useMemo(()=>assignmentWorkspace(selected,convoy,stops,road,bookingRows),[selected,convoy,stops,road,bookingRows]);
 
@@ -55,7 +64,11 @@ export default function TripTrackingWorkspace({trip,assignments,stops,events,ori
  },[accessToken,endpoint,scope,retry,refreshKey,tripId]);
  useEffect(()=>{if(!expanded)return;const before=document.body.style.overflow,previous=document.activeElement as HTMLElement|null;document.body.style.overflow='hidden';expandButton.current?.focus();const key=(event:KeyboardEvent)=>{if(event.key==='Escape'){event.preventDefault();setExpanded(false);}if(event.key==='Tab'){const controls=Array.from(mapPanel.current?.querySelectorAll<HTMLElement>('button:not(:disabled),a[href],select,input,[tabindex="0"]')??[]).filter(e=>e.getClientRects().length);const first=controls[0],last=controls.at(-1);if(event.shiftKey&&document.activeElement===first){event.preventDefault();last?.focus();}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first?.focus();}}};document.addEventListener('keydown',key);return()=>{document.body.style.overflow=before;document.removeEventListener('keydown',key);previous?.focus({preventScroll:true});};},[expanded]);
  const [eventSnapshot,setEventSnapshot]=useState<{scope:string;seed:TripEvent[];rows:TripEvent[]}|null>(null),[eventError,setEventError]=useState(''),[eventRevision,setEventRevision]=useState(0);
- const sourceEvents=eventSnapshot?.scope===scope&&eventSnapshot.seed===events?eventSnapshot.rows:events;
+ const [receiptSnapshot,setReceiptSnapshot]=useState<{scope:string;rows:TripReceipt[]|null}|null>(null);
+ const receiptRows=receiptSnapshot?.scope===scope?receiptSnapshot.rows:null;
+ const receiveReceipts=useCallback((rows:TripReceipt[]|null)=>setReceiptSnapshot({scope,rows}),[scope]);
+ const baseEvents=eventSnapshot?.scope===scope&&eventSnapshot.seed===events?eventSnapshot.rows:events;
+ const sourceEvents=useMemo(()=>eventsWithPodReviews(baseEvents,receiptRows??[]),[baseEvents,receiptRows]);
  useEffect(()=>{if(!accessToken)return;let live=true,busy=false,wantEvents=false,wantReports=false,timer:ReturnType<typeof setTimeout>|undefined;
   const reportSources=['loading_reports','unloading_reports','backloads','offloads','demurrages','incidents','report_receipts','pod_records'];
   const load=async()=>{if(busy)return;busy=true;const eventsDirty=wantEvents,reportsDirty=wantReports;wantEvents=false;wantReports=false;
@@ -65,12 +78,12 @@ export default function TripTrackingWorkspace({trip,assignments,stops,events,ori
    ]);if(live)setEventError('');}catch{if(live)setEventError('Saved operational updates could not refresh. Previous records remain visible.');}finally{busy=false;if(live&&(wantEvents||wantReports))schedule();}
   };
   const schedule=()=>{clearTimeout(timer);timer=setTimeout(()=>void load(),250);};
-  if(eventRevision){wantEvents=true;wantReports=true;schedule();}
+  wantEvents=true;if(eventRevision)wantReports=true;schedule();
   const off=subscribeCollaborationEvents(e=>{
    if(e.kind==='connected'){wantEvents=true;wantReports=true;schedule();}
-   if(e.kind==='commit'&&e.commit.tripId===tripId){if(['trip_events','trip_images'].includes(e.commit.source))wantEvents=true;if(reportSources.includes(e.commit.source))wantReports=true;if(wantEvents||wantReports)schedule();}
+   if(e.kind==='commit'&&e.commit.tripId===tripId){if(['trip_events','trip_images','pod_review_events'].includes(e.commit.source))wantEvents=true;if(reportSources.includes(e.commit.source))wantReports=true;if(wantEvents||wantReports)schedule();}
    // Signal snapshots reconcile missed changes when the scoped bridge is unavailable.
-   if(e.kind==='signal'&&!collaborationSnapshot().bridgeHealthy){if(['trip_events','trip_images'].includes(e.topic))wantEvents=true;if(reportSources.includes(e.topic))wantReports=true;if(wantEvents||wantReports)schedule();}
+   if(e.kind==='signal'&&!collaborationSnapshot().bridgeHealthy){if(['trip_events','trip_images','pod_review_events'].includes(e.topic))wantEvents=true;if(reportSources.includes(e.topic))wantReports=true;if(wantEvents||wantReports)schedule();}
   });
   return()=>{live=false;clearTimeout(timer);off();};
  },[accessToken,tripId,scope,eventRevision,events,initialOperations]);
@@ -103,7 +116,7 @@ export default function TripTrackingWorkspace({trip,assignments,stops,events,ori
    <div className="trip-header-progress"><span>{text(trip.trip_reference,'Delivery progress')}</span><strong>{pending?'Loading progress':`${overallProgress}% complete`}</strong><RoadProgress percent={overallProgress} label="Overall delivery progress"/></div>
   </motion.header>
   {error&&<p role="status" className="trip-empty-note">{error} <button type="button" onClick={()=>setRetry(v=>v+1)}>Retry</button></p>}
-  <section className="trip-operations-workspace" aria-label="Trip operations workspace"><header className="trip-workspace-tools">{showTruckSelector&&<div className="trip-truck-selector"><span className="trip-truck-selector-label">Monitoring truck</span><div role="group" aria-label="Selected truck assignment" className="trip-truck-buttons">{trucks.map(a=><button type="button" key={a.id} aria-pressed={selectedId===a.id} onClick={()=>select(a.id)}><Truck size={17} aria-hidden/><span><strong>{truckName(a)}</strong><small>{driverName(a)}{a.unassigned_at?' / Ended':''}</small></span><Truck className="trip-truck-watermark" aria-hidden/></button>)}</div></div>}<nav aria-label="Trip management actions"><button type="button" onClick={()=>onManage(selected?.id)}>Manage assignments & cargo</button><button type="button" onClick={()=>onOpenReport('operations')}>Manage reports</button><button type="button" onClick={()=>onOpenReport('records')}>Photos & records</button></nav></header>
+  <section className="trip-operations-workspace" aria-label="Trip operations workspace"><header className="trip-workspace-tools">{(showTruckSelector||selectorLoading)&&<div className="trip-truck-selector"><span className="trip-truck-selector-label">Monitoring truck</span>{selectorLoading?<div className="trip-truck-skeleton" role="status" aria-label="Loading truck assignments" aria-busy="true"><span aria-hidden="true"/><span aria-hidden="true"/></div>:<div role="group" aria-label="Selected truck assignment" className="trip-truck-buttons">{trucks.map(a=><button type="button" key={a.id} aria-pressed={selectedId===a.id} onClick={()=>select(a.id)}><Truck size={17} aria-hidden/><span><strong>{truckName(a)}</strong><small>{driverName(a)}{a.unassigned_at?' / Ended':''}</small></span><Truck className="trip-truck-watermark" aria-hidden/></button>)}</div>}</div>}<nav aria-label="Trip management actions"><button type="button" onClick={()=>onManage(selected?.id)}>Manage assignments & cargo</button><button type="button" onClick={()=>onOpenReport('operations')}>Manage reports</button><button type="button" onClick={()=>onOpenReport('records')}>Photos & records</button></nav></header>
   {!!query.get('assignment')&&!selected&&<p role="alert" className="trip-empty-note">This assignment is unavailable. Choose a truck above.</p>}
   {eventKey&&!selectedMilestone&&!loading&&<p role="status" className="trip-empty-note">This event is unavailable for the selected truck. <button type="button" onClick={backToRoute}>Back to route</button></p>}
   <motion.div variants={reveal} className="trip-journey-grid"><div id={`trip-${tripId}-operations`}>{selected?<TripOperationalTimeline phases={phases} truckLabel={selected?`${truckName(selected)} / ${driverName(selected)}`:undefined} selected={selectedMilestone?.key??null} onSelect={chooseMilestone} onClear={backToRoute} loading={loading||pending} error={eventError||operationsError||operations?.evidence_error||(operations?.evidence_limited?'Attachment indicators cover recent report files. Manage reports includes older files.':undefined)}/>:<p className="trip-empty-note">Select a truck assignment to inspect its saved operations.</p>}</div>
@@ -111,8 +124,8 @@ export default function TripTrackingWorkspace({trip,assignments,stops,events,ori
    {selectedMilestone&&selected&&<TripOperationalInspector key={`${selectedId}:${selectedMilestone.key}`} milestone={selectedMilestone} assignmentId={selectedId} plate={truckName(selected)} driver={driverName(selected)} onBack={backToRoute} onReviewed={()=>setEventRevision(v=>v+1)} onOpenReport={openReport} operations={operations}/>}
    </div></section>
   </motion.div></section>
-  <section className="trip-pod-review" id={`trip-${tripId}-pod`}><ReceiptReviewCard key={`${tripId}:${selectedId}`} tripId={tripId} accessToken={accessToken} inline assignmentId={selectedId} assignments={trucks.map(a=>({id:a.id,label:`${truckName(a)} / ${driverName(a)}`}))} dispatchNumber={text(trip.dispatch_number)} stopLabels={Object.fromEntries(allStops.map(s=>[String(s.id),text(s.delivery_location,`Stop ${s.stop_sequence}`)]))}/></section>
-  <section className="trip-allocated-cargo"><header className="trip-section-heading"><Package size={17} aria-hidden="true"/><h2>Cargo on {selected?truckName(selected):'selected truck'}</h2><span>{selectedData.cargo.length} allocations</span></header>{selected&&<DeliveryCargoSummary key={selectedId} assignmentId={selectedId} tripId={tripId}/>}</section>
+  <section className="trip-pod-review" id={`trip-${tripId}-pod`}><ReceiptReviewCard key={`${tripId}:${selectedId}`} tripId={tripId} accessToken={accessToken} onRecordsChange={receiveReceipts} inline assignmentId={selectedId} assignments={trucks.map(a=>({id:a.id,label:`${truckName(a)} / ${driverName(a)}`}))} dispatchNumber={text(trip.dispatch_number)} stopLabels={Object.fromEntries(allStops.map(s=>[String(s.id),text(s.delivery_location,`Stop ${s.stop_sequence}`)]))}/></section>
+  <section className="trip-allocated-cargo"><header className="trip-section-heading"><Package size={17} aria-hidden="true"/><h2>Cargo on {selected?truckName(selected):'selected truck'}</h2><span>{selectedData.cargo.length} allocations</span></header>{selected&&<DeliveryCargoSummary key={selectedId} assignmentId={selectedId} tripId={tripId} receiptRecords={receiptRows} events={sourceEvents}/>}</section>
   {Boolean(trip.remarks)&&<section className="trip-remarks"><h2 className="trip-section-heading">Dispatch notes</h2><p>{cleanActivityNote(String(trip.remarks))}</p></section>}
  </motion.div>;
 }

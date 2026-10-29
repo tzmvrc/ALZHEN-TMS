@@ -1,9 +1,11 @@
+import {readPodSerialMetadata,type PodSerialMetadata} from './pod-serials';
 /* Pulls the useful bits (DR number, receiver, model codes, date) out of raw OCR text so the
    admin checks four fields instead of reading a wall of text. Heuristics only: every value
    stays editable, and a wrong guess is cheaper to fix than retyping. */
 
 export type ReceiptFields = { dr: string; receiver: string; models: string; date: string };
-export type ReceiptSnapshot = { raw: string; fields: ReceiptFields };
+export type PodProductSelection={allocation_id:string;line_item_id:string;assignment_id:string;trip_stop_id:string;product_id?:string|null;dr_number:string;model:string;quantity:number};
+export type ReceiptSnapshot = { raw: string; fields: ReceiptFields; modelQuantities?: Record<string,number>; productSelections?:PodProductSelection[]; podSerials?:PodSerialMetadata };
 
 export const EMPTY_SNAPSHOT: ReceiptSnapshot = {
   raw: "",
@@ -76,12 +78,13 @@ const HEADER_KEYS: Array<[keyof ReceiptFields, string]> = [
   ["date", "Delivery Date"],
 ];
 
-export function composeSaved({ fields, raw }: ReceiptSnapshot): string {
+export function composeSaved({ fields, raw, modelQuantities, productSelections, podSerials }: ReceiptSnapshot): string {
   const header = HEADER_KEYS.map(([key, label]) => `${label}: ${fields[key].trim()}`).join("\n");
-  return `${header}\n${MARKER}\n${raw.trim()}`;
+  const quantities=modelQuantities===undefined?'':`\nModel Quantities: ${JSON.stringify(Object.fromEntries(Object.entries(modelQuantities).filter(([,quantity])=>Number.isSafeInteger(quantity)&&quantity>=0)))}`;
+  return `${header}${quantities}${productSelections===undefined?'':`\nProduct Selections: ${JSON.stringify(productSelections)}`}${podSerials===undefined?'':`\nPOD Serials: ${JSON.stringify(podSerials)}`}\n${MARKER}\n${raw.trim()}`;
 }
 
-export function splitSaved(text: string): { header: Partial<ReceiptFields>; raw: string } {
+export function splitSaved(text: string): { header: Partial<ReceiptFields>; raw: string; modelQuantities?:Record<string,number>;productSelections?:PodProductSelection[];podSerials?:PodSerialMetadata } {
   const at = text.indexOf(MARKER);
   if (at === -1) return { header: {}, raw: text };
   const header: Partial<ReceiptFields> = {};
@@ -92,14 +95,26 @@ export function splitSaved(text: string): { header: Partial<ReceiptFields>; raw:
     const key = HEADER_KEYS.find(([, name]) => name === label)?.[0];
     if (key) header[key] = line.slice(colon + 1).trim();
   }
-  return { header, raw: text.slice(at + MARKER.length).replace(/^\n/, "") };
+  let modelQuantities:Record<string,number>|undefined;
+  const metadata=text.slice(0,at).split('\n').find(line=>line.startsWith('Model Quantities: '));
+  if(metadata){try{const value:unknown=JSON.parse(metadata.slice('Model Quantities: '.length));if(value&&typeof value==='object'&&!Array.isArray(value))modelQuantities=Object.fromEntries(Object.entries(value).filter((entry):entry is [string,number]=>typeof entry[1]==='number'&&Number.isSafeInteger(entry[1])&&entry[1]>=0));}catch{/* Historical receipt text stays readable without metadata. */}}
+  let podSerials:PodSerialMetadata|undefined;
+  let productSelections:PodProductSelection[]|undefined;
+  const productLine=text.slice(0,at).split('\n').find(line=>line.startsWith('Product Selections: '));
+  if(productLine){productSelections=[];try{const value:unknown=JSON.parse(productLine.slice('Product Selections: '.length));if(Array.isArray(value))productSelections=value.filter((item):item is PodProductSelection=>!!item&&typeof item==='object'&&['allocation_id','line_item_id','assignment_id','trip_stop_id','dr_number','model'].every(key=>typeof item[key]==='string'&&item[key].trim().length>0&&item[key].length<=200)&&Number.isSafeInteger(item.quantity)&&item.quantity>=0);}catch{/* An invalid identity block must never fall back to matching every model name. */}}
+  const serialLine=text.slice(0,at).split('\n').find(line=>line.startsWith('POD Serials: '));
+  if(serialLine){try{const value=JSON.parse(serialLine.slice('POD Serials: '.length));podSerials=readPodSerialMetadata(value);}catch{/* Legacy text is still available for review. */}}
+  return { ...(podSerials?{podSerials}:{}),...(productSelections===undefined?{}:{productSelections}),header, raw: text.slice(at + MARKER.length).replace(/^\n/, ""),...(modelQuantities===undefined?{}:{modelQuantities}) };
 }
 
 export function snapshotOf(text: string, driverDr: string): ReceiptSnapshot {
-  const { header, raw } = splitSaved(text);
+  const { header, raw, modelQuantities, productSelections, podSerials } = splitSaved(text);
   const found = extractFields(raw);
   return {
     raw,
+    ...(modelQuantities===undefined?{}:{modelQuantities}),
+    ...(podSerials?{podSerials}:{}),
+    ...(productSelections===undefined?{}:{productSelections}),
     fields: {
       dr: header.dr ?? (driverDr.trim() || found.dr),
       receiver: header.receiver ?? found.receiver,
@@ -110,5 +125,12 @@ export function snapshotOf(text: string, driverDr: string): ReceiptSnapshot {
 }
 
 export function sameSnapshot(a: ReceiptSnapshot, b: ReceiptSnapshot): boolean {
-  return a.raw === b.raw && (Object.keys(a.fields) as Array<keyof ReceiptFields>).every((key) => a.fields[key] === b.fields[key]);
+  return JSON.stringify(a.productSelections??null)===JSON.stringify(b.productSelections??null) && JSON.stringify(a.podSerials??null)===JSON.stringify(b.podSerials??null) && JSON.stringify(Object.entries(a.modelQuantities??{}).sort())===JSON.stringify(Object.entries(b.modelQuantities??{}).sort()) && a.raw === b.raw && (Object.keys(a.fields) as Array<keyof ReceiptFields>).every((key) => a.fields[key] === b.fields[key]);
+}
+/** Link prepared page hashes to actual Storage attachment records, once uploads succeed. */
+export function linkPodSerialAttachments(text:string,files:Array<{pageId?:string;uploadedId?:string}>){
+ const snapshot=snapshotOf(text,'');if(!snapshot.podSerials)return text;
+ const links=new Map(files.filter(file=>file.pageId&&file.uploadedId).map(file=>[file.pageId!,file.uploadedId!]));
+ snapshot.podSerials={...snapshot.podSerials,pages:snapshot.podSerials.pages.map(page=>({...page,...(links.has(page.id)?{attachmentId:links.get(page.id)!}:{})}))};
+ return composeSaved(snapshot);
 }

@@ -15,6 +15,7 @@ import {
   X,
 } from "lucide-react";
 import {ToastContext} from "./toast-context";
+import {createPortal} from 'react-dom';
 
 export type ToastVariant = "success" | "error" | "info" | "warning";
 
@@ -73,16 +74,31 @@ function ToastViewport({
   toasts: ToastItem[];
   onDismiss: (id: number) => void;
 }) {
-  return (
+  const [host,setHost]=useState<HTMLElement|null>(null);
+  useEffect(()=>{
+    if(!toasts.length)return;
+    // Native modal dialogs sit above every z-index. Keep the existing toast
+    // inside the active dialog's top layer while the upload form is open.
+    const locate=()=>{
+      const focused=document.activeElement?.closest<HTMLDialogElement>('dialog[open]');
+      setHost(focused??Array.from(document.querySelectorAll<HTMLDialogElement>('dialog[open]')).at(-1)??document.body);
+    };
+    locate();const observer=new MutationObserver(locate);
+    observer.observe(document.body,{subtree:true,childList:true,attributes:true,attributeFilter:['open']});
+    document.addEventListener('focusin',locate);
+    return()=>{observer.disconnect();document.removeEventListener('focusin',locate);};
+  },[toasts.length]);
+  if(!toasts.length)return null;
+  return createPortal(
     <div
       className="pointer-events-none fixed inset-x-3 top-3 z-[2300] flex max-w-full justify-center sm:inset-x-0 sm:top-4 sm:justify-center"
       style={{ paddingTop: "max(12px, env(safe-area-inset-top))" }}>
-      <div className="flex w-full max-w-sm flex-col gap-3 sm:w-[360px]">
+      <div className="flex max-h-[calc(100dvh-48px)] w-full max-w-sm flex-col gap-3 overflow-y-auto sm:w-[360px]">
         {toasts.map((toast) => (
           <ToastCard key={toast.id} toast={toast} onDismiss={onDismiss} />
         ))}
       </div>
-    </div>
+    </div>,host?.isConnected?host:document.body
   );
 }
 

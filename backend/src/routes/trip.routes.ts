@@ -1,3 +1,4 @@
+import {crewCandidates,saveTruckCrew} from '../services/truck-crew.service.js';
 import {homeTripDetails} from "../services/home-trip-details.service.js";
 import { finalizeImportCargo, setDefaultTripDriver } from "../services/trip-workflow.service.js";
 import { parseDestination, resolveTripDestination } from "../services/trip-location.service.js";
@@ -56,6 +57,7 @@ router.patch("/:id/master-list-cell", authMiddleware, requireRole("ADMIN", "STAF
   try { return sendSuccess(res, 200, "Master List value saved", await saveMasterListCell(req.profile!.id, String(req.params.id), req.body ?? {})); }
   catch (error) { next(error); }
 });
+router.get("/crew-candidates",authMiddleware,requireRole("ADMIN","STAFF"),async(req,res,next)=>{try{return sendRecordSuccess(res,200,"Crew accounts",await crewCandidates({id:req.user!.id,role:req.profile!.role},req.query.q,req.query.after));}catch(error){next(error);}});
 router.get("/import/location", authMiddleware, requireRole("ADMIN", "STAFF"), async (req, res, next) => {
   try {
     const query = req.query.q;
@@ -226,6 +228,7 @@ router.get(
 );
 
 router.delete("/:id/stops/:stopId/record-only",authMiddleware,requireRole("ADMIN","STAFF"),async(req,res,next)=>{try{return sendRecordSuccess(res,200,"Empty delivery stop deleted",await deletePhysicalRecord({id:req.user!.id,role:req.profile!.role},"trip_stops",String(req.params.stopId),req.body?.expected_version,String(req.params.id)));}catch(error){next(error);}});
+router.put("/:id/convoy/assignments/:assignmentId/crew",authMiddleware,requireRole("ADMIN","STAFF"),async(req,res,next)=>{try{return sendRecordSuccess(res,200,"Truck crew saved",await saveTruckCrew({id:req.user!.id,role:req.profile!.role},String(req.params.id),String(req.params.assignmentId),req.body??{}));}catch(error){next(error);}});
 router.get("/:id/convoy",authMiddleware,requireRole("ADMIN","STAFF"),async(req,res,next)=>{try{return sendRecordSuccess(res,200,"Trip convoy",await readTripConvoy({id:req.user!.id,role:req.profile!.role},String(req.params.id)));}catch(error){next(error);}});
 router.post("/:id/convoy/allocations",authMiddleware,requireRole("ADMIN","STAFF"),async(req,res,next)=>{try{return sendRecordSuccess(res,200,"Cargo allocations saved",await saveTripAllocations({id:req.user!.id,role:req.profile!.role},String(req.params.id),req.body?.changes));}catch(error){next(error);}});
 router.put("/:id/convoy/assignments/:assignmentId/stops",authMiddleware,requireRole("ADMIN","STAFF"),async(req,res,next)=>{try{return sendRecordSuccess(res,200,"Truck stops saved",await saveAssignmentStops({id:req.user!.id,role:req.profile!.role},String(req.params.id),String(req.params.assignmentId),req.body??{}));}catch(error){next(error);}});

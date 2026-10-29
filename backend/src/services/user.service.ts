@@ -24,6 +24,7 @@ export type CreateUserAccountInput = {
   email?: unknown;
   password?: unknown;
   role?: unknown;
+  crew_role?: unknown;
   is_admin?: unknown;
   contact_number?: unknown;
   license_number?: unknown;
@@ -103,6 +104,8 @@ export async function createUserAccount(input: CreateUserAccountInput) {
   }
 
   const role = normalizeRole(input.role);
+  const crewRole=role==='TRUCKER'?(input.crew_role??'DRIVER'):null;
+  if(role==='TRUCKER'&&!['DRIVER','HELPER'].includes(String(crewRole)))throw new UserServiceError('Crew role must be Driver or Helper.',400);
 
   if (typeof input.is_admin !== "boolean") {
     throw new UserServiceError("is_admin must be a boolean value.", 400);
@@ -173,6 +176,7 @@ export async function createUserAccount(input: CreateUserAccountInput) {
       first_name: firstName,
       last_name: lastName,
       role,
+      crew_role:crewRole as "DRIVER"|"HELPER"|null,
       is_admin: normalizedIsAdmin,
       created_by: input.created_by,
       profile_picture_path: null,
@@ -223,6 +227,7 @@ export async function createUserAccount(input: CreateUserAccountInput) {
         first_name: profile.first_name,
         last_name: profile.last_name,
         role: profile.role,
+        crew_role: profile.crew_role,
         is_admin: profile.is_admin,
         profile_picture_path: profile.profile_picture_path,
         created_by: profile.created_by,
@@ -286,7 +291,7 @@ export type ManagedUser = {
 
 export async function listManagedUsers(): Promise<ManagedUser[]> {
   const { data: profileRows, error } = await supabaseAdmin.from("profiles")
-    .select("id,first_name,last_name,role,is_admin,profile_picture_path")
+    .select("id,first_name,last_name,role,crew_role,is_admin,profile_picture_path")
     .is("deactivated_at",null)
     .in("role", ["ADMIN", "STAFF", "TRUCKER"]).order("created_at", { ascending: false });
   if (error) throw new UserServiceError("Unable to load user profiles.", 502);
@@ -324,11 +329,13 @@ export async function updateManagedUser(id: string, input: Record<string, unknow
   if (profileReadError || !profile || !["ADMIN", "STAFF", "TRUCKER"].includes(String(profile.role))) throw new UserServiceError("User profile not found.", 404);
   if((profile as any).deactivated_at)throw new UserServiceError("This account has been deactivated and is retained for history.",409);
   const role = profile.role as "ADMIN" | "STAFF" | "TRUCKER";
+  if(role==="TRUCKER"&&input.crew_role!==undefined&&!["DRIVER","HELPER"].includes(String(input.crew_role)))throw new UserServiceError("Crew role must be Driver or Helper.",400);
+  if(role==='TRUCKER'&&input.crew_role==='HELPER'){const active=await supabaseAdmin.from('trip_truck_crew_members').select('id,assignment:trip_truck_assignments!inner(trip:trips!inner(archived_at))').is('assignment.trip.archived_at',null).eq('profile_id',id).eq('crew_role','DRIVER').is('removed_at',null).limit(1);if(active.error)throw new UserServiceError('Crew assignment could not be verified.',503);if(active.data?.length)throw new UserServiceError('Reassign active primary Driver assignments before changing this account to Helper.',409);}
   let driverFields: Awaited<ReturnType<typeof normalizeDriverFields>> | null = null;
   if (role === "TRUCKER") driverFields = await normalizeDriverFields(input);
   const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(id, { email, email_confirm: true, user_metadata: { first_name: firstName, last_name: lastName } });
   if (authError) throw new UserServiceError(/already|exists|duplicate/i.test(authError.message) ? "A user with this email already exists." : "Unable to update the Auth user.", /already|exists|duplicate/i.test(authError.message) ? 409 : 502);
-  const {error:profileError}=await (supabaseAdmin as any).rpc("user_profile_patch_v1",{p_actor:actorId,p_subject:id,p_patch:{first_name:firstName,last_name:lastName,contact_number:optionalText(input.contact_number,"Contact number"),...(driverFields?{license_number:driverFields.license_number,trucking_company_id:driverFields.trucking_company_id,driver_status:driverFields.status,driver_notes:driverFields.notes}:{})}});
+  const {error:profileError}=await (supabaseAdmin as any).rpc("user_profile_patch_v1",{p_actor:actorId,p_subject:id,p_patch:{first_name:firstName,last_name:lastName,contact_number:optionalText(input.contact_number,"Contact number"),...(role==="TRUCKER"&&input.crew_role!==undefined?{crew_role:input.crew_role}:{}),...(driverFields?{license_number:driverFields.license_number,trucking_company_id:driverFields.trucking_company_id,driver_status:driverFields.status,driver_notes:driverFields.notes}:{})}});
   if(profileError)throw new UserServiceError("The account email was confirmed but profile changes were not saved. Refresh and retry.",502);
   return { id, first_name: firstName, last_name: lastName, email, role };
 }

@@ -49,7 +49,7 @@ export async function sendGmailSmtp(message:Message){
    disableFileAccess:true,disableUrlAccess:true,
    attachments:message.attachments.map(a=>({filename:a.filename,content:Buffer.from(a.content,'base64'),contentType:a.content_type,...(a.content_id?{cid:a.content_id,contentDisposition:'inline' as const}:{contentDisposition:'attachment' as const})})),
   }),timeout]);
-  const accepted=result.accepted.some(address=>(typeof address==='string'?address:address.address)?.toLowerCase()===message.recipient.toLowerCase());
+  const accepted=result.accepted.some(address=>address.toLowerCase()===message.recipient.toLowerCase());
   if(!accepted)throw Object.assign(new Error('SMTP acceptance is uncertain.'),{code:'SMTP_UNCERTAIN'});
   return {messageId:result.messageId||messageId};
  }finally{if(deadline)clearTimeout(deadline);try{transport.close();}catch{/* Never log SMTP protocol/authentication errors. */}}

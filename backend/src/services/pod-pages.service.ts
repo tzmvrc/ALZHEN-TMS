@@ -1,3 +1,4 @@
+import {activeCrewAssignmentIds,hasCrewAccess} from './truck-crew.service.js';
 import {supabaseAdmin as db} from "../config/supabase.js";
 import {ApiError} from "../utils/api-response.js";
 import {renderPodPdf} from "./pdf-renderer.service.js";
@@ -13,10 +14,10 @@ async function authorize(actor:Actor,tripId:string,stopId:string){
  const stop=await stopQuery.maybeSingle();
  if(stop.error||!stop.data)throw new ApiError("Exact receipt transaction required.",403,"POD_ACCESS_DENIED");
  if(actor.role!=="TRUCKER")return;
- const driver=await db.from("drivers").select("id").eq("profile_id",actor.id).maybeSingle();
- if(driver.error||!driver.data)throw new ApiError("Assigned driver required.",403,"POD_ACCESS_DENIED");
- const assigned=await db.from("trip_truck_assignments").select("id,trips!inner(archived_at)").eq("driver_id",driver.data.id).eq("trip_id",tripId).is("unassigned_at",null).is("trips.archived_at",null).limit(1);
- if(assigned.error||!assigned.data?.length)throw new ApiError("Current trip assignment required.",403,"POD_ACCESS_DENIED");
+ const memberIds=await activeCrewAssignmentIds(actor.id,tripId);if(!memberIds.length)throw new ApiError('Current crew assignment required.',403,'POD_ACCESS_DENIED');
+ const assigned=await db.from('trip_truck_assignments').select('id,stop_scope,trips!inner(archived_at)').in('id',memberIds).is('trips.archived_at',null);
+ if(assigned.error)throw new ApiError('Crew assignment could not load.',503,'POD_ACCESS_DENIED');
+ if(!assigned.data?.some(a=>a.stop_scope==='ALL')){const stops=await db.from('trip_assignment_stops').select('id').in('assignment_id',memberIds).eq('trip_stop_id',stopId).limit(1);if(stops.error||!stops.data?.length)throw new ApiError('Assigned delivery stop required.',403,'POD_ACCESS_DENIED');}
 }
 export async function preparePdfPages(actor:Actor,tripId:string,stopId:string,bytes:Buffer,mime:string,name:string){
  if(!pdfEnabled())throw new ApiError("PDF receipts are not enabled.",409,"POD_PDF_DISABLED");
@@ -35,7 +36,7 @@ export async function savedPdfPages(actor:Actor,tripId:string,receiptId:string){
  const {data:r,error}=await db.from("trip_images").select("*").eq("trip_id",tripId).eq("id",receiptId).eq("kind","receipt").maybeSingle();
  if(error||!r?.trip_stop_id)throw new ApiError("Exact receipt transaction not found.",404,"POD_NOT_FOUND");
  await authorize(actor,tripId,r.trip_stop_id);
- if(actor.role==="TRUCKER"&&r.uploaded_by!==actor.id)throw new ApiError("Receipt access denied.",403,"POD_ACCESS_DENIED");
+ if(actor.role==="TRUCKER"&&(!r.assignment_id||!await hasCrewAccess(actor.id,r.assignment_id)))throw new ApiError("Receipt access denied.",403,"POD_ACCESS_DENIED");
  const {data:file,error:downloadError}=await db.storage.from("trip-images").download(r.storage_path);
  if(downloadError||!file||file.size>5242880)throw new ApiError("Original receipt unavailable.",503,"POD_STORAGE_INVALID");
  return preparePdfPages(actor,tripId,r.trip_stop_id,Buffer.from(await file.arrayBuffer()),r.mime_type??"application/pdf",r.file_name);

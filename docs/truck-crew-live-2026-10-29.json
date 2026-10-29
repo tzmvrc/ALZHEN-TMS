@@ -1,0 +1,181 @@
+{
+  "runs": [
+    {
+      "fixtures": {
+        "tag": "mvt7eysu",
+        "truck": "f24abac6-796b-4c1b-a22f-3d683dc7d235",
+        "trip": "e7f48299-562c-448b-9911-e809f0ea4dd5",
+        "stop": "df553632-6b58-4bc2-a12a-4b4417c25502",
+        "assignment": "d6b07aca-0817-4945-9ba2-23a76a4425d7",
+        "line": "cc9dff2f-9a60-478d-8833-7fd5398a1aa5",
+        "allocation": "2067c895-af29-44ba-a0dc-e760c23f09c5"
+      },
+      "accounts": [
+        {
+          "id": "4bb7cb09-558e-4cc5-aef4-ae9abcf48636",
+          "email": "crew-mvt7eysu-driver@alzhentest.example",
+          "label": "driver",
+          "status": "DEACTIVATED_AND_BANNED"
+        },
+        {
+          "id": "6009aa3a-3deb-4481-bc08-1ba25f1e3d7a",
+          "email": "crew-mvt7eysu-helper-a@alzhentest.example",
+          "label": "helper-a",
+          "status": "DEACTIVATED_AND_BANNED"
+        },
+        {
+          "id": "9a6c7f85-16c1-42de-b79b-2b27038b00b8",
+          "email": "crew-mvt7eysu-helper-b@alzhentest.example",
+          "label": "helper-b",
+          "status": "DEACTIVATED_AND_BANNED"
+        },
+        {
+          "id": "e44dc6f2-8173-4b99-aea3-8545a7f52051",
+          "email": "crew-mvt7eysu-unassigned@alzhentest.example",
+          "label": "unassigned",
+          "status": "DEACTIVATED_AND_BANNED"
+        }
+      ],
+      "checks": [
+        "backend account creation saves Driver and Helper classifications"
+      ],
+      "retention": "Archived isolated trip and immutable test history retained; no operational records modified."
+    },
+    {
+      "fixtures": {
+        "tag": "mvt7hg91",
+        "truck": "5a7648ef-ffe8-4427-86e8-3f7bb316d82b",
+        "trip": "6fe22d47-a502-48c4-8a0a-c2d6680d02fb",
+        "stop": "81da21de-dd70-4832-b35f-5acacbb3b2e4",
+        "assignment": "8c4447ef-6ab0-44f0-9a61-949153244635",
+        "line": "06553aab-c3c8-49e1-8668-e95cee9edbac",
+        "allocation": "44908ac4-b00c-4707-ab60-cf27433d1b9c",
+        "original": "cdab2f8f-6f89-43a6-8d13-e0237816095d",
+        "replacement": "42e7e417-db4b-4dd1-aa37-e66ff02ac395"
+      },
+      "accounts": [
+        {
+          "id": "51782288-9e62-46d0-b3bf-02aaeb14387b",
+          "email": "crew-mvt7hg91-driver@alzhentest.example",
+          "label": "driver",
+          "status": "DEACTIVATED_AND_BANNED"
+        },
+        {
+          "id": "3785314e-f67e-4611-8837-91caeb659bb5",
+          "email": "crew-mvt7hg91-helper-a@alzhentest.example",
+          "label": "helper-a",
+          "status": "DEACTIVATED_AND_BANNED"
+        },
+        {
+          "id": "68c7de3d-a671-403a-ba48-d265eaefacc7",
+          "email": "crew-mvt7hg91-helper-b@alzhentest.example",
+          "label": "helper-b",
+          "status": "DEACTIVATED_AND_BANNED"
+        },
+        {
+          "id": "ba39cb55-f2ee-4ce9-9cc4-9d91e1bc5013",
+          "email": "crew-mvt7hg91-unassigned@alzhentest.example",
+          "label": "unassigned",
+          "status": "DEACTIVATED_AND_BANNED"
+        }
+      ],
+      "checks": [
+        "backend account creation saves Driver and Helper classifications",
+        "independent real logins share one dashboard; unassigned user is denied",
+        "actual authenticated sockets deliver Driver travel and Helper arrival changes"
+      ],
+      "retention": "Archived isolated trip and immutable test history retained; no operational records modified."
+    },
+    {
+      "fixtures": {
+        "tag": "mvt7jlg5",
+        "truck": "8b4b3955-ff0c-4035-9c02-6c534532956b",
+        "trip": "997e8ba7-5ca4-49e9-95f3-9cb0c306d2b6",
+        "stop": "f3fc4a64-a80c-444e-a36f-0e94a4e53090",
+        "assignment": "9ea9a415-0a83-42fa-b8fd-3c01c437d12f",
+        "line": "883bfdc9-cc35-44f8-8cc8-56b59f23b2cf",
+        "allocation": "fe620037-e78c-454c-b84a-c0a591ae850e"
+      },
+      "accounts": [
+        {
+          "id": "1873ea9c-1ce1-469f-8997-09caf893e484",
+          "email": "crew-mvt7jlg5-driver@alzhentest.example",
+          "label": "driver",
+          "status": "DEACTIVATED_AND_BANNED"
+        },
+        {
+          "id": "87c0b2aa-b270-414c-a2d7-6933fba2283d",
+          "email": "crew-mvt7jlg5-helper-a@alzhentest.example",
+          "label": "helper-a",
+          "status": "DEACTIVATED_AND_BANNED"
+        },
+        {
+          "id": "b69bfabd-0758-4449-a2c0-dd751a88a25b",
+          "email": "crew-mvt7jlg5-helper-b@alzhentest.example",
+          "label": "helper-b",
+          "status": "DEACTIVATED_AND_BANNED"
+        },
+        {
+          "id": "89a4e8e9-58cd-48b3-abb5-95a69408c58c",
+          "email": "crew-mvt7jlg5-unassigned@alzhentest.example",
+          "label": "unassigned",
+          "status": "DEACTIVATED_AND_BANNED"
+        }
+      ],
+      "checks": [
+        "backend account creation saves Driver and Helper classifications",
+        "independent real logins share one dashboard; unassigned user is denied"
+      ],
+      "retention": "Archived isolated trip and immutable test history retained; no operational records modified."
+    },
+    {
+      "fixtures": {
+        "tag": "mvt7jlg5",
+        "truck": "8b4b3955-ff0c-4035-9c02-6c534532956b",
+        "trip": "997e8ba7-5ca4-49e9-95f3-9cb0c306d2b6",
+        "stop": "f3fc4a64-a80c-444e-a36f-0e94a4e53090",
+        "assignment": "9ea9a415-0a83-42fa-b8fd-3c01c437d12f",
+        "line": "883bfdc9-cc35-44f8-8cc8-56b59f23b2cf",
+        "allocation": "fe620037-e78c-454c-b84a-c0a591ae850e",
+        "original": "505ff9fe-a917-488d-b494-7178cd8b9797",
+        "replacement": "e118551b-90e8-4488-921a-6e3b015d72cc"
+      },
+      "accounts": [
+        {
+          "id": "1873ea9c-1ce1-469f-8997-09caf893e484",
+          "email": "crew-mvt7jlg5-driver@alzhentest.example",
+          "label": "driver",
+          "status": "DEACTIVATED_AND_BANNED"
+        },
+        {
+          "id": "87c0b2aa-b270-414c-a2d7-6933fba2283d",
+          "email": "crew-mvt7jlg5-helper-a@alzhentest.example",
+          "label": "helper-a",
+          "status": "DEACTIVATED_AND_BANNED"
+        },
+        {
+          "id": "b69bfabd-0758-4449-a2c0-dd751a88a25b",
+          "email": "crew-mvt7jlg5-helper-b@alzhentest.example",
+          "label": "helper-b",
+          "status": "DEACTIVATED_AND_BANNED"
+        },
+        {
+          "id": "89a4e8e9-58cd-48b3-abb5-95a69408c58c",
+          "email": "crew-mvt7jlg5-unassigned@alzhentest.example",
+          "label": "unassigned",
+          "status": "DEACTIVATED_AND_BANNED"
+        }
+      ],
+      "checks": [
+        "backend account creation saves Driver and Helper classifications",
+        "independent real logins share one dashboard; unassigned user is denied",
+        "actual authenticated sockets deliver Driver travel and Helper arrival changes",
+        "Helper POD, crew rejection notifications, cross-crew replacement Pending and original history persist",
+        "simultaneous real HTTP writes commit exactly one physical milestone",
+        "removal immediately denies future reads while historical actor remains fixed",
+        "same-account single-device policy stays active; other crew sessions remain independent"
+      ],
+      "retention": "Archived isolated trip and immutable test history retained; no operational records modified."
+    }
+  ]
+}

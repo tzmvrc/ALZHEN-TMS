@@ -31,6 +31,7 @@ export type TruckerListItem = {
 };
 
 export type TruckerDetail = {
+  crew_role?:string|null;
   id: string;
   driver_id: string;
   profile_id: string | null;
@@ -1271,7 +1272,7 @@ export async function getTruckerById(id: string) {
   const { data: profile } = profileId
     ? await supabaseAdmin
         .from("profiles")
-        .select("id, first_name, last_name, profile_picture_path, role")
+        .select("id, first_name, last_name, profile_picture_path, role, crew_role")
         .eq("id", profileId)
         .maybeSingle()
     : { data: null };
@@ -1434,6 +1435,7 @@ export async function getTruckerById(id: string) {
       typeof driver.last_name === "string"
         ? driver.last_name
         : ((profile?.last_name as string | null) ?? null),
+    crew_role:profile?.crew_role??'DRIVER',
     full_name: formatFullName(
       typeof driver.first_name === "string"
         ? driver.first_name

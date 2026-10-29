@@ -1,0 +1,88 @@
+{
+  "date": "2026-10-28",
+  "status": "applied_and_verified_by_supabase_mcp",
+  "migrations": [
+    {
+      "name": "simplified_delivery_sequence",
+      "version": "20261028093021"
+    },
+    {
+      "name": "pod_submission_review",
+      "version": "20261028093025"
+    }
+  ],
+  "sourceFile": "backend/migrations/2026_11_04_proposed_pod_submission_review.sql",
+  "sourceSha256": "8129622B5E0AA09CB97D798841F4858245FA5AA90C746668C56142C55431B61E",
+  "functionPermissions": [
+    {
+      "name": "delivery_stop_pod_ready_v1",
+      "search_path": [
+        "search_path=pg_catalog, public"
+      ],
+      "anon_execute": false,
+      "service_execute": true,
+      "security_definer": true,
+      "authenticated_execute": false
+    },
+    {
+      "name": "review_pod_submission_v1",
+      "search_path": [
+        "search_path=pg_catalog"
+      ],
+      "anon_execute": false,
+      "service_execute": true,
+      "security_definer": true,
+      "authenticated_execute": false
+    },
+    {
+      "name": "submit_pod_replacement_v1",
+      "search_path": [
+        "search_path=pg_catalog"
+      ],
+      "anon_execute": false,
+      "service_execute": true,
+      "security_definer": true,
+      "authenticated_execute": false
+    }
+  ],
+  "guards": {
+    "ready": true,
+    "exact_dr": true,
+    "sequence": true,
+    "submission": true
+  },
+  "beforeFingerprints": {
+    "cargo": "38e5c2ec7400f6e0edc85792b317b3e7",
+    "trips": "17e684fa9813507c282a04295a0b516b",
+    "events": "78d2cf8b2c53b7ece181c5a8718718fb",
+    "billing": "d751713988987e9331980363e24189ce",
+    "documents": "8a7f1ed51b6c3dff7e3bba8c69d1d69b",
+    "pod_records": "650d515074211b3402cabc77d76a4285",
+    "review_history": "8003c35345a5e0c4f89f3831b43b3b04"
+  },
+  "afterFingerprints": {
+    "cargo": "38e5c2ec7400f6e0edc85792b317b3e7",
+    "trips": "17e684fa9813507c282a04295a0b516b",
+    "events": "78d2cf8b2c53b7ece181c5a8718718fb",
+    "billing": "d751713988987e9331980363e24189ce",
+    "documents": "8a7f1ed51b6c3dff7e3bba8c69d1d69b",
+    "pod_records": "650d515074211b3402cabc77d76a4285",
+    "review_history": "8003c35345a5e0c4f89f3831b43b3b04"
+  },
+  "operationalRecordsUnchanged": true,
+  "postgrestProbes": [
+    {
+      "function": "review_pod_submission_v1",
+      "status": 403,
+      "code": "42501",
+      "nullActorDenied": true
+    },
+    {
+      "function": "submit_pod_replacement_v1",
+      "status": 403,
+      "code": "42501",
+      "nullActorDenied": true
+    }
+  ],
+  "operationalPodWritesDuringVerification": 0
+}

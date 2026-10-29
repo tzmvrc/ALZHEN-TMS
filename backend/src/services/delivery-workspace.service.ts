@@ -1,3 +1,4 @@
+import {hasCrewAccess,activeCrewAssignmentIds,readTripCrew} from './truck-crew.service.js';
 import {wakeOperationalEmailWorker} from './operational-email.service.js';
 import {signStoragePaths} from "./storage-links.service.js";
 import {createHash} from 'node:crypto';
@@ -6,6 +7,9 @@ import {ApiError} from '../utils/api-response.js';
 import {isValidUuid} from '../utils/validation.js';
 import {validatePodDocument} from './pod-document.logic.js';
 import {collaborationEvents} from './collaboration-events.js';
+import {signReceiptRows} from './trip-receipt.service.js';
+import {readPodCargoReviews,validatePodProductSelections} from './pod-product-selection.service.js';
+import {podReviewTimeline} from './pod-review-timeline.service.js';
 
 export type DeliveryActor={id:string;role:string};
 export async function deliveryNotification(actor:DeliveryActor,id:string){
@@ -18,6 +22,8 @@ type Row=Record<string,any>;
 const ids=(value:unknown)=>typeof value==='string'&&isValidUuid(value);
 const management=(actor:DeliveryActor)=>['ADMIN','STAFF'].includes(actor.role);
 function failure(error:any){
+ if(error?.code==='P0409')throw new ApiError('This replacement request changed or the DR does not match the rejected POD. Refresh the delivery stop and review the saved details.',409,'POD_REPLACEMENT_CONFLICT');
+ if(['55P03','57014','40P01'].includes(error?.code))throw new ApiError('The POD could not finish because another update is in progress. Your saved submission is preserved; retry it shortly.',503,'DELIVERY_BUSY');
  if(error?.code==='P0400')throw new ApiError('GPS is required for arrival. Enable location permission and retry.',422,'ARRIVAL_GPS_REQUIRED');
  if(error?.code==='23505'&&/trip_receipt_content_once_idx/.test(error?.message??''))throw new ApiError('This image is already saved as a POD for this trip. Choose the original receipt for this truck and stop.',409,'POD_ALREADY_SUBMITTED');
  const expected=['22023','23514','23505','P0001','40001','42501'].includes(error?.code);
@@ -32,27 +38,29 @@ export async function deliveryAssignment(actor:DeliveryActor,id:string,write=fal
  if(!ids(id)||!ids(actor.id)||!['ADMIN','STAFF','TRUCKER'].includes(actor.role))throw new ApiError('Delivery access denied.',403);
  const {data,error}=await db.from('trip_truck_assignments').select('*,driver:drivers(id,profile_id,first_name,last_name),truck:trucks(id,plate_number,truck_type,capacity_cbm),company:trucking_companies(id,name),trip:trips(id,dispatch_number,trip_reference,status,warehouse_id,loading_date,estimated_delivery_date,archived_at)').eq('id',id).maybeSingle();
  if(error)failure(error);
- if(!data||(!management(actor)&&data.driver?.profile_id!==actor.id)||(write&&(actor.role!=='TRUCKER'||data.unassigned_at||data.trip?.archived_at||data.trip?.status==='CANCELLED')))throw new ApiError('This assignment is not available to your account.',403);
+ if(!data||(!management(actor)&&!await hasCrewAccess(actor.id,id))||(write&&(actor.role!=='TRUCKER'||data.unassigned_at||data.trip?.archived_at||data.trip?.status==='CANCELLED')))throw new ApiError('This assignment is not available to your account.',403);
  return data as Row;
 }
 export async function deliveryAssignments(actor:DeliveryActor,after?:string){
  if(actor.role!=='TRUCKER')throw new ApiError('A trucker account is required.',403);
- let query=db.from('trip_truck_assignments').select('id,trip_id,assigned_at,unassigned_at,truck:trucks(plate_number,truck_type),driver:drivers!inner(profile_id),trip:trips!inner(dispatch_number,status,loading_date,estimated_delivery_date,archived_at)').eq('driver.profile_id',actor.id).is('unassigned_at',null).is('trip.archived_at',null).neq('trip.status','CANCELLED').order('id').limit(21);
+ const memberIds=await activeCrewAssignmentIds(actor.id);if(!memberIds.length)return {rows:[],next:null};
+ let query=db.from('trip_truck_assignments').select('id,trip_id,assigned_at,unassigned_at,truck:trucks(plate_number,truck_type),driver:drivers(profile_id),trip:trips!inner(dispatch_number,status,loading_date,estimated_delivery_date,archived_at)').in('id',memberIds).is('unassigned_at',null).is('trip.archived_at',null).neq('trip.status','CANCELLED').order('id').limit(21);
  if(after){if(!ids(after))throw new ApiError('Invalid page cursor.',400);query=query.gt('id',after);}
  const {data,error}=await query;if(error)failure(error);const page=(data??[]).slice(0,20);
  return {rows:page,next:(data?.length??0)>20?page.at(-1)?.id:null};
 }
 export async function deliveryWorkspace(actor:DeliveryActor,id:string){
  const assignment=await deliveryAssignment(actor,id);
- const [stops,responsibilities,cargo,warehouse,events,pods]=await Promise.all([
+ const [stops,responsibilities,cargo,warehouse,events,pods,podCargoReviews]=await Promise.all([
   rows('trip_stops','*,store:customer_stores(id,name,address,city,province,latitude,longitude,location_verified,arrival_radius_meters)','trip_id',assignment.trip_id),
   rows('trip_assignment_stops','id,trip_stop_id,progress','assignment_id',id),
-  rows('trip_cargo_allocations','id,quantity,allocated_cbm,line:trip_line_items(id,trip_stop_id,dr_number,customer_model,product:products(model_code,sku))','assignment_id',id),
+  rows('trip_cargo_allocations','id,created_at,quantity,allocated_cbm,line:trip_line_items(id,trip_stop_id,product_id,dr_number,customer_model,product:products(model_code,sku))','assignment_id',id),
   assignment.trip.warehouse_id
    ? db.from('warehouses').select('id,name,address,latitude,longitude,location_verified,arrival_radius_meters').eq('id',assignment.trip.warehouse_id).maybeSingle()
    : Promise.resolve({data:null,error:null}),
-  db.from('trip_events').select('id,event_type,event_time,trip_stop_id,verification_method').eq('assignment_id',id).in('event_type',['WAREHOUSE_ARRIVAL','LOADING_STARTED','LOADING_FINISHED','WAREHOUSE_DEPARTURE','ARRIVED','POD_SUBMITTED','UNLOADING_STARTED','UNLOADING_FINISHED','STOP_DEPARTURE','ASSIGNMENT_COMPLETED']).order('event_time').limit(1001),
+  db.from('trip_events').select('id,event_type,event_time,trip_stop_id,verification_method,delivery_metadata').eq('assignment_id',id).in('event_type',['WAREHOUSE_ARRIVAL','LOADING_STARTED','LOADING_FINISHED','WAREHOUSE_DEPARTURE','IN_TRANSIT','ARRIVED','POD_SUBMITTED','UNLOADING_STARTED','UNLOADING_FINISHED','STOP_DEPARTURE','ASSIGNMENT_COMPLETED']).order('event_time').limit(1001),
   db.from('v_confirmed_pod_documents').select('trip_stop_id,dr_number,approved,pod_status,pod_submitted_at').eq('trip_id',assignment.trip_id).eq('assignment_id',id).limit(1001),
+  readPodCargoReviews(id,assignment.trip_id),
  ]);
  if(warehouse.error||events.error||pods.error)failure(warehouse.error??events.error??pods.error);
  if((pods.data?.length??0)>1000)throw new ApiError('Too many POD receipts in this assignment. Contact dispatch.',409);
@@ -60,19 +68,22 @@ export async function deliveryWorkspace(actor:DeliveryActor,id:string){
  const delivered=cargo.length?await db.from('trip_delivery_quantities').select('allocation_id,quantity').in('allocation_id',cargo.map(c=>c.id)).limit(10001):{data:[],error:null};
  if(delivered.error)failure(delivered.error);if((delivered.data?.length??0)>10000)throw new ApiError('Quantity history exceeds its read limit.',409);
  const totals=new Map<string,number>();for(const item of delivered.data??[])totals.set(item.allocation_id,(totals.get(item.allocation_id)??0)+Number(item.quantity));
- return {assignment,warehouse:warehouse.data,stops:stops.filter(s=>!s.archived_at&&(assignment.stop_scope==='ALL'||responsibilities.some(r=>r.trip_stop_id===s.id))).sort((a,b)=>a.stop_sequence-b.stop_sequence),cargo:cargo.map(c=>({...c,delivered:totals.get(c.id)??0,remaining:Math.max(0,Number(c.quantity)-(totals.get(c.id)??0))})),milestones:events.data??[],pods:pods.data??[]};
+ return {assignment,crew:(await readTripCrew(assignment.trip_id)).filter(member=>member.assignment_id===id),warehouse:warehouse.data,stops:stops.filter(s=>!s.archived_at&&(assignment.stop_scope==='ALL'||responsibilities.some(r=>r.trip_stop_id===s.id))).sort((a,b)=>a.stop_sequence-b.stop_sequence),cargo:cargo.map(c=>({...c,line:{...c.line,stop_dr_number:stops.find(stop=>stop.id===c.line.trip_stop_id)?.dr_number??null},delivered:totals.get(c.id)??0,remaining:Math.max(0,Number(c.quantity)-(totals.get(c.id)??0))})),milestones:events.data??[],pods:pods.data??[],pod_cargo_reviews:podCargoReviews};
 }
 /** Match the current master truck first; preserve the established latest-assignment rule. */
 export async function currentDeliveryWorkspace(actor:DeliveryActor){
  if(actor.role!=='TRUCKER')throw new ApiError('A trucker account is required.',403);
  const driver=await db.from('drivers').select('id,assigned_truck_id').eq('profile_id',actor.id).maybeSingle();
- if(driver.error)failure(driver.error);if(!driver.data)return null;
- const result=await db.from('trip_truck_assignments').select('id,truck_id,assigned_at,created_at,trip:trips!inner(status,archived_at)').eq('driver_id',driver.data.id).is('unassigned_at',null).is('trip.archived_at',null).order('assigned_at',{ascending:false,nullsFirst:false}).order('created_at',{ascending:false}).order('id').limit(501);
+ if(driver.error)failure(driver.error);const memberIds=await activeCrewAssignmentIds(actor.id);if(!memberIds.length)return null;
+ const result=await db.from('trip_truck_assignments').select('id,truck_id,assigned_at,created_at,trip:trips!inner(status,archived_at)').in('id',memberIds).is('unassigned_at',null).is('trip.archived_at',null).order('assigned_at',{ascending:false,nullsFirst:false}).order('created_at',{ascending:false}).order('id').limit(501);
  if(result.error)failure(result.error);if((result.data?.length??0)>500)throw new ApiError('Too many active assignments. Contact dispatch.',409);
- const candidates=(result.data??[]).filter((a:any)=>!['COMPLETED','DELIVERED','CANCELLED','CANCELED','CLOSED','FINISHED','ARCHIVED','REJECTED'].includes(a.trip.status));
- const currentTruck=driver.data.assigned_truck_id;
+ const candidates=(result.data??[]).filter((a:any)=>!['CANCELLED','CANCELED','ARCHIVED','REJECTED'].includes(a.trip.status));
+ const currentTruck=driver.data?.assigned_truck_id;
  const ranked=[...candidates.filter(a=>a.truck_id===currentTruck),...candidates.filter(a=>a.truck_id!==currentTruck)];
- for(const candidate of ranked){const workspace=await deliveryWorkspace(actor,candidate.id);if(!workspace.milestones.some(m=>m.event_type==='ASSIGNMENT_COMPLETED'))return workspace;}
+ for(const candidate of ranked){const workspace=await deliveryWorkspace(actor,candidate.id);
+  const requested=workspace.milestones.some(m=>m.delivery_metadata?.pod_replacement_request&&!m.delivery_metadata.pod_replacement_request.resolved_by);
+  if(requested||!['COMPLETED','DELIVERED','CLOSED','FINISHED'].includes(workspace.assignment.trip.status)&&!workspace.milestones.some(m=>m.event_type==='ASSIGNMENT_COMPLETED'))return workspace;
+ }
  return null;
 }
 export async function deliveryEvents(actor:DeliveryActor,id:string,cursor?:string,reportsOnly=false,includeEvidence=false){
@@ -81,25 +92,35 @@ export async function deliveryEvents(actor:DeliveryActor,id:string,cursor?:strin
  if(reportsOnly)query=query.in('event_type',['POD_SUBMITTED','PHOTO_UPLOADED','BACKLOAD_REPORTED','OFFLOAD_REPORTED','DEMURRAGE_REPORTED','LOADING_STARTED','LOADING_FINISHED','UNLOADING_STARTED','PARTIAL_UNLOAD','UNLOADING_FINISHED']);
  if(cursor){const [time,eventId]=cursor.split('|');if(!time||!Number.isFinite(Date.parse(time))||!ids(eventId))throw new ApiError('Invalid event cursor.',400);query=query.or(`event_time.lt.${new Date(time).toISOString()},and(event_time.eq.${new Date(time).toISOString()},id.lt.${eventId})`);}
  const {data,error}=await query;if(error)failure(error);const page=(data??[]).slice(0,6);
- const attachments=page.length?await db.from('trip_images').select('id,delivery_event_id,file_name,kind,storage_path,mime_type,ocr_text,ocr_confidence,pod_review_status').in('delivery_event_id',page.map(e=>e.id)).eq('delivery_upload_state','READY').limit(37):{data:[],error:null};
+ const attachments=page.length?await db.from('trip_images').select('id,delivery_event_id,file_name,kind,storage_path,mime_type,ocr_text,ocr_confidence,pod_review_status,pod_review_version').in('delivery_event_id',page.map(e=>e.id)).eq('delivery_upload_state','READY').limit(37):{data:[],error:null};
  if(attachments.error)failure(attachments.error);
  const showEvidence=includeEvidence&&management(actor),files=attachments.data??[];
  const signed=showEvidence&&files.length?await db.storage.from('trip-images').createSignedUrls(files.map(f=>f.storage_path),600):null;
  // A link failure must not hide operational history. The existing detail viewer
  // can retry an individual attachment; Storage paths never leave this service.
- const safeFiles=files.map(({storage_path,ocr_text,ocr_confidence,mime_type,pod_review_status,...file},index)=>({...file,...(showEvidence?{url:signed?.data?.[index]?.signedUrl??null,mime_type,ocr_text,ocr_confidence,pod_review_status}:{})}));
- return {rows:page.map(e=>({...e,delivery_metadata:e.delivery_metadata??{},demonstration:/\[ALZHEN_.*DEMO|SIMULATED|^DEMO_/.test(`${e.notes??''} ${e.event_type}`),attachments:safeFiles.filter(a=>a.delivery_event_id===e.id)})),next:(data?.length??0)>6?`${page.at(-1)!.event_time}|${page.at(-1)!.id}`:null};
+ const safeFiles=files.map(({storage_path,ocr_text,ocr_confidence,mime_type,...file},index)=>({...file,...(showEvidence?{url:signed?.data?.[index]?.signedUrl??null,mime_type,ocr_text,ocr_confidence}:{})}));
+ const [time,eventId]=cursor?.split('|')??[];
+ const reviews=await podReviewTimeline(assignment.trip_id,id,time?{time:new Date(time).toISOString(),id:eventId}:undefined,7);
+ const merged=[...(data??[]).map(e=>({...e,delivery_metadata:e.delivery_metadata??{},demonstration:/\[ALZHEN_.*DEMO|SIMULATED|^DEMO_/.test(`${e.notes??''} ${e.event_type}`),attachments:safeFiles.filter(a=>a.delivery_event_id===e.id)})),...reviews].sort((a,b)=>b.event_time.localeCompare(a.event_time)||b.id.localeCompare(a.id)),visible=merged.slice(0,6),last=visible.at(-1);
+ return {rows:visible,next:merged.length>6&&last?`${last.event_time}|${last.id}`:null};
 }
 export async function deliveryLocation(actor:DeliveryActor,id:string,historyBefore?:string){
  await deliveryAssignment(actor,id);
  if(historyBefore){if(!Number.isFinite(Date.parse(historyBefore)))throw new ApiError('Invalid GPS history cursor.',400);const result=await db.from('trip_tracking_history').select('id,latitude,longitude,accuracy_meters,captured_at,received_at').eq('assignment_id',id).lt('captured_at',new Date(historyBefore).toISOString()).order('captured_at',{ascending:false}).limit(51);if(result.error)failure(result.error);const page=(result.data??[]).slice(0,50);return {rows:page,next:(result.data?.length??0)>50?page.at(-1)?.captured_at:null};}
  const result=await db.from('trip_tracking_locations').select('latitude,longitude,accuracy_meters,captured_at,received_at').eq('assignment_id',id).maybeSingle();if(result.error)failure(result.error);const p=result.data;return {position:p&&p.latitude!=null&&p.longitude!=null&&p.captured_at?{latitude:Number(p.latitude),longitude:Number(p.longitude),accuracyMeters:Number(p.accuracy_meters),capturedAt:p.captured_at,simulated:false}:null};
 }
-function announce(actor:DeliveryActor,event:Row){collaborationEvents.emit('commit',{source:'trip_events',recordId:event.id,tripId:event.trip_id,stopId:event.trip_stop_id??undefined,version:null,fields:[],actorId:actor.id,eventId:`delivery:${event.id}:${event.delivery_version??0}`,operation:'UPDATE'});}
+function announce(actor:DeliveryActor,event:Row){collaborationEvents.emit('commit',{source:'trip_events',recordId:event.id,tripId:event.trip_id,assignmentId:event.assignment_id??undefined,stopId:event.trip_stop_id??undefined,version:null,fields:[],actorId:actor.id,eventId:`delivery:${event.id}:${event.delivery_version??0}`,operation:'UPDATE'});}
+/** Resolve a lost response without replaying a write or requiring an active assignment. */
+export async function deliverySubmission(actor:DeliveryActor,id:string,key:string){
+ if(actor.role!=='TRUCKER'||!ids(id)||!ids(key))throw new ApiError('Invalid delivery submission.',400);
+ const result=await db.from('trip_events').select('*').eq('assignment_id',id).eq('recorded_by',actor.id).eq('delivery_request_id',key).maybeSingle();
+ if(result.error)failure(result.error);return result.data;
+}
 export async function submitDelivery(actor:DeliveryActor,id:string,key:string,input:unknown){
  if(actor.role!=='TRUCKER'||!ids(id)||!ids(key)||!input||typeof input!=='object'||Array.isArray(input))throw new ApiError('Invalid delivery submission.',400);
  const body=input as Row;
- const allowed=['type','stop_id','device_time','remarks','title','gps','attachments','quantities','dr_number','related_dr_numbers','ocr_text','ocr_confidence','waiting_minutes'];
+ const allowed=['type','stop_id','device_time','remarks','title','gps','attachments','quantities','dr_number','related_dr_numbers','ocr_text','ocr_confidence','waiting_minutes','replaces_receipt_id'];
+ if(body.replaces_receipt_id!=null&&(body.type!=='POD_SUBMITTED'||!ids(body.replaces_receipt_id)))throw new ApiError('Invalid replacement POD reference.',400);
  if(Object.keys(body).some(k=>!allowed.includes(k))||typeof body.type!=='string'||body.stop_id!=null&&!ids(body.stop_id)||body.device_time!=null&&(typeof body.device_time!=='string'||!Number.isFinite(Date.parse(body.device_time)))||body.remarks!=null&&(typeof body.remarks!=='string'||body.remarks.length>4000)||body.title!=null&&(typeof body.title!=='string'||body.title.length>120)||body.ocr_text!=null&&(typeof body.ocr_text!=='string'||body.ocr_text.length>100000)||body.dr_number!=null&&(typeof body.dr_number!=='string'||body.dr_number.length>100))throw new ApiError('Check the submission fields and text lengths.',400);
  if(body.related_dr_numbers!=null&&(!['BACKLOAD_REPORTED','OFFLOAD_REPORTED','DEMURRAGE_REPORTED'].includes(body.type)||!Array.isArray(body.related_dr_numbers)||body.related_dr_numbers.length>100||body.related_dr_numbers.some((dr:unknown)=>typeof dr!=='string'||!dr.trim()||dr.length>100)||new Set(body.related_dr_numbers).size!==body.related_dr_numbers.length))throw new ApiError('Choose distinct DR numbers belonging to this assignment.',400);
  if(body.related_dr_numbers!=null&&body.dr_number?.trim()&&!body.related_dr_numbers.includes(body.dr_number.trim()))throw new ApiError('The report DR must be one of the selected related DR numbers.',400);
@@ -109,7 +130,14 @@ export async function submitDelivery(actor:DeliveryActor,id:string,key:string,in
  if(body.gps!=null&&(typeof body.gps!=='object'||!['latitude','longitude','accuracy_meters'].every(k=>typeof body.gps[k]==='number'&&Number.isFinite(body.gps[k]))||!Number.isFinite(Date.parse(body.gps.captured_at))))throw new ApiError('Invalid GPS capture.',400);
  if(body.waiting_minutes!=null&&(!Number.isInteger(body.waiting_minutes)||body.waiting_minutes<0||body.waiting_minutes>999999))throw new ApiError('Enter waiting minutes from 0 to 999999.',400);
  if(body.ocr_confidence!=null&&(typeof body.ocr_confidence!=='number'||!Number.isFinite(body.ocr_confidence)||body.ocr_confidence<0||body.ocr_confidence>100))throw new ApiError('Invalid OCR confidence.',400);
- const {data,error}=await db.rpc('submit_delivery_event_v1',{p_actor:actor.id,p_assignment:id,p_key:key,p_input:input});if(error)failure(error);announce(actor,data);
+ if(body.type==='POD_SUBMITTED'&&typeof body.ocr_text==='string'&&body.ocr_text.includes('Product Selections: ')){
+  // Let the existing writer acknowledge a committed retry even if allocations
+  // have since changed; its original request/assignment checks still apply.
+  const existing=await db.from('trip_events').select('id').eq('recorded_by',actor.id).eq('delivery_request_id',key).maybeSingle();
+  if(existing.error)failure(existing.error);
+  if(!existing.data){const assignment=await deliveryAssignment(actor,id);await validatePodProductSelections(body.ocr_text,id,assignment.trip_id);}
+ }
+ const {data,error}=await db.rpc(body.replaces_receipt_id?'submit_pod_replacement_v1':'submit_delivery_event_v1',{p_actor:actor.id,p_assignment:id,p_key:key,p_input:input});if(error)failure(error);announce(actor,data);
  if(['BACKLOAD_REPORTED','OFFLOAD_REPORTED','DEMURRAGE_REPORTED'].includes(data.event_type))wakeOperationalEmailWorker();
  // The authoritative transaction creates the existing Admin notifications atomically.
  return data;
@@ -154,4 +182,14 @@ export async function uploadDeliveryEvidence(actor:DeliveryActor,id:string,key:s
   const saved=await db.from('trip_images').update({delivery_upload_state:'READY'}).eq('id',row.id).eq('file_sha256',hash);if(saved.error)failure(saved.error);
  }
  return {id:row.id,file_name:row.file_name,state:'READY'};
+}
+
+/** Authorize before selecting or signing private originals. */
+export async function deliveryReceipts(actor:DeliveryActor,id:string){
+ const assignment=await deliveryAssignment(actor,id);
+ let query=db.from('trip_images').select('*').eq('trip_id',assignment.trip_id).eq('assignment_id',id).eq('kind','receipt').eq('delivery_upload_state','READY').order('created_at',{ascending:false}).limit(1001);
+
+ const result=await query;if(result.error)failure(result.error);
+ if((result.data?.length??0)>1000)throw new ApiError('Too many POD documents. Contact dispatch.',409);
+ return signReceiptRows(result.data??[]);
 }

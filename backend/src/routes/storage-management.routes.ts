@@ -1,0 +1,11 @@
+import {Router} from 'express';
+import {authMiddleware} from '../middleware/auth.middleware.js';
+import {requireRole} from '../middleware/role.middleware.js';
+import {sendSuccess} from '../utils/api-response.js';
+import {storageBuckets,storageObjects,storagePreview,deleteStorageObjects} from '../services/storage-management.service.js';
+const router=Router();router.use(authMiddleware,requireRole('ADMIN'));
+router.get('/buckets',async(req,res,next)=>{try{return sendSuccess(res,200,'Storage buckets',await storageBuckets({id:req.user!.id,role:req.profile!.role}));}catch(e){next(e);}});
+router.get('/buckets/:bucket/objects',async(req,res,next)=>{try{return sendSuccess(res,200,'Storage files',await storageObjects({id:req.user!.id,role:req.profile!.role},req.params.bucket,req.query));}catch(e){next(e);}});
+router.get('/buckets/:bucket/objects/:id/preview',async(req,res,next)=>{try{return sendSuccess(res,200,'Secure file preview',await storagePreview({id:req.user!.id,role:req.profile!.role},req.params.bucket,req.params.id,req.query.thumbnail==='1'));}catch(e){next(e);}});
+router.post('/delete',async(req,res,next)=>{try{return sendSuccess(res,200,'Storage deletion result',await deleteStorageObjects({id:req.user!.id,role:req.profile!.role},req.body??{}));}catch(e){next(e);}});
+export default router;

@@ -1,13 +1,13 @@
 import { io,type Socket } from "socket.io-client";
 import { apiGet,getAppSessionHeaders,type ApiResponse } from "./api.service";
 import { configureDraftTransport,draftConnection,clearCellDrafts,receiveCellDraft,endRemoteCellDraft,noteDraftCommit,forgetTableDrafts,heartbeatCellDrafts,rejectLocalDraft } from "./cell-draft.service";
-export type CellTarget={table:string;source:string;recordId:string;tripId?:string;stopId?:string;field:string;status:"selected"|"editing"};
+export type CellTarget={table:string;source:string;recordId:string;tripId?:string;assignmentId?:string;stopId?:string;field:string;status:"selected"|"editing"};
 export type Presence=CellTarget&{socketId:string;userId:string;name:string;color:string};
-export type Commit={eventId:string;source:string;recordId:string;tripId?:string;stopId?:string;fields:string[];version:number|null;actorId:string|null;operation?:"INSERT"|"UPDATE"|"DELETE"};
+export type Commit={eventId:string;source:string;recordId:string;tripId?:string;assignmentId?:string;stopId?:string;fields:string[];version:number|null;actorId:string|null;operation?:"INSERT"|"UPDATE"|"DELETE"};
 export const COLLABORATION_SOURCES=["trips","trip_stops","trip_line_items","trip_truck_assignments","store_calls","billings"] as const;
 export type TableViewer={userId:string;name:string;avatarUrl:string|null;color:string};
 type Snapshot={connected:boolean;bridgeHealthy:boolean;presences:Presence[];viewers?:Record<string,TableViewer[]>};
-type Event={kind:"security"}|{kind:"commit";commit:Commit}|{kind:"tracking";assignmentId?:string}|{kind:"trucker";scope?:"assignments"|"trip"}|{kind:"notification"}|{kind:"connected"}|{kind:"layout";table:string;column:string;revision:number}|{kind:"signal";topic:string;revision:string};
+type Event={kind:"security"}|{kind:"commit";commit:Commit}|{kind:"tracking";assignmentId?:string}|{kind:"trucker";scope?:"assignments"|"trip";assignmentId?:string}|{kind:"notification"}|{kind:"connected"}|{kind:"layout";table:string;column:string;revision:number}|{kind:"signal";topic:string;revision:string};
 let socket:Socket|null=null,owner="",snapshot:Snapshot={connected:false,bridgeHealthy:false,presences:[]};
 let stopCurrent:((preserveDrafts?:boolean)=>void)|null=null;
 const watchers=new Set<()=>void>(),events=new Set<(event:Event)=>void>(),rooms=new Map<string,number>(),cells=new Map<string,CellTarget>(),versions=new Map<string,number>(),seen=new Set<string>();
@@ -73,7 +73,7 @@ export function startCollaboration(token:string|null,profileId:string|undefined,
  client.on("cell:committed",committed);client.on("table:invalidated",committed);
  client.on("table:layout-updated",value=>{if(active()&&typeof value?.table==="string"&&typeof value?.column==="string"&&Number.isSafeInteger(value.revision)){const key=`layout:${value.table}:${value.column}:${value.revision}`;if(seen.has(key))return;seen.add(key);if(seen.size>5000)seen.delete(seen.values().next().value!);emit({kind:"layout",table:value.table,column:value.column,revision:value.revision});}});
  client.on("datasets:invalidated",value=>{if(active()&&typeof value?.topic==="string"&&typeof value?.revision==="string")emit({kind:"signal",topic:value.topic,revision:value.revision});});
- client.on("trucker:changed",value=>{if(active())emit({kind:"trucker",scope:value?.kind==="assignments"?"assignments":"trip"});});
+ client.on("trucker:changed",value=>{if(active())emit({kind:"trucker",scope:value?.kind==="assignments"?"assignments":"trip",assignmentId:typeof value?.assignmentId==="string"?value.assignmentId:undefined});});
  client.on("tracking:changed",value=>{if(active())emit({kind:"tracking",assignmentId:typeof value?.assignmentId==="string"?value.assignmentId:undefined});});
  client.on("notification:changed",value=>{
   if(!active()||typeof value?.id!=="string"||typeof value?.revision!=="string"||value.id.length>100||value.revision.length>100)return;

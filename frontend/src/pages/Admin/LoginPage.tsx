@@ -1,4 +1,5 @@
-import {rememberedEmail,rememberEmail} from '../../services/remembered-login';
+import RememberedAccountCard from '../../components/auth/RememberedAccountCard';
+import {rememberedEmail,rememberedAccount} from '../../services/remembered-login';
 import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { Eye, EyeOff } from "lucide-react";
@@ -11,11 +12,12 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState(rememberedEmail);
-  const [remember,setRemember]=useState(()=>Boolean(rememberedEmail()));
+  const [useAnother,setUseAnother]=useState(false);
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const { addToast } = useToast();
-  const { login } = useAuth();
+  const { login,profile,accessToken,loading } = useAuth();
+  const saved=rememberedAccount(),showQuick=!useAnother&&!!saved&&!loading&&!!accessToken&&profile?.id===saved.id;
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -45,7 +47,7 @@ export default function LoginPage() {
 
     try {
       const session = await login(trimmedEmail, trimmedPassword);
-      rememberEmail(trimmedEmail,remember);
+      setPassword("");
       const nextPath = getRoleBasedHomePath(session.profile.role);
 
       addToast({
@@ -166,7 +168,8 @@ export default function LoginPage() {
           </div>
 
           {/* Form */}
-          <form autoComplete="on" onSubmit={handleSubmit} className="mt-5 space-y-3">
+          {showQuick&&<RememberedAccountCard onAnother={()=>{setUseAnother(true);setEmail('');setPassword('');}}/>}
+          {!showQuick&&<form autoComplete="on" onSubmit={handleSubmit} className="mt-5 space-y-3">
             {/* Email */}
             <div>
               <label
@@ -220,7 +223,7 @@ export default function LoginPage() {
               </div>
             </div>
 
-<label className="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" checked={remember} onChange={e=>setRemember(e.target.checked)}/>Remember Me</label>
+
             {/* Submit */}
             <button
               type="submit"
@@ -228,8 +231,9 @@ export default function LoginPage() {
               className="mt-2 w-full cursor-pointer rounded-full bg-[#0b2343] py-3.5 text-sm font-semibold text-white transition hover:bg-[#17385f] focus:outline-none focus:ring-2 focus:ring-[#0b2343] focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-70">
               {submitting ? "Signing in…" : "Access Dashboard"}
             </button>
-          </form>
+          </form>}
 
+          {useAnother&&saved&&<button type="button" onClick={()=>{setUseAnother(false);setPassword('');}} className="mt-4 min-h-11 w-full text-sm font-medium text-[#0b2341] underline underline-offset-4">Back to saved account</button>}
           {/* Footer */}
           <p className="mt-5 text-center text-sm text-slate-500">
             Need access or locked out?{" "}

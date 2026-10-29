@@ -1,3 +1,5 @@
+import RememberDevicePrompt from '../components/auth/RememberDevicePrompt';
+import {loginPreference,saveLoginPreference,forgetLoginPreference,rememberedAccount} from '../services/remembered-login';
 import {
   createContext,
   useCallback,
@@ -8,11 +10,12 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation,useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import {
   ApiError,
   apiPost,
+  apiGet,
   clearApiCache,
   clearAppSessionId,
   registerSessionExpiredHandler,
@@ -23,10 +26,11 @@ import { cancelAdminPreload, preloadAdminPageData } from "../services/admin-prel
 import { clearReportPageCache } from "../services/report.service";
 import { clearSharedWidths } from "../services/shared-table-widths";
 import { startCollaboration,collaborationSnapshot,subscribeCollaborationEvents } from "../services/collaboration.service";
-import {browserDeviceIdentifier} from '../services/device-identity';
+import {browserDeviceIdentifier,forgetBrowserDevice} from '../services/device-identity';
 import { useToast } from "../components/ui/Toast";
 
 export type AuthProfile = {
+  crew_role?:"DRIVER"|"HELPER"|null;
   id: string;
   role: string;
   is_admin: boolean;
@@ -65,6 +69,8 @@ type AuthContextValue = {
     allowedRole?: AllowedPortalRole,
   ) => Promise<AuthSessionResponse>;
   logout: () => Promise<void>;
+  resumeRemembered:(id:string)=>Promise<AuthProfile>;
+  forgetDevice:(id?:string)=>Promise<void>;
   refreshSession: (options?: { silent?: boolean }) => Promise<void>;
   clearSessionState: () => void;
   suspendSessionSync: () => void;
@@ -82,11 +88,12 @@ export function getRoleBasedLoginPath(role?: string | null): string {
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const navigate = useNavigate();
+  const navigate = useNavigate();const location=useLocation();
   const [user, setUser] = useState<AuthUser | null>(null);
   const [profile, setProfile] = useState<AuthProfile | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [rememberPrompt,setRememberPrompt]=useState<AuthProfile|null>(null);
   const [sessionExpiresAt, setSessionExpiresAt] = useState<string | null>(null);
   const cacheOwnerRef = useRef<string | null>(null);
   useEffect(()=>{startCollaboration(loading?null:accessToken,profile?.id,profile?.role);},[loading,accessToken,profile?.id,profile?.role]);
@@ -116,6 +123,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     clearApiCache();
     clearReportPageCache();
     clearSharedWidths();
+    setRememberPrompt(null);
     setUser(null);
     setProfile(null);
     setAccessToken(null);
@@ -202,6 +210,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
 
         if(epoch!==sessionEpoch.current||authSyncLockedRef.current)return;
+        if(session?.user.id&&loginPreference(session.user.id)===false&&sessionStorage.getItem('alzhen.interactive-login')!==session.user.id){await supabase.auth.signOut({scope:'local'});clearSessionState();return;}
         if (!session?.access_token) {
           clearSessionState();
           return;
@@ -317,7 +326,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             appSessionId: string;
             expiresAt?: string | null;
           };
-        }>("/auth/login", { email, password,device_identifier:browserDeviceIdentifier() });
+        }>("/auth/login", { email, password,device_identifier:browserDeviceIdentifier(email) });
 
         if (!response.success || !response.data) {
           throw new Error(
@@ -325,6 +334,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           );
         }
 
+        sessionStorage.setItem('alzhen.interactive-login',response.data.profile.id);
         const profileRole = response.data.profile.role;
         sessionStorage.removeItem('alzhen.account-locked');
 
@@ -369,6 +379,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         sessionExpiredRef.current = false;
         setUser(response.data.authUser);
         setProfile(response.data.profile);
+        if(loginPreference(response.data.profile.id)===undefined)setRememberPrompt(response.data.profile);
+        else if(loginPreference(response.data.profile.id)===true){try{saveLoginPreference(response.data.profile,response.data.authUser.email||'',true);}catch{/* Current authentication does not depend on optional display preferences. */}}
         setAccessToken(response.data.session.access_token);
         setSessionExpiresAt(response.data.expiresAt ?? null);
         setLoading(false);
@@ -406,6 +418,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {setLoading(false);}
   }, [accessToken, clearSession, navigate, profile?.role]);
 
+  const resumeRemembered=useCallback(async(expectedId:string)=>{
+    try{
+      let {data,error}=await supabase.auth.getSession();if(error&&!([400,401,403].includes(Number((error as {status?:number}).status))))throw new ApiError('Your session could not be checked. Check your connection and try again.',503);if(error||!data.session||data.session.user.id!==expectedId)throw new ApiError('Your saved session has expired. Sign in again.',401);
+      if((data.session.expires_at??0)*1000<Date.now()+30000){const refreshed=await supabase.auth.refreshSession();if(refreshed.error&&!([400,401,403].includes(Number((refreshed.error as {status?:number}).status))))throw new ApiError('Your session could not be refreshed. Check your connection and try again.',503);if(refreshed.error||!refreshed.data.session)throw new ApiError('Your saved session could not be refreshed. Sign in again.',401);data=refreshed.data;}
+      const session=data.session!;const r=await apiGet<{success:boolean;data:AuthSessionResponse;message?:string}>('/auth/me',session.access_token);
+      if(!r.success||r.data?.profile.id!==expectedId)throw new ApiError('Sign in again to verify this account.',401);
+      clearApiCache();setUser(r.data.authUser);setProfile(r.data.profile);setAccessToken(session.access_token);return r.data.profile;
+    }catch(error){if(error instanceof ApiError&&(error.status===401||error.status===403))await handleSessionExpired();throw error;}
+  },[handleSessionExpired]);
+  const forgetDevice=useCallback(async(id?:string)=>{
+    const target=id||profile?.id||rememberedAccount()?.id,role=profile?.role||rememberedAccount()?.role;
+    const saved=rememberedAccount();if(!accessToken&&saved&&saved.id===target)forgetBrowserDevice(saved.email);
+    if(accessToken&&profile?.id===target)await apiPost('/users/me/forget-device',{},accessToken);
+    try{await logout();}catch(error){const signedOut=await supabase.auth.signOut({scope:'local'});if(signedOut.error)throw error;clearSessionState();}
+    forgetLoginPreference(target);navigate(getRoleBasedLoginPath(role),{replace:true});
+  },[logout,accessToken,profile?.id,profile?.role,clearSessionState,navigate]);
+
   useEffect(() => {
     registerSessionExpiredHandler(handleSessionExpired);
 
@@ -438,7 +467,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      if (!session?.access_token) {
+
+        if (!session?.access_token) {
         clearSessionState();
         return;
       }
@@ -533,6 +563,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isAdmin: Boolean(profile?.role === "ADMIN" && profile.is_admin === true),
       login,
       logout,
+      resumeRemembered,forgetDevice,
       refreshSession,
       clearSessionState,
       suspendSessionSync,
@@ -544,6 +575,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loading,
       login,
       logout,
+      resumeRemembered,forgetDevice,
       profile,
       refreshSession,
       suspendSessionSync,
@@ -552,7 +584,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     ],
   );
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return <AuthContext.Provider value={value}>{children}{rememberPrompt&&location.pathname===getRoleBasedHomePath(rememberPrompt.role)&&<RememberDevicePrompt onChoose={remember=>{try{saveLoginPreference(rememberPrompt,user?.email||'',remember);}catch{addToast({title:'Device preference could not be saved',description:'This browser could not save the preference. Your signed-in session is still available.',variant:'error'});}setRememberPrompt(null);}}/>}</AuthContext.Provider>;
 }
 
 export function useAuth() {

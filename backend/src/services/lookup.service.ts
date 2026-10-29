@@ -342,8 +342,8 @@ export async function getDrivers(
   let queryBuilder = supabaseAdmin
     .from("drivers")
     .select(
-      "id, profile_id, first_name, last_name, contact_number, status, trucking_company_id, trucking_companies(id, name)",
-    );
+      "id, profile_id, first_name, last_name, contact_number, status, trucking_company_id, trucking_companies(id, name),profile:profiles!inner(crew_role)",
+    ).eq("profile.crew_role","DRIVER");
 
   if (query.q) {
     queryBuilder = applySearch(queryBuilder, query.q, [

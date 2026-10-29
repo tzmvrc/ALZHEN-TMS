@@ -1,3 +1,4 @@
+import {activeCrewAssignmentIds,hasCrewAccess} from './truck-crew.service.js';
 import {signStoragePaths} from "./storage-links.service.js";
 import { collaborationEvents } from "./collaboration-events.js";
 import { withCurrentUserSession, type DeletionCredentials } from "./deletion-password.service.js";
@@ -111,12 +112,8 @@ async function getTrip(actor: ReportActor, tripId: string): Promise<Trip> {
 async function assertActorTripAccess(actor: ReportActor, trip: Trip) {
   assertReportRole(actor);
   if (actor.role.toUpperCase() !== "TRUCKER") return;
-  const { data: driver, error: driverError } = await supabaseAdmin.from("drivers").select("id").eq("profile_id", actor.profileId).maybeSingle();
-  if (driverError) throwDb(driverError, "read driver assignment");
-  if (!driver) throw new ApiError("No driver profile is linked to this account.", 403, "DRIVER_PROFILE_REQUIRED");
-  const { data: assignments, error } = await supabaseAdmin.from("trip_truck_assignments").select("trip_id, unassigned_at").eq("driver_id", driver.id).eq("trip_id", trip.id).is("unassigned_at", null);
-  if (error) throwDb(error, "read driver assignment");
-  assertTripAssignment(actor, trip.id, (assignments ?? []) as Assignment[], trip.status);
+  const ids=await activeCrewAssignmentIds(actor.profileId,trip.id);
+  assertTripAssignment(actor,trip.id,ids.map(()=>({trip_id:trip.id,unassigned_at:null})),trip.status);
 }
 
 async function getOwnedStop(tripId: string, stopId: string): Promise<Stop> {
@@ -130,11 +127,8 @@ async function getOwnedStop(tripId: string, stopId: string): Promise<Stop> {
 }
 
 async function getDriverTripIds(profileId: string) {
-  const { data: driver, error: driverError } = await supabaseAdmin.from("drivers").select("id").eq("profile_id", profileId).maybeSingle();
-  if (driverError) throwDb(driverError, "read driver assignment");
-  if (!driver) return [] as string[];
-  const { data: assignmentRows, error } = await supabaseAdmin.from("trip_truck_assignments").select("trip_id, unassigned_at").eq("driver_id", driver.id).is("unassigned_at", null);
-  if (error) throwDb(error, "read driver assignment");
+  const memberIds=await activeCrewAssignmentIds(profileId);if(!memberIds.length)return [] as string[];
+  const {data:assignmentRows,error}=await supabaseAdmin.from('trip_truck_assignments').select('trip_id,unassigned_at').in('id',memberIds);if(error)throwDb(error,'read crew assignments');
   const ids = [...new Set((assignmentRows ?? []).map((row) => row.trip_id).filter((id): id is string => typeof id === "string"))];
   if (!ids.length) return [];
   const trips = await readPaged<Trip>("trips", "id, trip_number, dispatch_number, status", (query) => query.in("id", ids));
@@ -191,17 +185,30 @@ async function readReportCollections(tripIds?: string[], activeOnly = false, sou
   };
 }
 
-async function buildEventRows(collections: Awaited<ReturnType<typeof readReportCollections>>) {
+async function crewReportScope(profile:string,collections:Awaited<ReturnType<typeof readReportCollections>>){
+ const ids=await activeCrewAssignmentIds(profile);if(!ids.length)return {...collections,trips:[],stops:[],loading:[],unloading:[],backloads:[],offloads:[],conversions:[]};
+ const [events,assignments,responsibilities]=await Promise.all([readByForeignIds<Record<string,any>>('trip_events','id,trip_stop_id,backload_id,offload_id,delivery_metadata','assignment_id',ids),readByForeignIds<Record<string,any>>('trip_truck_assignments','id,trip_id,stop_scope','id',ids),readByForeignIds<Record<string,any>>('trip_assignment_stops','trip_stop_id','assignment_id',ids)]);
+ const reports=new Set(events.flatMap(e=>[e.backload_id,e.offload_id,e.delivery_metadata?.report_id]).filter(Boolean));
+ const stopIds=new Set(responsibilities.map(r=>r.trip_stop_id));
+ const stops=collections.stops.filter(stop=>stopIds.has(stop.id)||assignments.some(a=>a.trip_id===stop.trip_id&&a.stop_scope==='ALL'));
+ const filter=(rows:Record<string,unknown>[])=>rows.filter(row=>reports.has(row.id));
+ return {...collections,stops,loading:filter(collections.loading),unloading:filter(collections.unloading),backloads:collections.backloads.filter(row=>reports.has(row.id)),offloads:collections.offloads.filter(row=>reports.has(row.id)),conversions:collections.conversions.filter(row=>reports.has(row.source_id)||reports.has(row.target_id))};
+}
+
+async function buildEventRows(collections: Awaited<ReturnType<typeof readReportCollections>>,crewAssignmentIds?:string[]) {
   const tripIds = collections.trips.map((trip) => trip.id);
   if (!tripIds.length) return { event_rows: [], trip_options: [] };
-  const [lineItems, assignments, routes] = await Promise.all([
+  const [rawLineItems, rawAssignments, routes] = await Promise.all([
     readByForeignIds<Record<string, unknown>>("trip_line_items", "id, trip_id, trip_stop_id, dr_number, quantity, cbm, remarks", "trip_id", tripIds),
     readByForeignIds<Record<string, unknown>>("trip_truck_assignments", "id, trip_id, truck_id, driver_id, assignment_type, unassigned_at", "trip_id", tripIds),
     getTripRoutes(tripIds),
   ]);
+  const assignedLines=crewAssignmentIds?await readByForeignIds<Record<string,unknown>>('trip_cargo_allocations','trip_line_item_id','assignment_id',crewAssignmentIds):[];
+  const lineItems=crewAssignmentIds?rawLineItems.filter(row=>assignedLines.some(allocation=>allocation.trip_line_item_id===row.id)):rawLineItems;
+  const assignments=crewAssignmentIds?rawAssignments.filter(row=>crewAssignmentIds.includes(String(row.id))):rawAssignments;
   const primaryByTrip = new Map<string, Record<string, unknown>[]>();
   for (const assignment of assignments) {
-    if (assignment.assignment_type !== "PRIMARY" || typeof assignment.trip_id !== "string") continue;
+    if ((!crewAssignmentIds&&assignment.assignment_type !== "PRIMARY") || typeof assignment.trip_id !== "string") continue;
     const list = primaryByTrip.get(assignment.trip_id) ?? [];
     list.push(assignment);
     primaryByTrip.set(assignment.trip_id, list);
@@ -390,8 +397,8 @@ export async function getOperationsOverview(actor: ReportActor) {
 
 export async function getAssignedOperations(actor: ReportActor) {
   if (actor.role.toUpperCase() !== "TRUCKER") throw new ApiError("This endpoint is for trucker accounts.", 403, "TRUCKER_ROLE_REQUIRED");
-  const collections = await readReportCollections(await getDriverTripIds(actor.profileId), true);
-  return { ...collections, ...await buildEventRows(collections) };
+  const collections = await crewReportScope(actor.profileId,await readReportCollections(await getDriverTripIds(actor.profileId), true));
+  return { ...collections, ...await buildEventRows(collections,await activeCrewAssignmentIds(actor.profileId)) };
 }
 
 async function readTripExceptions(tripId:string){
@@ -405,8 +412,9 @@ async function readTripExceptions(tripId:string){
 export async function getTripOperations(actor: ReportActor, tripId: string, includeEvidence: boolean | "metadata" = false) {
   const trip = await getTrip(actor, tripId);
   await assertActorTripAccess(actor, trip);
-  const [collections,exception_reports]=await Promise.all([readReportCollections([trip.id]),['ADMIN','STAFF'].includes(actor.role)?readTripExceptions(trip.id):Promise.resolve([])]);
-  const result = { ...collections, exception_reports, ...await buildEventRows(collections) };
+  const [rawCollections,exception_reports]=await Promise.all([readReportCollections([trip.id]),['ADMIN','STAFF'].includes(actor.role)?readTripExceptions(trip.id):Promise.resolve([])]);
+  const collections=actor.role==="TRUCKER"?await crewReportScope(actor.profileId,rawCollections):rawCollections;
+  const result = { ...collections, exception_reports, ...await buildEventRows(collections,actor.role==="TRUCKER"?await activeCrewAssignmentIds(actor.profileId,trip.id):undefined) };
   if(!includeEvidence||!['ADMIN','STAFF'].includes(actor.role))return result;
   const sources=[['loading_report_id',collections.loading],['unloading_report_id',collections.unloading],['backload_id',collections.backloads],['offload_id',collections.offloads]] as const;
   const filters=sources.flatMap(([field,records])=>records.length?[`${field}.in.(${records.map(record=>record.id).join(',')})`]:[]);
@@ -656,12 +664,10 @@ async function getEventReportForActor(actor: ReportActor, eventType: OperationsR
   if (error) throwDb(error, "read report receipt scope");
   if (!data) throw new ApiError("Report not found.", 404, "REPORT_NOT_FOUND");
   const trip = await validateReportScope(actor, data.trip_id, "trip_stop_id" in data ? data.trip_stop_id : null);
-  if(actor.role==='TRUCKER'&&(eventType==='BACKLOAD'||eventType==='OFFLOAD')){
-    const linked=await supabaseAdmin.from('trip_events').select('assignment:trip_truck_assignments(driver:drivers(profile_id))').eq(eventType==='BACKLOAD'?'backload_id':'offload_id',id).limit(1).maybeSingle();
+  if(actor.role==='TRUCKER'){
+    let linkedQuery=supabaseAdmin.from('trip_events').select('assignment_id');linkedQuery=eventType==='BACKLOAD'||eventType==='OFFLOAD'?linkedQuery.eq(eventType==='BACKLOAD'?'backload_id':'offload_id',id):linkedQuery.eq('delivery_metadata->>report_id',id);const linked=await linkedQuery.limit(1).maybeSingle();
     if(linked.error)throwDb(linked.error,'check delivery report assignment');
-    const assignment=Array.isArray(linked.data?.assignment)?linked.data.assignment[0]:linked.data?.assignment;
-    const driver=Array.isArray(assignment?.driver)?assignment.driver[0]:assignment?.driver;
-    if(linked.data&&driver?.profile_id!==actor.profileId)throw new ApiError('This report belongs to another truck assignment.',403,'REPORT_FORBIDDEN');
+    if(!linked.data?.assignment_id||!await hasCrewAccess(actor.profileId,linked.data.assignment_id))throw new ApiError('This report belongs to another truck assignment.',403,'REPORT_FORBIDDEN');
   }
   await assertReportSourceNotConverted(eventType, id);
   return { target, report: data, trip };
