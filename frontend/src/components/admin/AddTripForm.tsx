@@ -23,7 +23,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import SearchableRelationshipEditor from "./SearchableRelationshipEditor";
-import { fetchTruckAvailability, fetchDriverAvailability, type DriverAvailability, type TruckAvailability, searchRelationshipOptions, getNextTripReferences, searchDispatches, type DispatchOption, type RelationshipOption } from "../../services/lookup.service";
+import { fetchTruckAvailability, fetchDriverAvailability, type DriverAvailability, type TruckAvailability, searchRelationshipOptions, getNextTripReference, getNextTripReferences, searchDispatches, type DispatchOption, type RelationshipOption } from "../../services/lookup.service";
 import { tripCapacity } from "./tripCsv";
 import type { TripPreviewRow } from "./TripTablePreview";
 import ImportStoreProductsPreview, { type StoreProductPreviewRow } from "./ImportStoreProductsPreview";
@@ -262,6 +262,7 @@ export default function AddTripForm({
   const [dispatchNo, setDispatchNo] = useState("");
   const [tripReference, setTripReference] = useState("");
   const [tripReferenceStatus, setTripReferenceStatus] = useState<"ready" | "setup_required" | "unavailable">("ready");
+  const [tripReferenceLoading, setTripReferenceLoading] = useState(false);
   const [dispatchLoading, setDispatchLoading] = useState(false);
   const [dispatchError, setDispatchError] = useState("");
   const [dispatchRetry, setDispatchRetry] = useState(0);
@@ -361,7 +362,7 @@ export default function AddTripForm({
   /* Preview independent DISPATCH and TRIP references for the selected date. */
   const refDate = loadingDate || todayLocal();
   useEffect(() => {
-    // Existing-dispatch trips inherit their trip number; no new reference is needed.
+    // A new dispatch and its first trip receive separate generated references.
     if (!accessToken || dispatchMode === "existing") return;
     let active = true;
     queueMicrotask(() => { if (active) { setDispatchLoading(true); setDispatchError(""); setDispatchNo(""); setTripReference(""); } });
@@ -387,6 +388,16 @@ export default function AddTripForm({
   const existingDispatch = dispatchOptions.find((d) => d.dispatch_number === existingNo) ?? null;
   const dispatchRef = dispatchMode === "existing" ? existingDispatch?.dispatch_number ?? "" : dispatchNo;
   const tripNumber = dispatchMode === "existing" ? existingDispatch?.next_trip_number ?? 0 : 1;
+  useEffect(() => {
+    if (!accessToken || dispatchMode !== "existing" || !existingDispatch) return;
+    let active = true;
+    queueMicrotask(() => { if (active) { setTripReferenceLoading(true); setTripReference(""); setDispatchError(""); } });
+    getNextTripReference(accessToken, dispatchPrefix(refDate))
+      .then(ref => { if (active) { setTripReference(ref.trip_reference ?? ""); setTripReferenceStatus(ref.trip_reference_status); } })
+      .catch(cause => { if (active) { setTripReference(""); setTripReferenceStatus("unavailable"); setDispatchError(cause instanceof Error ? cause.message : "Could not preview the trip number."); } })
+      .finally(() => { if (active) setTripReferenceLoading(false); });
+    return () => { active = false; };
+  }, [accessToken, dispatchMode, existingNo, refDate, dispatchRetry]);
   const dispatchBusy = dispatchMode === "existing" ? dispatchesLoading : dispatchLoading;
   const dispatchOptionList = useMemo<Option[]>(
     () => dispatchOptions.map((d) => ({
@@ -406,7 +417,7 @@ export default function AddTripForm({
   }
 
   function switchDispatchMode(mode: "new" | "existing") {
-    setDispatchMode(mode); setDispatchError(""); setError("");
+    setDispatchMode(mode); setDispatchError(""); setError(""); setTripReference(""); setTripReferenceStatus("ready"); setTripReferenceLoading(false);
   }
 
   const productOptions = useMemo<Option[]>(
@@ -656,7 +667,8 @@ export default function AddTripForm({
                     {dispatchMode === "new" ? <div className="trip-dispatch-reference"><code>{dispatchBusy ? "Generating…" : dispatchRef || "Generated on save"}</code><button type="button" aria-label="Get a new number" title="Get a new number" onClick={() => setDispatchRetry(n => n + 1)} disabled={dispatchLoading} className={tripSecondaryAction}><RefreshCw aria-hidden="true" size={14} className={dispatchLoading ? "animate-spin" : ""} /></button></div> : <div className="min-w-0 flex-1"><Dropdown value={existingNo} onChange={pickExistingDispatch} options={dispatchOptionList} placeholder="Search dispatch number" loading={dispatchesLoading} /></div>}
                   </div>
                   {dispatchMode === "existing" && existingDispatch && <p className="mt-2 text-xs text-slate-500">{existingDispatch.trip_count} existing trips · This adds one trip to the selected dispatch.</p>}
-                  {dispatchError && <div className="mt-3"><TripFormNotice tone="warning" title="Dispatch reference unavailable" action={<button type="button" onClick={() => setDispatchRetry(value => value + 1)} className={tripSecondaryAction}>Try again</button>}>{dispatchError}{dispatchMode === "new" && " A reference will be generated when you save."}</TripFormNotice></div>}
+                  <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-slate-500"><span>Trip no.</span><code className="rounded-md bg-slate-100 px-2 py-1 font-semibold text-[#0b2341]">{dispatchMode === "existing" && !existingDispatch ? "Choose a dispatch" : dispatchLoading || tripReferenceLoading ? "Generating…" : tripReference || (tripReferenceStatus === "setup_required" ? "Not yet enabled" : "Generated on save")}</code><span>Trip in dispatch</span><code className="rounded-md bg-slate-100 px-2 py-1 font-semibold text-[#0b2341]">{tripNumber || "Choose a dispatch"}</code></div>
+                  {dispatchError && <div className="mt-3"><TripFormNotice tone="warning" title={dispatchMode === "existing" ? "Trip number unavailable" : "Dispatch reference unavailable"} action={<button type="button" onClick={() => setDispatchRetry(value => value + 1)} className={tripSecondaryAction}>Try again</button>}>{dispatchError}{dispatchMode === "new" && " A reference will be generated when you save."}</TripFormNotice></div>}
                 </section>
 
                 <section aria-label="Schedule" className="trip-section manual-card"><div className="mb-3 flex items-center gap-2"><h3>Trip details</h3></div>
@@ -840,7 +852,7 @@ export default function AddTripForm({
             )}
             {step === 3 && <div className="manual-step-stack">
               <section className="csv-review-card" aria-label="Review before saving"><div className="csv-review-total"><span>REVIEW · {dispatchMode === "existing" ? "EXISTING DISPATCH" : "NEW DISPATCH"}</span><strong>{fmt(totals.cbm, 4)} <small>CBM</small></strong><div className="csv-review-track"><span style={{ width: `${assignedCapacity > 0 ? Math.min(100, manualPercent) : 0}%` }} /></div><p>{manualPercent}% of {fmt(assignedCapacity)} CBM · {previewTrip.plate || "No trucks yet"}</p></div><div className="csv-review-stats"><div><span>Trip</span><strong>1</strong></div><div><span>Trucks</span><strong>{selectedTruckAssignments.length}</strong></div><div><span>Stores</span><strong>{populatedStops.length}</strong></div><div><span>Product rows</span><strong>{totals.lines}</strong></div></div></section>
-              <section className="csv-card manual-review-details"><h3>Trip summary</h3><p>Dispatch: {dispatchRef || "Generated on save"}</p><p>Trip no.: {tripReference || "Generated on save"}</p>{tripTypeLabel && <p>Trip type: {tripTypeLabel}</p>}{loadingDate && <p>Loading: {loadingDate}</p>}{etaDate && <p>Estimated delivery: {etaDate}</p>}</section>
+              <section className="csv-card manual-review-details"><h3>Trip summary</h3><p>Dispatch: {dispatchRef || "Generated on save"}</p><p>Trip no.: {previewTrip.trip}</p><p>Trip in dispatch: {tripNumber || "Choose a dispatch"}</p>{tripTypeLabel && <p>Trip type: {tripTypeLabel}</p>}{loadingDate && <p>Loading: {loadingDate}</p>}{etaDate && <p>Estimated delivery: {etaDate}</p>}</section>
               {(populatedStops.length > 0 || excludedManualRows.length > 0) && <details className="csv-card csv-details"><summary>Technical details</summary>
                 {populatedStops.length > 0 && <ol className="trip-review-stops">{populatedStops.map((stop, index) => <li key={stop.key}><strong>{index + 1}. {labelOf(lookups.stores, stop.storeId) || stop.pendingDestination || "Store to assign"}</strong><span>{[stop.address, stop.city, stop.province].filter(Boolean).join(", ") || "Address to add"}</span><small>{stop.items.filter(hasItemData).length} products · {fmt(stopTotals(stop).cbm)} CBM</small></li>)}</ol>}
                 {excludedManualRows.map((reason, index) => <p key={index} className="text-rose-700">{reason}</p>)}

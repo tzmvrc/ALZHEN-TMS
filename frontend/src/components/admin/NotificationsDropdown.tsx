@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { CheckCheck } from "lucide-react";
+import { CheckCheck, Pencil } from "lucide-react";
 import NotificationActivityIcon from "./NotificationActivityIcon";
 import DriverUpdateCard from "./DriverUpdateCard";
 import { useAuth } from "../../context/AuthContext";
@@ -16,6 +16,45 @@ function timeAgo(iso: string) {
   if (hrs < 24) return `${hrs}h ago`;
   const days = Math.floor(hrs / 24);
   return days < 7 ? `${days}d ago` : new Date(iso).toLocaleDateString();
+}
+
+function MasterListEditCard({ item, onOpen }: { item: AdminNotification; onOpen: () => void }) {
+  const actor = typeof item.metadata.actor_name === "string" ? item.metadata.actor_name : "";
+  const ownEdit = item.metadata.actor_is_recipient === true;
+  const dispatch = typeof item.metadata.dispatch_number === "string" ? item.metadata.dispatch_number : "";
+  const fields = Array.isArray(item.metadata.changed_fields)
+    ? item.metadata.changed_fields.filter((field): field is string => typeof field === "string").join(", ")
+    : "";
+  const count = typeof item.metadata.change_count === "number" ? item.metadata.change_count : 0;
+
+  return <button
+    type="button"
+    onClick={onOpen}
+    aria-label={item.message}
+    className={`relative w-full overflow-hidden rounded-xl border border-[#e4e9f0] bg-white px-3 py-3 pl-4 text-left transition-colors hover:bg-[#f7faff] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0b2343]/40 ${item.read_at ? "" : "shadow-sm"}`}
+  >
+    <span aria-hidden="true" className="absolute inset-y-0 left-0 w-1 bg-[#0b2343]" />
+    <span className="flex min-w-0 items-start gap-2.5">
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#e9f0f8] text-[#0b2343]">
+        <Pencil aria-hidden="true" className="h-4 w-4" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="flex min-w-0 items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-[#2678b9]">
+          <span className="truncate">Master List{dispatch ? ` · ${dispatch}` : ""}</span>
+          {!item.read_at && <span aria-label="Unread" className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#0b2343]" />}
+        </span>
+        <span className="block truncate text-[13px] font-semibold leading-5 text-[#0b2343]">
+          {actor ? `${actor}${ownEdit ? " (you)" : ""}` : "Master List updated"}
+        </span>
+        <span className="block line-clamp-2 text-[11px] leading-4 text-slate-500">
+          {actor ? `Updated ${fields || `${count || 1} ${count === 1 ? "field" : "fields"}`}` : item.message}
+        </span>
+      </span>
+      <time dateTime={item.created_at} title={new Date(item.created_at).toLocaleString()} className="shrink-0 whitespace-nowrap text-[10px] text-slate-400">
+        {timeAgo(item.created_at)}
+      </time>
+    </span>
+  </button>;
 }
 
 /** Shared notification panel positioned beside the active bell. */
@@ -129,6 +168,8 @@ export default function NotificationsDropdown({
               <li key={item.id}>
                 {item.metadata?.event_kind === "driver_update" ? (
                   <DriverUpdateCard item={item} timeLabel={timeAgo(item.created_at)} onOpen={() => void openItem(item)} />
+                ) : item.notification_type === "master_list_edit" ? (
+                  <MasterListEditCard item={item} onOpen={() => void openItem(item)} />
                 ) : (
                   <button
                     type="button"

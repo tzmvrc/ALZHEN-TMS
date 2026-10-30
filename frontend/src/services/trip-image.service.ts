@@ -16,7 +16,7 @@ export type TripImage = {
   reviewed_by?: string | null;
 };
 
-const apiBaseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:5000/api";
+const apiBaseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:5001/api";
 const TRIP_IMAGE_CACHE_TTL_MS = 45_000;
 
 export function invalidateTripImagesCache(tripId: string) {

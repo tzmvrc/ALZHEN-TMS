@@ -31,7 +31,7 @@ GRANT SELECT ON public.pod_review_events TO service_role;
 
 ALTER TABLE public.admin_notifications DROP CONSTRAINT admin_notifications_notification_type_check;
 ALTER TABLE public.admin_notifications ADD CONSTRAINT admin_notifications_notification_type_check
- CHECK (notification_type IN ('report_mention','pod_approved','pod_rejected'));
+ CHECK (notification_type IN ('report_mention','pod_approved','pod_rejected','master_list_edit'));
 
 CREATE FUNCTION public.review_pod_receipt_v1(
  p_actor_id uuid,p_request_id uuid,p_trip_id uuid,p_stop_id uuid,p_receipt_id uuid,

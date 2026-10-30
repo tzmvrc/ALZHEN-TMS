@@ -1,13 +1,16 @@
 import { useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
+import {useTripsTableAppearance} from "./TripsTableAppearance";
 
 type Item = {index:number; spacer?:never} | {index:number;spacer:number};
 /** Variable-height windowing. Gaps keep the real scroll geometry and source indexes. */
 export function useVirtualSpreadsheetRows(ref:RefObject<HTMLDivElement|null>, keys:string[], enabled:boolean, keepAlive=-1, configuredHeights?:Readonly<Record<string,number>>) {
+ const appearance=useTripsTableAppearance();
+ const defaultHeight=appearance==="modern"?56:30;
  const heights=useRef(new Map<string,{height:number;configured:number|undefined}>());
  const [window,setWindow]=useState({start:0,end:32,revision:0,active:-1});
  const signature=useMemo(()=>keys.join("|"),[keys]);
  useLayoutEffect(()=>{const retained=new Set(keys);for(const key of heights.current.keys())if(!retained.has(key))heights.current.delete(key);},[signature]);
- const offsets=useMemo(()=>{const values=[0];for(const key of keys){const configured=configuredHeights?.[key],measured=heights.current.get(key);values.push(values[values.length-1]+((measured?.configured===configured?measured?.height:undefined)??configured??30));}return values;},[signature,window.revision,configuredHeights]);
+ const offsets=useMemo(()=>{const values=[0];for(const key of keys){const configured=configuredHeights?.[key]??defaultHeight,measured=heights.current.get(key);values.push(values[values.length-1]+((measured?.configured===configured?measured?.height:undefined)??configured));}return values;},[signature,window.revision,configuredHeights,defaultHeight]);
  useLayoutEffect(()=>{
   const viewport=ref.current;if(!viewport||!enabled)return;
   let frame=0;
@@ -18,7 +21,7 @@ export function useVirtualSpreadsheetRows(ref:RefObject<HTMLDivElement|null>, ke
     const index=Number(row.dataset.virtualIndex),key=keys[index];let height=row.getBoundingClientRect().height;
     let extra=row.nextElementSibling as HTMLElement|null;
     while(extra?.dataset.virtualExtra===String(index)){height+=extra.getBoundingClientRect().height;extra=extra.nextElementSibling as HTMLElement|null;}
-    const previous=heights.current.get(key),configured=configuredHeights?.[key];
+    const previous=heights.current.get(key),configured=configuredHeights?.[key]??defaultHeight;
     if(key&&height>0&&(!previous||previous.configured!==configured||Math.abs(previous.height-height)>.5)){heights.current.set(key,{height,configured});changed=true;}
    }
    const start=Math.max(0,find(viewport.scrollTop)-6),end=Math.min(keys.length,find(viewport.scrollTop+viewport.clientHeight)+6);

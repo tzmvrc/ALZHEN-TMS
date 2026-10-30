@@ -14,6 +14,7 @@ export type TransmittalStopRecord = {
 };
 
 export type TransmittalTripRecord = {
+  dispatch_number?: string | null;
   id: string;
   warehouse_id: string | null;
   loading_date: string | null;
@@ -46,6 +47,7 @@ export type TransmittalTrackerRow = {
   assigned_plate_number?: string | null;
   trip_stop_id: string;
   trip_id: string;
+  dispatch_number?: string;
   transmittal_ref: string;
   warehouse_code: string;
   delivered_to: string;
@@ -198,6 +200,7 @@ export function buildTransmittalTrackerRows(
     return {
       trip_stop_id: stop.id,
       trip_id: stop.trip_id,
+      dispatch_number: trip?.dispatch_number ?? "",
       transmittal_ref: getCell("transmittal_ref", ""),
       warehouse_code: getCell("warehouse_code_override", warehouses.get(trip?.warehouse_id ?? "")?.code?.trim() ?? ""),
       delivered_to: getCell("delivered_to_override", stores.get(stop.store_id ?? "") || customers.get(stop.customer_id ?? "") || ""),

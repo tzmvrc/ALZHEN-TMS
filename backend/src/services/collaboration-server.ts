@@ -47,7 +47,7 @@ export async function attachCollaborationServer(http:HttpServer,options:Options=
   }
  };
  collaborationEvents.on("commit",emitCommit);
- const emitLayout=(value:{table:string;column:string;revision:number;eventId:string})=>io.to("management").emit("table:layout-updated",value);
+ const emitLayout=(value:{table:string;column:string;revision:number;actorId?:string;eventId:string})=>io.to("management").emit("table:layout-updated",value);
  collaborationEvents.on("layout",emitLayout);
  const viewers=async(table:string)=>{
   const room=`table:${table}`,peers=await io.in(room).fetchSockets(),users=new Map<string,{userId:string;name:string;avatarUrl:string|null;color:string}>();

@@ -1,0 +1,81 @@
+/* Account Dark and System preferences use one palette across the admin shell. */
+html[data-app-theme="dark"] {
+  color-scheme: dark;
+  --al-outer: #0d1522;
+  --al-canvas: #0d1522;
+  --al-surface: #172435;
+  --al-navy: #83baf0;
+  --al-text: #e8eef7;
+  --al-muted: #acbad0;
+  --al-border: #34445a;
+  --al-blue: #83baf0;
+  --al-blue-soft: #1d3854;
+}
+
+html[data-app-theme="dark"] body,
+html[data-app-theme="dark"] #root,
+html[data-app-theme="dark"] .al-workspace {
+  background: var(--al-canvas);
+}
+html[data-app-theme="dark"] .al-workspace { color: var(--al-text) !important; }
+
+html[data-app-theme="dark"] .al-workspace :is(.al-sidebar-group,.al-sidebar-profile,.al-sidebar-viewers,.al-sidebar-tooltip,.al-search-filter-menu,.al-topbar-view-toggle,.al-topbar-selection-action) {
+  background: var(--al-surface);
+  border-color: var(--al-border);
+  color: var(--al-text);
+}
+html[data-app-theme="dark"] .al-workspace :is(.al-sidebar-brand img,.al-topbar button[aria-label="Calendar"],.al-topbar button[aria-label^="Notifications"],.al-topbar button[aria-label="User menu"],.al-topbar button[aria-label="Navigation"],.al-topbar-search-custom input[role="combobox"]) {
+  background: var(--al-surface);
+  border-color: var(--al-border);
+  color: var(--al-text);
+}
+html[data-app-theme="dark"] .al-workspace :is(.al-sidebar-item,.al-sidebar-logout,.al-search-filter > button,.al-topbar-view-toggle button) { color: var(--al-muted); }
+html[data-app-theme="dark"] .al-workspace :is(.al-sidebar-item,.al-sidebar-logout,.al-search-filter > button,.al-topbar-view-toggle button):hover { background: #25374b; color: var(--al-text); }
+html[data-app-theme="dark"] .al-workspace .al-topbar-primary-action { background:#28466a; border-color:#45698e; color:#f5f9ff; }
+html[data-app-theme="dark"] .al-workspace .al-topbar-primary-action:hover { background:#345981; }
+
+/* Shared Tailwind surfaces used by tables, details, and cards. */
+html[data-app-theme="dark"] .al-workspace [class~="bg-white"] { background-color: var(--al-surface) !important; }
+html[data-app-theme="dark"] .al-workspace [class~="bg-slate-50"] { background-color: #1b2a3c !important; }
+html[data-app-theme="dark"] .al-workspace [class~="bg-slate-100"] { background-color: #26384c !important; }
+html[data-app-theme="dark"] .al-workspace [class~="text-slate-900"],
+html[data-app-theme="dark"] .al-workspace [class~="text-slate-800"],
+html[data-app-theme="dark"] .al-workspace [class~="text-slate-700"],
+html[data-app-theme="dark"] .al-workspace [class~="text-[#0b2341]"],
+html[data-app-theme="dark"] .al-workspace [class~="text-[#0b2343]"] { color: var(--al-text) !important; }
+html[data-app-theme="dark"] .al-workspace [class~="text-slate-600"],
+html[data-app-theme="dark"] .al-workspace [class~="text-slate-500"],
+html[data-app-theme="dark"] .al-workspace [class~="text-slate-400"] { color: var(--al-muted) !important; }
+html[data-app-theme="dark"] .al-workspace [class~="border-slate-100"],
+html[data-app-theme="dark"] .al-workspace [class~="border-slate-200"],
+html[data-app-theme="dark"] .al-workspace [class~="border-slate-300"] { border-color: var(--al-border) !important; }
+
+html[data-app-theme="dark"] .al-workspace :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),select,textarea) {
+  background-color: var(--al-surface);
+  border-color: var(--al-border);
+  color: var(--al-text);
+}
+html[data-app-theme="dark"] .al-workspace :is(input,textarea)::placeholder { color:#96a7bd; }
+
+/* Trips tables keep their category accents and selection indicators. */
+html[data-app-theme="dark"] .al-workspace :is(.trip-sheet-navigation,.trip-sheet-table,.trip-sheet-panel,.ml-card,.ml-card-top,.ml-toolbar,.modern-report-toolbar,.modern-report-controls,.al-table-shell,.al-spreadsheet-panel,.spreadsheet-viewport,.spreadsheet-grid,.spreadsheet-footer,.ml-master-footer,.dd-view,.dd-toolbar,.dm-view,.dm-toolbar,.tt-toolbar) {
+  background-color: var(--al-surface);
+  color: var(--al-text);
+  border-color: var(--al-border);
+}
+html[data-app-theme="dark"] .al-workspace :is(.spreadsheet-grid th,.spreadsheet-grid td,.dd-table th,.dd-table td,.dm-table th,.dm-table td,.ml-head-cell,.ml-cell,.ml-identity,.ml-data-row) {
+  background-color: var(--al-surface);
+  color: var(--al-text);
+  border-color: var(--al-border);
+}
+html[data-app-theme="dark"] .al-workspace :is(.spreadsheet-grid th,.dd-table th,.dm-table th,.ml-head-cell) { background-color:#1b2a3c; }
+html[data-app-theme="dark"] .al-workspace :is(.spreadsheet-grid tbody tr:hover td,.dd-table tbody tr:hover td,.dm-table tbody tr:hover td,.ml-data-row:hover .ml-cell) { background-color:#23364a; }
+html[data-app-theme="dark"] .al-workspace [data-trips-workspace] .trip-sheet-bookmarks [role="tab"] { color:var(--al-muted); }
+html[data-app-theme="dark"] .al-workspace [data-trips-workspace] .trip-sheet-bookmarks [role="tab"][aria-selected="true"] { background:var(--al-surface); color:var(--al-text); border-color:var(--al-border); box-shadow:0 3px 0 var(--al-surface); }
+html[data-app-theme="dark"] .al-workspace :is(.ml-groups,.ml-control-right,.ml-edit-switch,.spreadsheet-view-toggle,.ml-group,.ml-segments button,.modern-report-controls button,.dd-toolbar button,.dm-toolbar button) { color:var(--al-text); }
+html[data-app-theme="dark"] .al-workspace :is(.ml-group.is-active,.ml-segments button[aria-pressed="true"]) { background:#27415e; border-color:#45698e; }
+html[data-app-theme="dark"] .al-workspace :is(.trip-table-loading,.ml-empty) { background:var(--al-surface); color:var(--al-muted); }
+
+/* Settings already has account tokens; include its heading and shared switch. */
+html[data-app-theme="dark"] .account-workspace :is(h1,h2,h3,h4,.spreadsheet-view-toggle) { color:var(--account-text); }
+html[data-app-theme="dark"] .account-workspace .account-button:focus-visible { outline-color:#83baf0; }

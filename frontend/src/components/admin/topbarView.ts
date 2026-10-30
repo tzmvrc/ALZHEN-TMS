@@ -6,28 +6,22 @@ export type TopbarViewConfig = {
   onChange: (value: TopbarViewMode) => void;
   gridLabel?: string;
   tableLabel?: string;
+  priority?:number;
 };
 
-type Entry = { owner: symbol; config: TopbarViewConfig };
-const entries = new Map<string, Entry>();
+const entries = new Map<string,Map<symbol,TopbarViewConfig>>();
+const snapshots=new Map<string,TopbarViewConfig>();
 const listeners = new Set<() => void>();
 const subscribe = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
-const emit = () => { listeners.forEach(listener => listener()); };
-
+const publish=(scope:string)=>{const value=[...(entries.get(scope)?.values()??[])].sort((a,b)=>(b.priority??0)-(a.priority??0))[0];if(value)snapshots.set(scope,value);else snapshots.delete(scope);listeners.forEach(listener=>listener());};
 export function useRegisterTopbarView(scope: string, config: TopbarViewConfig | null) {
-  const owner = useRef(Symbol(scope));
-  useLayoutEffect(() => () => {
-    if (entries.get(scope)?.owner === owner.current) { entries.delete(scope); emit(); }
-  }, [scope]);
-  useLayoutEffect(() => {
-    if (config) entries.set(scope, { owner: owner.current, config });
-    else if (entries.get(scope)?.owner === owner.current) entries.delete(scope);
-    emit();
-  });
+ const owner=useRef(Symbol(scope));
+ useLayoutEffect(()=>()=>{const scoped=entries.get(scope);scoped?.delete(owner.current);if(!scoped?.size)entries.delete(scope);publish(scope);},[scope]);
+ useLayoutEffect(()=>{const scoped=entries.get(scope)??new Map<symbol,TopbarViewConfig>();if(config)scoped.set(owner.current,config);else scoped.delete(owner.current);if(scoped.size)entries.set(scope,scoped);else entries.delete(scope);publish(scope);});
 }
 
 export function useTopbarView(scope: string) {
-  return useSyncExternalStore(subscribe, () => entries.get(scope)?.config ?? null, () => null);
+  return useSyncExternalStore(subscribe, () => snapshots.get(scope) ?? null, () => null);
 }
 
 const savedModes = new Map<string, string>();

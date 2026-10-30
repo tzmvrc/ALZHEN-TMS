@@ -1,5 +1,6 @@
 import { isValidUuid } from "../utils/validation.js";
-export const COLLAB_TABLES = ["trips","combined","dispatch-monitoring","dispatch","trip-booking","store-calling"] as const;
+import { MASTER_LIST_COLUMNS } from "../config/master-list-columns.js";
+export const COLLAB_TABLES = ["trips","combined","dispatch-monitoring","dispatch","trip-booking","store-calling","master-list"] as const;
 export function canViewTable(role:string,key:string){
  if(!management(role))return false;
  if(key==="users:staff")return role==="ADMIN";
@@ -22,7 +23,8 @@ export function parseCellTarget(value:unknown):CellTarget {
  if(!value||typeof value!=="object"||Array.isArray(value))throw Error("Invalid cell");
  const v=value as Record<string,unknown>;
  if(Object.keys(v).some(key=>!["table","source","recordId","tripId","stopId","field","status"].includes(key)))throw Error("Unexpected presence field");
- if(!(COLLAB_TABLES as readonly unknown[]).includes(v.table)||typeof v.source!=="string"||!Object.hasOwn(SOURCE_FIELDS,v.source)||!SOURCE_FIELDS[v.source].includes(String(v.field))||typeof v.recordId!=="string"||!isValidUuid(v.recordId)||!["selected","editing"].includes(String(v.status)))throw Error("Invalid cell identity");
+ const masterCell=v.table==="master-list"&&["trips","trip_stops","trip_line_items"].includes(String(v.source))&&["dispatch_number",...MASTER_LIST_COLUMNS.map(column=>column.key)].includes(String(v.field));
+ if(!(COLLAB_TABLES as readonly unknown[]).includes(v.table)||typeof v.source!=="string"||!Object.hasOwn(SOURCE_FIELDS,v.source)||!masterCell&&!SOURCE_FIELDS[v.source].includes(String(v.field))||typeof v.recordId!=="string"||!isValidUuid(v.recordId)||!["selected","editing"].includes(String(v.status)))throw Error("Invalid cell identity");
  for(const key of ["tripId","stopId"])if(v[key]!==undefined&&(typeof v[key]!=="string"||!isValidUuid(v[key] as string)))throw Error("Invalid parent identity");
  return v as CellTarget;
 }

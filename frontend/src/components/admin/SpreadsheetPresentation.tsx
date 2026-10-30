@@ -2,6 +2,8 @@ import { ArrowUpRight } from "lucide-react";
 import { SPREADSHEET_DEFAULT_ROW_HEIGHT } from "./spreadsheet-row-layout";
 import { useContext, useEffect, useLayoutEffect, useState, type CSSProperties, type MouseEvent, type ReactNode, type RefObject, type TdHTMLAttributes } from "react";
 import { ToastContext } from "../ui/toast-context";
+import {useTripsTableAppearance} from "./TripsTableAppearance";
+import TripSheetCell from "./TripSheetCell";
 
 export const SPREADSHEET_GUTTER_WIDTH = 52;
 export const SPREADSHEET_NUMBER_GUTTER_WIDTH = SPREADSHEET_GUTTER_WIDTH - 20;
@@ -31,7 +33,7 @@ export function SpreadsheetBlankRows({ count, columns, start, height, loading = 
       {onRowSelect&&rowSelection?<input type="checkbox" className="spreadsheet-row-checkbox" aria-label={`Select spreadsheet row ${start+index}`} checked={rowSelection.has(start+index)} onChange={event=>onRowSelect(start+index,event as unknown as MouseEvent<HTMLButtonElement>)}/>:onRowSelect?<button type="button" aria-label={`Select spreadsheet row ${start+index}`} title="Select row; Ctrl/Cmd-click toggles, Shift-click extends" onClick={event=>onRowSelect(start+index,event)} className="w-full text-center focus-visible:outline-2 focus-visible:outline-blue-500"><SpreadsheetRowNumber value={start+index}/></button>:<SpreadsheetRowNumber value={start + index}/>}
       {gutterWidth === SPREADSHEET_GUTTER_WIDTH && <span aria-hidden="true" className="inline-block w-[18px]" />}
     </td>
-    {columns.map(column => {const props=cellProps?.(start+index,column.key);return <td key={column.key} {...props} className={`border-b border-r border-slate-100 px-4 ${props?.className??""}`} style={{ width: column.width, minWidth: column.width, maxWidth: column.width, ...column.style,...props?.style }}>{loading && <div className="h-3 w-2/3 animate-pulse rounded-sm bg-slate-100 motion-reduce:animate-none" />}</td>;})}
+    {columns.map(column => {const props=cellProps?.(start+index,column.key);return <TripSheetCell key={column.key} {...props} className={`border-b border-r border-slate-100 px-4 ${props?.className??""}`} style={{ width: column.width, minWidth: column.width, maxWidth: column.width, ...column.style,...props?.style }}>{loading && <div className="h-3 w-2/3 animate-pulse rounded-sm bg-slate-100 motion-reduce:animate-none" />}</TripSheetCell>;})}
   </tr>)}</>;
 }
 
@@ -49,7 +51,11 @@ export function SpreadsheetDetailsAction({ href, label = "View trip details", on
 
 /** Measures real layout and footer space instead of a fixed viewport offset. */
 export function useSpreadsheetViewport(ref: RefObject<HTMLDivElement | null>, rowCount: number, enabled = true) {
-  const [padding, setPadding] = useState({ count: 8, height: SPREADSHEET_DEFAULT_ROW_HEIGHT });
+  const appearance=useTripsTableAppearance();
+  const [attachedViewport,setAttachedViewport]=useState<HTMLDivElement|null>(null);
+  useLayoutEffect(()=>{if(ref.current!==attachedViewport)setAttachedViewport(ref.current);});
+  const defaultHeight=appearance==="modern"?56:SPREADSHEET_DEFAULT_ROW_HEIGHT;
+  const [padding, setPadding] = useState({ count: 8, height: defaultHeight });
   useLayoutEffect(() => {
     const viewport = ref.current;
     if (!viewport || !enabled) return;
@@ -65,13 +71,15 @@ export function useSpreadsheetViewport(ref: RefObject<HTMLDivElement | null>, ro
         bottomPadding += parseFloat(style.paddingBottom || "0") + parseFloat(style.borderBottomWidth || "0");
         if (ancestor.tagName === "MAIN") break;
       }
-      const sheetTabsHeight = viewport.closest("[data-trips-workspace], [data-database-workspace]")?.querySelector("[data-sheet-tabs]")?.getBoundingClientRect().height ?? 0;
-      const available = Math.max(160, (window.visualViewport?.height ?? window.innerHeight) - top - footerHeight - bottomPadding - sheetTabsHeight);
+      const sheetTabs = viewport.closest("[data-trips-workspace], [data-database-workspace]")?.querySelector("[data-sheet-tabs]")?.getBoundingClientRect();
+      const sheetTabsHeight = sheetTabs && sheetTabs.top >= viewport.getBoundingClientRect().bottom - 1 ? sheetTabs.height : 0;
+      const masterFooterHeight = viewport.closest("[data-trips-workspace]")?.querySelector(".ml-master-footer")?.getBoundingClientRect().height ?? 0;
+      const available = Math.max(160, (window.visualViewport?.height ?? window.innerHeight) - top - footerHeight - bottomPadding - sheetTabsHeight - masterFooterHeight);
       if(viewport.style.height!==`${available}px`)viewport.style.height = `${available}px`;
       const table = viewport.querySelector("table");
       const body = table?.tBodies[0];
       const realRows = body ? Array.from(body.rows).filter(row => !row.hasAttribute("data-spreadsheet-blank")) : [];
-      const height = SPREADSHEET_DEFAULT_ROW_HEIGHT;
+      const height = defaultHeight;
       const used = realRows.reduce((sum, row) => sum + row.getBoundingClientRect().height, 0);
       const header = table?.tHead?.getBoundingClientRect().height ?? 30;
       const toolbar = viewport.querySelector('[aria-label="Cell formatting"]')?.getBoundingClientRect().height ?? 0;
@@ -101,7 +109,7 @@ export function useSpreadsheetViewport(ref: RefObject<HTMLDivElement | null>, ro
       // Activity retains this DOM. Removing its height clamps scrollTop to zero.
       // A new measurement replaces the height; unmount discards the node.
     };
-  }, [ref, rowCount, enabled]);
+  }, [ref, attachedViewport, rowCount, enabled, defaultHeight]);
   return padding;
 }
 

@@ -448,6 +448,6 @@ export async function deleteSelectedLineItems(token:string,targets:LineItemDelet
 }
 
 export async function fetchHomeTripDetails(token:string,tripIds:string[]){
- const result=await apiPost<ApiResponse<{events:TripEvent[];images:import("./trip-image.service").TripImage[]}>>("/trips/overview-details",{trip_ids:tripIds},token);
+ const result=await apiPost<ApiResponse<{events:TripEvent[];images:import("./trip-image.service").TripImage[];bookingRows:import("./report.service").ReportRow[];bookingUnavailable:boolean;bookingLimited:boolean}>>("/trips/overview-details",{trip_ids:tripIds},token);
  if(!result.success||!result.data)throw new Error(result.message??"Unable to load dashboard details.");return result.data;
 }

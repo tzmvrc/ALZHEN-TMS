@@ -1,8 +1,49 @@
 import { supabaseAdmin } from "../config/supabase.js";
 import { ApiError } from "../utils/api-response.js";
 import { backfillDriverNotifications } from "./driver-notification.service.js";
+import { randomUUID } from "node:crypto";
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export async function createMasterListEditNotifications(actorId:string,changes:Array<{scope:string;id:string;field:string}>,saved:number){
+  if(saved<1||!changes.length)return;
+  const first=changes[0];
+  let tripId:string|undefined;
+  if(first.scope==="dispatch"){
+    const query=supabaseAdmin.from("trips").select("id").is("archived_at",null).limit(1);
+    const result=uuidPattern.test(first.id)?await query.eq("id",first.id):await query.eq("dispatch_number",first.id);
+    if(result.error)throw result.error;
+    tripId=result.data?.[0]?.id;
+  }else if(first.scope==="dr"||first.scope==="line"){
+    const table=first.scope==="dr"?"trip_stops":"trip_line_items";
+    const result=await supabaseAdmin.from(table).select("trip_id").eq("id",first.id).maybeSingle();
+    if(result.error)throw result.error;
+    tripId=result.data?.trip_id;
+  }
+  if(!tripId)return;
+  const [tripResult,profilesResult]=await Promise.all([
+    supabaseAdmin.from("trips").select("id,dispatch_number").eq("id",tripId).maybeSingle(),
+    supabaseAdmin.from("profiles").select("id,first_name,last_name,role").in("role",["ADMIN","STAFF"]),
+  ]);
+  if(tripResult.error||profilesResult.error)throw tripResult.error??profilesResult.error;
+  if(!tripResult.data)return;
+  const profiles=profilesResult.data??[],actor=profiles.find(profile=>profile.id===actorId);
+  const actorName=[actor?.first_name,actor?.last_name].filter(Boolean).join(" ")||"A teammate";
+  const recipients=profiles;
+  if(!recipients.length)return;
+  const dispatch=String(tripResult.data.dispatch_number??"").trim();
+  const fieldNames=[...new Set(changes.map(change=>change.field.replaceAll("_"," ")))].slice(0,3);
+  const fields=fieldNames.join(", ");
+  const eventKey=randomUUID();
+  const payload=recipients.map(profile=>({
+    recipient_profile_id:profile.id,actor_profile_id:actorId,notification_type:"master_list_edit",
+    reference_type:"trip",reference_id:tripId,trip_id:tripId,event_key:eventKey,
+    message:`${actorName}${profile.id===actorId?" (you)":""} saved ${saved} Master List ${saved===1?"change":"changes"}${dispatch?` in dispatch ${dispatch}`:""}${fields?` (${fields})`:""}.`,
+    metadata:{report_key:"combined",master_list:true,dispatch_number:dispatch||null,actor_name:actorName,actor_is_recipient:profile.id===actorId,change_count:saved,changed_fields:fieldNames,changed_cells:changes.slice(0,20).map(change=>({scope:change.scope,id:change.id,field:change.field}))},
+  }));
+  const inserted=await supabaseAdmin.from("admin_notifications").upsert(payload,{onConflict:"recipient_profile_id,event_key",ignoreDuplicates:true});
+  if(inserted.error)throw inserted.error;
+}
 
 async function getStoreCallDispatchNumber(storeCallId: string) {
   const { data, error } = await supabaseAdmin

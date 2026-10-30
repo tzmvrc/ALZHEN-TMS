@@ -3,12 +3,13 @@ import { ApiError } from "../utils/api-response.js";
 
 export function errorMiddleware(
   error: unknown,
-  _req: Request,
+  req: Request,
   res: Response,
   _next: NextFunction,
 ) {
   if (error instanceof ApiError) {
     console.error("API error:", {
+      route: `${req.method} ${req.baseUrl}${req.path}`,
       message: error.message,
       statusCode: error.statusCode,
       code: error.code,

@@ -24,7 +24,7 @@ export const collaborationResponseMiddleware:RequestHandler=(req,res,next)=>{
   const layout=requestPath.match(/^\/api\/table-layouts\/([^/]+)\/(?:design\/)?([^/]+)$/);
   if(req.method==="PATCH"&&layout&&body?.success&&body.data?.table_key&&req.user){
    const row=body.data;
-   const event={table:row.table_key,column:row.column_key,revision:row.revision,eventId:`layout:${row.table_key}:${row.column_key}:${row.revision}`};
+   const event={table:row.table_key,column:row.column_key,revision:row.revision,actorId:req.user.id,eventId:`layout:${row.table_key}:${row.column_key}:${row.revision}`};
    res.once("finish",()=>{if(res.statusCode>=200&&res.statusCode<300)collaborationEvents.emit("layout",event);});
   }
   if(req.method==="DELETE"&&body?.success&&body.data?.id&&req.user){

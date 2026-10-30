@@ -13,11 +13,12 @@ type Props = {
   onEdit: (file: string, line: number, field: ImportField, value: string) => void;
   onGroup: (file: string, line: number, group: string) => void;
   viewMode?: "source" | "mapped";
+  invalidOnly?: boolean;
   mappedFileRequest?: { fileId: string; id: number };
 };
 
 /** Paginate rows, never columns: every original header remains inspectable. */
-export default function TripImportPreview({ files, preview, outcomes, disabled, onEdit, onGroup, mappedFileRequest, viewMode }: Props) {
+export default function TripImportPreview({ files, preview, outcomes, disabled, onEdit, onGroup, mappedFileRequest, viewMode, invalidOnly=false }: Props) {
   const [fileId, setFileId] = useState("");
   const [localView, setView] = useState<"source" | "mapped">("source");
   const view = viewMode ?? localView;
@@ -38,11 +39,13 @@ export default function TripImportPreview({ files, preview, outcomes, disabled, 
     });
     return () => cancelAnimationFrame(frame);
   }, [mappedFileRequest]);
-  const file = files.find(item => item.id === fileId) ?? files[0];
-  const pages = Math.max(1, Math.ceil((file?.rows.length??0) / 50));
-  const current = Math.min(page, pages), offset = (current - 1) * 50;
-  const mapped=useMemo(()=>file?importPayload([{...file,rows:file.rows.slice(offset,offset+50)}])[0].rows:[],[file,offset]);
+  const firstInvalid=invalidOnly?files.find(item=>preview?.rows.some(row=>row.filename===item.name&&row.errors.length)):undefined;
+  const file = files.find(item => item.id === fileId) ?? firstInvalid ?? files[0];
   const checkedRows=useMemo(()=>new Map(preview?.rows.filter(row=>row.filename===file?.name).map(row=>[row.line,row])),[preview,file?.name]);
+  const fileRows=useMemo(()=>invalidOnly?file?.rows.filter(row=>checkedRows.get(row.line)?.errors.length)??[]:file?.rows??[],[invalidOnly,file,checkedRows]);
+  const pages = Math.max(1, Math.ceil(fileRows.length / 50));
+  const current = Math.min(page, pages), offset = (current - 1) * 50;
+  const mapped=useMemo(()=>file?importPayload([{...file,rows:fileRows.slice(offset,offset+50)}])[0].rows:[],[file,fileRows,offset]);
   if (!file) return null;
   const sourceHeaders = file.originalHeaders ?? file.headers;
   const headers = view === "source" ? sourceHeaders : ["Trip group", "Row status", ...importFields.map(([, label]) => label)];
@@ -58,12 +61,12 @@ export default function TripImportPreview({ files, preview, outcomes, disabled, 
     </>}
     <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-xs text-slate-500">
       {files.length > 1 ? <label className="min-w-0">File or worksheet <select aria-label="Preview file or worksheet" value={file.id} onChange={event => { setFileId(event.target.value); setPage(1); }} className="ml-2 max-w-64 rounded-lg border border-slate-200 p-2 text-slate-700">{files.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label> : <span className="min-w-0 truncate font-medium text-slate-700" title={file.name}>{file.name}</span>}
-      <span>{file.rows.length} rows / {view === "source" ? sourceHeaders.length : importFields.length} columns</span>
+      <span>{fileRows.length} {invalidOnly?"rows to correct":"rows"} / {view === "source" ? sourceHeaders.length : importFields.length} columns</span>
     </div>
     <div role="region" aria-label="CSV data table" tabIndex={0} className="trip-horizontal-table border-y border-slate-100">
       <table className="w-max min-w-full border-collapse text-left text-xs">
         <thead className="bg-slate-50 text-slate-600"><tr><th className={cell}>Row</th>{headers.map((header, index) => <th key={index} className={`${cell} whitespace-nowrap font-medium`}>{header || `Column ${index + 1}`}</th>)}</tr></thead>
-        <tbody>{file.rows.slice(offset, offset + 50).map((source, index) => {
+        <tbody>{fileRows.slice(offset, offset + 50).map((source, index) => {
           const checked = checkedRows.get(source.line), outcome = checked && outcomes[checked.source_identity];
           const message = outcome?.error || outcome?.status || checked?.errors.join(" ") || (checked?.duplicate ? "Duplicate: skipped on save" : checked?.warnings.join(" ")) || (checked ? "Ready" : "Not checked yet");
           const invalid = Boolean(checked?.errors.length || outcome?.status === "failed");
@@ -78,6 +81,6 @@ export default function TripImportPreview({ files, preview, outcomes, disabled, 
         })}</tbody>
       </table>
     </div>
-    <div className="flex flex-wrap items-center justify-between gap-3 p-3 text-xs text-slate-500"><span>{file.rows.length ? offset + 1 : 0}–{Math.min(offset + 50, file.rows.length)} of {file.rows.length} rows</span><div className="flex items-center gap-3"><button type="button" aria-label="Previous CSV preview page" disabled={current === 1} onClick={() => setPage(current - 1)} className="rounded-lg border border-slate-200 p-2 disabled:opacity-30"><ChevronLeft size={14} /></button><span>Page {current} of {pages}</span><button type="button" aria-label="Next CSV preview page" disabled={current === pages} onClick={() => setPage(current + 1)} className="rounded-lg border border-slate-200 p-2 disabled:opacity-30"><ChevronRight size={14} /></button></div></div>
+    <div className="flex flex-wrap items-center justify-between gap-3 p-3 text-xs text-slate-500"><span>{fileRows.length ? offset + 1 : 0}–{Math.min(offset + 50, fileRows.length)} of {fileRows.length} rows</span><div className="flex items-center gap-3"><button type="button" aria-label="Previous CSV preview page" disabled={current === 1} onClick={() => setPage(current - 1)} className="rounded-lg border border-slate-200 p-2 disabled:opacity-30"><ChevronLeft size={14} /></button><span>Page {current} of {pages}</span><button type="button" aria-label="Next CSV preview page" disabled={current === pages} onClick={() => setPage(current + 1)} className="rounded-lg border border-slate-200 p-2 disabled:opacity-30"><ChevronRight size={14} /></button></div></div>
   </section>;
 }

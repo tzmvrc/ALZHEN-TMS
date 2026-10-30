@@ -662,6 +662,37 @@ input[type="checkbox"] { width: 14px; height: 14px; min-width: 14px; min-height:
   grid-template-columns: minmax(0, 1fr) max-content max-content minmax(0, min(460px, 35%));
   width: 100%; min-width: 0; max-width: 100%; align-items: stretch;
 }
+.trip-sheet-bookmarks {
+  position: sticky; top: 60px; z-index: 1100;
+  display: flex; gap: 3px; min-width: 0; overflow-x: auto;
+  padding: 7px 0 0; background: transparent;
+  border: 0;
+  scrollbar-width: thin;
+}
+.al-workspace [data-trips-workspace] .trip-sheet-bookmarks [role="tab"] {
+  flex: none; min-height: 38px; padding: 7px 14px 8px;
+  position: relative; z-index: 1;
+  border: 0; border-radius: 9px 9px 0 0;
+  background: transparent;
+  color: #405775; font-size: 12px; font-weight: 600;
+  white-space: nowrap;
+}
+.al-workspace [data-trips-workspace] .trip-sheet-bookmarks [role="tab"]:hover { background: transparent; color: #0b2343; }
+.al-workspace [data-trips-workspace] .trip-sheet-bookmarks [role="tab"][aria-selected="true"] {
+  z-index: 2; background: #fff;
+  border: 1px solid #dce5f0; border-bottom: 0;
+  color: #0b2343;
+  box-shadow: none;
+}
+.al-workspace [data-trips-workspace] .trip-sheet-bookmarks [role="tab"]:focus-visible { outline: 2px solid #2678b9; outline-offset: -3px; }
+[data-trips-workspace] > .trip-sheet-table {
+  border-top: 0;
+  border-radius: 18px;
+  background: #fff;
+}
+[data-trips-workspace] .spreadsheet-footer:not(.ml-master-footer) .spreadsheet-footer-layout { grid-template-columns: max-content max-content minmax(0, 1fr); }
+[data-trips-workspace] .ml-master-footer .spreadsheet-footer-layout { grid-template-columns: max-content minmax(0, 1fr); }
+[data-trips-workspace] .spreadsheet-footer-tabs { display: none; }
 .spreadsheet-footer-tabs { display: flex; min-width: 0; overflow: hidden; }
 .spreadsheet-footer-tabs > [role="tablist"] {
   display: flex; flex-wrap: nowrap; min-width: 0; overflow-x: auto; overflow-y: hidden;

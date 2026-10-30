@@ -8,7 +8,8 @@ export function validateFormat(value:unknown){
   if(["bold","italic","underline"].includes(key)){if(typeof item!=="boolean")fail();}
   else if(["color","backgroundColor"].includes(key)){if(!color(item))fail();}
   else if(key==="fontSize"){if(item!==null&&(!Number.isInteger(item)||Number(item)<9||Number(item)>32))fail();}
-  else if(key==="fontFamily"){if(item!==null&&!["Arial","Calibri","Verdana","Georgia","monospace"].includes(String(item)))fail();}
+  else if(key==="alignment"){if(item!==null&&!["left","center","right"].includes(String(item)))fail();}
+  else if(key==="fontFamily"){if(item!==null&&!["Inter","Arial","Calibri","Verdana","Georgia","monospace"].includes(String(item)))fail();}
   else fail();
  }
  return v;

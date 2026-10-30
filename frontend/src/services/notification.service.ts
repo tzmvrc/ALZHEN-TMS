@@ -20,6 +20,7 @@ export type AdminNotificationTarget = {
   referenceType: string;
   referenceId: string;
   searchText?: string;
+  masterListCells?: Array<{ scope: "dispatch" | "dr" | "line"; id: string; field: string }>;
 };
 
 export async function fetchNotifications(token: string, cached = false) {

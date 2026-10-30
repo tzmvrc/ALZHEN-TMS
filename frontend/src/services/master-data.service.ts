@@ -86,7 +86,7 @@ export async function searchWarehouseLocations(token: string, query: string): Pr
 }
 
 export type TruckImage = { id: string; truck_id: string; storage_path: string; file_name: string; display_order: number; created_at: string; updated_at: string; signed_url: string };
-const apiBaseUrl = import.meta.env?.VITE_API_URL ?? "http://localhost:5000/api";
+const apiBaseUrl = import.meta.env?.VITE_API_URL ?? "http://localhost:5001/api";
 
 async function imageRequest<T>(path: string, token: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${apiBaseUrl}${path}`, { ...init, headers: { Authorization: `Bearer ${token}`, ...getAppSessionHeaders(), ...(init?.headers ?? {}) } });

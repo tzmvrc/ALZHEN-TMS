@@ -1,3 +1,12 @@
+import TripTableColumnResizeHandle from "./TripTableColumnResizeHandle";
+import {TripTableLoading} from "./TripTableLoading";
+import {selectTripAxis,selectTripCells,tripSelectionText,tripSelectedAxes} from "./trip-table-selection";
+import {TripTableTextEditor} from "./TripTableTextEditor";
+import {useReportContextActions,type ContextAction} from "./useReportContextActions";
+import ModernCellControls from "./ModernCellControls";
+import ModernReportControls,{useModernReportControls} from "./ModernReportControls";
+import ModernReportRows from "./ModernReportRows";
+import {modernColumnCategory,modernColumnHeaderStyle,modernCategoryColumns} from "../../services/modern-table-categories";
 import {useSpreadsheetInfiniteScroll} from "./useSpreadsheetInfiniteScroll";
 import SpreadsheetRowSelectionHeader from "./SpreadsheetRowSelectionHeader";
 import {useSpreadsheetDragSelection} from "./useSpreadsheetDragSelection";
@@ -22,9 +31,10 @@ import { reportLineItemDeletionTargets } from "../../services/report-row-actions
 import { dropdownStoredValue } from "../../services/dropdown-option.service";
 import { SpreadsheetRowDeletionDialog } from "./SpreadsheetRowDeletionDialog";
 import { type LineItemDeletionTarget } from "../../services/trip.service";
-import VirtualSpreadsheetRows from "./VirtualSpreadsheetRows";
+
 import {useSpreadsheetColumnWindow} from "./useSpreadsheetColumnWindow";
-import { SpreadsheetCellContextMenu } from "./SpreadsheetCellContextMenu";
+import {TripTableCellMenu,TripTableColumnMenu} from "./TripTableMenus";
+import {tripTableShortcut,TripTableActions,TripTableHeader,TripTableColumnTracks} from "./TripTableShared";
 import { useOperationalFormulas } from "./useOperationalFormulas";
 import { physicalRowIdentity } from "../../services/spreadsheet-formula";
 import { TripIssuesProvider,TripIssueCell } from "./TripIssues";
@@ -33,8 +43,10 @@ import { REPORT_TOOLBAR_ROW_CLASS } from "./ReportSpreadsheetUtils";
 import { useSpreadsheetHeaderFormatting } from "./useSpreadsheetHeaderFormatting";
 import { reportHeaderAppearance } from "./ReportSpreadsheetUtils";
 import { reportColumnAppearance } from "./ReportSpreadsheetUtils";
+import TripSheetCell from "./TripSheetCell";
 import { useSpreadsheetRowHeights } from "./useSpreadsheetRowHeights";
-import { SPREADSHEET_NUMBER_GUTTER_WIDTH as SPREADSHEET_GUTTER_WIDTH, SPREADSHEET_PANEL_CLASS, SPREADSHEET_ATTACHED_VIEWPORT_CLASS, SpreadsheetDetailsAction, SpreadsheetBlankRows, SpreadsheetRowNumber, useSpreadsheetViewport, useSpreadsheetFeedback } from "./SpreadsheetPresentation";
+import { SPREADSHEET_PANEL_CLASS, SPREADSHEET_ATTACHED_VIEWPORT_CLASS, SpreadsheetDetailsAction, SpreadsheetBlankRows, SpreadsheetRowNumber, useSpreadsheetViewport, useSpreadsheetFeedback } from "./SpreadsheetPresentation";
+const SPREADSHEET_GUTTER_WIDTH = 0;
 import {withTripDetailsColumn,tripDetailsTarget} from "../../services/report-action-columns";
 import { CollaborativeCell } from "./CollaborativeCell";
 import { useDraftTrackerColumns } from "./useDraftTrackerColumns";
@@ -50,7 +62,7 @@ import ColumnFinder from "./ColumnFinder";
 import {TopbarSearchRegistration} from "./topbarSearch";
 import {useRegisterTopbarView,useStoredPageView} from "./topbarView";
 import {useRegisterTopbarAction} from "./topbarActions";
-import {SpreadsheetHiddenColumns} from "./SpreadsheetWorkspace";
+import {SpreadsheetLoadedStatus,SpreadsheetHiddenColumns} from "./SpreadsheetWorkspace";
 import TransactionCleanupNotice from "./TransactionCleanupNotice";
 import {
   ChevronDown,
@@ -124,15 +136,12 @@ import {
 } from "../../services/trip.service";
 import SearchableRelationshipEditor from "./SearchableRelationshipEditor";
 import {
-  ReportTextCellEditor,
-  ReportCellFormattingToolbar,
-  ReportColumnActionsMenu,
   ReportColumnColorDialog,
   ReportDropdownOptionsDialog,
 } from "./ReportSpreadsheetShared";
 import { REPORT_GRID_BODY_CELL_CLASS, REPORT_GRID_HEADER_CELL_CLASS, REPORT_GRID_ROW_CLASS, REPORT_GRID_VIEWPORT_CLASS, chooseAutomaticPinSide, expandSpreadsheetRange, parseSpreadsheetClipboard, reportCellFormatKey, reorderColumnKeys, type ReportCellFormat } from "./ReportSpreadsheetUtils";
 import { tableUi } from "./dashboardStyles";
-import ReportDropdownEditor, { type ReportDropdownChoice } from "./ReportDropdownEditor";
+import ReportDropdownEditor, { type ReportDropdownChoice } from "./TripTableDropdownEditor";
 import type { AdminNotificationTarget } from "../../services/notification.service";
 import { StatusBadge } from "./TablePrimitives";
 
@@ -172,14 +181,17 @@ async function fetchAllReportRows(reportKey: ReportKey, token: string, sourceLin
   const rows = [...firstPage.rows];
   const identity=(row:ReportRow)=>getReportRowKey(reportKey,row);
   const seen=new Set(rows.map(identity));
-  for (let pageNumber = 2; pageNumber <= firstPage.pagination.totalPages; pageNumber += 1) {
+  const progressiveCount=reportKey==="dispatch-monitoring"&&!sourceLines;
+  let finalPagination=firstPage.pagination;
+  for (let pageNumber = 2; pageNumber <= finalPagination.totalPages; pageNumber += 1) {
     const pageResult = await fetchReportRows(reportKey, token, {
       page: pageNumber, limit: 100, search: options?.search??"", sortBy: options?.sortBy??"", sortOrder: options?.sortOrder??"asc", filters, fresh: true,
     });
-    if(pageResult.pagination.total!==firstPage.pagination.total)throw Error("Records changed during export. Retry to export the current matching data.");
+    if(!progressiveCount&&pageResult.pagination.total!==firstPage.pagination.total)throw Error("Records changed during export. Retry to export the current matching data.");
+    finalPagination=pageResult.pagination;
     for(const row of pageResult.rows){const key=identity(row);if(!key||seen.has(key))throw Error("Report rows changed during export. Retry to avoid duplicate or missing rows.");seen.add(key);rows.push(row);}
   }
-  if(rows.length!==firstPage.pagination.total)throw Error("The export is incomplete. Retry to export every matching row.");
+  if(rows.length!==finalPagination.total)throw Error("The export is incomplete. Retry to export every matching row.");
   return { columns, rows };
 }
 
@@ -411,6 +423,7 @@ const ReportSelectionToolbar = memo(function ReportSelectionToolbar({
   deletionCapabilities,
   canManage,
   enabled=true,
+  editingAllowed=true,
   disabled=false,
 }: {
   selection: ReturnType<typeof createReportSelection>;
@@ -425,6 +438,7 @@ const ReportSelectionToolbar = memo(function ReportSelectionToolbar({
   deletionCapabilities:{storeCalls:boolean;emptyStops:boolean};
   canManage: boolean;
   enabled?:boolean;
+  editingAllowed?:boolean;
   disabled?:boolean;
 }) {
   useSyncExternalStore(reportSelection.subscribe, reportSelection.revision, reportSelection.revision);
@@ -433,7 +447,7 @@ const ReportSelectionToolbar = memo(function ReportSelectionToolbar({
   const hasSelection = enabled && canManage && keys.length > 0 && keys.some(key=>rowsByKey.has(key));
   const row = rowsByKey.get(keys[0]);
   const hasEditableFields = Boolean(row && columns.some((column) => getEditableCellTarget(row, column.key, reportKey)));
-  const canEdit = hasSelection && !disabled && keys.length === 1 && Boolean(row) && hasEditableFields;
+  const canEdit = editingAllowed && hasSelection && !disabled && keys.length === 1 && Boolean(row) && hasEditableFields;
   const selected=keys.map(key=>rowsByKey.get(key));
   const tripIds = selectedParentTripIds(selected);
   const physicalRows=selected.filter((candidate):candidate is ReportRow=>Boolean(candidate));
@@ -547,7 +561,7 @@ type FillGesture = {
   targetField: string;
   baseline: Map<string, unknown>;
 };
-type CellSelection = { anchorRowKey: string; anchorField: string; focusRowKey: string; focusField: string; mode?: "cells" | "row" | "column"; rows?: string[] };
+type CellSelection = { anchorRowKey: string; anchorField: string; focusRowKey: string; focusField: string; mode?: "cells" | "row" | "column"; rows?: string[]; columns?:string[]; cells?:string[] };
 
 function readReportColumnLayout(storageKey: string): ReportColumnLayout {
   try {
@@ -696,6 +710,7 @@ export default function ReportDataView({
   const handledCreatedTrip = useRef<string|null|undefined>(undefined);
   const navigate = useNavigate();
   const [reportKey, setReportKey] = useState<ReportKey>(initialReport);
+  const modernTable=useModernReportControls(!transactionView&&["dispatch-monitoring","dispatch","store-calling"].includes(reportKey));
   useEffect(() => {
     reportEditDiagnostic("ReportDataView mounted", {
       mode: import.meta.env.MODE,
@@ -744,7 +759,7 @@ export default function ReportDataView({
   const [deletionCapabilitiesReady,setDeletionCapabilitiesReady]=useState(false);
   useEffect(()=>{if(!accessToken||transactionView)return;let live=true;setDeletionCapabilitiesReady(false);void readRecordDeletionCapabilities(accessToken).then(result=>{if(live){setDeletionCapabilities(result);setDeletionCapabilitiesReady(true);}}).catch(()=>{if(live){setDeletionCapabilities({storeCalls:false,emptyStops:false});setDeletionCapabilitiesReady(true);}});return()=>{live=false;};},[accessToken,transactionView]);
   const [rowDeletion,setRowDeletion]=useState<LineItemDeletionTarget[]|null>(null);
-  const [cellContextMenu,setCellContextMenu]=useState<{x:number;y:number;row:string;field:string}|null>(null);
+  const [cellContextMenu,setCellContextMenu]=useState<{x:number;y:number;row:string;field:string;rows?:string[];group?:string}|null>(null);
   useEffect(()=>()=>setCellContextMenu(null),[reportKey,accessToken]);
   useSyncExternalStore(reportSelection.subscribe,reportSelection.revision,reportSelection.revision);
   const [draggedColumnKey, setDraggedColumnKey] = useState<string | null>(null);
@@ -766,14 +781,15 @@ export default function ReportDataView({
     document.body.style.userSelect = "none";
     let latestWidth = columnResize.startWidth;
     const move = (event: PointerEvent) => {
-      const width = Math.max(60, Math.min(800, columnResize.startWidth + event.clientX - columnResize.startX));
+      const width = Math.max(72, Math.min(600, columnResize.startWidth + event.clientX - columnResize.startX));
       latestWidth = width;
       setColumnLayout((current) => {
         const next = { ...current, widths: { ...(current.widths ?? {}), [columnResize.key]: width } };
         return next;
       });
     };
-    const finish = () => {
+    const finish = (event:PointerEvent) => {
+      if(event.type==="pointercancel"){setColumnLayout(current=>({...current,widths:{...current.widths,[columnResize.key]:columnResize.startWidth}}));setColumnResize(null);return;}
       if (latestWidth !== columnResize.startWidth) void saveSharedColumnWidth(columnResize.key, latestWidth);
       setColumnLayout((current) => {
         try { window.localStorage.setItem(columnLayoutStorageKey, JSON.stringify(current)); } catch { /* Widths remain usable for this session. */ }
@@ -846,7 +862,7 @@ export default function ReportDataView({
   const headerFormatting = useSpreadsheetHeaderFormatting(transactionView ? "trips" : `report:${reportKey}`, sharedDesign.canEdit, sharedDesign.columns, (key, header) => { void sharedDesign.save(key, { header }, getColumnWidth(key)); }, (key, alias) => { void sharedDesign.save(key, { alias }, getColumnWidth(key)); }, (key, input) => { void sharedDesign.save(key, { input }, getColumnWidth(key)); }, fixedHeaders);
   const tableViewportRef = useRef<HTMLDivElement>(null);
   const visualLoadMoreRef = useRef<HTMLDivElement>(null);
-  const autoFit = useSheetAutoFit(tableViewportRef, columns, rows);
+  const autoFit = useSheetAutoFit(tableViewportRef, columns, rows,sharedWidths.widths);
   const columnLayout=useMemo<ReportColumnLayout>(()=>{
     const design=sharedDesign.columns;
     const layout=sharedDesign.loaded?{order:columns.map(c=>c.key).sort((a,b)=>(design[a]?.position??1001)-(design[b]?.position??1001)),hidden:Object.keys(design).filter(k=>design[k].hidden),colors:Object.fromEntries(Object.entries(design).filter(([,v])=>v.color).map(([k,v])=>[k,v.color!]))}:{...localColumnLayout,colors:{},hidden:[],order:columns.map(column=>column.key)};
@@ -967,16 +983,16 @@ export default function ReportDataView({
     }),
     [columnsByKey, hiddenColumnKeys, layoutColumnKeys],
   );
+  const renderedGridColumns = useMemo(()=>modernTable.modern?modernCategoryColumns(gridColumns,modernTable.category):gridColumns,[gridColumns,modernTable.modern,modernTable.category]);
   const leftPinnedColumnKeys = useMemo(
-    () => gridColumns.filter((column) => pinnedColumnSides[column.key] === "left").map((column) => column.key),
-    [gridColumns, pinnedColumnSides],
+    () => renderedGridColumns.filter((column) => pinnedColumnSides[column.key] === "left").map((column) => column.key),
+    [renderedGridColumns, pinnedColumnSides],
   );
   const rightPinnedColumnKeys = useMemo(
-    () => gridColumns.filter((column) => pinnedColumnSides[column.key] === "right").map((column) => column.key),
-    [gridColumns, pinnedColumnSides],
+    () => renderedGridColumns.filter((column) => pinnedColumnSides[column.key] === "right").map((column) => column.key),
+    [renderedGridColumns, pinnedColumnSides],
   );
   // Pinning is a viewport behavior; retain the user's logical shared column order.
-  const renderedGridColumns = gridColumns;
   const spreadsheetPadding = useSpreadsheetViewport(tableViewportRef, displayedRows.length, viewMode === "table");
   const presentationColumns=useMemo<ReportColumn[]>(()=>renderedGridColumns.length?renderedGridColumns:Array.from({length:5},(_,index)=>({key:`__loading_${index}`,title:"",type:"action"})),[renderedGridColumns]);
   const infiniteRows=transactionView||viewMode==="table";
@@ -993,13 +1009,14 @@ export default function ReportDataView({
   const formulaColumns=presentationColumns;
   const selectedFormatCellKeys = useMemo(() => {
     if (!cellSelection) return new Set<string>();
+    if(cellSelection.mode==="cells"&&cellSelection.cells)return new Set(cellSelection.cells);
     const rowStart=selectionRowKeys.indexOf(cellSelection.anchorRowKey),rowEnd=selectionRowKeys.indexOf(cellSelection.focusRowKey);
     const columnStart=presentationColumns.findIndex(column=>column.key===cellSelection.anchorField),columnEnd=presentationColumns.findIndex(column=>column.key===cellSelection.focusField);
     if((cellSelection.mode!=="row"&&[rowStart,rowEnd].some(index=>index<0))||[columnStart,columnEnd].some(index=>index<0))return new Set<string>();
     const selectedRows=cellSelection.mode==="column"?selectionRowKeys:cellSelection.mode==="row"?(cellSelection.rows??[cellSelection.anchorRowKey]):selectionRowKeys.slice(Math.min(rowStart,rowEnd),Math.max(rowStart,rowEnd)+1);
     const selectedRowSet=new Set(selectedRows);
     const formatRows=cellSelection.mode==="row"&&selectedRows.length>1000?selectionRowKeys.filter(key=>selectedRowSet.has(key)):selectedRows;
-    const selectedColumns=cellSelection.mode==="row"?presentationColumns:presentationColumns.slice(Math.min(columnStart,columnEnd),Math.max(columnStart,columnEnd)+1);
+    const selectedColumns=cellSelection.mode==="column"&&cellSelection.columns?presentationColumns.filter(column=>cellSelection.columns!.includes(column.key)):cellSelection.mode==="row"?presentationColumns:presentationColumns.slice(Math.min(columnStart,columnEnd),Math.max(columnStart,columnEnd)+1);
     return new Set(formatRows.flatMap(row=>selectedColumns.map(column=>reportCellFormatKey(row,column.key))));
   }, [cellSelection, selectionRowKeys, presentationColumns]);
   const queryKey = JSON.stringify({
@@ -1027,7 +1044,7 @@ export default function ReportDataView({
     filters: queryFilters,
     cardMeta: viewMode === "visual",
   }), [activeSortBy, queryFilters, effectiveSearch, page, sortOrder, viewMode, allTripRecords]);
-  const formulas=useOperationalFormulas({viewport:tableViewportRef,token:accessToken,table:transactionView?"trips":`report:${reportKey}`,rows:displayedRows,columns:formulaColumns,identity:physicalRowIdentity,sourceEditor:prepareFormulaSource,virtualRows:virtualGridRows,onSelect:syncGridCellSelection,rowOffset:sheetRowOffset,canEdit:["ADMIN","STAFF"].includes(profile?.role??"")&&!headerFormatting.key,paused:Boolean(editingCell||editModalOpen||fillGesture)});
+  const formulas=useOperationalFormulas({viewport:tableViewportRef,token:accessToken,table:transactionView?"trips":`report:${reportKey}`,rows:displayedRows,columns:formulaColumns,identity:physicalRowIdentity,sourceEditor:prepareFormulaSource,virtualRows:virtualGridRows,onSelect:syncGridCellSelection,onActivate:(row,column)=>beginEditCell(row,displayedRows.indexOf(row),column),rowOffset:sheetRowOffset,canEdit:modernTable.canEdit&&["ADMIN","STAFF"].includes(profile?.role??"")&&!headerFormatting.key,paused:Boolean(editingCell||editModalOpen||fillGesture)});
   const formulaFocusIndex=useMemo(()=>formulas.selectedIdentity?(formulaRowLookup.get(formulas.selectedIdentity)?.index??-1):-1,[formulas.selectedIdentity,formulaRowLookup]);
   const windowColumns=useMemo(()=>renderedGridColumns.map(column=>({key:column.key,width:columnLayout.widths?.[column.key]??defaultReportColumnWidth(column)})),[renderedGridColumns,columnLayout.widths]);
   const mountedColumns=useSpreadsheetColumnWindow(tableViewportRef,windowColumns,pinnedColumnSides,[editingCell?.field,formulas.selectedColumn]);
@@ -1120,12 +1137,29 @@ export default function ReportDataView({
   const selectionRows=useMemo(()=>[...new Map([...selectionRecords,...displayedRows].flatMap(row=>{const key=getReportRowKey(reportKey,row);return key?[[key,row] as const]:[];})).values()],[selectionRecords,displayedRows,reportKey]);
   const selectedRowKeys=cellSelection?.mode==="row"?cellSelection.rows??[cellSelection.anchorRowKey]:[];
   const selectedPhysicalCount=selectedRowKeys.filter(key=>!key.startsWith("virtual:")&&!key.startsWith("display:")).length;
-  const allMatchingRowsSelected=selectedPhysicalCount>0&&selectedPhysicalCount===(pagination?.total??displayedRows.length);
+  const allMatchingRowsSelected=selectedPhysicalCount>0&&selectedPhysicalCount===pagination?.total&&pagination.total===displayedRows.length;
   const rangeDrag=useSpreadsheetDragSelection({viewport:tableViewportRef,scope:selectionScope,blocked:Boolean(editingCell||editModalOpen||fillGesture||formulas.draftPending||selectAllRequest.busy),onSelect:selectFormatKey,onFinish:(key,field)=>{
     const row=displayedRows.find(row=>getReportRowKey(reportKey,row)===key),id=row?physicalRowIdentity(row):key;
     if(id)formulas.selectCell(id,field,true);
     requestAnimationFrame(()=>tableViewportRef.current?.querySelector<HTMLElement>(`td[data-range-row="${CSS.escape(key)}"][data-range-column="${CSS.escape(field)}"]`)?.focus({preventScroll:true}));
   }});
+  const clearOutsideSelection=useRef<()=>void>(()=>{});
+  clearOutsideSelection.current=()=>{
+    if(editingCell||editModalOpen||formulas.draftPending)return;
+    setCellSelection(null);reportSelection.clear(reportKey);setSelectionRecords([]);
+    headerFormatting.clear();formulas.clearSelection();
+  };
+  useEffect(()=>{
+    const onPointerDown=(event:globalThis.PointerEvent)=>{
+      const target=event.target;
+      if(!(target instanceof Element)||tableViewportRef.current?.closest("[hidden]"))return;
+      if(target.closest(".al-topbar,.spreadsheet-footer,[data-sheet-tabs],[data-spreadsheet-formatting],[data-spreadsheet-context-menu],[role=menu],[role=dialog],[role=alertdialog]"))return;
+      if(tableViewportRef.current?.contains(target)&&target.closest("thead th,tbody td"))return;
+      clearOutsideSelection.current();
+    };
+    document.addEventListener("pointerdown",onPointerDown);
+    return()=>document.removeEventListener("pointerdown",onPointerDown);
+  },[]);
   const selectedCollaborationRow=cellSelection?displayedRows[gridRowIndex.get(cellSelection.focusRowKey)??-1]:null;
   const localCollaborationTarget=editingCell?{...editingCell.definition,...editingCell}:selectedCollaborationRow&&cellSelection?getEditableCellTarget(selectedCollaborationRow,cellSelection.focusField,reportKey):null;
   const presenceIdentity=JSON.stringify(collaborationCell(transactionView?"trips":reportKey,localCollaborationTarget,editingCell?"editing":"selected"));
@@ -1684,6 +1718,7 @@ export default function ReportDataView({
   }
 
   function prepareFormulaSource(row:ReportRow,field:string) {
+    if(!modernTable.canEdit)return undefined;
     const index=gridRowIndex.get(getReportRowKey(reportKey,row)??"")??-1;
     const active=editingCell?(bufferedTextDraft.current?.rowKey===editingCell.rowKey&&bufferedTextDraft.current.field===editingCell.field?bufferedTextDraft.current:editingCell):null;
     const original=active?.rowKey===getReportRowKey(reportKey,row)&&active.field===field?active:createEditingCell(row,index,field);
@@ -1705,7 +1740,7 @@ export default function ReportDataView({
   }
 
   function beginEditCell(row: ReportRow, index: number, columnKey: string) {
-    if (cellSaveInFlight.current) return;
+    if (!modernTable.canEdit || cellSaveInFlight.current) return;
     cancelNextBlur.current = false;
     const nextCell = createEditingCell(row, index, columnKey);
     if (!nextCell) return;
@@ -1824,35 +1859,40 @@ export default function ReportDataView({
     setOpenColumnMenu(null);
   }
 
-  function selectFormatKey(key:string,field:string,extend=false){
+  function selectFormatKey(key:string,field:string,extend=false,add=false){
     headerFormatting.clear();reportSelection.clear(reportKey);
-    setCellSelection(current=>!extend&&current?.mode==="cells"&&current.anchorRowKey===key&&current.focusRowKey===key&&current.anchorField===field&&current.focusField===field?current:extend&&current?{...current,mode:"cells",rows:undefined,focusRowKey:key,focusField:field}:{anchorRowKey:key,anchorField:field,focusRowKey:key,focusField:field,mode:"cells"});
+    setCellSelection(current=>{
+      const cell={row:key,column:field},origin=current?{row:current.anchorRowKey,column:current.anchorField}:null;
+      const cells=selectTripCells(selectionRowKeys,presentationColumns.map(column=>column.key),current?.mode==="cells"?new Set(current.cells??selectedFormatCellKeys):new Set(),cell,origin,extend,add);
+      return {anchorRowKey:extend&&current?current.anchorRowKey:key,anchorField:extend&&current?current.anchorField:field,focusRowKey:key,focusField:field,mode:"cells",cells:[...cells]};
+    });
   }
-  function syncGridCellSelection(id:string,field:string,extend:boolean){
+  function syncGridCellSelection(id:string,field:string,extend:boolean,add=false){
     const row=formulaRowLookup.get(id)?.row;
     const key=row?getReportRowKey(reportKey,row):id;
-    if(key)selectFormatKey(key,field,extend);
+    if(key)selectFormatKey(key,field,extend,add);
   }
-  function selectFormatCell(row: ReportRow, field: string, extend: boolean) {
+  function selectFormatCell(row: ReportRow, field: string, extend: boolean,add=false) {
     const index=displayedRows.indexOf(row),key=getReportRowKey(reportKey,row)??selectionRowKeys[index];
-    if(key)selectFormatKey(key,field,extend);
+    if(key)selectFormatKey(key,field,extend,add);
   }
   function selectWholeRow(key:string,add=false,extend=false){
     if(selectAllRequest.busy)return;
     if(!selectionRowKeys.includes(key)||!presentationColumns.length)return;
     headerFormatting.clear();
-    let keys=[key];
-    if(extend&&cellSelection){const start=selectionRowKeys.indexOf(cellSelection.anchorRowKey),end=selectionRowKeys.indexOf(key);if(start>=0)keys=selectionRowKeys.slice(Math.min(start,end),Math.max(start,end)+1);}
-    else if(add&&cellSelection?.mode==="row"){const current=cellSelection.rows??[cellSelection.anchorRowKey];keys=current.includes(key)?current.filter(row=>row!==key):[...current,key];}
+    const keys=[...selectTripAxis(selectionRowKeys,new Set(cellSelection?.mode==="row"?cellSelection.rows??[]:[]),key,cellSelection?.anchorRowKey??null,extend,add)];
     // Only verified physical records enter the existing bulk-action store.
     const known=new Set(selectionRows.flatMap(row=>{const key=getReportRowKey(reportKey,row);return key?[key]:[];}));
     reportSelection.selectOnly(reportKey,keys.filter(row=>known.has(row)));
     if(!keys.length){setCellSelection(null);return;}
-    setCellSelection({anchorRowKey:keys[0],focusRowKey:keys.at(-1)!,anchorField:presentationColumns[0].key,focusField:presentationColumns.at(-1)!.key,mode:"row",rows:keys});
+    setCellSelection({anchorRowKey:extend&&cellSelection?cellSelection.anchorRowKey:key,focusRowKey:key,anchorField:presentationColumns[0].key,focusField:presentationColumns.at(-1)!.key,mode:"row",rows:keys});
   }
-  function selectWholeColumn(key:string){
-    if(!selectionRowKeys.length)return;headerFormatting.clear();reportSelection.clear(reportKey);
-    setCellSelection({anchorRowKey:selectionRowKeys[0],focusRowKey:selectionRowKeys.at(-1)!,anchorField:key,focusField:key,mode:"column"});
+  function selectWholeColumn(key:string,extend=false,add=false,preserve=false){
+    if(!presentationColumns.length)return;
+    if(preserve&&cellSelection?.mode==="column"&&(cellSelection.columns??[cellSelection.focusField]).includes(key))return;
+    headerFormatting.clear();reportSelection.clear(reportKey);
+    const columns=[...selectTripAxis(presentationColumns.map(column=>column.key),new Set(cellSelection?.mode==="column"?cellSelection.columns??[cellSelection.focusField]:[]),key,cellSelection?.anchorField??null,extend,add)];
+    setCellSelection(columns.length?{anchorRowKey:selectionRowKeys[0]??"",focusRowKey:selectionRowKeys.at(-1)??"",anchorField:extend&&cellSelection?cellSelection.anchorField:key,focusField:key,mode:"column",columns}:null);
   }
   function selectAllGridCells(){
     if(!accessToken||!presentationColumns.length||editingCell||editModalOpen||fillGesture||formulas.draftPending)return;
@@ -1884,25 +1924,24 @@ export default function ReportDataView({
     return {...format,...(format.color===""?{color:null}:{}),...(format.backgroundColor===""?{backgroundColor:null}:{})};
   }
   function applyCellFormat(change: Partial<ReportCellFormat>) {
-    if(!selectedFormatCellKeys.size||!sharedDesign.canEdit||!columns.length)return;
+    if((!selectedFormatCellKeys.size&&cellSelection?.mode!=="column")||!sharedDesign.canEdit||!columns.length)return;
     if(cellSelection?.mode==="row"&&(cellSelection.rows?.length??0)>1000){setSelectionError("Select at most 1,000 rows for individual cell formatting, or use whole-column formatting.");return;}
     const patch=normalizedFormat(change);
     if(cellSelection?.mode==="column"){
-      const key=cellSelection.focusField,design=sharedDesign.columns[key]??{};
-      const cells=Object.fromEntries(Object.entries(design.cells??{}).filter(([,format])=>format).map(([row,format])=>[row,{...(format??{}),...patch}]));
-      const header:Pick<ReportCellFormat,"color"|"backgroundColor"|"fontSize">={};
-      if("color" in patch)header.color=patch.color;
-      if("backgroundColor" in patch)header.backgroundColor=patch.backgroundColor;
-      if("fontSize" in patch)header.fontSize=patch.fontSize;
-      // One existing column-design write covers the header, off-page and future blank/data cells.
-      void sharedDesign.save(key,{format:{...design.format,...patch},cells,...(Object.keys(header).length?{header}:{})},getColumnWidth(key));return;
+      for(const key of cellSelection.columns??[cellSelection.focusField]){
+        const design=sharedDesign.columns[key]??{};
+        const cells=Object.fromEntries(Object.entries(design.cells??{}).filter(([,format])=>format).map(([row,format])=>[row,{...(format??{}),...patch}]));
+        void sharedDesign.save(key,{format:{...design.format,...patch},header:patch,cells},getColumnWidth(key));
+      }
+      return;
     }
+
     const grouped:Record<string,Record<string,ReportCellFormat|null>>={};
     for(const key of selectedFormatCellKeys){const split=key.lastIndexOf("\u0000");if(split<0)continue;const column=key.slice(split+1),row=key.slice(0,split);if(row.startsWith("display:")||column.startsWith("__loading_"))continue;(grouped[column]??={})[row]=patch;}
     // Existing revisioned design queue groups a row/range by column, not one request per cell.
     for(const [column,cells] of Object.entries(grouped))void sharedDesign.save(column,{cells},getColumnWidth(column));
   }
-  const selectedFormats=[...selectedFormatCellKeys].map(key=>{const column=key.slice(key.lastIndexOf("\u0000")+1);return {...sharedDesign.columns[column]?.format,...reportCellFormatFor(cellFormats,key)};});
+  const selectedFormats=cellSelection?.mode==="column"?(cellSelection.columns??[cellSelection.focusField]).map(key=>({...sharedDesign.columns[key]?.format,...sharedDesign.columns[key]?.header})):[...selectedFormatCellKeys].map(key=>{const column=key.slice(key.lastIndexOf("\u0000")+1);return {...sharedDesign.columns[column]?.format,...reportCellFormatFor(cellFormats,key)};});
   const selectionIsBold=selectedFormats.length>0&&selectedFormats.every(format=>format.bold===true);
   const selectedTextColor=selectedFormats.length>0&&selectedFormats.every(format=>format.color===selectedFormats[0].color)?selectedFormats[0].color??"":null;
   const selectedBackgroundColor=selectedFormats.length>0&&selectedFormats.every(format=>format.backgroundColor===selectedFormats[0].backgroundColor)?selectedFormats[0].backgroundColor??"":null;
@@ -1931,6 +1970,7 @@ export default function ReportDataView({
   }
 
   function beginFillGesture(row: ReportRow, index: number, column: ReportColumn) {
+    if(!modernTable.canEdit)return;
     const sourceTarget = getEditableCellTarget(row, column.key, reportKey);
     if (!accessToken || cellSaveInFlight.current || !sourceTarget || sourceTarget.editor === "relationship") return;
     const sourceRowKey = getReportRowKey(reportKey, row);
@@ -2038,7 +2078,7 @@ export default function ReportDataView({
   }, [fillGesture]);
 
   async function handleReportPaste(event: ReactClipboardEvent<HTMLDivElement>) {
-    if (!accessToken || cellSaveInFlight.current) return;
+    if (!modernTable.canEdit || !accessToken || cellSaveInFlight.current) return;
     const values = parseSpreadsheetClipboard(event.clipboardData.getData("text/plain"));
     if (!values.length || (values.length === 1 && values[0].length === 1)) return;
     const target = (event.target as HTMLElement).closest<HTMLTableCellElement>("td[data-report-column-key]");
@@ -2110,21 +2150,14 @@ export default function ReportDataView({
     productDraftsRef.current = []; setProductDrafts([]); setNewRowsMessage("New product row drafts cancelled. No rows were saved.");
   }
 
-  function handleReportCopy(event: ReactClipboardEvent<HTMLDivElement>) {
-    if (!cellSelection) return;
-    const rowA = displayedRows.findIndex((row) => getReportRowKey(reportKey, row) === cellSelection.anchorRowKey);
-    const rowB = displayedRows.findIndex((row) => getReportRowKey(reportKey, row) === cellSelection.focusRowKey);
-    const columnA = renderedGridColumns.findIndex((column) => column.key === cellSelection.anchorField);
-    const columnB = renderedGridColumns.findIndex((column) => column.key === cellSelection.focusField);
-    if (rowA < 0 || rowB < 0 || columnA < 0 || columnB < 0) return;
-    const rows = Array.from({ length: Math.abs(rowB - rowA) + 1 }, (_, index) => Math.min(rowA, rowB) + index);
-    const columns = Array.from({ length: Math.abs(columnB - columnA) + 1 }, (_, index) => Math.min(columnA, columnB) + index);
-    const text = rows.map((rowIndex) => columns.map((columnIndex) => String(displayedRows[rowIndex][renderedGridColumns[columnIndex].key] ?? "")).join("\t")).join("\n");
-    event.preventDefault();
-    event.clipboardData.setData("text/plain", text);
+  function handleReportCopy(event:ReactClipboardEvent<HTMLDivElement>){
+    if((event.target as Element).closest("input,textarea,[contenteditable=true]"))return;
+    if(!selectedFormatCellKeys.size)return;event.preventDefault();
+    event.clipboardData.setData("text/plain",tripSelectionText(displayedRows,renderedGridColumns.map(column=>column.key),selectedFormatCellKeys,row=>getReportRowKey(reportKey,row)??"",(row,column)=>String(row[column]??"")));
   }
 
   function openSelectedRowEditor() {
+    if(!modernTable.canEdit)return;
     const keys = reportSelection.getKeys(reportKey);
     if (keys.length !== 1) return;
     const row = displayedRows.find((candidate) => getReportRowKey(reportKey, candidate) === keys[0]);
@@ -2199,6 +2232,7 @@ export default function ReportDataView({
     setEditModalOpen(false);
   }
   async function saveSelectedRowEdits() {
+    if(!modernTable.canEdit)return;
     if (editModalBusy) return;
     const invalid = editModalFields.map(({ cell }) => validateTripEditField(cell)).find(Boolean);
     if (invalid) { setEditModalError(invalid); return; }
@@ -2282,6 +2316,7 @@ export default function ReportDataView({
     keepEditing = false,
     verifiedDropdownOption?: DropdownOption,
   ): Promise<boolean> {
+    if (!modernTable.canEdit) return false;
     if (cancelNextBlur.current) {
       cancelNextBlur.current = false;
       return false;
@@ -2719,6 +2754,7 @@ export default function ReportDataView({
       if (shouldReloadReportPage) {
         setRetryVersion((version) => version + 1);
       }
+      if(!isRelationship)contextActions.record(targetCell.rowKey,targetCell.field,targetCell.originalValue,String(confirmedCellValue??textValue));
       return true;
     } catch (cause) {
       const message =
@@ -2926,6 +2962,22 @@ export default function ReportDataView({
     }
   }
 
+  const contextActions=useReportContextActions({scope:`${profile?.id}:${reportKey}`,rows:displayedRows,columns:renderedGridColumns,identity:(row:ReportRow)=>getReportRowKey(reportKey,row)??'',value:(row:ReportRow,key:string)=>String(row[key]??''),editable:(row:ReportRow,key:string)=>{const target=getEditableCellTarget(row,key,reportKey);return Boolean(target&&target.editor!=="relationship");},write:async(row:ReportRow,key:string,value:string)=>{const candidate=createEditingCell(row,rows.indexOf(row),key);if(!candidate)return false;candidate.value=value;return commitEditableCell(candidate);},selection:selectedFormatCellKeys,focus:cellContextMenu?{row:cellContextMenu.row,column:cellContextMenu.field}:cellSelection?{row:cellSelection.focusRowKey,column:cellSelection.focusField}:null,enabled:modernTable.canEdit&&!editingCell&&!editModalOpen&&!formulas.draftPending&&!fillGesture&&["ADMIN","STAFF"].includes(profile?.role??""),onError:setSelectionError});
+  function reportContextItems():ContextAction[]{
+    const menu=cellContextMenu;if(!menu)return [];
+    const row=displayedRows.find(row=>getReportRowKey(reportKey,row)===menu.row);
+    const target=row?getEditableCellTarget(row,menu.field,reportKey):null;
+    const keys=cellSelection?.mode==="row"?cellSelection.rows??[menu.row]:tripSelectedAxes(selectedFormatCellKeys).rows;
+    const targetRows=displayedRows.filter(row=>keys.includes(getReportRowKey(reportKey,row)??''));
+    const lineTargets=reportLineItemDeletionTargets(reportKey,targetRows),physicalTargets=physicalDeletionTargets(reportKey,targetRows,deletionCapabilities);
+    return [...contextActions.actions,
+      {label:'Delete selected rows…',danger:true,disabled:!modernTable.canEdit||!["ADMIN","STAFF"].includes(profile?.role??'')||!targetRows.length||!(lineTargets?.length||physicalTargets?.length),onClick:()=>{if(physicalTargets?.length)setPhysicalDeletion(physicalTargets);else if(lineTargets?.length)setRowDeletion(lineTargets);}},
+      {label:'Edit cell',disabled:!modernTable.canEdit||!row||!target||selectedFormatCellKeys.size!==1,onClick:()=>{if(row)beginEditCell(row,rows.indexOf(row),menu.field);}},
+      {label:'Edit row',disabled:!modernTable.canEdit||!row||keys.length!==1,onClick:()=>{reportSelection.selectOnly(reportKey,[menu.row]);openSelectedRowEditor();}},
+      {label:'Open trip details',disabled:!row||keys.length!==1||!tripDetailsTarget(row),onClick:()=>{if(row){const detail=tripDetailsTarget(row);if(detail){if(onOpenTrip)onOpenTrip(detail.tripId,detail.stopId);else navigate(detail.href);}}}},
+      ...([44,56,72] as const).map((height,index)=>({label:['Compact row height','Standard row height','Roomy row height'][index],disabled:!sharedDesign.canEdit,onClick:()=>rowHeights.setHeight(menu.group?[...keys,menu.group]:keys,height)})),
+    ];
+  }
   useRegisterTopbarFilter(topbarSearchScope??"reports", quickFilterConfig ? {
     label: quickFilterConfig.label,
     options: quickFilterOptions,
@@ -2984,7 +3036,7 @@ export default function ReportDataView({
             columns={columns}
             onDeleteTrips={(transactionView||reportKey==="combined")&&profile?.role==="ADMIN"?selected=>{const ids=selectedParentTripIds(selected);if(ids)setWholeTripIds(ids);}:undefined}
             onDeleteRows={!transactionView&&reportKey!=="combined"?setRowDeletion:undefined}
-            onEdit={openSelectedRowEditor} />
+            editingAllowed={modernTable.canEdit} onEdit={openSelectedRowEditor} />
 
           {viewMode === "visual" && (
             <>
@@ -3159,10 +3211,12 @@ export default function ReportDataView({
       >
 
         <>
+          {!showVisualCards && !transactionView && <SpreadsheetLoadedStatus autoFit={autoFit.enabled} sheet={reportKey} loaded={displayedRows.length} total={pagination?.total??displayedRows.length} loading={isLoading}/>}
+          {!showVisualCards && !transactionView && <ModernReportControls state={modernTable} columns={gridColumns} showLegend={columns.length>0} onSelect={key=>{const header=headerCellRefs.current.get(key);if(header&&tableViewportRef.current)scrollToTableColumn(tableViewportRef.current,header);}} lines={reportKey==="dispatch"} table={reportKey} canEdit={["ADMIN","STAFF"].includes(profile?.role??"")} busy={Boolean(editingCell||editModalOpen||formulas.draftPending||formulas.busy||fillGesture)}/> }
           {!showVisualCards && columns.some(column => column.fieldCategory) && <div aria-label="Column responsibilities" className="flex flex-wrap items-center gap-4 border-b border-slate-100 bg-white px-3 py-1 text-[10px] text-slate-500">{Object.entries(FIELD_CATEGORIES).map(([key, item]) => <button type="button" key={key} className="inline-flex items-center gap-1.5 rounded px-1 py-1 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-blue-500" onClick={() => { const column = renderedGridColumns.find(column => column.fieldCategory === key); const header = column && headerCellRefs.current.get(column.key); if (header && tableViewportRef.current) scrollToTableColumn(tableViewportRef.current, header); }}><span className="h-2 w-2 rounded-sm" style={{backgroundColor:item.background,border:'1px solid '+item.color}} />{item.label}</button>)}</div>}
           {!showVisualCards && sourceHeaderGroups.length > 0 && <div aria-label="Original Excel header color groups" className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-slate-100 bg-white px-3 py-1 text-[10px] text-slate-600">{sourceHeaderGroups.map(group => <button type="button" key={group.group} className="inline-flex items-center gap-1.5 rounded px-1 py-1 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-blue-500" onClick={() => { const column = renderedGridColumns.find(column => column.sourceHeader?.group === group.group); const header = column && headerCellRefs.current.get(column.key); if (header && tableViewportRef.current) scrollToTableColumn(tableViewportRef.current, header); }}><span aria-hidden="true" className="h-2.5 w-2.5 rounded-sm border border-slate-300" style={{ backgroundColor: group.background }} />{group.label}</button>)}</div>}
-          {headerFormatting.configuration}{!showVisualCards && <ReportCellFormattingToolbar selectedFontSize={selectedFormats[0]?.fontSize ?? 12} formulaBar={formulas.bar} advanced selectionIsItalic={selectedFormats.length>0&&selectedFormats.every(f=>f.italic)} selectionIsUnderlined={selectedFormats.length>0&&selectedFormats.every(f=>f.underline)} selectedCellCount={sharedDesign.canEdit&&columns.length?selectedFormatCellKeys.size:0} selectionIsBold={selectionIsBold} selectedTextColor={selectedTextColor} selectedBackgroundColor={selectedBackgroundColor} onApply={applyCellFormat} {...headerFormatting.toolbarProps} />}
-          <div ref={tableViewportRef} onPointerDownCapture={event=>{if(event.button===2&&(event.target as Element).closest("tbody td"))event.preventDefault();rangeDrag.onPointerDownCapture(event);}} onClickCapture={rangeDrag.onClickCapture} onPaste={(event) => void handleReportPaste(event)} onCopy={handleReportCopy} className={`${!showVisualCards ? `${REPORT_GRID_VIEWPORT_CLASS} ${SPREADSHEET_ATTACHED_VIEWPORT_CLASS}` : "relative min-h-48 w-full min-w-0 max-w-full overflow-x-auto overscroll-x-contain"} w-full`}>
+          {headerFormatting.configuration}{!showVisualCards && <ModernCellControls onSetRowHeight={height=>{const ids=cellSelection?.mode==="row"?cellSelection.rows??[]:[...new Set([...selectedFormatCellKeys].map(key=>key.slice(0,key.lastIndexOf("\u0000"))))];const groups=Array.from(tableViewportRef.current?.querySelectorAll<HTMLElement>('tr[data-group-key]:has([data-spreadsheet-selected="true"]),tr[data-group-key][aria-selected="true"]')??[]).map(node=>node.dataset.groupKey!);rowHeights.setHeight([...ids,...groups],height);}} onSetColumnWidth={width=>{const keys=cellSelection?.mode==="column"?cellSelection.columns??[cellSelection.focusField]:[...new Set([...selectedFormatCellKeys].map(key=>key.slice(key.lastIndexOf("\u0000")+1)))];for(const key of keys){autoFit.clearWidth(key);void sharedWidths.save(key,width);}}} selectionLabel={cellSelection?.mode==="column"?`${cellSelection.columns?.length??1} column${cellSelection.columns?.length===1?"":"s"} selected`:cellSelection?.mode==="row"?`${cellSelection.rows?.length??1} rows selected`:undefined} canFormat={sharedDesign.canEdit} selectedFormat={selectedFormats[0]} selectedFontFamily={selectedFormats.length&&selectedFormats.every(format=>(format.fontFamily??"Inter")===(selectedFormats[0].fontFamily??"Inter"))?selectedFormats[0].fontFamily??"Inter":""} modern={modernTable.modern} active={Boolean(cellSelection?.mode==="column"||selectedFormatCellKeys.size||formulas.selectedIdentity||headerFormatting.key)} cellSelected={Boolean(formulas.selectedIdentity||cellSelection?.mode==="cells")} label={columns.find(column=>column.key===formulas.selectedColumn)?.title??"Selected cell"} selectedFontSize={selectedFormats[0]?.fontSize ?? 13} formulaBar={formulas.bar} advanced selectionIsItalic={selectedFormats.length>0&&selectedFormats.every(f=>f.italic)} selectionIsUnderlined={selectedFormats.length>0&&selectedFormats.every(f=>f.underline)} selectedCellCount={sharedDesign.canEdit&&columns.length?(cellSelection?.mode==="column"?cellSelection.columns?.length??1:selectedFormatCellKeys.size):0} selectionIsBold={selectionIsBold} selectedTextColor={selectedTextColor} selectedBackgroundColor={selectedBackgroundColor} onApply={applyCellFormat} {...headerFormatting.toolbarProps} />}
+          <div ref={tableViewportRef} aria-busy={!showVisualCards&&(isLoading||loadingMore)} onKeyDownCapture={event=>tripTableShortcut(event,[...contextActions.actions,{label:"Select all",onClick:selectAllGridCells}],()=>{const field=formulas.selectedColumn??cellSelection?.focusField,key=cellSelection?.focusRowKey;if(!field||!key)return;const cell=event.target as HTMLElement,box=cell.getBoundingClientRect();setCellContextMenu({x:box.left,y:box.bottom,row:key,field});})} onPointerDownCapture={event=>{if(event.button===2&&(event.target as Element).closest("tbody td"))event.preventDefault();rangeDrag.onPointerDownCapture(event);}} onClickCapture={rangeDrag.onClickCapture} onPaste={(event) => void handleReportPaste(event)} onCopy={handleReportCopy} className={`${!showVisualCards ? `${REPORT_GRID_VIEWPORT_CLASS} ${SPREADSHEET_ATTACHED_VIEWPORT_CLASS}` : "relative min-h-48 w-full min-w-0 max-w-full overflow-x-auto overscroll-x-contain"} w-full`}>
             {activeError && <div role="alert" className="flex flex-wrap items-center gap-2 border-b border-rose-100 px-3 py-2 text-xs text-rose-700">{activeError} Your current data and drafts are preserved.{showVisualCards && <button type="button" onClick={() => { if (accessToken) retryReportRead(reportKey, accessToken); setRetryVersion(value => value + 1); }} className="rounded-full border border-rose-200 px-2 py-1 font-medium hover:bg-rose-50">Retry loading</button>}</div>}
             {showVisualCards ? (
               isLoading ? <DispatchCardsSkeleton/> : displayedRows.length === 0 ? (
@@ -3177,8 +3231,11 @@ export default function ReportDataView({
                   loadingMore={loadingMore}
                 />
               )
+            ) : isLoading && !displayedRows.length ? (
+              <TripTableLoading label="Loading rows…" className="trip-table-loading-empty"/>
             ) : (
-              <table {...headerFormatting.tableProps} data-compact-headers={transactionView ? "true" : undefined} className="spreadsheet-grid w-max min-w-full border-separate border-spacing-0 text-left">
+              <table {...headerFormatting.tableProps} data-compact-headers={transactionView ? "true" : undefined} style={{tableLayout:"fixed",width:Math.max(1,presentationColumns.reduce((sum,column)=>sum+(columnLayout.widths?.[column.key]??(columns.length?defaultReportColumnWidth(column):180)),0)),minWidth:0}} className="spreadsheet-grid border-separate border-spacing-0 text-left">
+                <TripTableColumnTracks columns={presentationColumns.map(column=>({key:column.key,width:columnLayout.widths?.[column.key]??(columns.length?defaultReportColumnWidth(column):180)}))}/>
                 <thead className={`${tableUi.thead} bg-white`}>
                   <tr style={rowHeights.headerStyle}>
                     <th
@@ -3186,10 +3243,10 @@ export default function ReportDataView({
                       style={{ width: SPREADSHEET_GUTTER_WIDTH, minWidth: SPREADSHEET_GUTTER_WIDTH }}
                       scope="col"
                       className="spreadsheet-gutter sticky left-0 top-0 z-[70] whitespace-nowrap border-b border-r border-slate-100/70 bg-slate-50 px-1 py-1">
-                      <SpreadsheetRowSelectionHeader active={cellSelection?.mode==="row"&&selectedRowKeys.length>0} checked={allMatchingRowsSelected} partial={selectedRowKeys.length>0&&!allMatchingRowsSelected} disabled={isLoading||selectAllRequest.busy||Boolean(editingCell||editModalOpen||fillGesture||formulas.draftPending)} onChange={checked=>{if(checked)selectAllGridCells();else{setCellSelection(null);reportSelection.clear(reportKey);setSelectionRecords([]);}}}/>
+                      {!( !transactionView && ["dispatch-monitoring","dispatch","store-calling"].includes(reportKey))&&<SpreadsheetRowSelectionHeader active={cellSelection?.mode==="row"&&selectedRowKeys.length>0} checked={allMatchingRowsSelected} partial={selectedRowKeys.length>0&&!allMatchingRowsSelected} disabled={isLoading||selectAllRequest.busy||Boolean(editingCell||editModalOpen||fillGesture||formulas.draftPending)} onChange={checked=>{if(checked)selectAllGridCells();else{setCellSelection(null);reportSelection.clear(reportKey);setSelectionRecords([]);}}}/>}
                     {rowHeights.headerHandle()}</th>
                     {presentationColumns.map((column) => {
-                      if(!columns.length)return <th key={column.key} scope="col" style={{width:180,minWidth:180}} className={REPORT_GRID_HEADER_CELL_CLASS}><div aria-hidden="true" className="h-3 w-20 animate-pulse rounded-sm bg-slate-100"/></th>;
+                      if(!columns.length)return <TripTableHeader key={column.key} scope="col" style={{width:180,minWidth:180}} className={REPORT_GRID_HEADER_CELL_CLASS}><div aria-hidden="true" className="h-3 w-20 animate-pulse rounded-sm bg-slate-100"/></TripTableHeader>;
                       const columnWidth = columnLayout.widths?.[column.key] ?? defaultReportColumnWidth(column);
                       const sortable = sortableFields.includes(column.key);
                       const isActiveSort = activeSortBy === column.key;
@@ -3206,13 +3263,14 @@ export default function ReportDataView({
                           ? ArrowUp
                           : ArrowDown;
                       return (
-                      <th
+                      <TripTableHeader
                         key={column.key}
-                        {...headerFormatting.props(column.key)} onContextMenu={event=>setOpenColumnMenu({key:column.key,...headerFormatting.menuPosition(event)})}
+                        {...headerFormatting.props(column.key)} data-trip-column-selected={cellSelection?.mode==="column"&&(cellSelection.columns??[cellSelection.focusField]).includes(column.key)?"true":undefined} onClick={event=>{if(!(event.target as Element).closest("input,select,[role=separator]"))selectWholeColumn(column.key,event.shiftKey,event.ctrlKey||event.metaKey);}} onContextMenu={event=>{selectWholeColumn(column.key,false,false,true);setOpenColumnMenu({key:column.key,...headerFormatting.menuPosition(event)});}}
                         ref={(element) => {
                           if (element) headerCellRefs.current.set(column.key, element);
                           else headerCellRefs.current.delete(column.key);
                         }}
+                        data-modern-category={modernColumnCategory(column.key,column.title).key}
                         data-field-category={column.fieldCategory}
                         data-source-header-group={sourceHeader?.group}
                         data-category-default={!columnColor && !sharedDesign.columns[column.key]?.header?.backgroundColor && !sharedDesign.columns[column.key]?.format?.backgroundColor ? "true" : undefined}
@@ -3221,7 +3279,7 @@ export default function ReportDataView({
                         draggable={false}
                         onDragOver={(event) => { if (draggedColumnKey) event.preventDefault(); }}
                         onDrop={(event) => { event.preventDefault(); if (draggedColumnKey) reorderReportColumn(draggedColumnKey, column.key); setDraggedColumnKey(null); }}
-                        style={{ width: columnWidth, minWidth: columnWidth, maxWidth: columnWidth, position: "sticky", top: 0, ...(columnColor ? { "--report-column-color": columnColor } as CSSProperties : {}), ...categoryHeaderStyle(column.fieldCategory), ...reportHeaderAppearance(sharedDesign.columns[column.key], columnColor), ...(sourceHeader ? { backgroundColor: sourceHeader.background, color: sourceHeader.color } : {}), ...(isPinned ? { ...(pinSide === "left" ? { left: leftPinOffsets[column.key] ?? SPREADSHEET_GUTTER_WIDTH } : { right: rightPinOffsets[column.key] ?? 0 }), zIndex: 60 } : { zIndex: 40 }) }}
+                        style={{ width: columnWidth, minWidth: columnWidth, maxWidth: columnWidth, position: "sticky", top: 0, ...(columnColor ? { "--report-column-color": columnColor } as CSSProperties : {}), ...(modernTable.modern?modernColumnHeaderStyle(column.key,column.title):categoryHeaderStyle(column.fieldCategory)), ...reportHeaderAppearance(sharedDesign.columns[column.key], columnColor), ...(modernTable.modern?modernColumnHeaderStyle(column.key,column.title,sharedDesign.columns[column.key]?.header?.backgroundColor||sharedDesign.columns[column.key]?.color||columnColor):{}), ...(!modernTable.modern&&sourceHeader ? { backgroundColor: sourceHeader.background, color: sourceHeader.color } : {}), ...(isPinned ? { ...(pinSide === "left" ? { left: leftPinOffsets[column.key] ?? SPREADSHEET_GUTTER_WIDTH } : { right: rightPinOffsets[column.key] ?? 0 }), zIndex: 60 } : { zIndex: 40 }) }}
                         className={`${REPORT_GRID_HEADER_CELL_CLASS} ${columnColor ? "bg-[var(--report-column-color)]" : "bg-white"} ${isPinned ? `${isOuterPinnedEdge ? pinSide === "left" ? "shadow-[4px_0_8px_-6px_rgba(11,35,65,0.35)]" : "shadow-[-4px_0_8px_-6px_rgba(11,35,65,0.35)]" : ""}` : ""} ${
                           column.type === "number" ||
                           ["quantity", "cbm", "subcon_rate_manual"].includes(
@@ -3246,14 +3304,14 @@ export default function ReportDataView({
                           </button>
 
                         </div>
-                        <span role="separator" aria-label={`Resize ${column.title} column`} aria-orientation="vertical" onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); autoFit.clearWidth(column.key); setColumnLayout((current) => ({ ...current, widths: { ...(sharedWidths.loaded ? {} : current.widths), ...sharedWidths.widths } })); setColumnResize({ key: column.key, startX: event.clientX, startWidth: headerCellRefs.current.get(column.key)?.getBoundingClientRect().width ?? columnWidth }); }} className="absolute right-0 top-0 z-[60] h-full w-1.5 cursor-col-resize touch-none hover:bg-blue-400/60" />
-                      </th>
+                        <TripTableColumnResizeHandle title={column.title} width={columnWidth} enabled={sharedDesign.canEdit&&sharedDesign.loaded} onStart={(event) => { event.preventDefault(); event.stopPropagation(); autoFit.clearWidth(column.key); setColumnLayout((current) => ({ ...current, widths: { ...(sharedWidths.loaded ? {} : current.widths), ...sharedWidths.widths } })); setColumnResize({ key: column.key, startX: event.clientX, startWidth: headerCellRefs.current.get(column.key)?.getBoundingClientRect().width ?? columnWidth }); }} onResize={next=>{autoFit.clearWidth(column.key);void sharedWidths.save(column.key,next);}}/>
+                      </TripTableHeader>
                       );
                     })}
                   </tr>
                 </thead>
                 <tbody>
-                  <VirtualSpreadsheetRows viewport={tableViewportRef} keys={physicalGridKeys} enabled={viewMode==="table"} keepAlive={editingCell?physicalGridKeys.indexOf(editingCell.rowKey):formulaFocusIndex} heights={rowHeights.heights} columnCount={renderedGridColumns.length+1} renderRow={index => {
+                  <ModernReportRows isCellSelected={(indices,column)=>indices.length>0&&indices.every(index=>selectedFormatCellKeys.has(reportCellFormatKey(physicalGridKeys[index],column)))} onGroupSelect={(event,indices,field)=>{const keys=indices.map(index=>physicalGridKeys[index]);if(!keys.length)return;headerFormatting.clear();if(field){const members=keys.map(key=>reportCellFormatKey(key,field));setCellSelection(current=>{const cells=event.ctrlKey||event.metaKey?new Set(selectedFormatCellKeys):event.shiftKey?selectTripCells(selectionRowKeys,presentationColumns.map(column=>column.key),new Set(),{row:keys.at(-1)!,column:field},current?{row:current.anchorRowKey,column:current.anchorField}:null,true):new Set<string>();const remove=(event.ctrlKey||event.metaKey)&&members.every(key=>cells.has(key));for(const key of members)if(remove)cells.delete(key);else cells.add(key);return {mode:"cells",cells:[...cells],anchorRowKey:event.shiftKey&&current?current.anchorRowKey:keys[0],focusRowKey:keys.at(-1)!,anchorField:event.shiftKey&&current?current.anchorField:field,focusField:field};});reportSelection.clear(reportKey);}else{const selected=event.ctrlKey||event.metaKey?new Set(selectedRowKeys):new Set<string>();const remove=keys.every(key=>selected.has(key));for(const key of keys)if(remove)selected.delete(key);else selected.add(key);const rows=[...selected];reportSelection.selectOnly(reportKey,rows);setCellSelection(rows.length?{mode:"row",rows,anchorRowKey:rows[0],focusRowKey:rows.at(-1)!,anchorField:presentationColumns[0].key,focusField:presentationColumns.at(-1)!.key}:null);}}} cellAppearance={(index,column)=>reportColumnAppearance(sharedDesign.columns[column],reportCellFormatFor(cellFormats,reportCellFormatKey(physicalGridKeys[index],column)))} selectedKeys={new Set(selectedRowKeys)} onGroupContextMenu={(event,indices,field)=>{event.preventDefault();event.stopPropagation();headerFormatting.clear();const keys=indices.map(index=>physicalGridKeys[index]);if(!keys.length)return;if(!keys.every(key=>selectedFormatCellKeys.has(reportCellFormatKey(key,field)))){if((event.target as Element).closest(".spreadsheet-gutter")){reportSelection.selectOnly(reportKey,keys);setCellSelection({mode:"row",rows:keys,anchorRowKey:keys[0],focusRowKey:keys.at(-1)!,anchorField:presentationColumns[0].key,focusField:presentationColumns.at(-1)!.key});}else{reportSelection.clear(reportKey);setCellSelection({mode:"cells",cells:keys.map(key=>reportCellFormatKey(key,field)),anchorRowKey:keys[0],focusRowKey:keys.at(-1)!,anchorField:field,focusField:field});}}setCellContextMenu({x:event.clientX,y:event.clientY,row:keys[0],field,rows:keys,group:event.currentTarget.dataset.groupKey});}} busy={Boolean(editingCell||editModalOpen||formulas.draftPending||formulas.busy||fillGesture)} state={{...modernTable,modern:modernTable.modern&&!transactionView&&["dispatch-monitoring","dispatch","store-calling"].includes(reportKey)}} rows={displayedRows} columns={renderedGridColumns} report={reportKey} viewport={tableViewportRef} keys={physicalGridKeys} enabled={viewMode==="table"} keepAlive={editingCell?physicalGridKeys.indexOf(editingCell.rowKey):formulaFocusIndex} heights={rowHeights.heights} columnCount={renderedGridColumns.length} renderRow={index => {
                     const row=displayedRows[index];
                     const currentRowKey = rowKey(reportKey, row, index);
                     const selectionKey = getReportRowKey(reportKey, row);
@@ -3264,13 +3322,13 @@ export default function ReportDataView({
                         style={rowHeights.style(selectionKey ?? currentRowKey)}
                         data-report-selection-key={selectionKey ?? undefined}
                         className={`group report-data-row ${REPORT_GRID_ROW_CLASS} ${selectionKey&&reportSelection.isSelected(selectionKey)?"bg-blue-50/50":""}`}>
-                        <td style={{ width: SPREADSHEET_GUTTER_WIDTH, minWidth: SPREADSHEET_GUTTER_WIDTH }} className="spreadsheet-gutter sticky left-0 z-30 whitespace-nowrap border-r border-slate-100/70 bg-slate-50 px-1 py-1 shadow-[3px_0_5px_-5px_rgba(11,35,65,0.65)]">
-                          {cellSelection?.mode==="row"?<input type="checkbox" className="spreadsheet-row-checkbox" aria-label={`Select spreadsheet row ${index+1}`} checked={cellSelection.rows?.includes(selectionKey??selectionRowKeys[index])??false} onChange={()=>selectWholeRow(selectionKey??selectionRowKeys[index],true)}/>:<button type="button" aria-label={`Select spreadsheet row ${sheetRowOffset+index+1}`} title="Select row" onClick={event=>selectWholeRow(selectionKey??selectionRowKeys[index],event.ctrlKey||event.metaKey,event.shiftKey)} className="w-full text-center focus-visible:outline-2 focus-visible:outline-blue-500"><SpreadsheetRowNumber value={sheetRowOffset + index + 1} /></button>}
+                        <td onContextMenu={event=>{event.preventDefault();event.stopPropagation();const key=selectionKey??selectionRowKeys[index];if(!cellSelection?.rows?.includes(key))selectWholeRow(key);setCellContextMenu({x:event.clientX,y:event.clientY,row:key,field:presentationColumns[0].key,rows:cellSelection?.rows?.includes(key)?cellSelection.rows:[key]});}} style={{ width: SPREADSHEET_GUTTER_WIDTH, minWidth: SPREADSHEET_GUTTER_WIDTH }} className="spreadsheet-gutter sticky left-0 z-30 whitespace-nowrap border-r border-slate-100/70 bg-slate-50 px-1 py-1 shadow-[3px_0_5px_-5px_rgba(11,35,65,0.65)]">
+                          <button type="button" aria-label={`Select spreadsheet row ${sheetRowOffset+index+1}`} title="Select row" onClick={event=>selectWholeRow(selectionKey??selectionRowKeys[index],event.ctrlKey||event.metaKey,event.shiftKey)} className="w-full text-center focus-visible:outline-2 focus-visible:outline-blue-500"><SpreadsheetRowNumber value={sheetRowOffset + index + 1} /></button>
                           {selectionKey && rowHeights.handle(selectionKey)}
                         </td>
                         {renderedGridColumns.map((column, visibleColumnIndex) => {
                           const columnWidth = columnLayout.widths?.[column.key] ?? defaultReportColumnWidth(column);
-                          if(!mountedColumns.has(column.key))return <td key={column.key} {...formulas.cellProps(row,column.key)} {...rangeDrag.cell(selectionKey??selectionRowKeys[index],column.key)} data-report-column-key={column.key} data-column-placeholder="true" style={{width:columnWidth,minWidth:columnWidth,maxWidth:columnWidth,...reportColumnAppearance(sharedDesign.columns[column.key],reportCellFormatFor(cellFormats,reportCellFormatKey(selectionKey??selectionRowKeys[index],column.key)),columnLayout.colors?.[column.key])}} className={`${REPORT_GRID_BODY_CELL_CLASS} border-r border-slate-100/70`}><span className={/remarks|comment|notes/i.test(column.key)?"whitespace-pre-wrap break-words":"block truncate"}>{displayValue(row[column.key],column.type,column.key)}</span></td>;
+                          if(!mountedColumns.has(column.key))return <TripSheetCell key={column.key} {...formulas.cellProps(row,column.key)} {...rangeDrag.cell(selectionKey??selectionRowKeys[index],column.key)} data-report-column-key={column.key} data-column-placeholder="true" style={{width:columnWidth,minWidth:columnWidth,maxWidth:columnWidth,...reportColumnAppearance(sharedDesign.columns[column.key],reportCellFormatFor(cellFormats,reportCellFormatKey(selectionKey??selectionRowKeys[index],column.key)),columnLayout.colors?.[column.key])}} className={`${REPORT_GRID_BODY_CELL_CLASS} border-r border-slate-100/70`}><span className={/remarks|comment|notes/i.test(column.key)?"whitespace-pre-wrap break-words":"block truncate"}>{displayValue(row[column.key],column.type,column.key)}</span></TripSheetCell>;
                           const editableTarget = getEditableCellTarget(
                             row,
                             column.key,
@@ -3282,7 +3340,7 @@ export default function ReportDataView({
                             : dropdownField
                               ? dropdownChoicesByField[dropdownField] ?? []
                               : [];
-                          const isEditable = Boolean(editableTarget);
+                          const isEditable = modernTable.canEdit && Boolean(editableTarget);
                           const remoteEditors=collaboration.peers(collaborationCell(transactionView?"trips":reportKey,editableTarget));
                           const isRemarksColumn = /remarks|comment|notes/i.test(column.key) || editableTarget?.sourceField === "remarks";
                           const pinSide = pinnedColumnSides[column.key];
@@ -3307,12 +3365,13 @@ export default function ReportDataView({
                           })() : false;
 
                           return (
-                            <td
+                            <TripSheetCell
                               key={column.key}
                               {...formulas.cellProps(row,column.key)}
                               {...rangeDrag.cell(formatRowKey,column.key)}
                               data-report-column-key={column.key}
                               data-search-match={searchNeedle && (matchesSpreadsheetSearch(row[column.key],searchNeedle) || matchesSpreadsheetSearch(displayValue(row[column.key], column.type, column.key),searchNeedle)) ? "true" : undefined}
+                              data-trip-editable={isEditable}
                               data-spreadsheet-selected={isFormatSelected ? "true" : undefined}
                               onContextMenu={event=>openCellContextMenu(event,formatRowKey,column.key)}
                               data-cell-hover-disabled={isPinned || isEditing || isFormatSelected || fillRange ? "true" : undefined}
@@ -3325,13 +3384,12 @@ export default function ReportDataView({
                                 ...(columnColor ? { "--report-column-color": columnColor } as CSSProperties : {}),
                                 ...reportColumnAppearance(sharedDesign.columns[column.key], cellFormat, columnColor),
                               }}
+                              onDoubleClick={()=>beginEditCell(row,index,column.key)}
                               onPointerEnter={() => extendFillGesture(row, column)}
                               onClick={(event) => {
                                 if ((event.target as HTMLElement).closest("button, input, select, textarea")) return;
-                                selectFormatCell(row, column.key, event.shiftKey);
-                                if (!event.shiftKey && !isEditing) {
-                                  beginEditCell(row, index, column.key);
-                                }
+                                selectFormatCell(row, column.key, event.shiftKey,event.ctrlKey||event.metaKey);
+
                               }}
                               className={`group/cell relative ${isRemarksColumn ? "min-w-[14rem] max-w-[30rem] whitespace-pre-wrap break-words align-top" : "max-w-[22rem]"} ${REPORT_GRID_BODY_CELL_CLASS} border-r border-slate-100/70 text-slate-800 last:border-r-0 ${columnColor && !cellFormat?.backgroundColor ? "bg-[var(--report-column-color)]" : ""} ${isPinned ? `${columnColor && !cellFormat?.backgroundColor ? "" : "bg-white"} ${isOuterPinnedEdge ? pinSide === "left" ? "shadow-[4px_0_7px_-5px_rgba(11,35,65,0.75)]" : "shadow-[-4px_0_7px_-5px_rgba(11,35,65,0.75)]" : ""}` : ""} ${fillRange ? "bg-blue-50 ring-2 ring-inset ring-blue-400" : ""} ${isFormatSelected ? "outline outline-2 outline-inset outline-blue-500" : ""} ${
                                 isEditable
@@ -3459,7 +3517,8 @@ export default function ReportDataView({
                                   />
                                 ) : (
                                   <div className="spreadsheet-editor-host grid min-w-0 w-full gap-1">
-                                  <ReportTextCellEditor
+                                  <TripTableTextEditor
+                                    onNavigate={backward=>{const id=physicalRowIdentity(row);if(id)formulas.navigateCell(id,column.key,"Tab",backward);}}
                                     buffered
                                     value={editingCell.value}
                                     saveState={cellSaveState?.rowKey===currentRowKey&&cellSaveState.field===column.key?cellSaveState.status:undefined}
@@ -3564,14 +3623,14 @@ export default function ReportDataView({
                                 </button>
                               )}
 
-                            </td>
+                            </TripSheetCell>
                           );
                         })}
 
                       </tr>
                     );
                   }}/>
-                  <SpreadsheetBlankRows count={spreadsheetPadding.count} height={spreadsheetPadding.height} loading={isLoading&&!displayedRows.length} start={sheetRowOffset+displayedRows.length+1} gutterWidth={SPREADSHEET_GUTTER_WIDTH}
+                  <SpreadsheetBlankRows count={spreadsheetPadding.count} height={spreadsheetPadding.height} start={sheetRowOffset+displayedRows.length+1} gutterWidth={SPREADSHEET_GUTTER_WIDTH}
                     rowSelection={cellSelection?.mode==="row" ? new Set(cellSelection.rows?.map(key=>Number(key.split(":").at(-1)))??[]) : undefined}
                     onRowSelect={(number,event)=>selectWholeRow(`virtual:${transactionView?"trips":reportKey}:slot:${number}`,cellSelection?.mode==="row"||event.ctrlKey||event.metaKey,event.shiftKey)}
                     cellProps={(number,column)=>{const id=`virtual:${transactionView?"trips":reportKey}:slot:${number}`,key=reportCellFormatKey(id,column);return {...formulas.virtualCellProps(id,column),...rangeDrag.cell(id,column),onContextMenu:event=>openCellContextMenu(event,id,column),"data-spreadsheet-selected":selectedFormatCellKeys.has(key)?"true":undefined,className:selectedFormatCellKeys.has(key)?"relative outline outline-2 outline-inset outline-blue-500":"relative",style:reportColumnAppearance(sharedDesign.columns[column],cellFormats[key],columnLayout.colors?.[column])};}}
@@ -3580,11 +3639,11 @@ export default function ReportDataView({
                 </tbody>
               </table>
             )}
+            {!showVisualCards&&(loadingMore||isLoading&&displayedRows.length>0)&&<TripTableLoading label={loadingMore?"Loading more rows…":"Updating rows…"} className="trip-table-loading-more"/>}
           </div>
           {showVisualCards&&infiniteRows&&hasMoreRows&&!moreRowsError&&<div ref={visualLoadMoreRef} aria-hidden="true" className="h-px"/>}
           {!infiniteRows&&(pageCount>1||page>1)&&<div aria-label="Table pagination" className="flex items-center justify-end gap-2 border-t border-slate-200 px-3 py-1 text-[11px] text-slate-500"><button type="button" disabled={isLoading||page<=1||Boolean(editingCell||editModalOpen||fillGesture||formulas.draftPending)} onClick={()=>setPage(current=>Math.max(1,current-1))} className="rounded-sm border px-2 py-1 disabled:opacity-40">Previous</button><label>Page <input key={page} aria-label="Go to page" inputMode="numeric" defaultValue={page} disabled={isLoading||Boolean(editingCell||editModalOpen||fillGesture||formulas.draftPending)} onKeyDown={event=>{if(event.key==="Enter")event.currentTarget.blur();}} onBlur={event=>{const next=Number(event.target.value);if(Number.isInteger(next)&&next>=1&&next<=pageCount)setPage(next);else event.target.value=String(page);}} className="w-12 rounded-sm border border-slate-200 px-1 text-center"/></label><span>of {pageCount}</span><button type="button" disabled={isLoading||page>=pageCount||Boolean(editingCell||editModalOpen||fillGesture||formulas.draftPending)} onClick={()=>setPage(current=>Math.min(pageCount,current+1))} className="rounded-sm border px-2 py-1 disabled:opacity-40">Next</button></div>}
           {infiniteRows&&moreRowsError&&<div role="alert" className="flex shrink-0 items-center justify-center gap-2 border-t border-amber-100 bg-white py-1 text-xs text-amber-800"><span>{moreRowsError}</span><button type="button" disabled={loadingMore} onClick={()=>{setMoreRowsError('');void loadMoreRowsRef.current();}} className="rounded px-2 py-1 text-blue-700">Retry loading</button></div>}
-          {infiniteRows&&loadingMore&&!showVisualCards&&<div role="status" className="flex shrink-0 justify-center border-t border-slate-100 bg-white py-1 text-xs text-slate-500">Loading more rows...</div>}
           <SpreadsheetHiddenColumns sheet={transactionView?"trips":reportKey} columns={hiddenColumns.map(column=>({...column,title:headerFormatting.title(column.key,column.title)}))} onRestore={restoreReportColumn} onRestoreAll={() => saveColumnLayout({ ...columnLayout, order: layoutColumnKeys, hidden: [] })} />
         </>
       </section>
@@ -3598,14 +3657,14 @@ export default function ReportDataView({
         setRows(retain);updateCachedReportPages(reportKey,accessToken,bundle=>({...bundle,rows:retain(bundle.rows)}));
         scheduleRealtimeRefreshRef.current();
       }}/>}
-      {cellContextMenu&&<SpreadsheetCellContextMenu x={cellContextMenu.x} y={cellContextMenu.y} count={selectedFormatCellKeys.size} canFormat={sharedDesign.canEdit&&columns.length>0}
-        format={{bold:selectionIsBold,italic:selectedFormats.length>0&&selectedFormats.every(format=>format.italic),color:selectedTextColor,backgroundColor:selectedBackgroundColor}}
-        onApply={applyCellFormat} onSelectRow={()=>selectWholeRow(cellContextMenu.row)} onSelectColumn={()=>selectWholeColumn(cellContextMenu.field)} onClose={()=>setCellContextMenu(null)}/>}
+      {cellContextMenu&&<TripTableCellMenu actions={<TripTableActions items={reportContextItems()} onClose={()=>setCellContextMenu(null)}/>} x={cellContextMenu.x} y={cellContextMenu.y} count={selectedFormatCellKeys.size} canFormat={sharedDesign.canEdit&&columns.length>0}
+        format={{...selectedFormats[0],bold:selectionIsBold,italic:selectedFormats.length>0&&selectedFormats.every(format=>format.italic),color:selectedTextColor,backgroundColor:selectedBackgroundColor}}
+        onApply={applyCellFormat} onSelectRow={()=>{if(!cellContextMenu.rows)selectWholeRow(cellContextMenu.row);}} onSelectColumn={()=>selectWholeColumn(cellContextMenu.field)} onClose={()=>setCellContextMenu(null)}/>}
       {openColumnMenu && (() => {
         const menuColumn = columns.find((column) => column.key === openColumnMenu.key);
         if (!menuColumn) return null;
         const dropdownField = getReportEditDefinition(reportKey, menuColumn.key)?.dropdownField;
-        return <ReportColumnActionsMenu
+        return <TripTableColumnMenu
           title={menuColumn.title}
           position={openColumnMenu}
           onClose={() => setOpenColumnMenu(null)} onRename={allTripRecords && menuColumn.sourceHeader ? undefined : () => headerFormatting.startRename(openColumnMenu.key, menuColumn.title)} onRestoreTitle={allTripRecords && menuColumn.sourceHeader ? undefined : () => headerFormatting.restoreTitle(openColumnMenu.key)} onConfigureInput={() => dropdownField ? openDropdownManager(dropdownField) : headerFormatting.configure(openColumnMenu.key, columns.find(column=>column.key===openColumnMenu.key)?.title??openColumnMenu.key)}
@@ -3613,6 +3672,19 @@ export default function ReportDataView({
             { label: "Sort ascending", active: activeSortBy === menuColumn.key && sortOrder === "asc", onClick: () => { setSortBy(menuColumn.key); setSortOrder("asc"); setPage(1); } },
             { label: "Sort descending", active: activeSortBy === menuColumn.key && sortOrder === "desc", onClick: () => { setSortBy(menuColumn.key); setSortOrder("desc"); setPage(1); } },
           ] : undefined}
+          viewportBounded
+          selection={{count:cellSelection?.mode==="column"?cellSelection.columns?.length??1:selectedFormatCellKeys.size,format:{...selectedFormats[0],bold:selectionIsBold,color:selectedTextColor,backgroundColor:selectedBackgroundColor},canFormat:sharedDesign.canEdit,onApply:applyCellFormat}}
+          extraActions={[
+            {label:"Select column",onClick:()=>selectWholeColumn(menuColumn.key)},
+            {label:"Pin left",disabled:!sharedDesign.canEdit,onClick:()=>setColumnPinSide(menuColumn.key,"left")},
+            {label:"Pin right",disabled:!sharedDesign.canEdit,onClick:()=>setColumnPinSide(menuColumn.key,"right")},
+            {label:"Resize column…",disabled:!sharedDesign.canEdit,onClick:()=>{const raw=window.prompt("Column width in pixels (72–600)",String(getColumnWidth(menuColumn.key)));if(raw===null)return;const width=Number(raw);if(Number.isFinite(width)&&width>=72&&width<=600){for(const key of cellSelection?.mode==="column"?cellSelection.columns??[menuColumn.key]:[menuColumn.key]){autoFit.clearWidth(key);void sharedWidths.save(key,Math.round(width));}}}},
+            ...(["left","center","right"] as const).map(alignment=>({label:`Align ${alignment}`,disabled:!sharedDesign.canEdit,onClick:()=>applyCellFormat({alignment})})),
+            {label:"Reset column width",disabled:!sharedDesign.canEdit,onClick:()=>{autoFit.clearWidth(menuColumn.key);void sharedWidths.save(menuColumn.key,defaultReportColumnWidth(menuColumn));}},
+            {label:"Reset column order",disabled:!sharedDesign.canEdit,onClick:()=>saveColumnLayout({...columnLayout,order:columns.map(column=>column.key)})},
+            {label:`Show all hidden columns (${hiddenColumnKeys.size})`,disabled:!hiddenColumnKeys.size,onClick:()=>saveColumnLayout({...columnLayout,order:layoutColumnKeys,hidden:[]})},
+            {label:"Format selection…",disabled:!sharedDesign.canEdit,onClick:()=>selectWholeColumn(menuColumn.key)},
+          ]}
           pinned={Boolean(pinnedColumnSides[menuColumn.key])}
           onTogglePin={() => toggleColumnPinAutomatically(menuColumn.key)}
           onEditColumn={() => setEditingColumnColor(menuColumn.key)}

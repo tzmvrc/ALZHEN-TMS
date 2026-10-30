@@ -5,7 +5,7 @@ import { useAuth } from "../../../context/AuthContext";
 import { ApiError, invalidateApiCache } from "../../../services/api.service";
 import { fetchHomeTripDetails, fetchTrips } from "../../../services/trip.service";
 import { subscribeToAdminRealtime } from "../../../services/realtime.service";
-import { fetchReportPage, invalidateReportPageCache, type ReportRow } from "../../../services/report.service";
+import type { ReportRow } from "../../../services/report.service";
 import HomeCommandCenter from "../../../components/admin/home/HomeCommandCenter";
 import { HomeSkeleton } from "../../../components/admin/home/HomePrimitives";
 import { text as textValue, type HomeSnapshot as OverviewSnapshot } from "../../../components/admin/home/home-dashboard-data";
@@ -63,42 +63,17 @@ export default function OverviewView({ onOpenTrip, onMetricNavigate, active = tr
         // Yield to navigation and rendering before starting nonessential reads.
         await new Promise(resolve => window.setTimeout(resolve, 0));
         if (!isCurrent) return;
-        let bookingRows: ReportRow[] = [];
-        let bookingUnavailable = false;
-        let bookingLimited = false;
-        try {
-          const visibleIds = allTrips.rows.map(trip => textValue(trip.id)).filter(Boolean);
-          if (visibleIds.length) {
-          const bookingOptions = {
-            page: 1,
-            limit: 500,
-            search: "",
-            sortBy: "loading_date",
-            sortOrder: "desc" as const,
-            filters: { active_transactions: "true", archive_scope: "active", trip_ids: visibleIds.join(",") },
-          };
-          const bookingPage = await fetchReportPage(
-            "dispatch-monitoring",
-            accessToken,
-            bookingOptions,
-          );
-          bookingRows = [...bookingPage.rows];
-          bookingLimited = bookingPage.pagination.total > bookingPage.rows.length;
-          const visibleTripIds = new Set(allTrips.rows.map((trip) => textValue(trip.id)));
-          bookingRows = bookingRows.filter((row) => visibleTripIds.has(textValue(row.trip_id ?? row._trip_id)));
-          }
-        } catch (cause) {
-          if (cause instanceof ApiError && cause.status === 401) throw cause;
-          bookingUnavailable = true;
-        }
         const tripsWithIds = allTrips.rows.filter(
           (trip): trip is typeof trip & { id: string } =>
             typeof trip.id === "string" && trip.id.length > 0,
         );
+        const batch=await fetchHomeTripDetails(accessToken,tripsWithIds.map(trip=>trip.id));
+        const bookingRows:ReportRow[]=Array.isArray(batch.bookingRows)?batch.bookingRows:[];
+        const bookingUnavailable=!Array.isArray(batch.bookingRows)||batch.bookingUnavailable===true;
+        const bookingLimited=batch.bookingLimited===true;
         const activeStopIds = new Set(bookingRows.map((row) => textValue(row.trip_stop_id ?? row._trip_stop_id)).filter(Boolean));
         if (!isCurrent) return;
         setSnapshot(previous => previous ? {...previous, bookingRows, bookingUnavailable, bookingLimited} : previous);
-        const batch=await fetchHomeTripDetails(accessToken,tripsWithIds.map(trip=>trip.id));
         if(!isCurrent)return;
         const byTrip=new Map<string,typeof batch.events>();for(const event of batch.events){const values=byTrip.get(event.trip_id)??[];values.push(event);byTrip.set(event.trip_id,values);}
         const tracks=tripsWithIds.map(trip=>({trip,events:(byTrip.get(trip.id)??[]).filter(event=>!event.trip_stop_id||(!bookingUnavailable&&activeStopIds.has(event.trip_stop_id)))}));
@@ -244,6 +219,6 @@ export default function OverviewView({ onOpenTrip, onMetricNavigate, active = tr
   if (!snapshot) return null;
   const name = [profile?.first_name, profile?.last_name].filter(Boolean).join(" ") || "Operations team";
   return <HomeCommandCenter snapshot={snapshot} name={name} refreshing={isLoading} error={error} active={active}
-    onRefresh={() => { invalidateApiCache("/trips"); invalidateReportPageCache("dispatch-monitoring"); setReloadCount(count => count + 1); }}
+    onRefresh={() => { invalidateApiCache("/trips"); setReloadCount(count => count + 1); }}
     onOpenTrip={onOpenTrip} onNavigate={onMetricNavigate}/>;
 }

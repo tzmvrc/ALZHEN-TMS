@@ -1,0 +1,7 @@
+{
+  "name": "alzhen-tms-workspace",
+  "private": true,
+  "scripts": {
+    "mcp": "npm --prefix mcp start"
+  }
+}

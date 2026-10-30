@@ -42,7 +42,7 @@ export function readReportCellFormats(storageKey: string): Record<string, Report
       const item = value as Record<string, unknown>;
       const color = typeof item.color === "string" && /^#[0-9a-f]{6}$/i.test(item.color) ? item.color : undefined;
       const backgroundColor = typeof item.backgroundColor === "string" && /^#[0-9a-f]{6}$/i.test(item.backgroundColor) ? item.backgroundColor : undefined;
-      return [[key, { ...(typeof item.bold === "boolean" ? { bold: item.bold } : {}), ...(typeof item.italic === "boolean" ? { italic: item.italic } : {}), ...(typeof item.underline === "boolean" ? { underline: item.underline } : {}), fontFamily: typeof item.fontFamily === "string" ? item.fontFamily : undefined, fontSize: typeof item.fontSize === "number" && Number.isFinite(item.fontSize) ? item.fontSize : undefined, color, backgroundColor } satisfies ReportCellFormat]];
+      return [[key, { ...(typeof item.bold === "boolean" ? { bold: item.bold } : {}), ...(typeof item.italic === "boolean" ? { italic: item.italic } : {}), ...(typeof item.underline === "boolean" ? { underline: item.underline } : {}), alignment:["left","center","right"].includes(String(item.alignment))?item.alignment as "left"|"center"|"right":undefined, fontFamily: typeof item.fontFamily === "string" ? item.fontFamily : undefined, fontSize: typeof item.fontSize === "number" && Number.isFinite(item.fontSize) ? item.fontSize : undefined, color, backgroundColor } satisfies ReportCellFormat]];
     }));
   } catch {
     return {};
@@ -105,7 +105,7 @@ export function reportColumnAppearance(column?: ColumnDesign, cell?: ReportCellF
     ...(underline !== undefined ? { textDecoration: underline ? "underline" : "none" } : {}),
     ...(cell?.fontFamily ?? defaults?.fontFamily ? { fontFamily: cell?.fontFamily ?? defaults?.fontFamily ?? undefined } : {}),
     ...(cell?.fontSize ?? defaults?.fontSize ? { fontSize: cell?.fontSize ?? defaults?.fontSize ?? undefined } : {}),
-    ...(column?.alignment ? { textAlign: column.alignment } : {}),
+    ...((cell?.alignment??defaults?.alignment??column?.alignment)?{textAlign:cell?.alignment??defaults?.alignment??column?.alignment??undefined}:{}),
   };
 }
 

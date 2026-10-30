@@ -227,7 +227,7 @@ async function readSourceData(stopIdsInput?: string[]) {
   const stopIds = stops.map((stop) => stop.id);
 
   const [trips, stores, customers, assignments, lineItems] = await Promise.all([
-    readByIds<TransmittalTripRecord>("trips", "id, warehouse_id, loading_date, lbc_tracking_number, pod_ac_shipping_date", "id", tripIds),
+    readByIds<TransmittalTripRecord>("trips", "id, dispatch_number, warehouse_id, loading_date, lbc_tracking_number, pod_ac_shipping_date", "id", tripIds),
     readByIds<TransmittalNamedRecord>("customer_stores", "id, name", "id", storeIds),
     readByIds<TransmittalNamedRecord>("customers", "id, name", "id", customerIds),
     readByIds<TransmittalAssignment>("trip_truck_assignments", "trip_id, truck_id, driver_id, assignment_type, unassigned_at", "trip_id", tripIds),

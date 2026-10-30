@@ -9,6 +9,10 @@ function tableScrollRange(viewport: HTMLElement) {
   return Math.max(0, Math.min(available, tableRight - viewport.clientWidth));
 }
 
+export function visibleSheetViewport(workspace:HTMLElement|null,sheet:string){
+  return Array.from(workspace?.querySelectorAll<HTMLElement>(`#trip-sheet-${sheet} .spreadsheet-viewport`)??[]).find(viewport=>viewport.clientWidth>0&&viewport.getClientRects().length>0);
+}
+
 /** Compact native scrollbar; synchronization never rerenders the grid. */
 export default function SheetHorizontalScrollbar({ workspace, sheet, arrows=false }: { workspace: RefObject<HTMLElement | null>; sheet: string; arrows?:boolean }) {
   const track = useRef<HTMLDivElement>(null);
@@ -16,7 +20,7 @@ export default function SheetHorizontalScrollbar({ workspace, sheet, arrows=fals
   const leftArrow = useRef<HTMLButtonElement>(null), rightArrow = useRef<HTMLButtonElement>(null);
   const hold = useRef<ReturnType<typeof setTimeout>|null>(null), holdFrame = useRef(0), held = useRef(false);
   const stopHold=()=>{if(hold.current!==null){clearTimeout(hold.current);hold.current=null;}cancelAnimationFrame(holdFrame.current);holdFrame.current=0;};
-  const getViewport=()=>workspace.current?.querySelector<HTMLElement>(`#trip-sheet-${sheet} .spreadsheet-viewport`);
+  const getViewport=()=>visibleSheetViewport(workspace.current,sheet);
   const scroll=(direction:number)=>{
     const viewport=getViewport();if(!viewport)return;
     const distance=direction*Math.max(80,Math.round(viewport.clientWidth*.15));
@@ -44,7 +48,7 @@ export default function SheetHorizontalScrollbar({ workspace, sheet, arrows=fals
     if (!root || !bar || !content) return;
     let cleanup = () => {};
     const connect = () => {
-      const viewport = root.querySelector<HTMLElement>(`#trip-sheet-${sheet} .spreadsheet-viewport`);
+      const viewport = visibleSheetViewport(root,sheet);
       if (!viewport) return false;
       let frame = 0;
       let synchronizedPosition = -1;
@@ -92,8 +96,8 @@ export default function SheetHorizontalScrollbar({ workspace, sheet, arrows=fals
       bar.addEventListener("wheel", wheel, { passive: false });
       const resize = new ResizeObserver(schedule);
       resize.observe(viewport); resize.observe(bar);
-      const table = viewport.querySelector("table");
-      if (table) resize.observe(table);
+      const tableContent = viewport.querySelector("table, .ml-table-inner");
+      if (tableContent) resize.observe(tableContent);
       viewport.addEventListener("scroll", syncPosition, { passive: true });
       bar.addEventListener("scroll", move, { passive: true });
       schedule();

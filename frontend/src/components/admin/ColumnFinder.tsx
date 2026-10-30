@@ -17,14 +17,16 @@ export default function ColumnFinder({ columns, viewport, getHeader, onReveal, l
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
   const latestSearch = useRef(rowSearch);
+  const submittedSearch=useRef(rowSearch?.value??""),previousSearch=useRef(rowSearch?.value??"");
+  useEffect(()=>{const value=rowSearch?.value??"";if(previousSearch.current===value)return;previousSearch.current=value;if(value!==submittedSearch.current&&!selected)setQuery(value);},[rowSearch?.value,selected]);
   useEffect(() => { latestSearch.current = rowSearch; }, [rowSearch]);
   useEffect(() => {
     if (selected || !latestSearch.current || query.trim() === latestSearch.current.value) return;
-    const timer = window.setTimeout(() => latestSearch.current?.onSearch(query.trim()), 250);
+    const timer = window.setTimeout(() => {submittedSearch.current=query.trim();latestSearch.current?.onSearch(query.trim());}, 250);
     return () => window.clearTimeout(timer);
   }, [query, selected]);
   const offset=rowSearch?1:0;
-  const searchRows=(value=query)=>{rowSearch?.onSearch(value.trim());setSelected(null);setOpen(false);};
+  const searchRows=(value=query)=>{submittedSearch.current=value.trim();rowSearch?.onSearch(value.trim());setSelected(null);setOpen(false);};
   const matches = useMemo(() => columns.filter((column) => matchesSpreadsheetSearch(column.title,query)), [columns, query]);
   const found = columns.find((column) => column.key === selected);
   const child = found && !found.hidden ? found.index + leadingColumns + 1 : 0;

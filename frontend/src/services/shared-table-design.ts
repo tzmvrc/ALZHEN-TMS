@@ -1,5 +1,5 @@
 import {apiGet,apiPatch,ApiError,type ApiResponse} from "./api.service";
-export type CellDesign={bold?:boolean;italic?:boolean;underline?:boolean;color?:string|null;backgroundColor?:string|null;fontSize?:number|null;fontFamily?:string|null};
+export type CellDesign={alignment?:"left"|"center"|"right"|null;bold?:boolean;italic?:boolean;underline?:boolean;color?:string|null;backgroundColor?:string|null;fontSize?:number|null;fontFamily?:string|null};
 export type HeaderDesign=CellDesign;
 export type ConfiguredInput={type:"TEXT"|"NUMBER"|"DATE"|"DROPDOWN";options?:Array<{value:string;label:string;color:string|null;active:boolean}>};
 export type ColumnDesign={rowHeights?:Record<string,number|null>;headerHeight?:number|null;alias?:string|null;combined?:boolean;input?:ConfiguredInput;header?:HeaderDesign;hidden?:boolean;position?:number;pin?:"left"|"right"|null;color?:string|null;alignment?:"left"|"center"|"right"|null;format?:CellDesign;cells?:Record<string,CellDesign|null>};

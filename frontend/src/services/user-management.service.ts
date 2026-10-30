@@ -50,7 +50,7 @@ export function filterDirectoryTruckers(rows:TruckerListItem[],search:string,sta
 export async function createManagedUser(token:string,value:UserInput){const result=await unwrap(apiPost<ApiResponse<{user:{id:string};profile:ManagedUser}>>("/users",value,token),"Unable to create user.");invalidateUsers();return result;}
 export async function updateManagedUser(token:string,id:string,value:UserInput){const result=await unwrap(apiPatch<ApiResponse<ManagedUser>>(`/users/${encodeURIComponent(id)}`,value,token),"Unable to update user.");invalidateUsers();return result;}
 export async function uploadManagedProfilePicture(token: string, id: string, file: File) {
-  const response = await fetch(`${import.meta.env.VITE_API_URL ?? "http://localhost:5000/api"}/users/${encodeURIComponent(id)}/profile-picture`, {
+  const response = await fetch(`${import.meta.env.VITE_API_URL ?? "http://localhost:5001/api"}/users/${encodeURIComponent(id)}/profile-picture`, {
     method: "POST", headers: { Authorization: `Bearer ${token}`, ...getAppSessionHeaders(), "Content-Type": file.type }, body: file,
   });
   const payload = await response.json().catch(() => null) as ApiResponse<{ path: string; signed_url: string | null }> | null;

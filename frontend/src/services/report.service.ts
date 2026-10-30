@@ -608,4 +608,4 @@ export function removeCachedReportRecord(source:string,id:string){
 }
 
 export const fetchReportSelection=(report:ReportKey,token:string,options:ReportPageOptions,current:()=>boolean)=>collectSelectionPages(
- page=>fetchReportRows(report,token,{...options,page,limit:500,fresh:true,selectionOnly:true}),row=>getReportRowIdentity(report,row),current);
+ page=>fetchReportRows(report,token,{...options,page,limit:500,fresh:true,selectionOnly:true}),row=>getReportRowIdentity(report,row),current,report==="dispatch-monitoring"&&options.filters.source_lines!=="true");

@@ -73,7 +73,10 @@ export function prepareImport(files: SourceFile[]): ImportRow[] {
       for (const key of ["quantity", "stock_quantity", "unit_cbm", "cbm"] as const) {
         try { values[key] = decimal(values[key], SOURCE_FIELDS[key]); } catch (e) { errors.push((e as Error).message); }
       }
-      try { values.so_approval_date = sourceTimestamp(values.so_approval_date); } catch (e) { errors.push((e as Error).message); }
+      // This source column is optional. Keep the original CSV cell in
+      // original_values, but never send an invalid timestamp to PostgreSQL.
+      try { values.so_approval_date = sourceTimestamp(values.so_approval_date); }
+      catch { values.so_approval_date = null; warnings.push("SO Approval Date was omitted because it is not a valid date. The original CSV value remains in the source record."); }
       if (!values.customer_name) errors.push("Map Customer Name to a customer before importing this row.");
       if (!values.ship_to) errors.push("Map Ship To to a destination before importing this row.");
       if (!values.customer_model && !values.dr_number && !values.sp_reference && !values.dn_reference) errors.push("No product or source identifier found.");

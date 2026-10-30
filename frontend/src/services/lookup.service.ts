@@ -190,6 +190,17 @@ export async function getNextTripReferences(token: string, prefix: string): Prom
   return { dispatch_number: response.data.dispatch_number, trip_reference: response.data.trip_reference ?? null, trip_reference_status: response.data.trip_reference_status ?? (response.data.trip_reference ? "ready" : "unavailable") };
 }
 
+/** Preview only the unique trip number when joining an existing dispatch. */
+export async function getNextTripReference(token: string, prefix: string): Promise<{ trip_reference: string | null; trip_reference_status: "ready" | "setup_required" }> {
+  const response = await apiGet<ApiResponse<{ trip_reference: string | null; trip_reference_status: "ready" | "setup_required" }>>(
+    `/trips/next-dispatch-number?prefix=${encodeURIComponent(prefix)}&reference_only=true`,
+    token,
+    15_000,
+  );
+  if (!response.success || !response.data) throw new Error(response.message ?? "Could not generate the trip number.");
+  return response.data;
+}
+
 export type DispatchOption = {
   dispatch_number: string;
   trip_count: number;

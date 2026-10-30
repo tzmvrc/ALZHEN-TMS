@@ -755,9 +755,8 @@ async function attachGeneratedTripNumbers(rows: Record<string, unknown>[], suppl
     const reference = references.get(String(row.trip_id ?? row._trip_id));
     if (typeof reference !== "string" || !reference.trim()) continue;
     row.trip_reference = reference;
-    // Retain the stable column key used by saved layouts, while displaying the
-    // generated identifier instead of the internal position within a dispatch.
-    row.trip_number = reference;
+    // The generated reference is separate from Trip no., which is numbered
+    // within the dispatch and must remain visible as 1, 2, and so on.
   }
 }
 
@@ -922,23 +921,36 @@ export async function getReportData(
   let scopedCalls:string[]|undefined;
   if(key==="store-calling"&&tripId){scopedCalls=[];for(let offset=0;;offset+=1000){const result=await supabaseAdmin.from("store_calls").select("id").eq("trip_id",tripId).order("id").range(offset,offset+999);if(result.error)throw new ApiError("Unable to read trip store calls.",503);scopedCalls.push(...(result.data??[]).map(row=>row.id));if((result.data?.length??0)<1000)break;}if(!scopedCalls.length)return {rows:[],pagination:buildPaginationMeta(page,limit,0)};}
   let lastError: Error | null = null;
-  // For the default Master List page, constrain the wide view to the leading
-  // trips first. Each trip contributes at least one row and the view's loading
-  // date is the trips table value, so this preserves the global row order.
+  // For default Master List and Dispatch Monitoring pages, constrain the wide
+  // view to the leading trips. Each trip contributes at least one row and the
+  // view's loading date comes from trips, preserving the global row order.
   // Search and filtered views continue through the unrestricted query.
   let leadingTripIds: string[] | undefined;
-  const useLeadingTrips = csvMaster && sortBy === "loading_date" && !search && !tripId && !scope?.tripIds
+  const monitoringPage = key === "dispatch-monitoring" && !requestedSourceLines;
+  const useLeadingTrips = (csvMaster || monitoringPage) && sortBy === "loading_date" && !search && !tripId && !scope?.tripIds
     && !requestedTripIds.length
     && !ongoingOnly && issueFilter === "All"
     && !definition.filters.some(filter => Boolean(getQueryString(query[filter.key])))
     && page * limit <= 500;
   if (useLeadingTrips) {
+    const activeMonitoring=monitoringPage&&getQueryString(query.active_transactions)==="true";
     let leadingQuery = supabaseAdmin.from("trips").select("id");
     if (getQueryString(query.active_transactions) === "true") leadingQuery = getQueryString(query.archive_scope) === "archived"
       ? leadingQuery.not("archived_at", "is", null) : leadingQuery.is("archived_at", null);
     const leading = await leadingQuery.order("loading_date", { ascending: sortOrder === "asc" })
-      .order("id", { ascending: true }).range(0, page * limit - 1);
-    if (!leading.error) leadingTripIds = (leading.data ?? []).map(trip => trip.id);
+      .order("id", { ascending: true }).range(0, activeMonitoring?500:page * limit - 1 + (monitoringPage ? 1 : 0));
+    // Active transactions are filtered at the stop level. Scope only when all
+    // candidate trips fit, so archived stops cannot shift later pages.
+    if (!leading.error&&(!activeMonitoring||(leading.data?.length??0)<=500)) leadingTripIds = (leading.data ?? []).map(trip => trip.id);
+  }
+  if(monitoringPage&&!leadingTripIds&&!tripId&&!requestedTripIds.length&&!scope?.tripIds){
+    let allTrips=supabaseAdmin.from("trips").select("id");
+    if(getQueryString(query.active_transactions)==="true")allTrips=getQueryString(query.archive_scope)==="archived"
+      ?allTrips.not("archived_at","is",null):allTrips.is("archived_at",null);
+    const candidates=await allTrips.order("id").range(0,500);
+    // This scope is exact only when every candidate fits. Larger reports keep
+    // their existing database pagination and filters.
+    if(!candidates.error&&(candidates.data?.length??0)<=500)leadingTripIds=(candidates.data??[]).map(trip=>trip.id);
   }
   if (leadingTripIds?.length === 0) return { rows: [], pagination: buildPaginationMeta(page, limit, 0) };
   for (const viewName of viewNames) {
@@ -951,9 +963,9 @@ export async function getReportData(
       :requestedSourceLines&&!legacySourceLines?`${projection},_source_quantity_text:quantity::text,_source_cbm_text:cbm::text,_source_unit_cbm_text:unit_cbm::text,_source_stock_quantity_text:stock_quantity::text`:projection;
     const mapField=(field:string)=>key==="trip-exceptions"?({backload_reason:"backload_reasons",offload_reason:"offload_reasons"} as Record<string,string>)[field]??field:key==="dispatch"&&field==="warehouse_departure_time"?"_parent_departure_at":key!=="store-calling"?field:viewName==="vw_store_calling_tracker"?({status:"contact_status",assigned_to:"assigned_to_id"} as Record<string,string>)[field]??field:({ship_to:"store_name",trucker_gc_name:"trucking_company"} as Record<string,string>)[field]??field;
     const readQuery=(head=false)=>{
-    // Counting this nested view in the row request repeats its expanded plan.
-    // Read the page first; request the exact count only when a full page needs it.
-    let builder = supabaseAdmin.from(viewName).select(head ? "trip_id" : rowProjection, head ? {count:"exact",head:true} : csvMaster ? {} : {count:"exact"});
+    // Counting the expanded view can scan every joined row before returning a
+    // page. Dispatch Monitoring uses one lookahead row for pagination instead.
+    let builder = supabaseAdmin.from(viewName).select(head ? "trip_id" : rowProjection, head ? {count:"exact",head:true} : csvMaster || monitoringPage ? {} : {count:"exact"});
     if (tripId && key!=="store-calling") builder = builder.eq(tripIdField, tripId);
     if(requestedTripIds.length)builder=builder.in(tripIdField,requestedTripIds);
     if (!head && leadingTripIds?.length) builder = builder.in("trip_id", leadingTripIds);
@@ -993,7 +1005,7 @@ export async function getReportData(
     if(head)return builder;
     builder = builder.order(key === "store-calling" && sortBy === "assigned_to" && viewName === "vw_store_calling_tracker"
       ? "assigned_to_name"
-      : mapField(sortBy==="trip_number"&&["combined","dispatch","dispatch-monitoring","trip-booking"].includes(key)?"_parent_trip_reference":sortBy), { ascending: sortOrder === "asc" });
+      : mapField(sortBy), { ascending: sortOrder === "asc" });
     // Stable boundaries when many Master List rows share the selected sort value.
     // These physical columns are part of the existing dispatch-monitoring view.
     const tieBreakers: Record<string,string[]> = {
@@ -1010,11 +1022,12 @@ export async function getReportData(
     const available=REPORT_PROJECTIONS[viewName]??[];
     for(const field of ["pod_drive_file_id","pod_record_id","_trip_id","trip_id","_trip_stop_id","trip_stop_id","_trip_line_item_id","trip_line_item_id","_assignment_id","assignment_id","_billing_id","_incident_id","_backload_id","_offload_id","store_call_id"]){if(available.includes(field)&&!existingOrders.has(field))builder=builder.order(field,{ascending:true,nullsFirst:false});}
 
-    return builder.range(from, from + limit - 1);
+    return builder.range(from, from + limit - 1 + (monitoringPage ? 1 : 0));
     };
     const result = await readQuery();
-    const data=result.data;
+    const data=monitoringPage?result.data?.slice(0,limit):result.data;
     let {error,count}=result;
+    if(monitoringPage&&!error)count=from+(data?.length??0)+((result.data?.length??0)>limit?1:0);
     if(csvMaster&&!error&&count==null){
       if((data?.length??0)<limit&&(page===1||(data?.length??0)>0))count=from+(data?.length??0);
       else if(useLeadingTrips){
@@ -1129,8 +1142,7 @@ export async function getReportColumns(reportKey: string, sourceLines = false) {
   // values in the row payload for operational features, without adding headers.
   if (key === "dispatch") return { report: key, columns: REPORT_DEFINITIONS.dispatch.columns };
   const source = (master || SOURCE_REPORTS.includes(key)) && await tripImportAvailable();
-  const columns = [...REPORT_DEFINITIONS[key].columns, ...(source || master ? [...TRIP_SOURCE_COLUMNS, ...(master ? SOURCE_LINE_COLUMNS : []),...(source&&await tripAllocationReportAvailable()?TRIP_CARGO_COLUMNS:[])] : [])]
-    .map(column => ({ ...column, type: column.key === "trip_number" ? "text" as const : column.type }));
+  const columns = [...REPORT_DEFINITIONS[key].columns, ...(source || master ? [...TRIP_SOURCE_COLUMNS, ...(master ? SOURCE_LINE_COLUMNS : []),...(source&&await tripAllocationReportAvailable()?TRIP_CARGO_COLUMNS:[])] : [])];
   if(["combined","dispatch","dispatch-monitoring","trip-booking"].includes(key))for(const [field,title]of [["pod_submitted_at","POD Submitted"],["pod_received_at","POD Approved / Received"],["delivery_completed_date","Delivery Completed"]])if(!columns.some(c=>c.key===field))columns.push({key:field,title,type:"date"});
   return { report: key, columns: source || master ? sourceOrderedColumns(columns, master) : columns };
 }

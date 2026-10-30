@@ -6,7 +6,7 @@ export type ProductPhoto = {
   signed_url: string | null;
 };
 
-const apiBaseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:5000/api";
+const apiBaseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:5001/api";
 
 async function photoRequest<T>(
   productId: string,

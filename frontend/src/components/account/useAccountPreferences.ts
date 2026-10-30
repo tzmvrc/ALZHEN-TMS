@@ -1,13 +1,13 @@
 import {useEffect,useState,useSyncExternalStore} from "react";
-type Preferences={theme:"light"|"dark"|"system";compact:boolean;date:"medium"|"short"|"iso"};
-const initial:Preferences={theme:"light",compact:false,date:"medium"};
+type Preferences={theme:"light"|"dark"|"system";compact:boolean;date:"medium"|"short"|"iso";tableAppearance:"modern"|"excel"};
+const initial:Preferences={theme:"light",compact:false,date:"medium",tableAppearance:"modern"};
 const eventName="alzhen:account-preferences";
 const subscribe=(callback:()=>void)=>{window.addEventListener(eventName,callback);window.addEventListener("storage",callback);return()=>{window.removeEventListener(eventName,callback);window.removeEventListener("storage",callback);};};
 const read=(key:string)=>{try{return localStorage.getItem(key)??"";}catch{return "";}};
 export function useAccountPreferences(id:string){
  const key=`alzhen:account-display:${id}`,raw=useSyncExternalStore(subscribe,()=>read(key),()=>"");
  let value:Partial<Preferences>={};try{value=JSON.parse(raw||"{}");}catch{/* Ignore invalid device preferences. */}
- const preferences:Preferences={theme:["light","dark","system"].includes(value?.theme??"")?value.theme!:initial.theme,compact:value?.compact===true,date:["medium","short","iso"].includes(value?.date??"")?value.date!:initial.date};
+ const preferences:Preferences={theme:["light","dark","system"].includes(value?.theme??"")?value.theme!:initial.theme,compact:value?.compact===true,date:["medium","short","iso"].includes(value?.date??"")?value.date!:initial.date,tableAppearance:value?.tableAppearance==="excel"?"excel":"modern"};
  const [systemDark,setSystemDark]=useState(()=>window.matchMedia("(prefers-color-scheme: dark)").matches);
  useEffect(()=>{const media=window.matchMedia("(prefers-color-scheme: dark)"),update=()=>setSystemDark(media.matches);media.addEventListener("change",update);return()=>media.removeEventListener("change",update);},[]);
  const save=(next:Preferences)=>{localStorage.setItem(key,JSON.stringify(next));window.dispatchEvent(new Event(eventName));};

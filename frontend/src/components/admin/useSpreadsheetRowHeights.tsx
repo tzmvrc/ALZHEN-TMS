@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import type { useSharedTableDesign } from "./useSharedTableDesign";
 import { SPREADSHEET_DEFAULT_ROW_HEIGHT, SPREADSHEET_MIN_ROW_HEIGHT, SPREADSHEET_MAX_ROW_HEIGHT } from "./spreadsheet-row-layout";
+import {useTripsTableAppearance} from "./TripsTableAppearance";
 
 // Reserved design entries never participate in column order, widths or visibility.
 // Partition metadata so large sheets do not concentrate every height in one JSON value.
@@ -16,6 +17,8 @@ const sizeStyle = (height: number): CSSProperties => ({ height, "--spreadsheet-r
 
 /** Stable physical row IDs; shared design owns authorization, revision retries and Realtime. */
 export function useSpreadsheetRowHeights(scope: string, design: SharedDesign) {
+  const appearance=useTripsTableAppearance();
+  const defaultHeight=appearance==="modern"?56:SPREADSHEET_DEFAULT_ROW_HEIGHT;
   const cleanup = useRef<(() => void) | null>(null);
   const enabled = design.canEdit && design.loaded;
   const heights = useMemo(() => {
@@ -29,7 +32,7 @@ export function useSpreadsheetRowHeights(scope: string, design: SharedDesign) {
   useEffect(() => () => cleanup.current?.(), [scope, enabled, design.save]);
   const height = (key: string, header = false) => header
     ? design.columns[HEADER_COLUMN]?.headerHeight ?? 32
-    : heights[key] ?? SPREADSHEET_DEFAULT_ROW_HEIGHT;
+    : heights[key] ?? defaultHeight;
   const apply = (key: string, next: number | null, header: boolean) => {
     if (!enabled) return;
     void design.save(header ? HEADER_COLUMN : heightColumn(key), header
@@ -86,7 +89,8 @@ export function useSpreadsheetRowHeights(scope: string, design: SharedDesign) {
   const headerHeight = design.columns[HEADER_COLUMN]?.headerHeight;
   return {
     heights,
-    style: (key: string): CSSProperties => heights[key] == null ? { height: SPREADSHEET_DEFAULT_ROW_HEIGHT } : sizeStyle(heights[key]),
+    setHeight:(keys:readonly string[],pixels:number)=>{for(const key of keys)apply(key,pixels,false);},
+    style: (key: string): CSSProperties => heights[key] == null ? { height: defaultHeight } : sizeStyle(heights[key]),
     headerStyle: headerHeight == null ? undefined : sizeStyle(headerHeight),
     handle,
     headerHandle: () => handle("header", true),

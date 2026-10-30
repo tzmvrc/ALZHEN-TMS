@@ -93,6 +93,19 @@ export default function DatabaseSpreadsheet({dataSource,resource,fields:sourceFi
  useEffect(()=>{if(!deleting){setConfirm(null);setQueryConfirm(null);}},[scope,active]);
  const selection=useDatabaseRowSelection({rows,scope,active,enabled:!dataSource,token,resource,query,revision:`${revision}:${refresh}:${total}`,selectAll:dataSource?.selectAll?current=>dataSource.selectAll!(query,sort.key,sort.direction,current):undefined,onError:message=>toast?.addToast({title:message,variant:"error"})});
  const rowSelection=selection.selected,setRowSelection=selection.setSelected;
+ useEffect(()=>{
+  if(!active)return;
+  const clearOutside=(event:globalThis.PointerEvent)=>{
+   const target=event.target;
+   if(!(target instanceof Element))return;
+   if(target.closest("[data-spreadsheet-formatting],[data-spreadsheet-context-menu],[role=menu],[role=alertdialog],.al-topbar,.spreadsheet-footer"))return;
+   if(viewport.current?.contains(target)&&target.closest("thead th,tbody tr[data-virtual-index] td"))return;
+   setCells(new Set());setRowSelection(new Set());setColumnSelection(new Set());setHeaderSelection(null);setFocused(null);
+   anchor.current=null;selectionRowAnchor.current=null;selectionColumnAnchor.current=null;
+  };
+  document.addEventListener("pointerdown",clearOutside);
+  return()=>document.removeEventListener("pointerdown",clearOutside);
+ },[active]);
  const selectedRecordCount=selection.count;
  const allRowsChecked=selectedRecordCount>0&&selectedRecordCount===total;
  const canDeleteSelected=dataSource?[...rowSelection].some(id=>{const row=selection.record(id);return !!row&&dataSource.canDeleteRow?.(row)!==false;}):selectedRecordCount>0;
@@ -311,8 +324,8 @@ export default function DatabaseSpreadsheet({dataSource,resource,fields:sourceFi
       {dataSource?.onViewActivity&&keys.includes(menu.id)&&<button role="menuitem" className={cellMenuItemClass} onClick={()=>{dataSource.onViewActivity!(rows.find(row=>row.id===menu.id)!);setMenu(null);}}>Activity History</button>}
       <button role="menuitem" className={cellMenuItemClass} onClick={()=>{void copy();setMenu(null);}}>Copy selection</button>
       {onImage&&keys.includes(menu.id)&&<button role="menuitem" className={cellMenuItemClass} onClick={()=>{const row=rows.find(row=>row.id===menu.id);if(row)onImage(row);setMenu(null);}}>Manage images</button>}
-      {menu.row&&canEdit&&canDeleteSelected&&<button role="menuitem" className={cellMenuItemClass} disabled={!!draft||saving||deleting} onClick={()=>{void deleteSelected();setMenu(null);}}>{dataSource?"Delete User(s)":"Delete selected records"}</button>}
     </>}
+    dangerActions={menu.row&&canEdit&&canDeleteSelected&&<button role="menuitem" className="block w-full rounded-sm px-3 py-1.5 text-left text-xs font-semibold text-rose-700 hover:bg-rose-50 focus-visible:bg-rose-50 focus-visible:outline-none disabled:cursor-default disabled:opacity-40" disabled={!!draft||saving||deleting} onClick={()=>{void deleteSelected();setMenu(null);}}>{dataSource?"Delete User(s)":"Delete selected records"}</button>}
     onSelectRow={()=>{if(!rowSelection.has(menu.id))selectRow(menu.id);}} onSelectColumn={()=>{if(!columnSelection.has(menu.field))selectColumn(menu.field);}} onClose={()=>setMenu(null)}/>}
   {active&&hiddenColumnsTarget&&createPortal(management.hiddenControl,hiddenColumnsTarget)}
   {confirm&&<DatabaseDeleteDialog total={queryConfirm?.total} noun={dataSource?.recordNoun} description={dataSource?.deleteDescription} records={confirm.map(id=>({id,label:recordLabel(rows.find(row=>row.id===id),id)}))} deleting={deleting} error={deleteError} onCancel={()=>{if(!deleteLock.current){setConfirm(null);setQueryConfirm(null);}}} onDelete={()=>void remove()}/>}

@@ -603,8 +603,19 @@ async function getNextGeneratedReference(prefix: string, column: "dispatch_numbe
     if (error) throw new Error(`Unable to generate ${column === "dispatch_number" ? "dispatch" : "trip"} number`);
     const rows = data ?? [];
     references.push(...rows.map(row => (row as unknown as Record<string, unknown>)[column]));
-    if (rows.length < 1000) return nextReference(prefix, references);
+    if (rows.length < 1000) break;
   }
+  if (column === "trip_reference") {
+    for (let offset = 0; ; offset += 1000) {
+      const { data, error } = await supabaseAdmin.from("trip_truck_assignments").select("trip_reference")
+        .like("trip_reference", `${prefix}-%`).order("id").range(offset, offset + 999);
+      if (error && !["42703", "PGRST204"].includes(error.code ?? "")) throw new Error("Unable to generate trip number");
+      const rows = data ?? [];
+      references.push(...rows.map(row => row.trip_reference));
+      if (rows.length < 1000) break;
+    }
+  }
+  return nextReference(prefix, references);
 }
 
 export type DispatchOption = {

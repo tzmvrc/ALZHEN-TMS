@@ -287,7 +287,7 @@ export default function SidebarNav({
             {topbarActions.edit && <button type="button" className="al-topbar-selection-action" title={topbarActions.edit.label} aria-label={topbarActions.edit.label} disabled={topbarActions.edit.disabled} onClick={topbarActions.edit.onClick}><Pencil aria-hidden="true" size={16}/></button>}
             {topbarActions.delete && <button type="button" className="al-topbar-selection-action al-topbar-selection-delete" title={topbarActions.delete.label} aria-label={topbarActions.delete.label} disabled={topbarActions.delete.disabled} onClick={topbarActions.delete.onClick}><Trash2 aria-hidden="true" size={16}/></button>}
           </div>}
-          {visiblePresenceTable && <div className="al-toolbar-viewers" aria-label="People viewing this table"><TableViewers key={visiblePresenceTable} table={visiblePresenceTable} toolbar/></div>}
+          {visiblePresenceTable && activeId !== "trips" && <div className="al-toolbar-viewers" aria-label="People viewing this table"><TableViewers key={visiblePresenceTable} table={visiblePresenceTable} toolbar/></div>}
           {searchConfig?.kind === "field" && <div className="al-quick-search" data-search-scope={searchScope}>
             <Search aria-hidden="true" className="h-4 w-4 shrink-0" />
             <input type="search" aria-label={searchConfig.label} placeholder={searchConfig.placeholder} value={searchConfig.value} disabled={searchConfig.disabled} onChange={event => searchConfig.onChange(event.target.value)} />

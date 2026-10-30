@@ -22,7 +22,7 @@ export const fetchUserActivityStats=(token:string,id:string,days=30)=>unwrap(api
 
 export async function uploadUserPicture(token:string,id:string,file:File){
  if(!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size>5*1024*1024)throw Error('Choose a JPEG, PNG or WebP image up to 5 MB.');
- const response=await fetch(`${import.meta.env.VITE_API_URL??'http://localhost:5000/api'}/users/${id}/picture`,{method:'POST',headers:{Authorization:`Bearer ${token}`,...getAppSessionHeaders(),'Content-Type':file.type},body:file});
+ const response=await fetch(`${import.meta.env.VITE_API_URL??'http://localhost:5001/api'}/users/${id}/picture`,{method:'POST',headers:{Authorization:`Bearer ${token}`,...getAppSessionHeaders(),'Content-Type':file.type},body:file});
  const result=await response.json().catch(()=>null);if(!response.ok)await handleSessionExpiredResponse(response.status,result,true);if(!response.ok||!result?.success||!result.data)throw Error(result?.message??'Profile image could not be saved.');invalidateUserWorkspace();return result.data as {path:string;signed_url:string|null;audit_warning?:boolean;cleanup_pending?:boolean};
 }
 

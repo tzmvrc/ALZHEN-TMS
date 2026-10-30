@@ -11,6 +11,7 @@ import {
   AlertCircle,
   CheckCircle2,
   Info,
+  Pencil,
   TriangleAlert,
   X,
 } from "lucide-react";
@@ -26,6 +27,7 @@ export type ToastItem = {
   variant: ToastVariant;
   duration?: number;
   notificationKey?: string;
+  activity?: boolean;
 };
 
 export function ToastProvider({ children }: { children: ReactNode }) {
@@ -147,7 +149,12 @@ function ToastCard({
     },
   } as const;
 
-  const config = variants[toast.variant];
+  const config = toast.activity ? {
+    icon: Pencil,
+    wrapper: "border-[#dce5f0] border-l-[3px] border-l-[#2678b9] bg-white text-[#0b2341]",
+    iconWrap: "bg-[#eaf2fa] text-[#2678b9]",
+    text: "text-[#526580]",
+  } : variants[toast.variant];
   const Icon = config.icon;
 
   return (

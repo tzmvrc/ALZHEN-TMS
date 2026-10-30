@@ -1,10 +1,10 @@
+import "./MasterListView.css";
 import { dropdownStoredValue } from "../../services/dropdown-option.service";
-import { useLiveCellEditor } from "./useLiveCellEditor";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type ChangeEvent, type FocusEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { ArrowDown, ArrowUp, ALargeSmall, Bold,Italic,Underline, EyeOff, LoaderCircle, Paintbrush, Palette, Pencil, Pin, RotateCcw, Search, SlidersHorizontal, Trash2, X } from "lucide-react";
+import { LoaderCircle, Pencil, RotateCcw, Trash2, X } from "lucide-react";
 import { addDropdownOption, editDropdownOption, fetchDropdownOptions, type DropdownField, type DropdownOption } from "../../services/dropdown-option.service";
-import { REPORT_COLUMN_COLORS, type ReportCellFormat } from "./ReportSpreadsheetUtils";
+import { REPORT_COLUMN_COLORS } from "./ReportSpreadsheetUtils";
 
 export function ReportRowActionButton({ action, disabled, onClick, label: customLabel, showLabel=false }: { action: "edit" | "delete" | "restore"; disabled?: boolean; onClick: () => void; label?: string; showLabel?:boolean }) {
   const label = customLabel ?? (action === "edit" ? "Edit selected row" : action === "restore" ? "Restore selected row" : "Delete selected reports");
@@ -16,98 +16,9 @@ export function ReportRowActionButton({ action, disabled, onClick, label: custom
   </button>;
 }
 
-export function ReportCellFormattingToolbar({ selectedCellCount, selectionIsBold, selectedTextColor, selectedBackgroundColor, onApply,advanced=true,selectionIsItalic=false,selectionIsUnderlined=false, headerOnly=false, headerSelection=false, selectedFontSize=12, formulaBar, compact=false, actions, colorsLocked=false }: {
-  colorsLocked?: boolean;
-  actions?:ReactNode;
-  formulaBar?:ReactNode;
-  compact?:boolean;
-  selectedCellCount: number;
-  selectionIsBold: boolean;
-  selectedTextColor: string | null;
-  selectedBackgroundColor: string | null;
-  onApply: (change: Partial<ReportCellFormat>) => void;
-  advanced?:boolean;selectionIsItalic?:boolean;selectionIsUnderlined?:boolean;headerOnly?:boolean;headerSelection?:boolean;selectedFontSize?:number;
-}) {
-  const [fontOpen,setFontOpen]=useState(false);
-  const fontControl=useRef<HTMLDivElement|null>(null);
-  useEffect(()=>{if(!fontOpen)return;const outside=(event:PointerEvent)=>{if(!fontControl.current?.contains(event.target as Node))setFontOpen(false);};const escape=(event:KeyboardEvent)=>{if(event.key==="Escape"){event.preventDefault();event.stopPropagation();setFontOpen(false);fontControl.current?.querySelector<HTMLButtonElement>("button")?.focus();}};document.addEventListener("pointerdown",outside);document.addEventListener("keydown",escape,true);return()=>{document.removeEventListener("pointerdown",outside);document.removeEventListener("keydown",escape,true);};},[fontOpen]);
-  const [colorPicker, setOpenColorPicker] = useState<"text" | "background" | null>(null);
-  const openColorPicker = colorsLocked ? null : colorPicker;
-  const apply = (change: Partial<ReportCellFormat>) => { onApply(change); setOpenColorPicker(null); };
-  const toolbarButtonClass = "inline-flex h-7 w-7 items-center justify-center rounded-sm border disabled:cursor-not-allowed disabled:opacity-40";
-  const plainFormatButtonClass = (active: boolean) => `inline-flex h-7 w-7 items-center justify-center border-0 bg-transparent p-0 shadow-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:cursor-not-allowed disabled:opacity-40 ${active ? "text-blue-700 hover:text-blue-800" : "text-slate-500 hover:text-slate-900"}`;
-  return <div role="toolbar" data-spreadsheet-formatting="true" aria-label="Cell formatting" className={compact ? "flex min-w-0 items-center gap-1 px-1 py-0.5" : "flex min-h-9 min-w-0 shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-b border-slate-200 bg-slate-50 px-3 py-1"}>
-    <div className="flex min-w-0 flex-wrap items-center gap-1">
-    {!compact&&<div ref={fontControl} className="relative"><button type="button" title="Font size" aria-label="Font size" aria-haspopup="listbox" aria-expanded={fontOpen} disabled={!selectedCellCount} onMouseDown={event=>event.preventDefault()} onKeyDown={event=>{if(event.key==="ArrowDown"){event.preventDefault();setFontOpen(true);requestAnimationFrame(()=>fontControl.current?.querySelector<HTMLButtonElement>('[role="option"]')?.focus());}}} onClick={()=>{setOpenColorPicker(null);setFontOpen(current=>!current);}} className={`${toolbarButtonClass} ${fontOpen?"border-blue-300 bg-blue-100 text-blue-800":"border-transparent text-slate-600 hover:bg-white"}`}><ALargeSmall aria-hidden="true" className="h-[18px] w-[18px]"/></button>{fontOpen&&<div role="listbox" aria-label="Font size" onKeyDown={event=>{if(event.key==="ArrowDown"||event.key==="ArrowUp"){event.preventDefault();const buttons=Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>("button"));const at=buttons.indexOf(document.activeElement as HTMLButtonElement);buttons[(at+(event.key==="ArrowDown"?1:-1)+buttons.length)%buttons.length]?.focus();}}} className="absolute left-0 top-full z-[120] mt-1 grid min-w-24 rounded border border-slate-200 bg-white p-1 shadow-lg"><span className="px-2 py-1 text-[10px] text-slate-500">Current: {selectedFontSize}px</span>{[...new Set([10,11,12,13,14,16,18,20,selectedFontSize])].sort((a,b)=>a-b).map(size=><button key={size} type="button" role="option" aria-selected={size===selectedFontSize} onMouseDown={event=>event.preventDefault()} onClick={()=>{apply({fontSize:size});setFontOpen(false);}} className={`rounded px-2 py-1 text-left text-xs hover:bg-blue-50 focus-visible:bg-blue-50 focus-visible:outline-none ${size===selectedFontSize?"font-semibold text-blue-700":"text-slate-700"}`}>{size}px</button>)}</div>}</div>}
-    {!headerOnly && <button type="button" title="Bold selected cells" aria-label="Bold selected cells" aria-pressed={selectionIsBold} disabled={!selectedCellCount} onMouseDown={(event) => event.preventDefault()} onClick={() => apply({ bold: !selectionIsBold })} className={`${toolbarButtonClass} ${selectionIsBold ? "border-blue-300 bg-blue-100 text-blue-800" : "border-transparent text-slate-600 hover:bg-white hover:text-slate-900"}`}><Bold aria-hidden="true" className="h-4 w-4" /></button>}
-    {advanced&&!headerOnly&&<><button type="button" title="Italic selected cells" aria-label="Italic selected cells" aria-pressed={selectionIsItalic} disabled={!selectedCellCount} onMouseDown={e=>e.preventDefault()} onClick={()=>apply({italic:!selectionIsItalic})} className={plainFormatButtonClass(selectionIsItalic)}><Italic className="h-4 w-4" /></button>{!compact&&<button type="button" aria-label="Underline selected cells" title="Underline selected cells" aria-pressed={selectionIsUnderlined} disabled={!selectedCellCount} onMouseDown={e=>e.preventDefault()} onClick={()=>apply({underline:!selectionIsUnderlined})} className={plainFormatButtonClass(selectionIsUnderlined)}><Underline className="h-4 w-4"/></button>}</>}
-    <div className="relative">
-      <button type="button" title={colorsLocked ? "Header colors follow the original Excel groups" : "Text color"} aria-label="Text color" aria-expanded={!colorsLocked && openColorPicker === "text"} disabled={!selectedCellCount || colorsLocked} onMouseDown={(event) => event.preventDefault()} onClick={() => setOpenColorPicker((current) => current === "text" ? null : "text")} className={`${toolbarButtonClass} ${openColorPicker === "text" ? "border-blue-300 bg-blue-100 text-blue-800" : "border-transparent text-slate-600 hover:bg-white hover:text-slate-900"}`}><Palette aria-hidden="true" className="h-4 w-4" /></button>
-      {openColorPicker === "text" && <div className="absolute left-0 top-full z-50 mt-1 flex gap-1 rounded-lg border border-slate-200 bg-white p-2 shadow-lg" aria-label="Text color palette">{["#111827", "#b91c1c", "#d97706", "#15803d", "#1d4ed8", "#7e22ce"].map((color) => <button key={color} type="button" title={`Text color ${color}`} aria-label={`Text color ${color}`} aria-pressed={selectedTextColor === color} onMouseDown={(event) => event.preventDefault()} onClick={() => apply({ color })} className={`h-5 w-5 rounded-full border border-slate-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${selectedTextColor === color ? "ring-2 ring-slate-800 ring-offset-1" : ""}`} style={{ backgroundColor: color }} />)}<button type="button" title="Reset text color" aria-label="Reset text color" aria-pressed={selectedTextColor === ""} onMouseDown={(event) => event.preventDefault()} onClick={() => apply({ color: "" })} className="rounded px-1.5 text-[10px] text-slate-600 hover:bg-slate-100">Reset</button></div>}
-    </div>
-    <div className="relative">
-      <button type="button" title={colorsLocked ? "Header colors follow the original Excel groups" : "Cell color"} aria-label="Cell color" aria-expanded={!colorsLocked && openColorPicker === "background"} disabled={!selectedCellCount || colorsLocked} onMouseDown={(event) => event.preventDefault()} onClick={() => setOpenColorPicker((current) => current === "background" ? null : "background")} className={`${toolbarButtonClass} ${openColorPicker === "background" ? "border-blue-300 bg-blue-100 text-blue-800" : "border-transparent text-slate-600 hover:bg-white hover:text-slate-900"}`}><Paintbrush aria-hidden="true" className="h-4 w-4" /></button>
-      {openColorPicker === "background" && <div className="absolute left-0 top-full z-50 mt-1 flex gap-1 rounded-lg border border-slate-200 bg-white p-2 shadow-lg" aria-label="Cell color palette">{["#ffffff", "#fef3c7", "#dcfce7", "#dbeafe", "#fce7f3", "#e5e7eb"].map((color) => <button key={color} type="button" title={`Cell color ${color}`} aria-label={`Cell color ${color}`} aria-pressed={selectedBackgroundColor === (color === "#ffffff" && !headerOnly&&!headerSelection ? "" : color)} onMouseDown={(event) => event.preventDefault()} onClick={() => apply({ backgroundColor: color === "#ffffff" && !headerOnly&&!headerSelection ? "" : color })} className={`h-5 w-5 rounded-full border border-slate-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${selectedBackgroundColor === (color === "#ffffff" && !headerOnly&&!headerSelection ? "" : color) ? "ring-2 ring-slate-800 ring-offset-1" : ""}`} style={{ backgroundColor: color }} />)}<button type="button" title="Reset cell color" aria-label="Reset cell color" aria-pressed={selectedBackgroundColor === ""} onMouseDown={(event) => event.preventDefault()} onClick={() => apply({ backgroundColor: "" })} className="rounded px-1.5 text-[10px] text-slate-600 hover:bg-slate-100">Reset</button></div>}
-    </div>
-    {!compact&&selectedCellCount > 0 && <span className="ml-2 text-[10px] text-slate-500">{headerOnly||headerSelection ? "Header selected" : `${selectedCellCount} cell${selectedCellCount === 1 ? "" : "s"} selected`}</span>}
-    </div>
-    {actions}
-    {formulaBar && <div className="min-w-0 flex-[1_1_14rem]">{formulaBar}</div>}
-  </div>;
-}
+export {TripTableFormattingToolbar as ReportCellFormattingToolbar} from "./TripTableFormattingToolbar";
 
-export type SortAction = { label: "Sort ascending" | "Sort descending"; active: boolean; onClick: () => void };
-export function ReportColumnActionsMenu({
-  title, position, onClose, sortActions, pinned, onTogglePin, onEditColumn,
-  onFilter, canManageOptions, onManageOptions, onRename, onRestoreTitle, onConfigureInput, onHide, canHide = true, extraActions, viewportBounded=false,
-}: {
-  title: string;
-  position: { left: number; top: number };
-  onClose: () => void;
-  sortActions?: SortAction[];
-  pinned: boolean;
-  onTogglePin: () => void;
-  onEditColumn: () => void;
-  onFilter?: () => void;
-  canManageOptions?: boolean;
-  onManageOptions?: () => void;
-  onRename?: () => void; onRestoreTitle?: () => void; onConfigureInput?: () => void;
-  onHide: () => void;
-  canHide?: boolean;
-  extraActions?:Array<{label:string;onClick:()=>void;disabled?:boolean}>;
-  viewportBounded?:boolean;
-}) {
-  const panel=useRef<HTMLDivElement>(null);
-  const [boundedPosition,setBoundedPosition]=useState(position);
-  useLayoutEffect(()=>{
-    if(!viewportBounded)return;const rect=panel.current?.getBoundingClientRect();if(!rect)return;
-    setBoundedPosition({left:Math.max(8,Math.min(position.left,window.innerWidth-rect.width-8)),top:Math.max(8,Math.min(position.top,window.innerHeight-rect.height-8))});
-  },[viewportBounded,position.left,position.top]);
-  useEffect(()=>{if(!viewportBounded)return;const dismiss=(event:Event)=>{if(event.target instanceof Node&&panel.current?.contains(event.target))return;onClose();};window.addEventListener("resize",dismiss);window.addEventListener("scroll",dismiss,true);return()=>{window.removeEventListener("resize",dismiss);window.removeEventListener("scroll",dismiss,true);};},[viewportBounded,onClose]);
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onClose]);
-  if (typeof document === "undefined") return null;
-  const itemClass = "flex w-full items-center justify-start gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-slate-700 transition-colors hover:bg-[#0b2341] hover:text-white focus-visible:bg-[#0b2341] focus-visible:text-white focus-visible:outline-none";
-  const run = (action: () => void) => { action(); onClose(); };
-  return createPortal(<div className="fixed inset-0 z-[100]" onMouseDown={onClose}>
-    <div ref={panel} role="menu" aria-label={`${title} column actions`} onMouseDown={(event) => event.stopPropagation()} style={viewportBounded?boundedPosition:position} className="fixed z-[101] max-h-[calc(100vh-16px)] overflow-y-auto w-56 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl">
-      <div className="truncate px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500">{title}</div>
-      {onRename && <button role="menuitem" type="button" onClick={()=>run(onRename)} className={itemClass}>Rename column</button>}
-      {onRestoreTitle && <button role="menuitem" type="button" onClick={()=>run(onRestoreTitle)} className={itemClass}>Restore default column title</button>}
-      {onConfigureInput && <button role="menuitem" type="button" onClick={()=>run(onConfigureInput)} className={itemClass}>Configure input type / option colors</button>}
-      {sortActions?.map((action) => <button key={action.label} role="menuitem" type="button" onClick={() => run(action.onClick)} className={`${itemClass} justify-between`}>{action.label}{action.active ? action.label === "Sort ascending" ? <ArrowUp className="h-3.5 w-3.5" /> : <ArrowDown className="h-3.5 w-3.5" /> : null}</button>)}
-      {extraActions?.map(action=><button key={action.label} role="menuitem" type="button" disabled={action.disabled} onClick={()=>run(action.onClick)} className={`${itemClass} disabled:opacity-40 disabled:cursor-default`}>{action.label}</button>)}
-      {onFilter && <button role="menuitem" type="button" onClick={() => run(onFilter)} className={itemClass}><Search className="h-3.5 w-3.5" />Filter this column</button>}
-      <button role="menuitem" type="button" onClick={() => run(onTogglePin)} className={itemClass}><Pin className="h-3.5 w-3.5" />{pinned ? "Unpin" : "Pin"}</button>
-      <button role="menuitem" type="button" onClick={() => run(onEditColumn)} className={itemClass}><Palette className="h-3.5 w-3.5" />Edit Column</button>
-      {canManageOptions && onManageOptions && <button role="menuitem" type="button" onClick={() => run(onManageOptions)} className={itemClass}><SlidersHorizontal className="h-3.5 w-3.5" />Manage Options</button>}
-      {canHide && <button role="menuitem" type="button" onClick={() => run(onHide)} className={itemClass}><EyeOff className="h-3.5 w-3.5" />Hide Column</button>}
-    </div>
-  </div>, document.body);
-}
+export {TripTableColumnMenu as ReportColumnActionsMenu,type TripTableSortAction as SortAction} from "./TripTableMenus";
 
 export function ReportColumnColorDialog({ columnName, color, onChange, onReset, onClose }: {
   columnName: string;
@@ -132,84 +43,7 @@ export function ReportColumnColorDialog({ columnName, color, onChange, onReset, 
   </div>, document.body);
 }
 
-export function ReportTextCellEditor({
-  value, type = "text", multiline = false, label, disabled, className, placeholder, maxLength, step,
-  commitOnBlur = true, onChange, onCommit, onCancel, saveState, buffered = false,
-}: {
-  value: string;
-  type?: "text" | "number" | "date" | "time" | "datetime-local";
-  multiline?: boolean;
-  label: string;
-  disabled?: boolean;
-  className: string;
-  placeholder?: string;
-  maxLength?: number;
-  step?: number | "any";
-  commitOnBlur?: boolean;
-  onChange: (value: string) => void;
-  onCommit: (value: string) => void | Promise<boolean | void>;
-  onCancel: () => void;
-  saveState?: string;
-  buffered?: boolean;
-}) {
-  // Optional local buffer keeps large report owners out of the typing path.
-  // Parent-driven edits (mentions, canonical saves) still replace the base.
-  const [draft,setDraft]=useState({base:value,text:value});
-  if(draft.base!==value)setDraft({base:value,text:value});
-  const displayed=buffered&&draft.base===value?draft.text:value;
-  const live=useLiveCellEditor(displayed,saveState);
-  const editorRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
-  useLayoutEffect(() => {
-    const element = editorRef.current;
-    if (!(element instanceof HTMLTextAreaElement)) return;
-    element.style.height = "auto";
-    element.style.height = `${Math.max(20, element.scrollHeight)}px`;
-  });
-  useEffect(()=>{
-    const element=editorRef.current;if(type!=="number"||!element)return;
-    const preventStep=(event:Event)=>{if(document.activeElement===element)event.preventDefault();};
-    element.addEventListener("wheel",preventStep,{passive:false});return()=>element.removeEventListener("wheel",preventStep);
-  },[type]);
-  const skipBlurCommit = useRef(false);
-  const keyHandlers = (event: ReactKeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    if (event.key === "Enter" && (!multiline || !event.shiftKey)) {
-      event.preventDefault();
-      live.commit(()=>onCommit(displayed));
-    } else if (event.key === "Escape") {
-      event.preventDefault();
-      skipBlurCommit.current = true;
-      live.cancel();
-      onCancel();
-    }
-  };
-  const common = {
-    ref: (element: HTMLInputElement | HTMLTextAreaElement | null) => { editorRef.current = element; },
-    autoFocus: true,
-    "aria-label": label,
-    disabled,
-    value:displayed,
-    placeholder,
-    maxLength,
-    ...(!multiline && type === "number" ? { step } : {}),
-    onFocus: live.focus,
-
-    onChange: (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => { const next=event.target.value; if(buffered)setDraft({base:value,text:next}); live.change(next); onChange(next); },
-    onBlur: (event: FocusEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-      // Formula editing is a focus handoff, not a formatting click or a source save.
-      if ((event.relatedTarget as Element | null)?.closest("[data-formula-bar],[data-spreadsheet-context-menu]")) return;
-      if ((event.relatedTarget as Element | null)?.closest("[data-spreadsheet-formatting]")) {
-        requestAnimationFrame(() => editorRef.current?.focus());
-        return;
-      }
-      live.blur();
-      if (skipBlurCommit.current) { skipBlurCommit.current = false; return; }
-      if (commitOnBlur) live.commit(()=>onCommit(displayed));
-    },
-    onKeyDown: keyHandlers,
-    className: `spreadsheet-cell-editor ${className}`,
-  };
-  return multiline ? <textarea {...common} rows={1} /> : <input {...common} type={type} />;
-}
+export {TripTableTextEditor as ReportTextCellEditor} from "./TripTableTextEditor";
 
 type OptionDraft = DropdownOption & { draftKey: string; originalLabel: string; originalColor?: string|null; originalActive: boolean; isNew: boolean };
 const initialDrafts = (options: DropdownOption[], field: DropdownField): OptionDraft[] => options.filter((option) => option.field_key === field).map((option) => ({ ...option, draftKey: option.id, originalLabel: option.display_label, originalColor: option.color, originalActive: option.active, isNew: false }));

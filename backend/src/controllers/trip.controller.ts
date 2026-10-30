@@ -90,6 +90,13 @@ export async function getTripByDispatch(req: Request, res: Response) {
 export async function nextDispatchNumber(req: Request, res: Response) {
   try {
     const prefix = typeof req.query.prefix === "string" ? req.query.prefix : "";
+    if (req.query.reference_only === "true") {
+      const tripReference = await getNextTripReference(prefix);
+      return sendSuccess(res, 200, "Trip number generated", {
+        trip_reference: tripReference,
+        trip_reference_status: tripReference ? "ready" : "setup_required",
+      });
+    }
     const [dispatch, trip] = await Promise.allSettled([getNextDispatchNumber(prefix), getNextTripReference(prefix)]);
     if (dispatch.status === "rejected") throw dispatch.reason;
     if (trip.status === "rejected") console.error("Trip reference preview unavailable:", trip.reason);

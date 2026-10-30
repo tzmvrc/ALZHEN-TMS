@@ -1,0 +1,348 @@
+/* One appearance layer for every Trips spreadsheet. Headers, controls, saved
+   formatting and selection outlines stay with the existing table renderers. */
+[data-trips-workspace] { --trip-cell-separator: #eef0f3; --trip-cell-ink: var(--trip-table-ink); }
+
+[data-trips-workspace][data-table-appearance="modern"] .spreadsheet-grid > tbody > tr > td:not(.spreadsheet-gutter) {
+  border-right-color: transparent;
+  border-bottom-color: var(--trip-cell-separator);
+  padding-inline: 12px;
+  padding-block: 7px;
+  color: var(--trip-cell-ink);
+  font-family: Inter, system-ui, sans-serif;
+  font-size: 13px;
+  line-height: 20px;
+}
+
+[data-trips-workspace][data-table-appearance="modern"] .spreadsheet-grid > tbody > tr > td:not(.spreadsheet-gutter) :where(button, a, input, select, textarea, span) {
+  line-height: inherit;
+}
+
+[data-trips-workspace][data-table-appearance="modern"] .spreadsheet-grid > tbody > tr:not([aria-selected="true"]):not([class*="bg-blue"]) > td:not(.spreadsheet-gutter):not([style*="background"]):not([data-spreadsheet-selected="true"]):not([data-formula-selected="true"]):not([data-search-match="true"]):not([class*="bg-"]) {
+  background-color: #fff;
+}
+
+[data-trips-workspace][data-table-appearance="modern"] .spreadsheet-grid > tbody > tr:not([aria-selected="true"]):not([class*="bg-blue"]):hover > td:not(.spreadsheet-gutter):not([style*="background"]):not([data-spreadsheet-selected="true"]):not([data-formula-selected="true"]):not([data-search-match="true"]):not([class*="bg-"]) {
+  background-color: #fafbfc;
+}
+
+[data-trips-workspace][data-table-appearance="excel"] .spreadsheet-grid > tbody > tr > td:not(.spreadsheet-gutter) {
+  border-right-color: #e8ecf1;
+  border-bottom-color: #e8ecf1;
+  padding-inline: 10px;
+  padding-block: 2px;
+  font-size: 12px;
+  line-height: 20px;
+}
+
+[data-trips-workspace][data-table-appearance="excel"] .ml-data-row {
+  border-bottom-color: #e8ecf1;
+}
+
+[data-trips-workspace][data-table-appearance="excel"] .ml-head,
+[data-trips-workspace][data-table-appearance="excel"] .ml-head-cell {
+  height: 34px;
+}
+
+[data-trips-workspace][data-table-appearance="excel"] .ml-head-cell {
+  border-top: 0;
+  border-right: 1px solid #e8ecf1;
+  border-bottom: 1px solid #dfe6ee;
+  padding: 4px 9px;
+  color: #34465d;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: 0;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+[data-trips-workspace][data-table-appearance="excel"] .ml-head-cell.ml-dispatch-head,
+[data-trips-workspace][data-table-appearance="excel"] .ml-head-cell.ml-head-booking { background: #e6f4f0; }
+[data-trips-workspace][data-table-appearance="excel"] .ml-head-cell.ml-head-cargo { background: #f1ecf8; }
+[data-trips-workspace][data-table-appearance="excel"] .ml-head-cell.ml-head-incident { background: #e9f5f8; }
+[data-trips-workspace][data-table-appearance="excel"] .ml-head-cell.ml-head-delivery { background: #edf0f7; }
+
+[data-trips-workspace][data-table-appearance="excel"] .ml-excel-gutter {
+  position: sticky;
+  left: 0;
+  z-index: 6;
+  display: grid;
+  place-items: center;
+  height: 100%;
+  border-right: 1px solid #e8ecf1;
+  border-bottom: 1px solid #e8ecf1;
+  background: #f8fafc;
+  color: #8ca0b7;
+  font: 11px/1.2 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+[data-trips-workspace][data-table-appearance="excel"] .ml-excel-gutter-head { z-index: 16; }
+[data-trips-workspace][data-table-appearance="excel"] .ml-excel-gutter button {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+[data-trips-workspace][data-table-appearance="excel"] .ml-excel-gutter button:hover { background: #eaf1fa; color: #0b2343; }
+[data-trips-workspace][data-table-appearance="excel"] .ml-excel-gutter input[type="checkbox"] { margin: 0; }
+[data-trips-workspace][data-table-appearance="excel"] .ml-head-cell.ml-dispatch-head { left: 40px; }
+[data-trips-workspace][data-table-appearance="excel"] .ml-identity { left: 40px; }
+[data-trips-workspace][data-table-appearance="excel"] :is(.ml-head-cell.ml-dispatch-head,.ml-identity) .ml-select-slot { display: none; }
+[data-trips-workspace][data-table-appearance="excel"] .ml-action-rail button { width: 26px; height: 26px; }
+
+[data-trips-workspace][data-table-appearance="excel"] .ml-data-row .ml-cell {
+  height: 100%;
+  margin: 0;
+  padding: 4px 10px;
+  border-right: 1px solid #e8ecf1;
+  border-bottom: 1px solid #e8ecf1;
+  border-radius: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 12px;
+  line-height: 20px;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+[data-trips-workspace][data-table-appearance="excel"] .ml-data-row .ml-cell:not(.ml-editable):not(.ml-selected-cell):not(.ml-peer-cell):not(.ml-formatted-cell) {
+  background-color: #fff;
+}
+
+[data-trips-workspace][data-table-appearance="excel"] .ml-data-row .ml-identity {
+  border-right-color: #e8ecf1;
+  border-bottom-color: #e8ecf1;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+[data-trips-workspace][data-table-appearance="excel"] .ml-data-row .ml-identity:not(.ml-selected-cell):not(.ml-selected-row):not([style*="background"]) {
+  background-color: #fff;
+}
+
+[data-trips-workspace][data-table-appearance="excel"] .ml-data-row .ml-identity :is(strong, .ml-identity-label) {
+  font-size: 12px;
+  font-weight: 400;
+}
+
+[data-trips-workspace][data-table-appearance="excel"] .ml-data-row .ml-identity-text {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+}
+
+[data-trips-workspace][data-table-appearance="excel"] .ml-data-row .ml-identity-title { width: 100%; }
+[data-trips-workspace][data-table-appearance="excel"] .ml-data-row .ml-identity-title > strong { overflow: hidden; text-overflow: ellipsis; }
+[data-trips-workspace][data-table-appearance="excel"] .ml-data-row .ml-identity { padding-right: 10px; }
+
+[data-trips-workspace][data-table-appearance="excel"] .ml-data-row .ml-excel-letter-empty .ml-cell-primary {
+  display: inline-block;
+  padding: 1px 7px;
+  border: 1px solid #e0e8f1;
+  border-radius: 999px;
+  background: #f3f6f9;
+  color: #62758c;
+  font-size: 11px;
+  line-height: 17px;
+}
+
+[data-trips-workspace][data-table-appearance="excel"] .ml-data-row .ml-chevron {
+  min-width: 26px;
+  min-height: 24px;
+}
+
+[data-trips-workspace][data-table-appearance="excel"] .ml-data-row .ml-chevron-space {
+  display: none;
+}
+
+[data-trips-workspace][data-table-appearance="excel"] .ml-data-row .ml-cell.ml-number {
+  justify-content: flex-end;
+}
+
+[data-trips-workspace][data-table-appearance="excel"] .ml-data-row .ml-cell .ml-multi-preview {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 36%;
+  font-size: 10px;
+}
+
+[data-trips-workspace] [aria-label="Column responsibilities"],
+[data-trips-workspace] [aria-label="Original Excel header color groups"] { display:none; }
+.modern-report-controls { display:flex; flex-wrap:wrap; align-items:center; justify-content:flex-end; gap:12px; padding:10px 14px; border-bottom:1px solid #eef0f3; background:#fff; }
+[data-trips-workspace][data-table-appearance="modern"] .modern-report-group > td { padding:0; background:#f7f9fc; }
+.modern-report-group button { display:flex; align-items:center; gap:8px; min-height:46px; width:100%; border:0; background:transparent; padding:8px 12px; text-align:left; color:#24354b; font:13px/1.4 Inter,system-ui,sans-serif; cursor:pointer; }
+.modern-report-group button:hover { background:#edf2f8; }
+.modern-report-group button:focus-visible { outline:2px solid #1e4fb8; outline-offset:-2px; }
+.modern-report-group svg { width:16px; height:16px; flex:none; transition:transform .16s ease; }
+.modern-report-group svg.is-open { transform:rotate(90deg); }
+.modern-report-group span { font-size:11px; color:#66758b; }
+[data-trips-workspace][data-table-appearance="modern"] .spreadsheet-grid thead th:not(.spreadsheet-gutter) { font-family:Inter,system-ui,sans-serif; font-size:12px; letter-spacing:.02em; text-transform:uppercase; border-right-color:transparent; padding:12px; }
+@media(prefers-reduced-motion:reduce) { .modern-report-group svg { transition:none; } }
+.modern-report-label { display:flex; flex-direction:column; gap:3px; min-width:0; }
+.modern-report-label strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13px; }
+.modern-report-label small { font-size:11px; color:#8a94a6; }
+.modern-report-summary { display:block; padding:8px 12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13px; color:#24354b; }
+.modern-report-summary small { color:#8a94a6; font-size:11px; }
+[data-trips-workspace][data-table-appearance="modern"] .modern-report-group .modern-report-identity { position:sticky; left:40px; z-index:21; background:#f7f9fc; }
+.modern-report-toolbar { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px 14px; padding:8px 12px; border-bottom:1px solid #eef0f3; background:white; }
+.modern-report-toolbar .modern-report-controls { border:0; padding:0; margin-left:auto; }
+[data-trips-workspace][data-table-appearance="modern"] .spreadsheet-grid > tbody > tr.modern-report-group > td:not(.spreadsheet-gutter) { padding:0; height:var(--modern-group-row-height,56px); }
+.modern-report-group button:disabled { cursor:default; opacity:.65; }
+[data-trips-workspace][data-table-appearance="modern"] .spreadsheet-header-content > button { text-transform:inherit; font-weight:700; letter-spacing:inherit; }
+
+/* The active tab bridges the panel border and aligns with the outer edge. */
+.al-workspace [data-trips-workspace] .trip-sheet-bookmarks {
+  padding:7px 0 2px;
+  margin-bottom:-2px;
+  gap:3px;
+  scrollbar-width:none;
+}
+.al-workspace [data-trips-workspace] .trip-sheet-bookmarks [role="tab"] {
+  border:1px solid transparent;
+  transition:color 140ms ease,background-color 140ms ease,border-color 140ms ease,box-shadow 140ms ease;
+}
+.al-workspace [data-trips-workspace] .trip-sheet-bookmarks [role="tab"][aria-selected="true"] {
+  border:1px solid #dce5f0;
+  border-bottom-color:#fff;
+  box-shadow:0 3px 0 #fff;
+}
+.al-workspace [data-trips-workspace] > .trip-sheet-table {
+  border-top:1px solid #dce5f0;
+}
+[data-trips-workspace] .trip-sheet-panel[data-sheet-active="true"] {
+  animation:trip-sheet-reveal 160ms ease-out;
+}
+@keyframes trip-sheet-reveal { from { opacity:.82; } to { opacity:1; } }
+@media(prefers-reduced-motion:reduce) {
+  .al-workspace [data-trips-workspace] .trip-sheet-bookmarks [role="tab"] { transition:none; }
+  [data-trips-workspace] .trip-sheet-panel[data-sheet-active="true"] { animation:none; }
+}
+
+.al-workspace [data-trips-workspace]:has(> .trip-sheet-navigation > .trip-sheet-bookmarks > [role="tab"]:first-child[aria-selected="true"]) > .trip-sheet-table {
+  border-top-left-radius:0;
+}
+
+.al-workspace [data-trips-workspace] .trip-sheet-navigation{position:sticky;top:60px;z-index:1100;display:flex;align-items:flex-end;gap:12px;min-width:0;background:#f4f6fb}
+.al-workspace [data-trips-workspace] .trip-sheet-navigation .trip-sheet-bookmarks{position:static;top:auto;flex:1;margin-bottom:-2px}
+.al-workspace [data-trips-workspace] .trip-sheet-view-toggle{padding:0 12px 11px 0}
+@media(max-width:620px){.al-workspace [data-trips-workspace] .trip-sheet-navigation{gap:4px}.al-workspace [data-trips-workspace] .trip-sheet-view-toggle{padding-right:4px}}
+
+/* One flat, one-pixel outline across the connected tab, table and footer. */
+.al-workspace [data-trips-workspace] > :is(.trip-sheet-table,.ml-master-footer) {
+  border-left:1px solid #dce5f0;
+  border-right:1px solid #dce5f0;
+  box-shadow:none;
+}
+
+/* Row numbers remain selectable in either appearance. */
+[data-trips-workspace][data-table-appearance="modern"] [role="tabpanel"]:not(#trip-sheet-trips) .spreadsheet-gutter {
+  display:table-cell;
+}
+[data-trips-workspace][data-table-appearance="modern"] [role="tabpanel"]:not(#trip-sheet-trips) .modern-report-group .modern-report-identity {
+  left:32px;
+}
+
+.modern-cell-controls { padding:0 12px 8px; background:#fff; }
+.modern-cell-controls .ml-input-bar { margin-top:0; padding-top:6px; }
+.modern-cell-controls .ml-input-bar > span { color:#5b6b85; font-size:11px; }
+.modern-cell-controls [data-formula-bar] > div { border-color:#e3e8f0; border-radius:6px; }
+.modern-cell-controls [data-formula-bar] input { font-size:12px; }
+.modern-cell-controls [data-formula-bar] input { border:0; border-radius:0; background:transparent; padding:0 8px; }
+
+[data-trips-workspace] .modern-report-group[aria-selected="true"] > td { background:#eaf1ff !important; }
+[data-trips-workspace] .modern-report-group[aria-selected="true"] .modern-report-identity { outline:2px solid #1e4fb8;outline-offset:-2px; }
+
+/* Master List and semantic report tables use the same header and active-editor tokens. */
+[data-trips-workspace][data-table-appearance="modern"] [data-trip-table-header] {
+  color:var(--trip-table-heading);font-family:var(--trip-table-font);font-size:12px;font-weight:700;line-height:1.3;letter-spacing:.02em;padding:8px 12px;
+  border-bottom:1px solid var(--trip-table-rule);
+}
+[data-trips-workspace][data-table-appearance="modern"] [data-trip-sheet-cell][data-spreadsheet-selected="true"],
+[data-trips-workspace][data-table-appearance="modern"] [data-trip-sheet-cell][data-formula-selected="true"] {
+  background:var(--trip-table-selection);outline:2px solid var(--trip-table-focus);outline-offset:-2px;
+}
+[data-trips-workspace][data-table-appearance="modern"] [data-trip-sheet-cell] .spreadsheet-cell-editor {
+  width:100%;box-sizing:border-box;background:#fff;border:2px solid #111a2e;border-radius:7px;
+  padding:6px 8px;font:12px var(--trip-table-font);color:var(--trip-table-ink);outline:0;box-shadow:none;
+}
+
+.trip-table-cell-surface{display:contents}
+[data-trips-workspace][data-table-appearance="modern"] td[data-trip-sheet-cell]{padding:0!important}
+[data-trips-workspace][data-table-appearance="modern"] .trip-table-cell-surface{
+ display:flex;min-height:calc(var(--spreadsheet-row-height,56px) - 8px);font-family:inherit;font-size:inherit;color:inherit;line-height:inherit;
+ font-weight:inherit;font-style:inherit;text-decoration:inherit;text-align:inherit;
+}
+[data-trips-workspace][data-table-appearance="modern"] .trip-table-cell-surface.ml-selected-cell{
+ background:var(--trip-table-selection);outline-color:var(--trip-table-focus);min-height:var(--spreadsheet-row-height,56px);
+}
+[data-trips-workspace][data-table-appearance="modern"] .trip-table-cell-surface.ml-formatted-cell{background:inherit}
+
+/* The same primary/secondary text hierarchy and formatting bar as Master List. */
+[data-trips-workspace][data-table-appearance="modern"] .modern-report-group > td{color:var(--trip-table-ink);font:13px/1.3 var(--trip-table-font);vertical-align:middle}
+[data-trips-workspace][data-table-appearance="modern"] .modern-report-group-dispatch > td,
+[data-trips-workspace][data-table-appearance="modern"] .modern-report-group-dispatch .modern-report-identity{background:#fff}
+[data-trips-workspace][data-table-appearance="modern"] .modern-report-group button{color:inherit;font-family:inherit;font-size:inherit;line-height:inherit;font-style:inherit;text-decoration:inherit}
+[data-trips-workspace][data-table-appearance="modern"] .modern-report-label{color:inherit;font:inherit;gap:2px}
+[data-trips-workspace][data-table-appearance="modern"] .modern-report-label strong{font-size:inherit;line-height:inherit}
+[data-trips-workspace][data-table-appearance="modern"] .modern-report-label small{color:#8a94a6;font-size:11px;font-weight:400}
+[data-trips-workspace][data-table-appearance="modern"] .modern-report-summary{display:flex;flex-direction:column;justify-content:center;gap:3px;min-width:0;max-width:100%;padding:6px 8px;font:inherit;color:inherit;text-decoration:inherit;text-align:inherit}
+[data-trips-workspace][data-table-appearance="modern"] .modern-report-summary .ml-cell-value{color:inherit;font:inherit;max-width:100%}
+[data-trips-workspace][data-table-appearance="modern"] .modern-report-summary .ml-cell-primary{color:inherit;font:inherit;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+[data-trips-workspace][data-table-appearance="modern"] .modern-report-summary small{font-size:11px;color:#8a94a6}
+
+[data-trips-workspace][data-table-appearance="modern"] .modern-report-summary .ml-multi-count{font:600 10px/1 var(--trip-table-font);color:#526580}
+[data-trips-workspace][data-table-appearance="modern"] .modern-report-summary .ml-multi-preview{font-size:10px;line-height:1.2;color:#98a3b3}
+[data-trips-workspace][data-table-appearance="modern"] .modern-report-group .modern-report-summary{margin:0 4px}
+[data-trips-workspace][data-table-appearance="modern"] .modern-cell-controls .ml-format-actions{margin-left:auto}
+[data-trips-workspace][data-table-appearance="modern"] td.text-right .trip-table-cell-surface{align-items:flex-end}
+
+[data-trips-workspace] [data-trip-column-selected="true"],
+[data-trips-workspace] .modern-report-group > [data-spreadsheet-selected="true"]{background:#eaf1ff!important;outline:2px solid #1e4fb8;outline-offset:-2px}
+.modern-group-number{position:sticky;left:0;z-index:22;width:32px;min-width:32px;background:#f8fafc!important}
+.modern-group-number button{padding:0;justify-content:center;font-size:11px;color:#8ca0b7;min-height:100%}
+
+[data-trips-workspace][data-table-appearance="modern"] .ml-excel-gutter{position:sticky;left:0;z-index:6;display:grid;place-items:center;height:100%;border-right:1px solid #e8ecf1;border-bottom:1px solid #eef0f3;background:#f8fafc;color:#8ca0b7;font:11px/1.2 var(--trip-table-font)}
+[data-trips-workspace][data-table-appearance="modern"] .ml-excel-gutter-head{z-index:16}
+[data-trips-workspace][data-table-appearance="modern"] .ml-excel-gutter button{width:100%;height:100%;border:0;background:transparent;color:inherit;font:inherit}
+[data-trips-workspace][data-table-appearance="modern"] :is(.ml-dispatch-head,.ml-identity){left:32px}
+
+.modern-report-identity-content{display:flex;align-items:center;gap:7px;height:100%;min-width:0;padding-right:8px}
+.modern-report-identity-content .ml-chevron{width:30px;min-width:30px;min-height:30px;padding:0;justify-content:center;flex:none}
+[data-trips-workspace] .modern-report-group .modern-report-identity-content .modern-report-label{cursor:cell}
+[data-trips-workspace][data-table-appearance="excel"] [data-spreadsheet-selected="true"]{background:#eaf1ff!important;outline:2px solid #1e4fb8;outline-offset:-2px}
+
+/* Trips tables start at their first data column in both appearance modes. */
+[data-trips-workspace] :is(.spreadsheet-gutter,.ml-excel-gutter){display:none!important;width:0!important;min-width:0!important;padding:0!important;border:0!important}
+[data-trips-workspace] .modern-report-group .modern-report-identity,
+[data-trips-workspace] :is(.ml-dispatch-head,.ml-identity){left:0!important}
+
+/* A consistent, easy-to-grab resize edge in every Trips appearance. */
+.trip-column-resize-handle{position:absolute;inset-block:0;right:0;z-index:80;width:9px;cursor:col-resize;touch-action:none;user-select:none}
+.trip-column-resize-handle::after{content:"";position:absolute;inset-block:8px;right:0;width:2px;background:transparent;border-radius:2px}
+.trip-column-resize-handle:hover::after,.trip-column-resize-handle:focus-visible::after{background:#5b8fd9}
+.trip-column-resize-handle:focus-visible{outline:2px solid #1e4fb8;outline-offset:-2px}
+
+/* Text must fit the saved/resized track, never expand it through intrinsic sizing. */
+[data-trips-workspace] .spreadsheet-grid{table-layout:fixed}
+[data-trips-workspace] .spreadsheet-grid :is(th,td){box-sizing:border-box;min-width:0}
+[data-trips-workspace] .modern-report-group > td{overflow:hidden}
+[data-trips-workspace] :is(.modern-report-summary,.modern-report-identity-content,.modern-report-label,.trip-table-cell-surface){min-width:0;max-width:100%;box-sizing:border-box}
+[data-trips-workspace] .modern-report-summary{width:calc(100% - 8px);overflow:hidden}
+[data-trips-workspace] :is(.modern-report-summary,.ml-cell) .ml-cell-value{min-width:0;max-width:100%;overflow:hidden}
+[data-trips-workspace] :is(.modern-report-summary,.ml-cell) .ml-cell-primary{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+[data-trips-workspace] :is(.modern-report-summary,.ml-cell) .ml-multi-preview{width:100%;min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+[data-trips-workspace] .modern-report-label{flex:1;overflow:hidden}
+[data-trips-workspace] .modern-report-label strong{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+[data-trips-workspace] .trip-table-cell-surface{overflow:hidden}
+
+/* A compact, single-line Excel heading across Master List, report grids, and tracker. */
+[data-trips-workspace][data-table-appearance="excel"] .spreadsheet-grid > thead > tr > th:not(.spreadsheet-gutter){height:34px;box-sizing:border-box;padding:5px 10px;vertical-align:middle;color:#52647c;font-family:Inter,system-ui,sans-serif;font-size:11px;font-weight:600;line-height:1.2;letter-spacing:0;text-transform:none;white-space:nowrap;overflow:hidden}
+[data-trips-workspace][data-table-appearance="excel"] .spreadsheet-grid > thead > tr > th > .spreadsheet-header-content{min-height:0;align-items:center;overflow:hidden}
+[data-trips-workspace][data-table-appearance="excel"] .spreadsheet-grid > thead [data-spreadsheet-header-title]{display:block;min-width:0;max-width:100%;padding:0 2px;overflow:hidden;text-overflow:ellipsis;overflow-wrap:normal;white-space:nowrap!important;text-align:left;font:inherit}
+[data-trips-workspace][data-table-appearance="excel"] .ml-head-cell{height:34px;color:#52647c;font-family:Inter,system-ui,sans-serif;font-size:11px;font-weight:600;line-height:1.2}
+[data-trips-workspace][data-table-appearance="excel"] .ml-head-cell>span{min-width:0;overflow:hidden;text-overflow:ellipsis;overflow-wrap:normal;white-space:nowrap}

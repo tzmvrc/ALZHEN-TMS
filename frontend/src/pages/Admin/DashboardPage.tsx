@@ -3,14 +3,17 @@ import {fetchUserProfile} from "../../services/user-workspace.service";
 import { apiGet,invalidateApiCache,type ApiResponse } from "../../services/api.service";
 import {useNavigate,useParams,useSearchParams,useLocation} from "react-router-dom";
 // src/pages/Admin/DashboardPage.tsx
-import { lazy, Suspense, useCallback,useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback,useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import SidebarNav, {
   type NavEntry,
   type WorkspaceName,
 } from "../../components/admin/SidebarNav";
 import RouteLoading from "../../components/RouteLoading";
 import ConfirmDialog from "../../components/ui/ConfirmDialog";
+import { useToast } from "../../components/ui/Toast";
 import { useAuth } from "../../context/AuthContext";
+import {useAccountPreferences} from "../../components/account/useAccountPreferences";
+import "../../app-dark.css";
 import {
   Inbox,
   LayoutDashboard,
@@ -107,6 +110,9 @@ export default function DashboardPage({
   onLogout,
 }: DashboardPageProps) {
   const { logout, profile, user, accessToken } = useAuth();
+  const {theme:appTheme}=useAccountPreferences(profile?.id??"anonymous");
+  useLayoutEffect(()=>{document.documentElement.dataset.appTheme=appTheme;return()=>{delete document.documentElement.dataset.appTheme;};},[appTheme]);
+  const { addToast } = useToast();
   const [personalProfile,setPersonalProfile]=useState<{id:string;first_name?:string;last_name?:string;profile_picture_url?:string|null}|null>(null);
   useEffect(()=>{
     if(!accessToken||!profile?.id)return;let live=true;let timer:ReturnType<typeof setTimeout>|undefined;
@@ -315,7 +321,10 @@ export default function DashboardPage({
       setNotificationItems(next);
       if (initialLoaded && !item.read_at)
         setNotificationCount((count) => count + 1);
-      if (!item.metadata?.recovered && !item.read_at && item.metadata?.event_kind !== "driver_update") setNewNotification(item);
+      if (!item.metadata?.recovered && !item.read_at && item.notification_type === "master_list_edit" && initialLoaded) {
+        if (Date.parse(item.created_at) >= mountedAt - 2_000) playDriverNotificationSound();
+        addToast({variant:"info",activity:true,title:"Master List updated",description:item.message,duration:6500,notificationKey:`master-list:${item.id}`});
+      } else if (!item.metadata?.recovered && !item.read_at && item.notification_type !== "master_list_edit" && item.metadata?.event_kind !== "driver_update") setNewNotification(item);
     };
 
     const unsubscribe = subscribeToTable(
@@ -329,7 +338,7 @@ export default function DashboardPage({
       notificationReload.current = () => {};
       unsubscribe();
     };
-  }, [accessToken, profile?.id, profile?.role]);
+  }, [accessToken, profile?.id, profile?.role, addToast]);
 
   useEffect(() => {
     if (!newNotification) return;
@@ -434,6 +443,17 @@ export default function DashboardPage({
         ? "store-calling"
         : null;
     if (reportKey) {
+      const masterListCells = item.notification_type === "master_list_edit"
+        ? (Array.isArray(item.metadata?.changed_cells) ? item.metadata.changed_cells : []).flatMap((value) => {
+            if (!value || typeof value !== "object") return [];
+            const cell = value as Record<string, unknown>;
+            return ["dispatch", "dr", "line"].includes(String(cell.scope)) && typeof cell.id === "string" && typeof cell.field === "string"
+              ? [{ scope: cell.scope as "dispatch" | "dr" | "line", id: cell.id, field: cell.field }]
+              : [];
+          }).concat(!Array.isArray(item.metadata?.changed_cells) && typeof item.metadata?.dispatch_number === "string" && Array.isArray(item.metadata?.changed_fields) && typeof item.metadata.changed_fields[0] === "string"
+            ? [{scope:"dispatch" as const,id:item.metadata.dispatch_number,field:item.metadata.changed_fields[0].replaceAll(" ","_")}]
+            : [])
+        : undefined;
       setNotificationTarget({
         notificationId: item.id,
         navigationKey: crypto.randomUUID(),
@@ -444,6 +464,7 @@ export default function DashboardPage({
           typeof item.metadata?.dispatch_number === "string"
             ? item.metadata.dispatch_number
             : undefined,
+        masterListCells,
       });
       setReportView(reportKey);
       setActiveId("trips");
@@ -606,7 +627,7 @@ export default function DashboardPage({
 
   return (
     <LiveTripPingsProvider>
-    <div className="al-workspace relative min-h-screen text-slate-900">
+    <div className="al-workspace relative min-h-screen text-slate-900" data-app-theme={appTheme}>
       <RequestReviewModal/>
       {(["ADMIN", "STAFF"] as unknown[]).includes(profile?.role) && (newNotification || driverPopups.length > 0) && (
         <div className="pointer-events-none fixed right-6 top-24 z-[90] flex max-h-[calc(100dvh-7rem)] w-[min(22rem,calc(100vw-3rem))] flex-col gap-3" aria-label="Live notifications">

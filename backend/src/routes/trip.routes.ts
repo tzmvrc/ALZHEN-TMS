@@ -17,7 +17,7 @@ import { interpretReceipt, listReceipts, saveReceiptOcr, reviewCapabilities, rev
 import express from "express";
 import { authMiddleware } from "../middleware/auth.middleware.js";
 import { requireRole } from "../middleware/role.middleware.js";
-import { pendingTransactionCleanup, retryTransactionImages, saveTransactionReference, transactionChanges } from "../controllers/transaction.controller.js";
+import { pendingTransactionCleanup, removeTransaction, retryTransactionImages, saveTransactionReference, transactionChanges } from "../controllers/transaction.controller.js";
 import {
   listImages,
   removeImage,
@@ -51,7 +51,14 @@ import {
 } from "../controllers/trip.controller.js";
 
 import { saveMasterListCell } from "../services/master-list.service.js";
+import {masterListDispatchPage,masterListDispatchChildren,masterListDispatchChildrenBatch,masterListDeleteDispatchTrips,saveMasterListBatch} from "../services/master-list-hierarchy.service.js";
 const router = Router();
+router.get("/master-list/dispatches",authMiddleware,requireRole("ADMIN","STAFF"),async(req,res,next)=>{try{return sendSuccess(res,200,"Master List dispatches",await masterListDispatchPage(req.query));}catch(error){next(error);}});
+router.post("/master-list/dispatches/children",authMiddleware,requireRole("ADMIN","STAFF"),async(req,res,next)=>{try{return sendSuccess(res,200,"Master List DRs and lines",await masterListDispatchChildrenBatch(req.body?.dispatches,req.body?.group));}catch(error){next(error);}});
+router.post("/master-list/dispatches/delete-targets",authMiddleware,requireRole("ADMIN"),async(req,res,next)=>{try{return sendSuccess(res,200,"Selected dispatch trips",await masterListDeleteDispatchTrips(req.body?.dispatches));}catch(error){next(error);}});
+router.get("/master-list/dispatches/:dispatchNumber/children",authMiddleware,requireRole("ADMIN","STAFF"),async(req,res,next)=>{try{return sendSuccess(res,200,"Master List DRs and lines",await masterListDispatchChildren(String(req.params.dispatchNumber),req.query.group));}catch(error){next(error);}});
+router.post("/master-list/trips/:id/stops/:stopId/delete",authMiddleware,requireRole("ADMIN"),removeTransaction);
+router.post("/master-list/batch",authMiddleware,requireRole("ADMIN"),async(req,res,next)=>{try{return sendSuccess(res,200,"Master List changes saved",await saveMasterListBatch(req.profile!.id,req.body?.changes));}catch(error){next(error);}});
 router.post("/overview-details",authMiddleware,requireRole("ADMIN","STAFF"),async(req,res,next)=>{try{return sendSuccess(res,200,"Dashboard trip details",await homeTripDetails(req.body?.trip_ids));}catch(error){next(error);}});
 router.patch("/:id/master-list-cell", authMiddleware, requireRole("ADMIN", "STAFF"), async (req, res, next) => {
   try { return sendSuccess(res, 200, "Master List value saved", await saveMasterListCell(req.profile!.id, String(req.params.id), req.body ?? {})); }

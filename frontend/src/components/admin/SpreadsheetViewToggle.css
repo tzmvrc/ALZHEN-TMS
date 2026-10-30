@@ -1,0 +1,8 @@
+.spreadsheet-view-toggle{display:inline-flex;align-items:center;gap:7px;flex:none;color:#0b2343;font:600 11px/1.2 Inter,system-ui,sans-serif;white-space:nowrap;cursor:pointer}
+.spreadsheet-view-toggle input{position:absolute;opacity:0;width:1px;height:1px}
+.spreadsheet-view-toggle-track{position:relative;width:32px;height:18px;border-radius:10px;background:#cbd5e1;transition:background-color .15s ease}
+.spreadsheet-view-toggle-track::after{content:"";position:absolute;top:3px;left:3px;width:12px;height:12px;border-radius:50%;background:#fff;transition:transform .15s ease}
+.spreadsheet-view-toggle input:checked+.spreadsheet-view-toggle-track{background:#111a2e}
+.spreadsheet-view-toggle input:checked+.spreadsheet-view-toggle-track::after{transform:translateX(14px)}
+.spreadsheet-view-toggle input:focus-visible+.spreadsheet-view-toggle-track{outline:2px solid #1e4fb8;outline-offset:2px}
+@media(prefers-reduced-motion:reduce){.spreadsheet-view-toggle-track,.spreadsheet-view-toggle-track::after{transition:none}}

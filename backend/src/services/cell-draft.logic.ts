@@ -12,15 +12,17 @@ export const DRAFT_EXTRA_FIELDS:Record<string,readonly string[]>={
 };
 // Drafts must be editable business values, not arbitrary columns or credentials.
 const protectedFields=new Set(["trip_number","added_to_report","stop_sequence","assigned_at","unassigned_at","assignment_type"]);
+const masterListFields:Record<string,readonly string[]>={trips:["remarks","plate_number","trucking_company"],trip_stops:["store_name","customer_name","delivery_status"],trip_line_items:["quantity"]};
 export function draftKey(t:DraftTarget){return JSON.stringify([t.table,t.source,t.recordId,t.field,t.source==="flex_columns"?t.stopId??null:null]);}
 export function parseDraftPacket(input:unknown,role:string):DraftPacket{
  if(!management(role)||!input||typeof input!=="object"||Array.isArray(input))throw Error("Draft access denied");
  const p=input as Record<string,unknown>,t=p.target as Record<string,unknown>;
  if(Object.keys(p).some(k=>!["target","sessionId","sequence","value","phase"].includes(k))||!t||typeof t!=="object"||Array.isArray(t)||Object.keys(t).some(k=>!["table","source","recordId","field","tripId","stopId","reportId"].includes(k)))throw Error("Invalid draft");
- if(typeof t.table!=="string"||!canViewTable(role,t.table)||!(["trips","combined","dispatch-monitoring","dispatch","trip-booking","store-calling","operations","transmittal-tracker"].includes(t.table)||t.table.startsWith("flex:")))throw Error("Invalid draft table");
+ if(typeof t.table!=="string"||!canViewTable(role,t.table)||!(["trips","combined","dispatch-monitoring","dispatch","trip-booking","store-calling","operations","transmittal-tracker","master-list"].includes(t.table)||t.table.startsWith("flex:")))throw Error("Invalid draft table");
  const fields=typeof t.source==="string"?(Object.hasOwn(DRAFT_EXTRA_FIELDS,t.source)?DRAFT_EXTRA_FIELDS[t.source]:Object.hasOwn(SOURCE_FIELDS,t.source)?SOURCE_FIELDS[t.source]:undefined):undefined;
- if(!fields||typeof t.field!=="string"||!fields.includes(t.field)||protectedFields.has(t.field)||typeof t.recordId!=="string"||!isValidUuid(t.recordId))throw Error("Invalid draft cell");
- if(t.source!=="flex_columns"&&!DRAFT_REPORT_FIELDS[String(t.table)]?.[String(t.source)]?.includes(t.field))throw Error("Field not editable in this report");
+ const masterListDraft=t.table==="master-list"&&role==="ADMIN"&&masterListFields[String(t.source)]?.includes(String(t.field));
+ if(!fields||typeof t.field!=="string"||!masterListDraft&&!fields.includes(t.field)||protectedFields.has(t.field)||typeof t.recordId!=="string"||!isValidUuid(t.recordId))throw Error("Invalid draft cell");
+ if(t.source!=="flex_columns"&&!masterListDraft&&!DRAFT_REPORT_FIELDS[String(t.table)]?.[String(t.source)]?.includes(t.field))throw Error("Field not editable in this report");
  if(t.source==="flex_columns"&&(!t.stopId||!t.tripId))throw Error("Missing bound cell identity");
  if(t.source==="flex_columns"&&!["combined","dispatch-monitoring","dispatch","trip-booking","store-calling","trips","transmittal-tracker"].includes(t.table))throw Error("Invalid bound report");
  if(["offloads","backloads","offload_items"].includes(String(t.source))&&t.table!=="operations")throw Error("Invalid report source");

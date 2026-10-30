@@ -8,6 +8,7 @@ export type TransmittalTrackerRow = {
   assigned_plate_number?: string | null;
   trip_stop_id: string;
   trip_id: string;
+  dispatch_number?: string;
   transmittal_ref: string;
   warehouse_code: string;
   delivered_to: string;

@@ -11,7 +11,7 @@ const EMPTY_FORMULAS:FormulaSnapshot={formulas:[],sources:[]};
 const NO_VIRTUAL_ROWS:Array<{id:string}>=[];
 const text=(value:unknown)=>value===null||value===undefined?"":typeof value==="object"?JSON.stringify(value):String(value);
 /** Expressions use separate overlays; ordinary values use the view's existing source editor. */
-export function useOperationalFormulas<R extends Row>({token,table,rows,columns,identity,canEdit,paused=false,rowOffset=0,enabled=true,viewport,sourceEditor,virtualRows=NO_VIRTUAL_ROWS,onSelect}:{token:string|null;table:string;rows:R[];columns:Column[];identity:(row:R)=>string|null;canEdit:boolean;paused?:boolean;rowOffset?:number;enabled?:boolean;viewport?:RefObject<HTMLDivElement|null>;sourceEditor?:(row:R,column:string)=>FormulaSourceEditor|undefined;virtualRows?:Array<{id:string}>;onSelect?:(row:string,column:string,extend:boolean)=>void}) {
+export function useOperationalFormulas<R extends Row>({token,table,rows,columns,identity,canEdit,paused=false,rowOffset=0,enabled=true,viewport,sourceEditor,virtualRows=NO_VIRTUAL_ROWS,onSelect,onActivate}:{token:string|null;table:string;rows:R[];columns:Column[];identity:(row:R)=>string|null;canEdit:boolean;paused?:boolean;rowOffset?:number;enabled?:boolean;viewport?:RefObject<HTMLDivElement|null>;sourceEditor?:(row:R,column:string)=>FormulaSourceEditor|undefined;virtualRows?:Array<{id:string}>;onSelect?:(row:string,column:string,extend:boolean,add?:boolean)=>void;onActivate?:(row:R,column:string)=>void}) {
  const owner=`${token??""}:${table}:${enabled?"view":"disabled"}`;
  const rowIds=useMemo(()=>rows.flatMap(row=>{const id=identity(row);return id?[id]:[];}),[rows,identity]);
  const [visibleFormulaRows,setVisibleFormulaRows]=useState<{owner:string;ids:string[]}>({owner:"",ids:[]});
@@ -33,14 +33,14 @@ export function useOperationalFormulas<R extends Row>({token,table,rows,columns,
  const columnIndex=useMemo(()=>new Map(columns.map((column,index)=>[column.key,index])),[columns]);
  const [state,setState]=useState<{owner:string;snapshot:FormulaSnapshot}>({owner:"",snapshot:{formulas:[],sources:[]}}),[selection,setSelection]=useState<{owner:string;row:string;column:string}|null>(null),[draft,setDraft]=useState<{owner:string;key:string;value:string}|null>(null),[error,setError]=useState(""),[busy,setBusy]=useState(false),[range,setRange]=useState<{column:string;from:number;to:number}|null>(null);
  const [inlineKey,setInlineKey]=useState<string|null>(null);
- const focusIntent=useRef<{row:string;column:string;extend:boolean}|null>(null);
+ const focusIntent=useRef<{row:string;column:string;extend:boolean;pointer?:boolean}|null>(null);
  const activeInput=useRef<HTMLInputElement|null>(null);
  const inlineFocus=useRef(true);
  const sourceSession=useRef<{key:string;editor:FormulaSourceEditor}|null>(null);
  const input=useRef<HTMLInputElement|null>(null),composing=useRef(false),cancelled=useRef(false),picked=useRef<Record<string,{rowId:string;columnId:string}>>({}),lock=useRef(false),generation=useRef(0),cleanupFill=useRef<(()=>void)|null>(null);
  const liveOwner=useRef(owner);liveOwner.current=owner;
  const snapshot=state.owner===owner?state.snapshot:EMPTY_FORMULAS,selected=selection?.owner===owner&&(draft?.owner===owner||rowIndex.has(selection.row))?selection:null;
- const chooseCell=(row:string,column:string,extend=false)=>{if(selection?.row!==row||selection.column!==column)inlineFocus.current=true;focusIntent.current={row,column,extend};setSelection(current=>current?.owner===owner&&current.row===row&&current.column===column?current:{owner,row,column});if(extend||selection?.owner!==owner||selection.row!==row||selection.column!==column)onSelect?.(row,column,extend);};
+ const chooseCell=(row:string,column:string,extend=false,add=false,notify:boolean|"force"=true)=>{if(selection?.row!==row||selection.column!==column)inlineFocus.current=true;focusIntent.current={row,column,extend};setSelection(current=>current?.owner===owner&&current.row===row&&current.column===column?current:{owner,row,column});if(notify&&(notify==="force"||add||extend||selection?.owner!==owner||selection.row!==row||selection.column!==column))onSelect?.(row,column,extend,add);};
  const selectedKey=selected?cellKey(selected.row,selected.column):"",dirty=draft?.owner===owner&&draft.key===selectedKey;
  const draftPending=Boolean(draft?.owner===owner),pausedRef=useRef(false),pendingRefresh=useRef(false);pausedRef.current=paused||draftPending||busy||Boolean(range);
  const refresh=useCallback(async()=>{if(!enabled||!token||!signature)return;const request=++generation.current;const result=await readOperationalFormulas(token,table,signature.split("|"));if(request===generation.current){setState({owner,snapshot:result});setError("");}},[token,table,signature,owner,enabled]);
@@ -130,7 +130,7 @@ export function useOperationalFormulas<R extends Row>({token,table,rows,columns,
    "data-formula-reference":referenceKeys.has(cellKey(id,column))?"true":undefined,
    "data-formula-fill":range?.column===column&&index>=Math.min(range.from,range.to)&&index<=Math.max(range.from,range.to)?"true":undefined,
    onPointerDownCapture:(event:ReactPointerEvent<HTMLElement>)=>{
-    if(event.button===0)focusIntent.current={row:id,column,extend:event.shiftKey};
+    if(event.button===0)focusIntent.current={row:id,column,extend:event.shiftKey,pointer:true};
     if(event.button!==0||!composing.current||!value.startsWith("=")||selectedHere||!writable)return;
     if(!row||columns.find(item=>item.key===column)?.type==="action"){event.preventDefault();event.stopPropagation();setError("Invalid formula: #REF!");return;}
     event.preventDefault();event.stopPropagation();const address=`${columnAddress(column)}${rowOffset+index+1}`;
@@ -146,17 +146,17 @@ export function useOperationalFormulas<R extends Row>({token,table,rows,columns,
     if(event.key==="="&&textControl&&(textControl.selectionStart??0)>0)return;
     if(row&&event.key==="="&&!event.ctrlKey&&!event.metaKey&&!(control?.matches('select,button,a'))&&!(event.target instanceof Element&&event.target.closest('[role="combobox"],.spreadsheet-dropdown-editor,.spreadsheet-relationship-editor'))&&canEdit){event.preventDefault();event.stopPropagation();openInline(row,column,"=");return;}
     if(control)return;
-    if(row&&event.key==="Enter"&&canEdit){event.preventDefault();event.stopPropagation();openInline(row,column);return;}
+    if(row&&(event.key==="Enter"||event.key==="F2")&&canEdit){event.preventDefault();event.stopPropagation();if(onActivate&&!has(row,column))onActivate(row,column);else openInline(row,column);return;}
     if(["ArrowLeft","ArrowRight","ArrowUp","ArrowDown","Tab"].includes(event.key)){event.preventDefault();event.stopPropagation();navigateCell(id,column,event.key,event.shiftKey);}
    },
    onPasteCapture:(event:ReactClipboardEvent<HTMLElement>)=>{if((event.target instanceof HTMLInputElement||event.target instanceof HTMLTextAreaElement)&&(event.target.selectionStart??0)>0)return;const pasted=event.clipboardData.getData("text/plain");if(row&&pasted.startsWith("=")&&canEdit&&!(event.target instanceof Element&&event.target.closest('[data-formula-inline],[role="combobox"],.spreadsheet-dropdown-editor,.spreadsheet-relationship-editor'))){event.preventDefault();event.stopPropagation();openInline(row,column,pasted);}},
-   onFocusCapture:()=>{if(!composing.current&&!dirty&&!selectedHere){const intent=focusIntent.current;chooseCell(id,column,intent?.row===id&&intent.column===column?intent.extend:false);sourceSession.current=null;picked.current={};}focusIntent.current=null;},
+   onFocusCapture:()=>{if(!composing.current&&!dirty&&!selectedHere){const intent=focusIntent.current;chooseCell(id,column,intent?.row===id&&intent.column===column?intent.extend:false,false,!intent?.pointer);sourceSession.current=null;picked.current={};}focusIntent.current=null;},
    onClickCapture:(event:MouseEvent<HTMLElement>)=>{
     if(event.target instanceof Element&&event.target.closest('[data-formula-inline]'))return;
     if(composing.current&&value.startsWith("=")&&!selectedHere){event.preventDefault();event.stopPropagation();return;}
     if(event.target instanceof Element&&event.target.closest("[data-formula-fill-handle]"))return;
     if(dirty&&!selectedHere){event.preventDefault();event.stopPropagation();const table=event.currentTarget.closest("table");table?.removeAttribute("data-fast-selection");table?.querySelector("[data-fast-selected]")?.removeAttribute("data-fast-selected");return;}
-    chooseCell(id,column,event.shiftKey);if(!selectedHere){picked.current={};sourceSession.current=null;}
+    chooseCell(id,column,event.shiftKey,event.ctrlKey||event.metaKey,"force");if(event.shiftKey||event.ctrlKey||event.metaKey){event.preventDefault();event.stopPropagation();return;}if(!selectedHere){picked.current={};sourceSession.current=null;}
     if(row&&has(row,column)){event.preventDefault();event.stopPropagation();}
    }
   };
@@ -181,7 +181,7 @@ export function useOperationalFormulas<R extends Row>({token,table,rows,columns,
 
  useSpreadsheetFeedback(error,"error");
  const bar=<div className="flex w-full min-w-0 flex-wrap items-center gap-1"><div className="min-w-0 flex-[1_1_12rem]"><SpreadsheetFormulaBar address={selected?`${columnAddress(selected.column)}${rowOffset+(rowIndex.get(selected.row)??-1)+1}`:undefined} inputRef={input} value={value} readOnly={!writable} readOnlyReason={selected&&!rowIds.includes(selected.row)?"This is a visual-only blank cell. Select and format it; values require an existing operational record.":!selected?"Select a data cell first. Ordinary values use its source editor; expressions remain calculated overlays.":busy?"Wait for the formula request to finish.":"Select a supported data cell. Editing requires its existing permissions and mapping."} onFocus={()=>{inlineFocus.current=false;activeInput.current=input.current;cancelled.current=false;composing.current=true;if(selectedRow&&selected&&!dirty){const fresh=sourceEditor?.(selectedRow,selected.column);if(fresh){sourceSession.current={key:selectedKey,editor:fresh};if(!active&&fresh.value!==value)setDraft({owner,key:selectedKey,value:fresh.value});}}}} onChange={value=>{if(selected){inlineFocus.current=false;setInlineKey(selectedKey);composing.current=true;setDraft({owner,key:selectedKey,value});}}} onCommit={()=>void commit()} onCancel={cancelEdit} onBlur={event=>{if((event.relatedTarget as Element|null)?.closest("[data-formula-bar],[data-formula-help],[data-formula-inline],[data-spreadsheet-context-menu]"))return;composing.current=false;if(cancelled.current){cancelled.current=false;return;}void commit().then(saved=>{if(saved)setSelection(current=>current?.owner===owner&&cellKey(current.row,current.column)===selectedKey?null:current);});}}/></div>{active&&<details className="relative shrink-0 text-[10px] text-slate-600"><summary className="cursor-pointer list-none px-1" onMouseDown={event=>event.preventDefault()}>Source</summary><div className="absolute right-0 top-full z-[130] mt-1 max-h-40 w-56 overflow-auto whitespace-pre-wrap rounded border border-slate-200 bg-white p-2 shadow-lg">{selected?text(source.get(selected.row)?.[selected.column]):""}</div></details>}{active&&<button type="button" disabled={!writable} onMouseDown={event=>event.preventDefault()} onClick={()=>void commit(true)} className="shrink-0 rounded px-1 text-[10px] text-blue-700 disabled:opacity-40" title={`Original source: ${text(source.get(active.row_identity)?.[active.column_key])}`}>Remove formula</button>}{error&&<button type="button" disabled={busy} onMouseDown={event=>event.preventDefault()} onClick={()=>{if(token)retryOperationalFormulaReads(token,table);void refresh().then(()=>setError("")).catch(()=>setError("Unable to refresh calculated cells."));}} className="shrink-0 px-1 text-[10px] text-blue-700">Refresh formulas</button>}</div>;
- return {commitDraft:commit,cancelDraft:cancelEdit,bar,cellProps,virtualCellProps,selectedIdentity:selected?.row??null,selectedColumn:selected?.column??null,selectCell:(row:string,column:string,extend=false)=>{if(!dirty&&!composing.current)chooseCell(row,column,extend);},render,has,busy,draftPending,refresh,notifySourceDraft:()=>{
+ return {navigateCell,commitDraft:commit,cancelDraft:cancelEdit,bar,cellProps,virtualCellProps,selectedIdentity:selected?.row??null,selectedColumn:selected?.column??null,clearSelection:()=>{if(!dirty&&!composing.current)setSelection(null);},selectCell:(row:string,column:string,extend=false)=>{if(!dirty&&!composing.current)chooseCell(row,column,extend);},render,has,busy,draftPending,refresh,notifySourceDraft:()=>{
   // Mirror the source editor's existing local buffer without rerendering the whole grid per key.
   if(!dirty&&!active&&selectedRow&&selected&&input.current&&document.activeElement!==input.current)
    input.current.value=sourceEditor?.(selectedRow,selected.column)?.value??value;
