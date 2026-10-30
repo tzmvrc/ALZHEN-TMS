@@ -86,14 +86,14 @@ export default function ReportsWorkspace(props: Props) {
     <TripsTableAppearanceContext.Provider value={(active==="dispatch-monitoring"&&monitoringSpreadsheet||active==="dispatch"&&dispatchSpreadsheet||active==="store-calling"&&callingSpreadsheet)?"excel":accountPreferences.tableAppearance}>
     {props.toolbarActions}
     <SpreadsheetSheetHeader title={activeTitle} />
-    <div className="trip-sheet-navigation"><nav data-sheet-tabs role="tablist" aria-label="Trip workspace sheets" className="trip-sheet-bookmarks">
+    {!cardView&&<div className="trip-sheet-navigation"><nav data-sheet-tabs role="tablist" aria-label="Trip workspace sheets" className="trip-sheet-bookmarks">
       {SHEET_TABS.map(sheet => <button key={sheet.key} id={`trip-tab-${sheet.key}`} role="tab" aria-selected={active === sheet.key} aria-controls={`trip-sheet-${sheet.key}`} tabIndex={active === sheet.key ? 0 : -1} type="button" onClick={() => choose(sheet.key)} onKeyDown={event => {
         if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
         event.preventDefault(); const index = SHEET_TABS.findIndex(item => item.key === sheet.key);
         const next = event.key === "Home" ? 0 : event.key === "End" ? SHEET_TABS.length - 1 : (index + (event.key === "ArrowRight" ? 1 : -1) + SHEET_TABS.length) % SHEET_TABS.length;
         choose(SHEET_TABS[next].key); document.getElementById(`trip-tab-${SHEET_TABS[next].key}`)?.focus();
       }}>{sheet.title}</button>)}
-    </nav><SpreadsheetViewToggle checked={Boolean(accountPreferences.tableAppearance==="excel"||active==="dispatch-monitoring"&&monitoringSpreadsheet||active==="dispatch"&&dispatchSpreadsheet||active==="store-calling"&&callingSpreadsheet)} onChange={checked=>{setMonitoringSpreadsheet(false);setDispatchSpreadsheet(false);setCallingSpreadsheet(false);saveAccountPreferences({...accountPreferences,tableAppearance:checked?"excel":"modern"});}} className="trip-sheet-view-toggle"/></div>
+    </nav><SpreadsheetViewToggle checked={Boolean(accountPreferences.tableAppearance==="excel"||active==="dispatch-monitoring"&&monitoringSpreadsheet||active==="dispatch"&&dispatchSpreadsheet||active==="store-calling"&&callingSpreadsheet)} onChange={checked=>{setMonitoringSpreadsheet(false);setDispatchSpreadsheet(false);setCallingSpreadsheet(false);saveAccountPreferences({...accountPreferences,tableAppearance:checked?"excel":"modern"});}} className="trip-sheet-view-toggle"/></div>}
     <div className={cardView ? "min-w-0" : (active === "trips"||(active==="dispatch-monitoring"&&monitoringOperational||active==="dispatch"&&deliveryOperational||active==="store-calling"&&callingOperational)) ? "trip-sheet-table min-w-0 overflow-hidden border border-[#dce5f0] bg-white" : "trip-sheet-table al-table-shell min-w-0 overflow-hidden border border-[#dce5f0] bg-white"}>
     <SpreadsheetBottomControlsContext.Provider value={footerContext}>
     {WORKSPACE_SHEETS.map(sheet => <RetainedFeature key={sheet.key} active={active === sheet.key}>

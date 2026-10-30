@@ -30,7 +30,7 @@ import "./database-spreadsheet.css";
 export type DatabaseField={key:string;label:string;inputType?:"email"|"tel"|"date";kind?:"textarea"|"number"|"boolean"|"relation"|"select"|"images";readOnly?:boolean;required?:boolean;source?:string;options?:string[];valueKey?:string;displayValue?:(row:MasterDataRow)=>string;optionLoader?:(row:MasterDataRow,query:string)=>Promise<RelationshipOption[]>;editOnClick?:boolean};
 type Draft={id:string;field:string;value:string};
 export type SpreadsheetDataSource={tableKey:string;sheetId:string;topics:readonly string[];selectAll?:(query:string,sort:string,direction:string,current:()=>boolean)=>Promise<MasterDataRow[]>;recordNoun?:string;deleteDescription?:string;load:(query:string,page:number,sort:string,direction:string)=>Promise<MasterDataPage>;cached?:(query:string,sort:string,direction:string)=>MasterDataPage|null;read?:(id:string)=>Promise<MasterDataRow|null>;save:(id:string,values:Record<string,unknown>,row:MasterDataRow)=>Promise<MasterDataRow>;remove:(ids:string[])=>Promise<{deleted:string[];failed:Array<{id:string;message:string}>;cleanup_pending?:Array<{id:string;operation_id:string}>}>;invalidate:()=>void;canEditField?:(row:MasterDataRow,field:DatabaseField)=>boolean;sortKeys?:readonly string[];canEditRow?:(row:MasterDataRow)=>boolean;canDeleteRow?:(row:MasterDataRow)=>boolean;onViewProfile?:(row:MasterDataRow)=>void;onViewActivity?:(row:MasterDataRow)=>void;cellAction?:(row:MasterDataRow,field:DatabaseField)=>{label:string;activate:()=>void}|undefined;renderCell?:(row:MasterDataRow,field:DatabaseField)=>ReactNode};
-type Props={hiddenColumnsTarget?:HTMLElement|null;dataSource?:SpreadsheetDataSource;resource:MasterDataKey;fields:DatabaseField[];token:string;profileId?:string;canEdit:boolean;active:boolean;search:string;revision:number;onEdit:(row:MasterDataRow)=>void;onImage?:(row:MasterDataRow)=>void;onMetadata:(supported:boolean)=>void;confirmedRecord?:{row:MasterDataRow;sequence:number}};
+type Props={onLoadedStatus?:(status:{loaded:number;total:number;loading:boolean})=>void;hiddenColumnsTarget?:HTMLElement|null;dataSource?:SpreadsheetDataSource;resource:MasterDataKey;fields:DatabaseField[];token:string;profileId?:string;canEdit:boolean;active:boolean;search:string;revision:number;onEdit:(row:MasterDataRow)=>void;onImage?:(row:MasterDataRow)=>void;onMetadata:(supported:boolean)=>void;confirmedRecord?:{row:MasterDataRow;sequence:number}};
 const PAGE_SIZE=30;
 const cellMenuItemClass="block w-full rounded-sm px-3 py-1.5 text-left text-xs text-slate-700 hover:bg-slate-100 focus-visible:bg-blue-50 focus-visible:outline-none disabled:cursor-default disabled:opacity-40";
 const resourceTable:Record<MasterDataKey,string>={warehouses:"warehouses",trucks:"trucks",drivers:"drivers","trucking-companies":"trucking_companies",customers:"customers",stores:"customer_stores","store-contacts":"store_contacts",products:"products"};
@@ -55,7 +55,7 @@ function RelationshipCellEditor({row,field,...props}:Omit<ComponentProps<typeof 
 }
 
 /** Master-data adapter for the shared spreadsheet surfaces. Selection never writes records. */
-export default function DatabaseSpreadsheet({dataSource,resource,fields:sourceFields,token,profileId,canEdit,active,search,revision,onEdit,onImage,onMetadata,confirmedRecord,hiddenColumnsTarget}:Props){
+export default function DatabaseSpreadsheet({onLoadedStatus,dataSource,resource,fields:sourceFields,token,profileId,canEdit,active,search,revision,onEdit,onImage,onMetadata,confirmedRecord,hiddenColumnsTarget}:Props){
  const fields=useMemo<DatabaseField[]>(()=>(resource==="trucks"?[...sourceFields,{key:"__truck_images",label:"Images",kind:"images" as const}]:sourceFields).map(field=>({...field,label:spreadsheetColumnLabel(field.label)})),[sourceFields,resource]);
  const viewport=useRef<HTMLDivElement|null>(null),toast=useOptionalToast();
  const activationNeedsCheck=useRef(false);
@@ -67,6 +67,7 @@ export default function DatabaseSpreadsheet({dataSource,resource,fields:sourceFi
  const actionRows=useMemo(()=>new Map(rows.map(row=>[row.id,row])),[rows]);
  const actionFields=useMemo(()=>new Map(fields.map(field=>[field.key,field])),[fields]);
  const [loading,setLoading]=useState(!initial),[more,setMore]=useState(false),[error,setError]=useState("");
+ useEffect(()=>{if(active)onLoadedStatus?.({loaded:rows.length,total,loading:loading||more});},[active,rows.length,total,loading,more,onLoadedStatus]);
  const [refresh,setRefresh]=useState(0),[draft,setDraft]=useState<Draft|null>(null),[saving,setSaving]=useState(false);
  const [focused,setFocused]=useState<{id:string;field:string}|null>(null),[cells,setCells]=useState(new Set<string>()),[columnSelection,setColumnSelection]=useState(new Set<string>());
  const [headerSelection,setHeaderSelection]=useState<string|null>(null),[renaming,setRenaming]=useState<{key:string;value:string}|null>(null);

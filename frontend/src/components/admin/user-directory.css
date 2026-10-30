@@ -5,6 +5,16 @@
 .users-directory-workspace .database-sheet-panel{border-radius:14px;background:var(--al-surface);border-color:var(--al-border)}
 .users-directory-workspace:has(>.users-bookmarks [role="tab"]:first-child[aria-selected="true"]) .database-sheet-panel{border-top-left-radius:0}
 .user-directory-cards{display:flex;flex-direction:column;flex:1;min-height:280px;color:var(--al-text)}
+.users-directory-workspace .users-bookmarks{position:sticky;top:60px;z-index:35;background:var(--al-canvas)}
+.users-directory-workspace .spreadsheet-footer{position:sticky;bottom:0;z-index:40;background:var(--al-surface);border-top:1px solid var(--al-border);overflow-x:auto;overflow-y:hidden}
+.users-directory-workspace .spreadsheet-footer-layout{display:grid;grid-template-columns:max-content max-content minmax(120px,1fr) max-content;align-items:center;gap:8px;min-height:46px;padding:4px 12px;box-sizing:border-box}
+.users-directory-workspace .spreadsheet-footer-tabs{display:none}
+.users-directory-workspace .ml-master-footer-tools{display:flex;align-items:center;gap:7px;padding:0}
+.users-directory-workspace .ml-master-footer-status{white-space:nowrap;font-size:11px;color:var(--al-muted)}
+.users-directory-workspace .sheet-horizontal-scrollbar-control{grid-column:auto;width:min(100%,360px);min-width:80px;height:30px;margin:0;justify-self:start;background:var(--al-canvas);border:0;border-radius:8px}
+.users-directory-workspace .database-grid thead th{position:sticky;top:0;z-index:30;height:34px;padding:5px 10px;background:var(--al-surface);color:var(--al-muted);font:600 11px/1.2 Inter,system-ui,sans-serif;white-space:nowrap;border-bottom:1px solid var(--al-border)}
+.users-directory-workspace .database-header-content [data-spreadsheet-header-title]{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.2}
+@media(max-width:600px){.users-directory-workspace .spreadsheet-footer-layout{min-width:400px;gap:5px;padding-inline:6px}}
 .user-directory-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:32px 18px;padding:42px 26px 26px;align-content:start;flex:1}
 .user-directory-card{position:relative;min-width:0;border:1px solid var(--al-border);border-radius:9px;background:var(--al-surface);transition:border-color .18s ease,box-shadow .18s ease}
 .user-directory-card:hover{border-color:#b8c7d8;box-shadow:0 3px 12px #0b234108}

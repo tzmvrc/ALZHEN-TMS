@@ -1,4 +1,4 @@
-ï»¿.trip-detail-page{padding-top:8px;padding-bottom:28px;min-width:0;color:#19334d;display:grid;gap:14px}
+.trip-detail-page{padding-top:8px;padding-bottom:28px;min-width:0;color:#19334d;display:grid;gap:14px}
 .trip-tracking-workspace{--trip-line:#e9edf4;--trip-navy:#0b2341;--trip-muted:#66758a;min-width:0;display:grid;gap:14px}
 .trip-tracking-workspace :is(section,div,header){min-width:0}
 .trip-tracking-workspace :is(button,summary),.trip-detail-page>details>summary{cursor:pointer}

@@ -753,11 +753,7 @@ export default function TripDetailView({
           <ArrowLeft aria-hidden="true" className="h-4 w-4" />
           Back to trips
         </button>
-        <nav aria-label="Breadcrumb" className="hidden min-w-0 items-center gap-1.5 text-xs text-slate-400 sm:flex">
-          <span>Trips</span>
-          <ChevronRight aria-hidden="true" className="h-3 w-3 shrink-0" />
-          <span className="truncate font-semibold text-[#0b2341]">{dispatchNumber}</span>
-        </nav>
+
       </header>
 
       {detail && detail.sectionErrors.length > 0 && (
@@ -773,10 +769,10 @@ export default function TripDetailView({
       )}
 
       {trip&&<TripTrackingWorkspace trip={trip} assignments={assignments} assignmentsLoading={!detail?.assignmentsReady&&isLoading} stops={stops} events={orderedEvents} origin={originName} destination={destinationText} progress={progress} totalCbm={totalCbm} totalQty={totalQty} onManage={id=>{setConvoyInitial(id);setConvoyOpen(true);}} refreshKey={retry} loading={isLoading} operations={detail?.operations??null} bookingRows={bookingRows} operationsError={detail?.sectionErrors.find(message=>message.startsWith('Operational reports:'))} onOpenReport={openReportSection}/>}
-      {library==='operations'&&<TripWorkspaceDialog title="Operational report management" onClose={()=>setLibrary(null)}><p className="trip-empty-note">Reports are initially searched by this dispatch. Shared historical records retain their original scope.</p><Suspense fallback={<p role="status">Loading reports...</p>}><OperationsReportsView mode="management" initialSearch={dispatchNumber} onOpenTrip={(id,stopId)=>{setLibrary(null);const params=new URLSearchParams(id===tripId?window.location.search:'');params.delete('event');if(stopId)params.set('stop',stopId);navigate(`/trips/${encodeURIComponent(id)}${params.size?`?${params}`:''}`);}}/></Suspense></TripWorkspaceDialog>}
+      {library==='operations'&&<TripWorkspaceDialog title="Trip reports" description="Review incidents, backloads, offloads, and other operational records." onClose={()=>setLibrary(null)}><p className="trip-empty-note">Reports are initially searched by this dispatch. Shared historical records retain their original scope.</p><Suspense fallback={<p role="status">Loading reports...</p>}><OperationsReportsView mode="management" initialSearch={dispatchNumber} onOpenTrip={(id,stopId)=>{setLibrary(null);const params=new URLSearchParams(id===tripId?window.location.search:'');params.delete('event');if(stopId)params.set('stop',stopId);navigate(`/trips/${encodeURIComponent(id)}${params.size?`?${params}`:''}`);}}/></Suspense></TripWorkspaceDialog>}
 
       {/* Products / stops / activity beside trip photos */}
-      {library==='records'&&<TripWorkspaceDialog title="Manage trip records & photos" onClose={()=>setLibrary(null)}><section id={`trip-${tripId}-records`} className="trip-records-library" tabIndex={-1}>
+      {library==='records'&&<TripWorkspaceDialog title="Photos & records" description="Browse this trip?s trucks, products, stops, and supporting photos." onClose={()=>setLibrary(null)}><section id={`trip-${tripId}-records`} className="trip-records-library" tabIndex={-1}>
       <div className="grid grid-cols-1 items-stretch gap-4 xl:grid-cols-12">
         <section className={`${surface.card} flex max-h-[640px] min-w-0 flex-col p-4 xl:col-span-7`}>
           <div role="tablist" aria-label="Trucks, products and stops" className="flex shrink-0 items-center gap-1 overflow-x-auto rounded-full bg-[#eef3f8] p-1">

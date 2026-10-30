@@ -71,9 +71,13 @@ export function useSpreadsheetViewport(ref: RefObject<HTMLDivElement | null>, ro
         bottomPadding += parseFloat(style.paddingBottom || "0") + parseFloat(style.borderBottomWidth || "0");
         if (ancestor.tagName === "MAIN") break;
       }
-      const sheetTabs = viewport.closest("[data-trips-workspace], [data-database-workspace]")?.querySelector("[data-sheet-tabs]")?.getBoundingClientRect();
+      const sheetWorkspace = viewport.closest("[data-trips-workspace], [data-database-workspace]");
+      const footer = sheetWorkspace?.querySelector<HTMLElement>(".ml-master-footer");
+      const sheetTabs = sheetWorkspace?.querySelector("[data-sheet-tabs]:not(.ml-master-footer)")?.getBoundingClientRect();
       const sheetTabsHeight = sheetTabs && sheetTabs.top >= viewport.getBoundingClientRect().bottom - 1 ? sheetTabs.height : 0;
-      const masterFooterHeight = viewport.closest("[data-trips-workspace]")?.querySelector(".ml-master-footer")?.getBoundingClientRect().height ?? 0;
+      // Reserve the footer even when sticky positioning places it above the
+      // oversized grid's bottom. Otherwise the grid pushes it below the screen.
+      const masterFooterHeight = footer?.getBoundingClientRect().height ?? 0;
       const available = Math.max(160, (window.visualViewport?.height ?? window.innerHeight) - top - footerHeight - bottomPadding - sheetTabsHeight - masterFooterHeight);
       if(viewport.style.height!==`${available}px`)viewport.style.height = `${available}px`;
       const table = viewport.querySelector("table");

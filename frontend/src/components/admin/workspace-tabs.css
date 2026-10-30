@@ -5,10 +5,13 @@
 .al-workspace-tab-history button,.al-workspace-tab-add{display:grid;place-items:center;flex:none;width:26px;height:26px;border:0;border-radius:7px;background:transparent;color:var(--al-muted);cursor:pointer}
 .al-workspace-tab-history button:hover:not(:disabled),.al-workspace-tab-add:hover:not(:disabled){background:#e7edf5;color:var(--al-navy)}
 .al-workspace-tab-history button:disabled,.al-workspace-tab-add:disabled{opacity:.35;cursor:default}
-.al-workspace-tab-strip{display:flex;align-items:center;gap:2px;flex:0 1 auto;min-width:0;height:100%;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;scrollbar-color:#c5d1df transparent}
+.al-workspace-tab-strip{display:flex;align-items:center;gap:8px;flex:0 1 auto;min-width:0;height:100%;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;scrollbar-color:#c5d1df transparent}
 .al-workspace-tab-shell{display:flex;align-items:center;flex:0 0 auto;min-width:100px;max-width:240px;height:34px;margin-bottom:0;border:1px solid transparent;border-radius:8px;color:var(--al-muted);background:transparent;cursor:grab;transition:background-color .18s ease,border-color .18s ease,color .18s ease}
 .al-workspace-tab-shell:has([aria-selected="true"]){border-color:var(--al-border);background:var(--al-surface);color:var(--al-navy);box-shadow:inset 0 2px 0 var(--al-navy)}
 .al-workspace-tab-shell:not(:has([aria-selected="true"])):hover{background:#e9eef5;color:var(--al-navy)}
+.al-workspace-tab-shell{position:relative}
+.al-workspace-tab-shell:not(:last-child)::after{content:"";position:absolute;right:-5px;top:9px;bottom:9px;width:1px;border-radius:1px;background:var(--al-muted);opacity:.25;pointer-events:none}
+.al-workspace-tab-shell:has([aria-selected="true"])::after,.al-workspace-tab-shell:has(+ .al-workspace-tab-shell [aria-selected="true"])::after{display:none}
 .al-workspace-tab{display:flex;align-items:center;gap:6px;min-width:0;flex:1;height:100%;padding:0 3px 0 10px;border:0;background:transparent;color:inherit;font:600 11px/1.2 Inter,system-ui,sans-serif;text-align:left;cursor:pointer}
 .al-workspace-tab>svg{flex:none}.al-workspace-tab>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .al-workspace-tab-close{display:grid;place-items:center;flex:none;width:23px;height:23px;margin-right:3px;border:0;border-radius:5px;background:transparent;color:inherit;cursor:pointer;opacity:.72}
