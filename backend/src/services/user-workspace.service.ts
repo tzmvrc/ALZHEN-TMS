@@ -1,3 +1,4 @@
+import {signStoragePaths} from "./storage-links.service.js";
 import {helperMemberships} from './helper-assignment.service.js';
 import {assertPicturePermission,commitAccountPicture} from "./account-picture.service.js";
 import {wakeUserMaintenance} from './user-maintenance.service.js';
@@ -27,7 +28,14 @@ export async function userSheet(actor:Actor,query:Record<string,unknown>){
  const filter=buildIlikeOrFilter(['crew_role','first_name','last_name','contact_number','email','plate_number','license_number'],query.search);if(filter)request=request.or(filter);
  const {data,error,count}=await request;if(error)throw new ApiError('Unable to load users. Retry loading.',502);
  const memberships=category==='truckers'?await helperMemberships((data??[]).map((row:any)=>row.id)):[];
- const rows=(data??[]).map((row:any)=>query.selection_only==='true'?{id:row.id,is_admin:row.is_admin,created_at:row.created_at,role:row.role}:{...row,crew_assignments:memberships.filter(m=>m.profile_id===row.id),trucking_companies:row.trucking_company_name?{name:row.trucking_company_name}:null});
+ // Resolve only photos belonging to records in this authorized directory page.
+ const ids=(data??[]).map((row:any)=>row.id);
+ const pictures=query.selection_only==='true'||!ids.length?{data:[],error:null}:await db.from('profiles').select('id,profile_picture_path').in('id',ids);
+ if(pictures.error)throw new ApiError('Unable to load user pictures. Retry loading.',502);
+ const paths=new Map<string,string>((pictures.data??[]).flatMap((row:any)=>typeof row.profile_picture_path==='string'?[[row.id,row.profile_picture_path]]:[]));
+ const signed=await signStoragePaths('profile-pictures',[...paths.values()].filter(path=>!/^https?:\/\//i.test(path)),3600);
+ const pictureUrl=(id:string)=>{const path=paths.get(id);return path?(/^https?:\/\//i.test(path)?path:signed.get(path)??null):null;};
+ const rows=(data??[]).map((row:any)=>query.selection_only==='true'?{id:row.id,is_admin:row.is_admin,created_at:row.created_at,role:row.role}:{...row,profile_picture_url:pictureUrl(row.id),crew_assignments:memberships.filter(m=>m.profile_id===row.id),trucking_companies:row.trucking_company_name?{name:row.trucking_company_name}:null});
  return {rows,pagination:{page,limit,total:count??0,totalPages:Math.max(1,Math.ceil((count??0)/limit))}};
 }
 export async function patchProfile(actor:Actor,id:string,patch:Record<string,unknown>){

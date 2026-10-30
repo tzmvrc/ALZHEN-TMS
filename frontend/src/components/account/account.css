@@ -15,3 +15,6 @@
 .account-workspace ul.divide-y > :not(:last-child){border-color:var(--account-border)}
 
 .operational-email-settings .account-button,.operational-email-settings .account-input{min-height:44px}
+
+.account-avatar{outline:1px solid var(--account-border,#dce5f0);outline-offset:2px}
+.account-avatar .account-avatar-placeholder{width:100%;height:100%;object-fit:cover;border-radius:50%;display:block}
