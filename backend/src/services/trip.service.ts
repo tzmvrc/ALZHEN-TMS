@@ -1847,6 +1847,11 @@ export async function deleteTripLineItemRecord(
       lineItemId,
       error: deleteError,
     });
+    if (String(deleteError.message).includes("Remove cargo allocations before deleting this child record")) {
+      throw new Error(
+        "Trip line item deletion is blocked by existing dependent records: truck cargo is still allocated. Reassign or remove the cargo in Trip details first.",
+      );
+    }
     if (
       deleteError.code === "23503" ||
       /foreign key|violates/.test(String(deleteError.message))

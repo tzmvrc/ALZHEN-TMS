@@ -1,12 +1,12 @@
+import {WorkspaceTripLabelContext} from "../../components/admin/WorkspaceTripLabel";
 import {workspaceReportFromLocation} from "../../services/trips-workspace";
 import {fetchUserProfile} from "../../services/user-workspace.service";
 import { apiGet,invalidateApiCache,type ApiResponse } from "../../services/api.service";
-import {useNavigate,useParams,useSearchParams,useLocation} from "react-router-dom";
+import {useNavigate,useParams,useLocation} from "react-router-dom";
 // src/pages/Admin/DashboardPage.tsx
 import { lazy, Suspense, useCallback,useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import SidebarNav, {
   type NavEntry,
-  type WorkspaceName,
 } from "../../components/admin/SidebarNav";
 import RouteLoading from "../../components/RouteLoading";
 import ConfirmDialog from "../../components/ui/ConfirmDialog";
@@ -54,6 +54,8 @@ import {
 } from "../../services/realtime.service";
 import { usePendingRequestCount } from "../../components/admin/requestsStore";
 import RetainedFeature from "../../components/admin/RetainedFeature";
+import WorkspaceTabBar from "../../components/admin/WorkspaceTabBar";
+import {defaultPlace,placeFromRoute,routeForPage,tabPlace,useWorkspaceTabs,type WorkspaceClientPage,type WorkspaceReport,type WorkspaceArea} from "../../components/admin/workspace-tabs";
 import {preloadAdminPageData} from "../../services/admin-preload.service";
 
 export interface DashboardPageProps {
@@ -64,7 +66,7 @@ export interface DashboardPageProps {
   onSearch?: (query: string) => void;
 }
 
-type ClientTab = "website-preview" | "trucks" | "announcements" | "careers";
+type ClientTab = WorkspaceClientPage;
 
 const normalizeMainSection = (value: string) => {
   if(value.startsWith("trip-detail:")||value==="profile"||value.startsWith("profile:"))return value;
@@ -126,33 +128,22 @@ export default function DashboardPage({
     user?.email ||
     data.user.name;
   const pendingRequestCount = usePendingRequestCount();
-  const [workspace, setWorkspace] =
-    useState<WorkspaceName>("Operational Admin");
-  const [clientTab, setClientTab] = useState<ClientTab>("website-preview");
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [logoutLoading, setLogoutLoading] = useState(false);
   const location=useLocation();
   const requestedSheet=workspaceReportFromLocation(location.pathname,location.search);
-  const [localActiveId, setLocalActiveId] = useState(() =>
-    requestedSheet ? "trips" : new URLSearchParams(location.search).get("database") === "trucks" ? "database" : normalizeMainSection(data.nav.activeId),
-  );
-  const route=useParams<{tripId:string;userId:string}>(),navigate=useNavigate(),[routeQuery]=useSearchParams();
-  const activeId=location.pathname==="/settings"?"settings":location.pathname==="/profile"||route.userId?`profile:${route.userId??profile?.id??""}`:route.tripId?`trip-detail:${route.tripId}:dispatches${routeQuery.get("stop")?`:stop:${routeQuery.get("stop")}`:""}`:localActiveId;
-  const setActiveId=useCallback((next:string)=>{
-    if(next==="settings"){navigate("/settings");return;}
-    if(next==="profile"||next.startsWith("profile:")){navigate(next==="profile"?"/profile":`/users/${encodeURIComponent(next.slice(8))}`);return;}
-    if(next.startsWith("trip-detail:")){const [,trip,,scope,stop]=next.split(":");navigate(`/trips/${encodeURIComponent(trip)}${scope==="stop"&&stop?`?stop=${encodeURIComponent(stop)}`:""}`);}
-    else {setLocalActiveId(next);if(route.tripId||location.pathname!=="/")navigate("/");}
-  },[navigate,route.tripId,location.pathname]);
-  const [reportView, setReportView] = useState<
-    | "combined"
-    | "dispatch-monitoring"
-    | "dispatch"
-    | "trip-booking"
-    | "store-calling"
-  >(requestedSheet ?? (["combined","dispatch-monitoring","dispatch","trip-booking","store-calling"].includes(data.nav.activeId) ? data.nav.activeId as "combined"|"dispatch-monitoring"|"dispatch"|"trip-booking"|"store-calling" : "combined"));
-  const [seenRequestedSheet,setSeenRequestedSheet]=useState(requestedSheet);
-  if(seenRequestedSheet!==requestedSheet){setSeenRequestedSheet(requestedSheet);if(requestedSheet){setReportView(requestedSheet);setLocalActiveId("trips");}}
+  const route=useParams<{tripId:string;userId:string}>(),navigate=useNavigate();
+  const initialPage=requestedSheet?"trips":new URLSearchParams(location.search).get("database")==="trucks"?"database":normalizeMainSection(data.nav.activeId);
+  const tabs=useWorkspaceTabs(profile?.id??"",profile?.role??"",placeFromRoute(location.pathname,location.search,{...defaultPlace(),page:initialPage,report:requestedSheet??"combined"}));
+  const activeId=tabs.activePlace.page==="profile"?`profile:${profile?.id??""}`:tabs.activePlace.page,workspace=tabs.activePlace.area,clientTab=tabs.activePlace.clientPage,reportView=tabs.activePlace.report;
+  const setWorkspace=(value:WorkspaceArea)=>tabs.patch(tabs.activeId,{area:value,clientPage:"website-preview",route:"/"});
+  const setClientTab=(value:ClientTab)=>tabs.patch(tabs.activeId,{clientPage:value});
+  const setReportView=(value:WorkspaceReport)=>tabs.patch(tabs.activeId,{report:value});
+  const setActiveId=useCallback((next:string)=>{const path=routeForPage(next);if(next!==activeId||tabs.activePlace.route!==path)tabs.patch(tabs.activeId,{page:next,route:path,area:"Operational Admin"},true);if(location.pathname+location.search!==path)navigate(path);},[activeId,tabs,location.pathname,location.search,navigate]);
+  const restoreRoute=useRef(true);
+  const skipInitialRoute=useRef(true);
+  useEffect(()=>{if(!restoreRoute.current)return;restoreRoute.current=false;if(location.pathname+location.search!==tabs.activePlace.route)navigate(tabs.activePlace.route,{replace:true});},[location.pathname,location.search,navigate,tabs.activePlace.route]);
+  useEffect(()=>{if(skipInitialRoute.current){skipInitialRoute.current=false;return;}const path=location.pathname+location.search;if(path!==tabs.activePlace.route)tabs.patch(tabs.activeId,placeFromRoute(location.pathname,location.search,tabs.activePlace),true);},[location.key]);
   useEffect(()=>{
     if(!accessToken||!profile)return;
     // Trips owns one paced sheet queue; do not start a second report queue here.
@@ -173,9 +164,6 @@ export default function DashboardPage({
   const notificationReload = useRef<() => void>(() => {});
   const notificationsReadAtById = useRef(new Map<string, string>());
 
-  useEffect(() => {
-    if (workspace === "Client Website") setClientTab("website-preview");
-  }, [workspace]);
 
   useEffect(
     () => startAdminRealtime(accessToken, profile?.id, profile?.role),
@@ -613,15 +601,16 @@ export default function DashboardPage({
     }
   };
 
+  const dirtyTabs=useRef(new Set<string>());
+  const approveClose=(ids:string[])=>!ids.some(id=>dirtyTabs.current.has(id))||window.confirm("Close this workspace? It may contain unsaved changes. Unsaved edits will be discarded.");
+  const syncActiveRoute=useRef(tabs.activeId+":"+tabs.activeTab.cursor);
+  useEffect(()=>{const current=tabs.activeId+":"+tabs.activeTab.cursor;if(syncActiveRoute.current===current)return;syncActiveRoute.current=current;if(location.pathname+location.search!==tabs.activePlace.route)navigate(tabs.activePlace.route,{replace:true});},[tabs.activeId,tabs.activeTab.cursor,tabs.activePlace.route,navigate,location.pathname,location.search]);
+  useEffect(()=>{const warn=(event:BeforeUnloadEvent)=>{if(!dirtyTabs.current.size)return;event.preventDefault();event.returnValue="";};window.addEventListener("beforeunload",warn);return()=>window.removeEventListener("beforeunload",warn);},[]);
   if (loading) {
     return <RouteLoading />;
   }
 
   const isClientWebsite = workspace === "Client Website";
-  const showOverview = !isClientWebsite && (
-    activeId === "overview" ||
-    (activeId === "notifications" && !(["ADMIN", "STAFF"] as unknown[]).includes(profile?.role))
-  );
   const currentNavEntries = isClientWebsite ? clientNavEntries : navEntries;
   const currentActiveId = isClientWebsite ? clientTab : activeId;
 
@@ -638,6 +627,7 @@ export default function DashboardPage({
 
       <div data-delivery-workspace={route.tripId?true:undefined} className="al-workspace-grid relative z-10 w-full">
         <SidebarNav
+          tabBar={<WorkspaceTabBar tabs={tabs.tabs} activeId={tabs.activeId} maxTabs={tabs.maxTabs} onActivate={tabs.activate} onCreate={()=>{tabs.create();}} onClose={id=>{if(approveClose([id])){dirtyTabs.current.delete(id);tabs.close(id);}}} onCloseOthers={id=>{const ids=tabs.tabs.filter(tab=>tab.id!==id).map(tab=>tab.id);if(approveClose(ids)){ids.forEach(key=>dirtyTabs.current.delete(key));tabs.closeOthers(id);}}} onCloseRight={id=>{const ids=tabs.tabs.slice(tabs.tabs.findIndex(tab=>tab.id===id)+1).map(tab=>tab.id);if(approveClose(ids)){ids.forEach(key=>dirtyTabs.current.delete(key));tabs.closeRight(id);}}} onMove={tabs.move} onStep={delta=>tabs.step(tabs.activeId,delta)}/>}
           entries={currentNavEntries}
           activeId={currentActiveId}
           onNavigate={
@@ -672,6 +662,9 @@ export default function DashboardPage({
 
         <main className="al-workspace-main w-full min-w-0">
           <Suspense fallback={<div role="status" aria-label="Opening page" className="min-h-40 animate-pulse bg-slate-50" />}><div className="w-full min-w-0">
+            {tabs.tabs.map(tab=>{const place=tabPlace(tab),activeId=place.page==="profile"?`profile:${profile?.id??""}`:place.page,workspace=place.area,clientTab=place.clientPage,reportView=place.report,isClientWebsite=workspace==="Client Website",showOverview=!isClientWebsite&&activeId==="overview";
+              const setReportView=(value:WorkspaceReport)=>tabs.patch(tab.id,{report:value});
+              return <RetainedFeature key={`${profile?.id}:${profile?.role}:${tab.id}`} active={tabs.activeId===tab.id}><WorkspaceTripLabelContext.Provider value={(id,number)=>{if(place.page.startsWith(`trip-detail:${id}:`))tabs.patch(tab.id,{tripNumber:number,tripLabelId:id});}}><div id={`al-workspace-panel-${tab.id}`} role="tabpanel" className="al-workspace-tab-panel" data-workspace-panel={tab.id} onChangeCapture={event=>{const target=event.target as HTMLInputElement;if(target.closest('form,[role="dialog"],.ml-inline-editor,.spreadsheet-cell-editor'))dirtyTabs.current.add(tab.id);}}>
             <RetainedFeature key={`home:${profile?.id}:${profile?.role}`} active={showOverview}><div
               className={showOverview ? "page-enter" : "hidden"}
             >
@@ -752,6 +745,8 @@ export default function DashboardPage({
                 />
               )}
             </div>
+              </div></WorkspaceTripLabelContext.Provider></RetainedFeature>;
+            })}
           </div>
           </Suspense>
         </main>

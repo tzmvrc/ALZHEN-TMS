@@ -79,3 +79,6 @@ html[data-app-theme="dark"] .al-workspace :is(.trip-table-loading,.ml-empty) { b
 /* Settings already has account tokens; include its heading and shared switch. */
 html[data-app-theme="dark"] .account-workspace :is(h1,h2,h3,h4,.spreadsheet-view-toggle) { color:var(--account-text); }
 html[data-app-theme="dark"] .account-workspace .account-button:focus-visible { outline-color:#83baf0; }
+html[data-app-theme="dark"] .al-workspace .ml-confirm { --confirm-surface:#172435;--confirm-text:#e8eef7;--confirm-muted:#acbad0;--confirm-border:#34445a;--confirm-soft:#1b2a3c;--confirm-warn:#352820;--confirm-warn-border:#80523a;--confirm-warn-text:#f3d4b8; }
+html[data-app-theme="dark"] .al-workspace .ml-confirm-icon { background:#422b2a;color:#f0a19b; }
+html[data-app-theme="dark"] .al-workspace .ml-confirm-error { background:#3d252a;border-color:#7a4148;color:#ffd2d5; }

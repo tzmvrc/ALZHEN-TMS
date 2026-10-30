@@ -46,7 +46,7 @@ import { reportColumnAppearance } from "./ReportSpreadsheetUtils";
 import TripSheetCell from "./TripSheetCell";
 import { useSpreadsheetRowHeights } from "./useSpreadsheetRowHeights";
 import { SPREADSHEET_PANEL_CLASS, SPREADSHEET_ATTACHED_VIEWPORT_CLASS, SpreadsheetDetailsAction, SpreadsheetBlankRows, SpreadsheetRowNumber, useSpreadsheetViewport, useSpreadsheetFeedback } from "./SpreadsheetPresentation";
-const SPREADSHEET_GUTTER_WIDTH = 0;
+const SPREADSHEET_GUTTER_WIDTH = 32;
 import {withTripDetailsColumn,tripDetailsTarget} from "../../services/report-action-columns";
 import { CollaborativeCell } from "./CollaborativeCell";
 import { useDraftTrackerColumns } from "./useDraftTrackerColumns";
@@ -711,6 +711,7 @@ export default function ReportDataView({
   const navigate = useNavigate();
   const [reportKey, setReportKey] = useState<ReportKey>(initialReport);
   const modernTable=useModernReportControls(!transactionView&&["dispatch-monitoring","dispatch","store-calling"].includes(reportKey));
+  const gutterWidth=modernTable.modern?0:SPREADSHEET_GUTTER_WIDTH;
   useEffect(() => {
     reportEditDiagnostic("ReportDataView mounted", {
       mode: import.meta.env.MODE,
@@ -1178,7 +1179,7 @@ export default function ReportDataView({
 
   useLayoutEffect(() => {
     const measurePinnedColumns = () => {
-      let left = selectionColumnRef.current?.getBoundingClientRect().width ?? SPREADSHEET_GUTTER_WIDTH;
+      let left = selectionColumnRef.current?.getBoundingClientRect().width ?? gutterWidth;
       const nextLeftOffsets: Record<string, number> = {};
       for (const key of leftPinnedColumnKeys) {
         nextLeftOffsets[key] = left;
@@ -1222,7 +1223,7 @@ export default function ReportDataView({
       observer?.disconnect();
       window.removeEventListener("resize", measurePinnedColumns);
     };
-  }, [gridColumns, leftPinnedColumnKeys, pinnedColumnSides, rightPinnedColumnKeys, rows]);
+  }, [gridColumns, gutterWidth, leftPinnedColumnKeys, pinnedColumnSides, rightPinnedColumnKeys, rows]);
 
   const flushRealtimeRefresh = () => {
     if (realtimeRefreshTimer.current !== null) {
@@ -1798,7 +1799,7 @@ export default function ReportDataView({
     const pinnedWidth = gridColumns.reduce((total, column) => {
       if (!next[column.key]) return total;
       return total + (headerCellRefs.current.get(column.key)?.getBoundingClientRect().width ?? 160);
-    }, selectionColumnRef.current?.getBoundingClientRect().width ?? SPREADSHEET_GUTTER_WIDTH);
+    }, selectionColumnRef.current?.getBoundingClientRect().width ?? gutterWidth);
     if (pinnedWidth > Math.max(180, viewportWidth - 120)) {
       setPinningNotice("Unpin a column to keep room for horizontal scrolling.");
       return;
@@ -3234,13 +3235,13 @@ export default function ReportDataView({
             ) : isLoading && !displayedRows.length ? (
               <TripTableLoading label="Loading rows…" className="trip-table-loading-empty"/>
             ) : (
-              <table {...headerFormatting.tableProps} data-compact-headers={transactionView ? "true" : undefined} style={{tableLayout:"fixed",width:Math.max(1,presentationColumns.reduce((sum,column)=>sum+(columnLayout.widths?.[column.key]??(columns.length?defaultReportColumnWidth(column):180)),0)),minWidth:0}} className="spreadsheet-grid border-separate border-spacing-0 text-left">
-                <TripTableColumnTracks columns={presentationColumns.map(column=>({key:column.key,width:columnLayout.widths?.[column.key]??(columns.length?defaultReportColumnWidth(column):180)}))}/>
+              <table {...headerFormatting.tableProps} data-compact-headers={transactionView ? "true" : undefined} style={{tableLayout:"fixed",width:Math.max(1,gutterWidth+presentationColumns.reduce((sum,column)=>sum+(columnLayout.widths?.[column.key]??(columns.length?defaultReportColumnWidth(column):180)),0)),minWidth:0}} className="spreadsheet-grid border-separate border-spacing-0 text-left">
+                <TripTableColumnTracks columns={[{key:"__row_number",width:gutterWidth},...presentationColumns.map(column=>({key:column.key,width:columnLayout.widths?.[column.key]??(columns.length?defaultReportColumnWidth(column):180)}))]}/>
                 <thead className={`${tableUi.thead} bg-white`}>
                   <tr style={rowHeights.headerStyle}>
                     <th
                       ref={selectionColumnRef}
-                      style={{ width: SPREADSHEET_GUTTER_WIDTH, minWidth: SPREADSHEET_GUTTER_WIDTH }}
+                      style={{ width: gutterWidth, minWidth: gutterWidth }}
                       scope="col"
                       className="spreadsheet-gutter sticky left-0 top-0 z-[70] whitespace-nowrap border-b border-r border-slate-100/70 bg-slate-50 px-1 py-1">
                       {!( !transactionView && ["dispatch-monitoring","dispatch","store-calling"].includes(reportKey))&&<SpreadsheetRowSelectionHeader active={cellSelection?.mode==="row"&&selectedRowKeys.length>0} checked={allMatchingRowsSelected} partial={selectedRowKeys.length>0&&!allMatchingRowsSelected} disabled={isLoading||selectAllRequest.busy||Boolean(editingCell||editModalOpen||fillGesture||formulas.draftPending)} onChange={checked=>{if(checked)selectAllGridCells();else{setCellSelection(null);reportSelection.clear(reportKey);setSelectionRecords([]);}}}/>}
@@ -3279,7 +3280,7 @@ export default function ReportDataView({
                         draggable={false}
                         onDragOver={(event) => { if (draggedColumnKey) event.preventDefault(); }}
                         onDrop={(event) => { event.preventDefault(); if (draggedColumnKey) reorderReportColumn(draggedColumnKey, column.key); setDraggedColumnKey(null); }}
-                        style={{ width: columnWidth, minWidth: columnWidth, maxWidth: columnWidth, position: "sticky", top: 0, ...(columnColor ? { "--report-column-color": columnColor } as CSSProperties : {}), ...(modernTable.modern?modernColumnHeaderStyle(column.key,column.title):categoryHeaderStyle(column.fieldCategory)), ...reportHeaderAppearance(sharedDesign.columns[column.key], columnColor), ...(modernTable.modern?modernColumnHeaderStyle(column.key,column.title,sharedDesign.columns[column.key]?.header?.backgroundColor||sharedDesign.columns[column.key]?.color||columnColor):{}), ...(!modernTable.modern&&sourceHeader ? { backgroundColor: sourceHeader.background, color: sourceHeader.color } : {}), ...(isPinned ? { ...(pinSide === "left" ? { left: leftPinOffsets[column.key] ?? SPREADSHEET_GUTTER_WIDTH } : { right: rightPinOffsets[column.key] ?? 0 }), zIndex: 60 } : { zIndex: 40 }) }}
+                        style={{ width: columnWidth, minWidth: columnWidth, maxWidth: columnWidth, position: "sticky", top: 0, ...(columnColor ? { "--report-column-color": columnColor } as CSSProperties : {}), ...(modernTable.modern?modernColumnHeaderStyle(column.key,column.title):categoryHeaderStyle(column.fieldCategory)), ...reportHeaderAppearance(sharedDesign.columns[column.key], columnColor), ...(modernTable.modern?modernColumnHeaderStyle(column.key,column.title,sharedDesign.columns[column.key]?.header?.backgroundColor||sharedDesign.columns[column.key]?.color||columnColor):{}), ...(!modernTable.modern&&sourceHeader ? { backgroundColor: sourceHeader.background, color: sourceHeader.color } : {}), ...(isPinned ? { ...(pinSide === "left" ? { left: leftPinOffsets[column.key] ?? gutterWidth } : { right: rightPinOffsets[column.key] ?? 0 }), zIndex: 60 } : { zIndex: 40 }) }}
                         className={`${REPORT_GRID_HEADER_CELL_CLASS} ${columnColor ? "bg-[var(--report-column-color)]" : "bg-white"} ${isPinned ? `${isOuterPinnedEdge ? pinSide === "left" ? "shadow-[4px_0_8px_-6px_rgba(11,35,65,0.35)]" : "shadow-[-4px_0_8px_-6px_rgba(11,35,65,0.35)]" : ""}` : ""} ${
                           column.type === "number" ||
                           ["quantity", "cbm", "subcon_rate_manual"].includes(
@@ -3304,7 +3305,7 @@ export default function ReportDataView({
                           </button>
 
                         </div>
-                        <TripTableColumnResizeHandle title={column.title} width={columnWidth} enabled={sharedDesign.canEdit&&sharedDesign.loaded} onStart={(event) => { event.preventDefault(); event.stopPropagation(); autoFit.clearWidth(column.key); setColumnLayout((current) => ({ ...current, widths: { ...(sharedWidths.loaded ? {} : current.widths), ...sharedWidths.widths } })); setColumnResize({ key: column.key, startX: event.clientX, startWidth: headerCellRefs.current.get(column.key)?.getBoundingClientRect().width ?? columnWidth }); }} onResize={next=>{autoFit.clearWidth(column.key);void sharedWidths.save(column.key,next);}}/>
+                        <TripTableColumnResizeHandle title={column.title} width={columnWidth} enabled={sharedDesign.canEdit&&sharedDesign.loaded} onStart={(event) => { event.preventDefault(); event.stopPropagation(); const visibleWidths={...columnLayout.widths}; autoFit.clearWidth(column.key); setColumnLayout((current) => ({ ...current, widths: visibleWidths })); setColumnResize({ key: column.key, startX: event.clientX, startWidth: columnWidth }); }} onResize={next=>{autoFit.clearWidth(column.key);void sharedWidths.save(column.key,next);}}/>
                       </TripTableHeader>
                       );
                     })}
@@ -3322,7 +3323,7 @@ export default function ReportDataView({
                         style={rowHeights.style(selectionKey ?? currentRowKey)}
                         data-report-selection-key={selectionKey ?? undefined}
                         className={`group report-data-row ${REPORT_GRID_ROW_CLASS} ${selectionKey&&reportSelection.isSelected(selectionKey)?"bg-blue-50/50":""}`}>
-                        <td onContextMenu={event=>{event.preventDefault();event.stopPropagation();const key=selectionKey??selectionRowKeys[index];if(!cellSelection?.rows?.includes(key))selectWholeRow(key);setCellContextMenu({x:event.clientX,y:event.clientY,row:key,field:presentationColumns[0].key,rows:cellSelection?.rows?.includes(key)?cellSelection.rows:[key]});}} style={{ width: SPREADSHEET_GUTTER_WIDTH, minWidth: SPREADSHEET_GUTTER_WIDTH }} className="spreadsheet-gutter sticky left-0 z-30 whitespace-nowrap border-r border-slate-100/70 bg-slate-50 px-1 py-1 shadow-[3px_0_5px_-5px_rgba(11,35,65,0.65)]">
+                        <td onContextMenu={event=>{event.preventDefault();event.stopPropagation();const key=selectionKey??selectionRowKeys[index];if(!cellSelection?.rows?.includes(key))selectWholeRow(key);setCellContextMenu({x:event.clientX,y:event.clientY,row:key,field:presentationColumns[0].key,rows:cellSelection?.rows?.includes(key)?cellSelection.rows:[key]});}} style={{ width: gutterWidth, minWidth: gutterWidth }} className="spreadsheet-gutter sticky left-0 z-30 whitespace-nowrap border-r border-slate-100/70 bg-slate-50 px-1 py-1 shadow-[3px_0_5px_-5px_rgba(11,35,65,0.65)]">
                           <button type="button" aria-label={`Select spreadsheet row ${sheetRowOffset+index+1}`} title="Select row" onClick={event=>selectWholeRow(selectionKey??selectionRowKeys[index],event.ctrlKey||event.metaKey,event.shiftKey)} className="w-full text-center focus-visible:outline-2 focus-visible:outline-blue-500"><SpreadsheetRowNumber value={sheetRowOffset + index + 1} /></button>
                           {selectionKey && rowHeights.handle(selectionKey)}
                         </td>
@@ -3380,7 +3381,7 @@ export default function ReportDataView({
                                 minWidth: columnWidth,
                                 maxWidth: columnWidth,
                                 ...(remoteEditors.length?{boxShadow:`inset 0 0 0 2px ${remoteEditors[0].color}`} : {}),
-                                ...(isPinned ? { position: "sticky" as const, ...(pinSide === "left" ? { left: leftPinOffsets[column.key] ?? SPREADSHEET_GUTTER_WIDTH } : { right: rightPinOffsets[column.key] ?? 0 }), zIndex: 20 } : {}),
+                                ...(isPinned ? { position: "sticky" as const, ...(pinSide === "left" ? { left: leftPinOffsets[column.key] ?? gutterWidth } : { right: rightPinOffsets[column.key] ?? 0 }), zIndex: 20 } : {}),
                                 ...(columnColor ? { "--report-column-color": columnColor } as CSSProperties : {}),
                                 ...reportColumnAppearance(sharedDesign.columns[column.key], cellFormat, columnColor),
                               }}
@@ -3630,7 +3631,7 @@ export default function ReportDataView({
                       </tr>
                     );
                   }}/>
-                  <SpreadsheetBlankRows count={spreadsheetPadding.count} height={spreadsheetPadding.height} start={sheetRowOffset+displayedRows.length+1} gutterWidth={SPREADSHEET_GUTTER_WIDTH}
+                  <SpreadsheetBlankRows count={spreadsheetPadding.count} height={spreadsheetPadding.height} start={sheetRowOffset+displayedRows.length+1} gutterWidth={gutterWidth}
                     rowSelection={cellSelection?.mode==="row" ? new Set(cellSelection.rows?.map(key=>Number(key.split(":").at(-1)))??[]) : undefined}
                     onRowSelect={(number,event)=>selectWholeRow(`virtual:${transactionView?"trips":reportKey}:slot:${number}`,cellSelection?.mode==="row"||event.ctrlKey||event.metaKey,event.shiftKey)}
                     cellProps={(number,column)=>{const id=`virtual:${transactionView?"trips":reportKey}:slot:${number}`,key=reportCellFormatKey(id,column);return {...formulas.virtualCellProps(id,column),...rangeDrag.cell(id,column),onContextMenu:event=>openCellContextMenu(event,id,column),"data-spreadsheet-selected":selectedFormatCellKeys.has(key)?"true":undefined,className:selectedFormatCellKeys.has(key)?"relative outline outline-2 outline-inset outline-blue-500":"relative",style:reportColumnAppearance(sharedDesign.columns[column],cellFormats[key],columnLayout.colors?.[column])};}}

@@ -1,5 +1,5 @@
 import {useEffect,useRef,useState} from "react";
-import {LoaderCircle} from "lucide-react";
+import {AlertTriangle,LoaderCircle,Trash2} from "lucide-react";
 import {deleteSelectedLineItems,type LineItemDeletionTarget} from "../../services/trip.service";
 import {deleteMasterListStop} from "../../services/master-list-hierarchy.service";
 import {deleteWholeTripSelection,fetchWholeTripImpact,type WholeTripImpact} from "../../services/whole-trip-deletion";
@@ -48,7 +48,7 @@ export default function MasterListDeleteDialog({token,plan,onClose,onChanged}:{t
         const batch=pending.lines.slice(index,index+20),result=await deleteSelectedLineItems(token,batch);
         deleted+=result.deleted.length;
         next.lines=[...result.failed,...pending.lines.slice(index+20)];
-        if(result.failed.length)throw new Error(`${result.failed.length} product row${result.failed.length===1?" was":"s were"} not deleted. Reload before retrying.`);
+        if(result.failed.length)throw new Error(result.errors[0]??`${result.failed.length} product row${result.failed.length===1?" was":"s were"} not deleted. Reload before retrying.`);
       }
       if(deleted)onChanged();
       onClose();
@@ -61,12 +61,24 @@ export default function MasterListDeleteDialog({token,plan,onClose,onChanged}:{t
   };
   const ready=!pending.trips.length||Boolean(impact?.can_delete);
   const total=pending.trips.length+pending.stops.length+pending.lines.length;
-  return <div className="ml-confirm-backdrop"><div role="alertdialog" aria-modal="true" aria-labelledby="ml-delete-title" aria-describedby="ml-delete-description" className="ml-confirm" onKeyDown={event=>{if(event.key==="Escape"&&!busy){event.preventDefault();close();}}}>
-    <h2 id="ml-delete-title">Delete selected rows?</h2>
-    <p id="ml-delete-description">{pending.dispatches.length>0&&`${pending.dispatches.length} dispatch${pending.dispatches.length===1?"":"es"} (${pending.trips.length} trip${pending.trips.length===1?"":"s"}), `}{pending.stops.length} whole DR stop{pending.stops.length===1?"":"s"}, {pending.drGroups} DR group{pending.drGroups===1?"":"s"}, and {pending.lines.length} product row{pending.lines.length===1?"":"s"} are selected. Dispatch deletion includes its trips, stops, products, reports, and attachments. Whole DR stop deletion includes its products and may remove its trip if it was the last stop. A DR group that shares a stop deletes only its own product rows. This cannot be undone.</p>
-    {impact&&pending.trips.length>0&&<p className="mt-2 text-xs text-slate-600">Trip impact: {impact.counts.trip_stops??0} stops and {impact.counts.trip_line_items??0} product rows.</p>}
-    {busy&&<p role="status" className="mt-2 text-xs text-slate-600">Deleting selected records…</p>}
-    {(error||impact&&!impact.can_delete)&&<p role="alert" className="mt-2 text-xs text-rose-700">{error||wholeTripBlockerMessage(impact?.blockers??[])}</p>}
-    <div><button ref={cancel} type="button" disabled={busy} onClick={close}>Cancel</button><button type="button" disabled={busy||!ready||!total} onClick={()=>void remove()}>{busy?<><LoaderCircle size={14} className="animate-spin"/> Deleting…</>:"Delete selected"}</button></div>
+  const selected=[
+    pending.dispatches.length?`${pending.dispatches.length} dispatch${pending.dispatches.length===1?"":"es"}`:pending.trips.length?`${pending.trips.length} trip${pending.trips.length===1?"":"s"}`:"",
+    pending.stops.length?`${pending.stops.length} whole DR stop${pending.stops.length===1?"":"s"}`:"",
+    pending.drGroups?`${pending.drGroups} DR group${pending.drGroups===1?"":"s"}`:"",
+    pending.lines.length?`${pending.lines.length} product row${pending.lines.length===1?"":"s"}`:"",
+  ].filter(Boolean);
+  const impactItems=impact&&pending.trips.length?[
+    {label:"Delivery stops",count:impact.counts.trip_stops??0},
+    {label:"Product rows",count:impact.counts.trip_line_items??0},
+    {label:"Crew memberships",count:impact.counts.trip_truck_crew_members??0},
+  ].filter(item=>item.count>0):[];
+  return <div className="ml-confirm-backdrop"><div role="alertdialog" aria-modal="true" aria-busy={busy} aria-labelledby="ml-delete-title" aria-describedby="ml-delete-description" className="ml-confirm" onKeyDown={event=>{if(event.key==="Escape"&&!busy){event.preventDefault();close();}}}>
+    <div className="ml-confirm-heading"><span className="ml-confirm-icon" aria-hidden="true"><Trash2 size={19}/></span><div><h2 id="ml-delete-title">Delete selected records?</h2><p id="ml-delete-description">{selected.join(" · ")}</p></div></div>
+    {impactItems.length>0&&<div className="ml-confirm-impact" aria-label="Additional trip impact">{impactItems.map(item=><div key={item.label}><strong>{item.count}</strong><span>{item.label}</span></div>)}</div>}
+    <div className="ml-confirm-warning"><AlertTriangle size={17} aria-hidden="true"/><div><strong>This cannot be undone</strong><p>{pending.trips.length?"Dispatch deletion also removes linked trips, stops, products, reports, attachments, and crew memberships.":pending.stops.length?"A whole DR stop deletion includes its products and may remove the trip if it was the last stop.":"Only the selected DR group or product rows will be removed."}</p></div></div>
+    {pending.trips.length>0&&!impact&&!error&&<p role="status" className="ml-confirm-check"><LoaderCircle size={14} className="animate-spin" aria-hidden="true"/>Checking trip impact…</p>}
+    {busy&&<div role="status" className="ml-confirm-progress"><span className="ml-confirm-progress-track" aria-hidden="true"><span/></span><span>Deleting records. Keep this window open.</span></div>}
+    {(error||impact&&!impact.can_delete)&&<p role="alert" className="ml-confirm-error">{error||wholeTripBlockerMessage(impact?.blockers??[])}</p>}
+    <div className="ml-confirm-actions"><button ref={cancel} type="button" disabled={busy} onClick={close}>Cancel</button><button type="button" disabled={busy||!ready||!total} onClick={()=>void remove()}>{busy?<><LoaderCircle size={15} className="animate-spin" aria-hidden="true"/> Deleting…</>:"Delete permanently"}</button></div>
   </div></div>;
 }

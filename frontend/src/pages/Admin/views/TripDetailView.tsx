@@ -1,3 +1,4 @@
+import {useWorkspaceTripLabel} from "../../../components/admin/WorkspaceTripLabel";
 import ImagePreview from '../../../components/ui/ImagePreview';
 import {motion,useReducedMotion} from "motion/react";
 import TripTrackingWorkspace from "../../../components/admin/TripTrackingWorkspace";
@@ -650,6 +651,8 @@ export default function TripDetailView({
   const isLoading = Boolean(accessToken) && loadedKey !== requestKey;
   const error = failure?.key === requestKey ? failure.message : null;
   const orderedEvents = useMemo(()=>(detail?.events ?? []).slice().sort((a,b)=>Date.parse(a.event_time)-Date.parse(b.event_time)),[detail?.events]);
+
+  useWorkspaceTripLabel(tripId,detail?.trip?.dispatch_number);
 
   if (error&&!detail) {
     return (

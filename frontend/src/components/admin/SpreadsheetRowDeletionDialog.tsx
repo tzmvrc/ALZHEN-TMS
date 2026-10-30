@@ -12,9 +12,9 @@ export function SpreadsheetRowDeletionDialog({token,targets,onClose,onDeleted}:{
  const remove=async()=>{
   if(lock.current||!pending.length)return;lock.current=true;setBusy(true);setError("");
   try{
-   const deleted:LineItemDeletionTarget[]=[],failed:LineItemDeletionTarget[]=[];
+   const deleted:LineItemDeletionTarget[]=[],failed:LineItemDeletionTarget[]=[],errors:string[]=[];
    for(let offset=0;offset<pending.length;offset+=20){
-    try{const result=await deleteSelectedLineItems(token,pending.slice(offset,offset+20));deleted.push(...result.deleted);failed.push(...result.failed);}
+    try{const result=await deleteSelectedLineItems(token,pending.slice(offset,offset+20));deleted.push(...result.deleted);failed.push(...result.failed);errors.push(...result.errors);}
     catch{failed.push(...pending.slice(offset));break;}
    }
    // Cache invalidation is independent of whether navigation kept this dialog mounted.
@@ -22,7 +22,7 @@ export function SpreadsheetRowDeletionDialog({token,targets,onClose,onDeleted}:{
    if(deleted.length)onDeleted(deleted.map(target=>target.id));
    const message=failed.length?`${deleted.length} line items deleted; ${failed.length} could not be confirmed. Review the remaining selection before retrying.`:`${deleted.length} line items deleted.`;
    toast?.addToast({title:message,variant:failed.length?(deleted.length?"warning":"error"):"success",duration:4500});
-   if(failed.length){setPending(failed);setError("Some line items could not be deleted. Check protected records or your connection before retrying.");}else onClose();
+   if(failed.length){setPending(failed);setError(errors[0]??"Some line items could not be deleted. Check protected records or your connection before retrying.");}else onClose();
   }catch{if(alive.current){const message="Unable to delete the selected line items. Please try again.";setError(message);toast?.addToast({title:message,variant:"error"});}}
   finally{lock.current=false;if(alive.current)setBusy(false);}
  };

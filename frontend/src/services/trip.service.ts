@@ -437,14 +437,14 @@ export function lineItemDeletionTargets(rows:Record<string,unknown>[]):LineItemD
 export async function deleteSelectedLineItems(token:string,targets:LineItemDeletionTarget[]){
  const bounded=lineItemDeletionTargets(targets.map(target=>({trip_id:target.tripId,trip_stop_id:target.stopId,trip_line_item_id:target.id})));
  if(!bounded||bounded.length>20)throw Error("Select at most 20 verified line items.");
- const deleted:LineItemDeletionTarget[]=[],failed:LineItemDeletionTarget[]=[];
+ const deleted:LineItemDeletionTarget[]=[],failed:LineItemDeletionTarget[]=[],errors:string[]=[];
  for(const target of bounded){try{
   const response=await apiDelete<ApiResponse<{id:string}>>(`/trips/${encodeURIComponent(target.tripId)}/stops/${encodeURIComponent(target.stopId)}/line-items/${encodeURIComponent(target.id)}`,token);
   if(!response.success||response.data?.id!==target.id)throw Error("Deletion was not confirmed.");
   deleted.push(target);invalidateTripCache(target.tripId);
- }catch{failed.push(target);}}
+ }catch(cause){failed.push(target);errors.push(cause instanceof Error?cause.message:"Deletion was not confirmed.");}}
  if(deleted.length){invalidateApiCache("/reports");invalidateReportPageCache();}
- return {deleted,failed};
+ return {deleted,failed,errors};
 }
 
 export async function fetchHomeTripDetails(token:string,tripIds:string[]){

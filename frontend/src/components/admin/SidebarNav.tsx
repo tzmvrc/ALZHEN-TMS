@@ -75,6 +75,7 @@ export interface SidebarNavProps {
   userRole?: string;
   userInitial?: string;
   userPictureUrl?: string | null;
+  tabBar?: ReactNode;
 }
 
 const focusRing = "focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0b2343] focus-visible:ring-offset-2";
@@ -105,6 +106,7 @@ export default function SidebarNav({
   userRole,
   userInitial,
   userPictureUrl,
+  tabBar,
 }: SidebarNavProps) {
   const flatEntries = entries.flatMap((entry) => entry.children ?? [entry]);
   const hasCalendar = flatEntries.some((entry) => entry.id === "calendar");
@@ -276,10 +278,10 @@ export default function SidebarNav({
     <header aria-label="Application header" className="al-topbar">
       <div className="grid h-full w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-3">
         <div className="al-topbar-leading">
-          <nav className="al-breadcrumb" aria-label="Current page">
+          {tabBar??<nav className="al-breadcrumb" aria-label="Current page">
             <span className="al-page-title">{pageTitle}</span>
             {pageSection && <><span className="al-breadcrumb-separator" aria-hidden="true">/</span><span className="al-breadcrumb-section" aria-current="page">{pageSection}</span></>}
-          </nav>
+          </nav>}
         </div>
 
         <div ref={topbarSearchRef} className="al-topbar-center">
