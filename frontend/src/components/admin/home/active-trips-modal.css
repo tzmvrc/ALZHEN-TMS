@@ -22,3 +22,6 @@
 .active-trips-dialog .trip-management-workspace-header h2{grid-row:1;grid-column:1}
 .active-trips-dialog .trip-management-header-actions{grid-row:1;grid-column:2}
 .active-trip-search{grid-row:2;grid-column:1/-1;margin-top:0}
+
+.active-trips-dialog .trip-management-header-actions>button[aria-label="Close workspace"]{display:flex;align-items:center;justify-content:center;padding:0;margin:0;line-height:0}
+.active-trips-dialog .trip-management-header-actions>button[aria-label="Close workspace"]>svg{display:block;flex:none;margin:0}
