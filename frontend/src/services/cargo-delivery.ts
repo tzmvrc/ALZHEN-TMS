@@ -5,12 +5,12 @@ import {cargoPodReceipt,podSubmissions} from './pod-submissions';
 
 /** Physical completion and document review remain independent projections. */
 export function cargoDeliveryState(cargo:DeliveryCargo,pod:TripReceipt|undefined,workspace:DeliveryWorkspace){
- const atStop=workspace.milestones.filter(e=>e.trip_stop_id===cargo.line.trip_stop_id);
+ const atStop=workspace.milestones.filter(e=>e.trip_stop_id===cargo.line.trip_stop_id&&(!e.assignment_id||e.assignment_id===workspace.assignment.id));
  const complete=Number(cargo.quantity)>0&&Number(cargo.remaining)<=0&&atStop.some(e=>e.event_type==='STOP_DEPARTURE');
  const unloading=atStop.some(e=>e.event_type==='UNLOADING_STARTED')||Number(cargo.delivered)>0;
  const review=pod?.pod_review_status??null;
  const delivered=complete&&review==='APPROVED';
- return {complete,delivered,review,label:complete?(delivered?'Delivered':review==='REJECTED'?'Delivered — POD Rejected':review==='PENDING'?'Delivered — POD Pending':'Delivered — POD not submitted'):unloading?'Unloading':'On Truck'};
+ return {complete,delivered,review,label:complete?(delivered?'Delivered':review==='REJECTED'?'Delivered — POD Rejected':review==='PENDING'?'Delivered — POD Pending':'Delivered — POD Not Submitted'):unloading?'Unloading':'On Truck'};
 }
 
 export function productDeliveryHistory(cargo:DeliveryCargo,workspace:DeliveryWorkspace,receipts:TripReceipt[],events:TripEvent[]){

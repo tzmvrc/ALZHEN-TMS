@@ -1,10 +1,11 @@
+import {readFile} from 'node:fs/promises';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {podIntegrationFixture} from './fixtures/pod-integration-fixture.js';
 process.env.SUPABASE_URL='http://127.0.0.1:54321';process.env.SUPABASE_SERVICE_ROLE_KEY='isolated-test';process.env.SUPABASE_ANON_KEY='isolated-test';
 const id=(n:number)=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 test('real backend services submit, list, reject, notify, request replacement, replace and approve against isolated PostgreSQL',async()=>{
- const sql=await podIntegrationFixture();
+ const sql=await podIntegrationFixture();await sql.exec('create table if not exists products(id uuid primary key,model_code text)');await sql.exec(await readFile(new URL('../migrations/2026_11_23_pod_allocation_scope.sql',import.meta.url),'utf8'));await sql.exec(await readFile(new URL('../migrations/2026_11_25_pod_allocation_coverage.sql',import.meta.url),'utf8'));
  const {supabaseAdmin:client}=await import('../src/config/supabase.js');
  const {submitDelivery,deliveryWorkspace,deliveryReceipts,deliverySubmission}=await import('../src/services/delivery-workspace.service.js');
  const {decidePodReceipt}=await import('../src/services/pod-review.service.js');
@@ -44,14 +45,17 @@ test('real backend services submit, list, reject, notify, request replacement, r
   const gps={latitude:14.7,longitude:121,accuracy_meters:10,captured_at:new Date().toISOString()},device_time=new Date().toISOString();
   await save({type:'WAREHOUSE_ARRIVAL',gps,device_time});for(const type of ['LOADING_STARTED','LOADING_FINISHED','WAREHOUSE_DEPARTURE'])await save({type});await save({type:'ARRIVED',stop_id:id(21),gps,device_time});
   const photo=async()=>{const asset=id(++serial);await sql.query(`insert into trip_images(id,trip_id,trip_stop_id,assignment_id,uploaded_by,kind,storage_path,file_name,delivery_upload_state) values($1,$2,$3,$4,$5,'photo',$6,'synthetic.png','READY')`,[asset,id(20),id(21),id(30),id(2),'service-fixture/'+asset]);await sql.query(`insert into storage.objects(bucket_id,name) values('trip-images',$1)`,['service-fixture/'+asset]);return asset;};
-  const source=await photo(),second=await photo();await save({type:'POD_SUBMITTED',stop_id:id(21),dr_number:'DR-A',attachments:[source,second],ocr_text:'DR Number: DR-A\nModel Codes: TEST-A\nModel Quantities: {"TEST-A":3}\n--- Scanned text ---\nSynthetic receipt'});
+  const receiptText='DR Number: DR-A\nReceiver: Manually corrected store\nModel Codes: TEST-A\nModel Quantities: {"TEST-A":3}\nProduct Selections: '+JSON.stringify([{allocation_id:id(41),line_item_id:id(40),assignment_id:id(30),trip_stop_id:id(21),dr_number:'DR-A',model:'TEST-A',quantity:3}])+'\n--- Scanned text ---\nOCR suggested DR-WRONG';
+  const source=await photo(),second=await photo();await save({type:'POD_SUBMITTED',stop_id:id(21),dr_number:'DR-A',attachments:[source,second],ocr_text:receiptText});
+  const persisted=(await query('select ocr_text from trip_images where id=$1',[source]))[0].ocr_text;assert.equal(persisted,receiptText);
+
   const visible=await listTripReceipts(id(20));assert.equal(visible.length,2);assert.equal(visible[0].uploader_name,'Owner');assert.equal((await deliveryReceipts(actor,id(30))).length,2);
   await assert.rejects(deliveryReceipts({id:id(3),role:'TRUCKER'},id(30)),/not available/);
   const draft={request_id:id(++serial),decision:'REJECTED',reason:'Signature missing',expected_review_version:0,expected_ocr_version:0,reviewed_fields:{dr_number:'DR-A'}};
   const rejection=await decidePodReceipt(reviewer,id(20),source,draft);await decidePodReceipt(reviewer,id(20),source,draft);assert.equal(rejection.receipt.pod_review_status,'REJECTED');await assert.rejects(saveAdminReceiptText(id(20),source,id(1),{ocr_text:'Changed rejected receipt',reviewed:true,expected_version:0}),/read-only/);
   const notifications=await listNotifications(id(2),'TRUCKER');assert.equal(notifications.notifications.length,1);assert.match(notifications.notifications[0].message,/Signature missing/);assert.equal((await listNotifications(id(3),'TRUCKER')).notifications.length,0);
   const workspace=await deliveryWorkspace(actor,id(30));const request=workspace.milestones.find(e=>e.delivery_metadata?.pod_replacement_request)?.delivery_metadata.pod_replacement_request;assert.equal(request.receipt_id,source);assert.equal(request.resolved_by,null);assert.equal(workspace.cargo[0].remaining,10);
-  const replacement=await photo(),replacementKey=id(++serial),body={type:'POD_SUBMITTED',stop_id:id(21),dr_number:'DR-A',attachments:[replacement],replaces_receipt_id:source,ocr_text:'Corrected synthetic receipt'};
+  const replacement=await photo(),replacementKey=id(++serial),body={type:'POD_SUBMITTED',stop_id:id(21),dr_number:'DR-A',attachments:[replacement],replaces_receipt_id:source,ocr_text:receiptText};
   const submitted=await save(body,replacementKey);assert.equal((await save(body,replacementKey)).id,submitted.id);assert.equal((await deliverySubmission(actor,id(30),replacementKey))?.id,submitted.id);assert.equal(await deliverySubmission({id:id(3),role:'TRUCKER'},id(30),replacementKey),null);assert.equal(await deliverySubmission(actor,id(31),replacementKey),null);const adminReceipts=await listTripReceipts(id(20));assert.equal(adminReceipts.find(row=>row.id===replacement)?.replaces_receipt_id,source);
   const after=await deliveryWorkspace(actor,id(30));assert.equal(after.milestones.find(e=>e.delivery_metadata?.pod_replacement_request)?.delivery_metadata.pod_replacement_request.resolved_by,submitted.id);
   const approved=await decidePodReceipt(reviewer,id(20),replacement,{...draft,request_id:id(++serial),decision:'APPROVED',reason:''});assert.equal(approved.receipt.pod_review_status,'APPROVED');assert.equal((await deliveryReceipts(actor,id(30))).find(r=>r.id===source)?.pod_review_status,'REJECTED');

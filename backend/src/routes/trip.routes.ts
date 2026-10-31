@@ -1,5 +1,7 @@
 import {crewCandidates,saveTruckCrew} from '../services/truck-crew.service.js';
 import {homeTripDetails} from "../services/home-trip-details.service.js";
+import {homeActiveTrips} from '../services/home-active-trips.service.js';
+import {withSupabaseDeadline} from '../utils/supabase-request-scope.js';
 import { finalizeImportCargo, setDefaultTripDriver } from "../services/trip-workflow.service.js";
 import { parseDestination, resolveTripDestination } from "../services/trip-location.service.js";
 import { listImportBatches, readImportBatch, saveImportDraft, rememberImportBatchError } from "../services/trip-import-recovery.service.js";
@@ -52,6 +54,8 @@ import {
 
 import { saveMasterListCell } from "../services/master-list.service.js";
 import {masterListDispatchPage,masterListDispatchChildren,masterListDispatchChildrenBatch,masterListDeleteDispatchTrips,saveMasterListBatch} from "../services/master-list-hierarchy.service.js";
+import {pipeline} from 'node:stream/promises';
+import {startImageExport,imageExportStatus,cancelImageExport,imageExportTicket,consumeImageExport,downloadTripImage,tripGallery} from '../services/trip-media-export.service.js';
 const router = Router();
 router.get("/master-list/dispatches",authMiddleware,requireRole("ADMIN","STAFF"),async(req,res,next)=>{try{return sendSuccess(res,200,"Master List dispatches",await masterListDispatchPage(req.query));}catch(error){next(error);}});
 router.post("/master-list/dispatches/children",authMiddleware,requireRole("ADMIN","STAFF"),async(req,res,next)=>{try{return sendSuccess(res,200,"Master List DRs and lines",await masterListDispatchChildrenBatch(req.body?.dispatches,req.body?.group));}catch(error){next(error);}});
@@ -59,6 +63,16 @@ router.post("/master-list/dispatches/delete-targets",authMiddleware,requireRole(
 router.get("/master-list/dispatches/:dispatchNumber/children",authMiddleware,requireRole("ADMIN","STAFF"),async(req,res,next)=>{try{return sendSuccess(res,200,"Master List DRs and lines",await masterListDispatchChildren(String(req.params.dispatchNumber),req.query.group));}catch(error){next(error);}});
 router.post("/master-list/trips/:id/stops/:stopId/delete",authMiddleware,requireRole("ADMIN"),removeTransaction);
 router.post("/master-list/batch",authMiddleware,requireRole("ADMIN"),async(req,res,next)=>{try{return sendSuccess(res,200,"Master List changes saved",await saveMasterListBatch(req.profile!.id,req.body?.changes));}catch(error){next(error);}});
+router.get('/active-overview',authMiddleware,requireRole('ADMIN','STAFF'),async(req,res,next)=>{try{return sendSuccess(res,200,'Active trips',await withSupabaseDeadline(20000,()=>homeActiveTrips(req.query)));}catch(error){next(error);}});
+// The capability is issued only after normal account/session authorization. It
+// grants one download of one prepared archive for sixty seconds, never Storage access.
+router.get('/:id/media',authMiddleware,requireRole('ADMIN','STAFF'),async(req,res,next)=>{try{res.set('Cache-Control','no-store');return sendSuccess(res,200,'Trip gallery',await withSupabaseDeadline(20000,()=>tripGallery(String(req.params.id),req.query)));}catch(error){next(error);}});
+router.get('/:id/image-exports/:exportId/archive',async(req,res,next)=>{try{const file=await consumeImageExport(String(req.params.exportId),String(req.params.id),req.query.ticket);res.set({'Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff'});res.download(file.path,file.filename,error=>{if(error&&!res.headersSent)next(error);});}catch(error){next(error);}});
+router.post('/:id/image-exports',authMiddleware,requireRole('ADMIN','STAFF'),(req,res,next)=>{try{res.set('Cache-Control','no-store');return sendSuccess(res,202,'Photo export started',startImageExport(String(req.params.id),req.profile!.id));}catch(error){next(error);}});
+router.get('/:id/image-exports/:exportId',authMiddleware,requireRole('ADMIN','STAFF'),(req,res,next)=>{try{res.set('Cache-Control','no-store');return sendSuccess(res,200,'Photo export progress',imageExportStatus(String(req.params.exportId),String(req.params.id),req.profile!.id));}catch(error){next(error);}});
+router.post('/:id/image-exports/:exportId/ticket',authMiddleware,requireRole('ADMIN','STAFF'),async(req,res,next)=>{try{res.set('Cache-Control','no-store');return sendSuccess(res,200,'Archive download authorized',await imageExportTicket(String(req.params.exportId),String(req.params.id),req.profile!.id));}catch(error){next(error);}});
+router.delete('/:id/image-exports/:exportId',authMiddleware,requireRole('ADMIN','STAFF'),(req,res,next)=>{try{return sendSuccess(res,200,'Photo export cancelled',cancelImageExport(String(req.params.exportId),String(req.params.id),req.profile!.id));}catch(error){next(error);}});
+router.get('/:id/media/:imageId/download',authMiddleware,requireRole('ADMIN','STAFF'),async(req,res,next)=>{const controller=new AbortController();res.on('close',()=>controller.abort());try{const file=await downloadTripImage(String(req.params.id),String(req.params.imageId),controller.signal);res.set({'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Access-Control-Expose-Headers':'Content-Disposition, Server-Timing'});res.attachment(file.filename);await pipeline(file.body,file.bounded,res,{signal:controller.signal});}catch(error){if(res.headersSent)res.destroy();else next(error);}});
 router.post("/overview-details",authMiddleware,requireRole("ADMIN","STAFF"),async(req,res,next)=>{try{return sendSuccess(res,200,"Dashboard trip details",await homeTripDetails(req.body?.trip_ids));}catch(error){next(error);}});
 router.patch("/:id/master-list-cell", authMiddleware, requireRole("ADMIN", "STAFF"), async (req, res, next) => {
   try { return sendSuccess(res, 200, "Master List value saved", await saveMasterListCell(req.profile!.id, String(req.params.id), req.body ?? {})); }

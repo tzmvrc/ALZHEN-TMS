@@ -282,8 +282,8 @@ export function startAdminRealtime(
       invalidateForTable("trips");invalidateForTable("transaction_deletion_jobs");
       emitAdminRealtime({kind:"batch",tables:["trips","transaction_deletion_jobs"]});
     }
-      if(event.kind==="commit"&&["trip_cargo_allocations","trip_assignment_stops","offloads","backloads","demurrages","incidents","loading_reports","unloading_reports"].includes(event.commit.source)) {
-        const tables = [event.commit.source, ...(["trip_cargo_allocations","trip_assignment_stops"].includes(event.commit.source)?[]:["report_receipts"]), ...(event.commit.source === "offloads" ? ["offload_items", "offload_deletion_jobs"] : event.commit.source === "backloads" ? ["backload_items", "backload_deletion_jobs"] : [])];
+      if(event.kind==="commit"&&["trip_truck_crew_members","trip_cargo_allocations","trip_assignment_stops","offloads","backloads","demurrages","incidents","loading_reports","unloading_reports"].includes(event.commit.source)) {
+        const tables = [event.commit.source, ...(["trip_truck_crew_members","trip_cargo_allocations","trip_assignment_stops"].includes(event.commit.source)?[]:["report_receipts"]), ...(event.commit.source === "offloads" ? ["offload_items", "offload_deletion_jobs"] : event.commit.source === "backloads" ? ["backload_items", "backload_deletion_jobs"] : [])];
         tables.forEach(table=>invalidateForTable(table));
         emitAdminRealtime({kind:"batch",tables});
       }

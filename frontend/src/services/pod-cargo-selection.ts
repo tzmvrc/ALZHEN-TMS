@@ -1,6 +1,7 @@
 import type {DeliveryCargo,DeliveryWorkspace} from './delivery.service';
 import type {AutomaticPodReading} from './pod-auto-read.service';
-import {cargoPodReceipt} from './pod-submissions';
+import {cargoPodReceipt,podSubmissions} from './pod-submissions';
+import {splitSaved} from './receipt-fields.service';
 import {matchPodModels,podModelCatalog} from './pod-model-matching';
 
 export function eligiblePodCargo(workspace:DeliveryWorkspace){
@@ -13,6 +14,28 @@ export function eligiblePodCargo(workspace:DeliveryWorkspace){
  return {records,models,options:records.map(record=>record.id),labels:Object.fromEntries(records.map(record=>[record.id,record.label])),quantities:Object.fromEntries(records.map(record=>[record.id,String(Number.isSafeInteger(Number(record.cargo.quantity))&&Number(record.cargo.quantity)>=0?Number(record.cargo.quantity):1)]))};
 }
 export type PodCargoCatalog=ReturnType<typeof eligiblePodCargo>;
+
+/** Receipt coverage is independent of physical unloading/remaining quantities. */
+export function podUploadCargo(workspace:DeliveryWorkspace,stopId:string|null){
+ const stopDrs=Object.fromEntries(workspace.stops.map(stop=>[stop.id,stop.dr_number]));
+ const allowed=workspace.stops.some(stop=>stop.id===stopId);
+ const cargo=allowed?workspace.cargo.filter(item=>item.line.trip_stop_id===stopId):[];
+ const submissions=podSubmissions((workspace.pod_cargo_reviews??[]).filter(row=>row.trip_id===workspace.assignment.trip_id&&row.assignment_id===workspace.assignment.id&&row.trip_stop_id===stopId));
+ const maximums:Record<string,number>={};
+ for(const item of cargo){
+  let covered=0;
+  for(const pages of submissions){
+   const pod=cargoPodReceipt(item,pages,workspace.assignment.id,stopDrs,workspace.cargo);
+   if(!pod||!['PENDING','APPROVED'].includes(pod.pod_review_status??'PENDING'))continue;
+   const saved=splitSaved(pod.ocr_text??''),selection=saved.productSelections?.find(entry=>entry.allocation_id===item.id);
+   const legacy=saved.modelQuantities?.[item.line.product?.model_code||item.line.customer_model];
+   covered+=selection?.quantity??legacy??Number(item.quantity);
+  }
+  maximums[item.id]=Math.max(0,Math.floor(Number(item.quantity)-covered));
+ }
+ const catalog=eligiblePodCargo({...workspace,cargo:cargo.filter(item=>maximums[item.id]>0),pod_cargo_reviews:[]});
+ return {...catalog,maximums,quantities:Object.fromEntries(catalog.records.map(record=>[record.id,String(maximums[record.id])]))};
+}
 
 /** Never guess between identical model names allocated under different DRs. */
 export function matchPodCargoRecords(pages:Array<{result?:AutomaticPodReading}>,catalog:PodCargoCatalog,fallbackDr:string,stopId:string|null){

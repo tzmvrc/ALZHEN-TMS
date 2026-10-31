@@ -16,18 +16,18 @@ export async function readPodCargoReviews(assignment:string,trip:string){
 }
 
 /** Descriptive POD quantities remain separate from unloading and allocations. */
-export async function validatePodProductSelections(text:string,assignment:string,trip:string){
+export async function validatePodProductSelections(text:string,assignment:string,trip:string,stop?:string){
  const marker=text.indexOf('--- Scanned text ---');
  const line=text.slice(0,marker<0?0:marker).split('\n').find(value=>value.startsWith('Product Selections: '));
  if(!line)return; // Existing receipts and queued drafts retain their legacy format.
  let entries:any;try{entries=JSON.parse(line.slice('Product Selections: '.length));}catch{throw new ApiError('Review the selected POD products and try again.',400);}
  if(!Array.isArray(entries)||entries.length>500||entries.some(item=>!item||typeof item!=='object'||!['allocation_id','line_item_id','assignment_id','trip_stop_id'].every(key=>isValidUuid(item[key]))||item.assignment_id!==assignment||typeof item.dr_number!=='string'||!item.dr_number.trim()||item.dr_number.length>100||typeof item.model!=='string'||!item.model.trim()||item.model.length>200||!Number.isSafeInteger(item.quantity)||item.quantity<0)||new Set(entries.map(item=>item.allocation_id)).size!==entries.length)throw new ApiError('Choose distinct products allocated to your truck and enter whole quantities.',400);
  if(!entries.length)return;
- const cargo=await db.from('trip_cargo_allocations').select('id,line:trip_line_items(id,trip_stop_id,product_id,dr_number,customer_model,product:products(model_code))').eq('trip_id',trip).eq('assignment_id',assignment).in('id',entries.map(item=>item.allocation_id)).limit(501);
+ const cargo=await db.from('trip_cargo_allocations').select('id,quantity,line:trip_line_items(id,trip_stop_id,product_id,dr_number,customer_model,product:products(model_code))').eq('trip_id',trip).eq('assignment_id',assignment).in('id',entries.map(item=>item.allocation_id)).limit(501);
  if(cargo.error)throw new ApiError('Selected product assignments could not be confirmed. Please retry.',503,'DELIVERY_UNAVAILABLE');
  const stops=await db.from('trip_stops').select('id,dr_number').eq('trip_id',trip).in('id',[...new Set(entries.map(item=>item.trip_stop_id))] as string[]).limit(501);
  if(stops.error)throw new ApiError('Selected product DR numbers could not be confirmed. Please retry.',503,'DELIVERY_UNAVAILABLE');
  for(const selection of entries){const row=cargo.data?.find(item=>item.id===selection.allocation_id),line=Array.isArray(row?.line)?row.line[0]:row?.line,product=Array.isArray(line?.product)?line.product[0]:line?.product,dr=line?.dr_number||stops.data?.find(stop=>stop.id===selection.trip_stop_id)?.dr_number;
-  if(!line||line.id!==selection.line_item_id||line.trip_stop_id!==selection.trip_stop_id||String(dr??'').trim()!==selection.dr_number.trim()||![line.customer_model,product?.model_code].includes(selection.model)||selection.product_id!=null&&selection.product_id!==line.product_id)throw new ApiError('A selected product no longer matches this truck, delivery stop or DR. Review your product selection.',409);
+  if(!line||stop&&selection.trip_stop_id!==stop||selection.quantity>Number(row?.quantity)||line.id!==selection.line_item_id||line.trip_stop_id!==selection.trip_stop_id||String(dr??'').trim()!==selection.dr_number.trim()||![line.customer_model,product?.model_code].includes(selection.model)||selection.product_id!=null&&selection.product_id!==line.product_id)throw new ApiError('A selected product no longer matches this truck, delivery stop or DR. Review your product selection.',409);
  }
 }

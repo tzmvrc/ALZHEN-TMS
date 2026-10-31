@@ -4,7 +4,7 @@ import { createDeferredRefresh } from "../../services/deferred-refresh";
 export function useDeferredRealtimeRefresh(refresh: () => Promise<unknown> | void, editing: boolean | (() => boolean)) {
   const [gate] = useState(() => createDeferredRefresh({
     refresh: () => {}, blocked: () => true,
-    schedule: (callback, delay) => setTimeout(callback, delay), cancel: clearTimeout,
+    schedule: (callback, delay) => setTimeout(callback, delay), cancel: timer => clearTimeout(timer),
   }));
   useLayoutEffect(() => {
     gate.configure({ refresh, blocked: () => (typeof editing === "function" ? editing() : editing)

@@ -1,6 +1,7 @@
 import { apiGetCached, getAppSessionHeaders, handleSessionExpiredResponse, invalidateApiCache, type ApiResponse } from "./api.service";
 
 export type TripImage = {
+  assignment_id?:string|null;trip_stop_id?:string|null;delivery_event_id?:string|null;uploaded_by?:string|null;dr_number?:string|null;mime_type?:string|null;
   id: string;
   trip_id: string;
   storage_path: string;

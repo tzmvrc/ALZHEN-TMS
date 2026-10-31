@@ -14,9 +14,9 @@ import { EmptyState, MetricsStrip, SectionHeading, TruckJourneyIllustration, typ
 import { buildHomeTrips, homeAnalytics, homeMapData, manilaDay, shortDay, type HomeSnapshot } from "./home-dashboard-data";
 import "./home-dashboard.css";
 
-export default function HomeCommandCenter({ snapshot, name, refreshing, error, onRefresh, onOpenTrip, onNavigate, active }: {
+export default function HomeCommandCenter({ snapshot, name, refreshing, error, onRefresh, onOpenTrip, onNavigate, onShowActiveTrips, active }: {
   snapshot: HomeSnapshot; name: string; refreshing: boolean; error: string | null; active: boolean;
-  onRefresh: () => void; onOpenTrip?: (id: string) => void; onNavigate?: (id: string) => void;
+  onShowActiveTrips:()=>void;onRefresh: () => void; onOpenTrip?: (id: string) => void; onNavigate?: (id: string) => void;
 }) {
   const [selectedRoad,setSelectedRoad] = useState<RoadTrip|null>(null);
   const [roadRows,setRoadRows] = useState<RoadTrip[]>([]);
@@ -52,7 +52,7 @@ export default function HomeCommandCenter({ snapshot, name, refreshing, error, o
   const today=manilaDay(new Date(clock).toISOString());
   const completedToday=new Set(snapshot.bookingRows.filter(row=>manilaDay(row.finish_unloading_time)===today).map(row=>String(row.trip_stop_id??row._trip_stop_id??"")).filter(Boolean)).size;
   const metrics: HomeMetric[] = [
-    { label: "Active trips", value: snapshot.inProgress, note: "All non-archived / In Progress", icon: Truck, tone: "navy", onClick: () => navigate("monitoring") },
+    { label: "Active trips", value: snapshot.inProgress, note: "All non-archived / In Progress", icon: Truck, tone: "navy", onClick: onShowActiveTrips },
     { label: "Needs attention", value: snapshot.detailsLoading||snapshot.bookingUnavailable?null:attention.length, note: "Delayed or missing assignment / loaded trips", icon: CircleAlert, tone: "rose", onClick: () => { if(attention[0]) onOpenTrip?.(attention[0].id); else revealBoard("All"); } },
     { label: "Pending email requests", value: pendingRequests.length, note: requests.source==="live"?"Awaiting review":"Demo preview / automation not connected", icon: Mail, tone: "amber", onClick: () => document.getElementById("home-incoming-requests")?.scrollIntoView({behavior:animate?"smooth":"instant",block:"start"}) },
     { label: "Deliveries completed today", value: snapshot.detailsLoading||snapshot.bookingUnavailable?null:completedToday, note: "Recorded unloading finishes / loaded stops", icon: CheckCheck, tone: "green", onClick: () => navigate("monitoring") },

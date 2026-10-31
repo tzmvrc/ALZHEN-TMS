@@ -1,5 +1,13 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, {beforeEach,afterEach} from "node:test";
+let restoreRpc:(()=>void)|undefined;
+beforeEach(async()=>{
+ const {supabaseAdmin}=await import("../src/config/supabase.js"),original=supabaseAdmin.rpc;
+ // This read-focused fixture has no saved operational events. Never call live RPCs.
+ (supabaseAdmin as any).rpc=async(name:string)=>{assert.equal(name,"read_confirmed_operational_state_batch_v1");return {data:[],error:null};};
+ restoreRpc=()=>{supabaseAdmin.rpc=original;};
+});
+afterEach(()=>restoreRpc?.());
 
 process.env.SUPABASE_URL="http://127.0.0.1:54321";
 process.env.SUPABASE_SERVICE_ROLE_KEY="isolated-report-read";
@@ -25,7 +33,8 @@ test("Master List reads preserve physical rows and source fields without unused 
     assert.equal(report.rows[0].cbm,"0.246913578246913578");assert.equal(report.rows[0].ph_truck_reference,"PH-1");
     assert.equal(report.rows[0].transmittal_ref_version,4);
     const selection=calls.find(call=>call.table==="v_trip_master_csv"&&call.select!=="trip_id")!.select.split(",");
-    for(const column of MASTER_LIST_COLUMNS)assert.ok(selection.includes(column.key),column.key);
+    for(const column of MASTER_LIST_COLUMNS.filter(column=>!["incident_report","incident_boxes","incident_details"].includes(column.key)))assert.ok(selection.includes(column.key),column.key);
+    for(const key of ["incident_report","incident_boxes","incident_details"])assert.ok(Object.hasOwn(report.rows[0],key),"Derived incident summaries remain available: "+key);
     assert.ok(!selection.includes("*")&&!selection.includes("_search_text")&&!selection.some(key=>key.startsWith("_filter_")));
   }finally{supabaseAdmin.from=from;}
 });
@@ -63,6 +72,6 @@ test("database statement timeout is an actionable temporary report failure, not 
   (supabaseAdmin as any).from=(table:string)=>{tables.push(table);const q:any={select:()=>q,eq:()=>q,in:()=>q,order:()=>q,range:()=>q,then:(resolve:any)=>Promise.resolve({data:null,error:{code:"57014",message:"canceling statement due to statement timeout"}}).then(resolve)};return q;};
   try{
     await assert.rejects(getReportData("dispatch-monitoring",{source_lines:"true"}),(error:any)=>error.statusCode===503&&error.code==="REPORT_READ_TIMEOUT"&&/Retry loading/.test(error.message));
-    assert.deepEqual(tables,["v_trip_master_csv"]);
+    assert.deepEqual(tables,["trips","v_trip_master_csv"],"Leading-trip optimization must not retry a timed-out view through legacy reports");
   }finally{supabaseAdmin.from=from;}
 });

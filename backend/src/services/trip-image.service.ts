@@ -26,6 +26,7 @@ export type TripImageRecord = {
   updated_at: string;
   signed_url: string;
   mime_type?:string;
+  assignment_id?:unknown;trip_stop_id?:unknown;delivery_event_id?:unknown;uploaded_by?:unknown;dr_number?:unknown;
 };
 
 export class TripImageError extends Error {
@@ -95,6 +96,8 @@ async function withSignedUrl(
     updated_at: String(row.updated_at ?? ""),
     signed_url: data.signedUrl,
     mime_type:typeof row.mime_type==="string"?row.mime_type:undefined,
+    assignment_id:row.assignment_id??null,trip_stop_id:row.trip_stop_id??null,
+    delivery_event_id:row.delivery_event_id??null,uploaded_by:row.uploaded_by??null,dr_number:row.dr_number??null,
   };
 }
 
@@ -112,7 +115,7 @@ export async function listTripImages(tripId: string) {
   await ensureTripImageBucket();
   const { data, error } = await supabaseAdmin
     .from("trip_images")
-    .select("id, trip_id, storage_path, file_name, display_order, created_at, updated_at")
+    .select("id, trip_id, storage_path, file_name, display_order, created_at, updated_at, assignment_id, trip_stop_id, delivery_event_id, uploaded_by, dr_number, mime_type")
     .eq("trip_id", tripId)
     .eq("kind", "photo")
     .order("display_order", { ascending: true })

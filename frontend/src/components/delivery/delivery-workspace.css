@@ -108,3 +108,61 @@
 .delivery-submit-button:disabled,.delivery-next-panel .delivery-submit-button:disabled,.delivery-pod-upload-actions>button:disabled{cursor:not-allowed}.delivery-submit-button:disabled[aria-busy=true],.delivery-next-panel .delivery-submit-button:disabled[aria-busy=true],.delivery-pod-dropzone[aria-busy=true] button:disabled{cursor:wait}
 @media(max-width:360px){.delivery-pod-dropzone{padding:15px 10px}.delivery-pod-upload-actions{width:100%}.delivery-pod-upload-actions>button{flex:1}}
 @media(prefers-reduced-motion:reduce){.delivery-pod-dropzone{transition:none}}
+
+/* Cargo and receipt rows share a compact hierarchy, while remaining separate lists. */
+.delivery-cargo-disclosure>summary>span{margin-left:auto;font-size:11px;color:var(--delivery-muted)}
+.delivery-cargo-stop{min-width:0;padding:0;border:1px solid #e2e8f0;border-radius:9px;overflow:hidden}
+.delivery-cargo-stop+.delivery-cargo-stop{margin-top:10px}
+.delivery-cargo-stop h2{font-size:13px;font-weight:650;margin:6px 0 10px;line-height:1.5}
+.delivery-cargo-stop>h2{margin:0}
+.delivery-cargo-stop-toggle{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;min-height:60px;padding:10px 10px;border:0;border-radius:0;background:#f1f3f6;color:var(--delivery-navy);text-align:left;cursor:pointer;transition:background-color .16s}
+.delivery-cargo-stop-toggle[aria-expanded=true]{background:#e9eef4;border-bottom:1px solid #dce3eb}
+.delivery-cargo-stop-toggle>span{flex:1;min-width:0}
+.delivery-cargo-stop-toggle strong{display:block;font-size:13px;font-weight:650;line-height:1.5;overflow-wrap:anywhere}
+.delivery-cargo-stop-toggle small{display:block;margin-top:3px;font-size:11px;font-weight:400;line-height:1.5;color:var(--delivery-muted)}
+.delivery-cargo-stop-toggle:hover{background:#e8ecf1}
+.delivery-cargo-stop-toggle[aria-expanded=true]:hover{background:#e1e8f0}
+.delivery-cargo-stop-toggle:focus-visible{outline:2px solid #87b9df;outline-offset:-2px;background:#eff6fc}
+.delivery-cargo-stop-toggle>svg{flex-shrink:0;color:#527591;transform:rotate(-90deg);transition:transform .16s}
+.delivery-cargo-stop-toggle[aria-expanded=true]>svg{transform:rotate(0)}
+.delivery-cargo-stop-content{padding:10px;background:#f5f7fa;border-left:2px solid #dce3eb;min-width:0}
+.delivery-cargo-stop-content[hidden]{display:none}
+.delivery-cargo-stop-content:not([hidden]){animation:delivery-enter .16s ease-out}
+@media(prefers-reduced-motion:reduce){.delivery-cargo-stop-toggle,.delivery-cargo-stop-toggle>svg{transition:none}.delivery-cargo-stop-content:not([hidden]){animation:none}}
+.delivery-cargo-products{list-style:none;padding:0;margin:0}
+.delivery-cargo-product{padding:11px 10px;border-top:1px solid var(--delivery-line);color:var(--delivery-navy);min-width:0}
+.delivery-cargo-product[data-delivered=true]{background:#eaf6ee;border-top-color:transparent;border-radius:6px;margin-bottom:4px}
+.delivery-cargo-product-heading,.delivery-document-heading{display:flex;align-items:center;gap:8px;min-width:0;flex-wrap:wrap}
+.delivery-cargo-product-heading>strong,.delivery-document-heading>strong{font-size:13px;font-weight:650;line-height:1.5;min-width:0;max-width:100%;overflow-wrap:anywhere}
+.delivery-cargo-product-meta,.delivery-document-meta{display:block;margin-top:3px;font-size:11px;line-height:1.6;color:var(--delivery-muted);overflow-wrap:anywhere}
+.delivery-cargo-product-status{font-size:11px;line-height:1.5;color:var(--delivery-muted)}
+.delivery-cargo-product-status[data-status=DELIVERED]{color:#176541;font-weight:600}
+.delivery-cargo-product-status[data-status=PENDING]{color:#8a641b}
+.delivery-cargo-product-status[data-status=REJECTED]{color:#a13b3b}
+.delivery-submitted-pods h3{font-size:11px;font-weight:650;text-transform:uppercase;letter-spacing:.04em;margin:0 0 6px;color:var(--delivery-muted)}
+.delivery-submitted-pods details{padding:0;border-top:1px solid var(--delivery-line)}
+.delivery-cargo-stop .delivery-submitted-pods{border-top:1px solid #dce3eb;padding-top:10px;margin-top:10px}
+.delivery-cargo-stop .delivery-submitted-pods details{background:#fff;border:0;border-radius:6px;margin-top:6px;overflow:hidden}
+.delivery-cargo-stop .delivery-submitted-pods details[open]{padding-bottom:8px}
+.delivery-cargo-disclosure .delivery-submitted-pods summary{display:block;padding:11px 10px;min-height:60px}
+.delivery-cargo-disclosure .delivery-submitted-pods summary span{margin-left:0}
+.delivery-cargo-disclosure .delivery-submitted-pods .delivery-document-status{display:inline-flex;padding:2px 7px;border-radius:6px;font-size:10px;font-weight:600;line-height:1.5;background:#fff5db;color:#8a641b}
+.delivery-cargo-disclosure .delivery-document-status[data-status=APPROVED]{background:#e6f5eb;color:#176541}
+.delivery-cargo-disclosure .delivery-document-status[data-status=REJECTED]{background:#fcecec;color:#a13b3b}
+.delivery-submitted-pods details>dl,.delivery-submitted-pods details>.trip-evidence-gallery{margin:10px}
+.delivery-submitted-pods summary:focus-visible{outline:2px solid #2678b9;outline-offset:-2px;border-radius:6px}
+
+.delivery-cargo-disclosure .delivery-document-heading{color:var(--delivery-navy)}
+
+.delivery-dr-select--allocations .delivery-model-row>label>span>strong,.delivery-dr-select--allocations .delivery-dr-chips button>span>strong{display:block;font-size:12px;font-weight:650;overflow-wrap:anywhere}
+.delivery-dr-select--allocations .delivery-model-row>label>span>small,.delivery-dr-select--allocations .delivery-dr-chips button>span>small{display:block;font-size:11px;font-weight:400;color:var(--delivery-muted);line-height:1.5}
+.delivery-dr-select--allocations .delivery-model-quantity{flex-wrap:wrap;justify-content:flex-end}
+.delivery-dr-select--allocations .delivery-model-quantity>small{flex-basis:100%;text-align:right;font-size:10px;color:var(--delivery-muted)}
+.delivery-dr-select--allocations .delivery-model-quantity input[aria-invalid=true]{border-color:#b94b4b}
+.delivery-dr-select--allocations>.delivery-dr-chips{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;width:100%;min-width:0}
+.delivery-dr-select--allocations>.delivery-dr-chips>button{display:flex;justify-content:space-between;width:100%;min-width:0;min-height:64px;padding:8px;border-radius:8px}
+.delivery-dr-select--allocations>.delivery-dr-chips>button>span{flex:1;min-width:0;overflow:hidden;text-align:left}
+.delivery-dr-select--allocations>.delivery-dr-chips>button>span>strong{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;overflow-wrap:normal}
+.delivery-dr-select--allocations>.delivery-dr-chips>button>span>small{font-size:10px;line-height:1.5;overflow-wrap:anywhere}
+.delivery-dr-select--allocations>.delivery-dr-chips>button>svg{flex:none;align-self:center}
+@media(max-width:360px){.delivery-dr-select--allocations>.delivery-dr-chips{grid-template-columns:minmax(0,1fr)}}

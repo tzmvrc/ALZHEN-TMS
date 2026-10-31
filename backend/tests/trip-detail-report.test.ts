@@ -17,7 +17,8 @@ test(`${report}: scoped detail reads use physical parent IDs and isolate stops a
     { _trip_id: tripId, dispatch_number: null, product_name: "Trip-only record" },
     { _trip_id: "323e4567-e89b-42d3-a456-426614174000", dispatch_number: "OTHER", product_name: "Unrelated" },
   ];
-  const originalFrom = supabaseAdmin.from;
+  const originalFrom = supabaseAdmin.from,originalRpc=supabaseAdmin.rpc;
+  (supabaseAdmin as any).rpc=async(name:string)=>{assert.equal(name,"read_confirmed_operational_state_batch_v1");return {data:[],error:null};};
   let viewSearch = "";
   (supabaseAdmin as any).from = (table: string) => {
     const filters: Array<[string, unknown]> = [];
@@ -57,21 +58,23 @@ test(`${report}: scoped detail reads use physical parent IDs and isolate stops a
     assert.equal(first.rows[0].dispatch_number, "STOP-A");
     assert.equal(second.rows[0].dispatch_number, "STOP-B");
     assert.equal(third.rows[0].dispatch_number, "CANONICAL-DISPATCH", "trip-only records retain their authoritative parent identifier");
-    assert.ok([...first.rows, ...second.rows, ...third.rows].every(row => row.trip_number === "TRIP261020-7"));
+    assert.ok([...first.rows, ...second.rows, ...third.rows].every(row => row.trip_reference === "TRIP261020-7"));
     assert.equal(trips[0].trip_number, 1, "display enrichment must not change the stored numeric position");
     const found = await getReportData(report, { trip_id: tripId, search: "TRIP261020-7" });
-    assert.equal(found.rows[0].trip_number, "TRIP261020-7");
+    assert.equal(found.rows[0].trip_reference, "TRIP261020-7");
     assert.ok(viewSearch.includes("TRIP261020-7"), "generated trip searches must be filtered by the server projection");
     for (const report of ["combined", "dispatch-monitoring", "dispatch", "trip-booking"] as const) {
       const metadata = await getReportColumns(report);
-      assert.equal(metadata.columns.find(column => column.key === "trip_number")?.type, "text");
+      const reference=metadata.columns.find(column=>column.key==="trip_number");
+      // Current workbook layouts may omit this generated reference entirely.
+      if(reference)assert.equal(reference.type,"number","Trip position stays numeric and separate from the generated reference");
       assert.equal(getReportEditDefinition(report, "trip_number", { trip_id: tripId }), null, "generated references cannot edit the stored numeric position");
     }
     assert.ok([...first.rows, ...second.rows].every((row) => row.trip_id === tripId));
     await assert.rejects(getReportData(report, { trip_id: "invalid" }), /Invalid trip id/);
     await assert.rejects(getReportData(report, { trip_id: [tripId] }), /Invalid query parameter/);
   } finally {
-    supabaseAdmin.from = originalFrom;
+    supabaseAdmin.from = originalFrom;supabaseAdmin.rpc=originalRpc;
   }
 });
 

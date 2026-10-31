@@ -1,0 +1,50 @@
+.trip-management-workspace-backdrop{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:1800;padding:2.5dvh 2.5vw;background:#14263b55;backdrop-filter:blur(3px)}
+.trip-management-dialog.trip-management-workspace{display:flex;flex-direction:column;width:min(95vw,1680px);height:95dvh;max-height:95dvh;border:1px solid #dce5ee;border-radius:18px;box-shadow:0 24px 90px #0b23412b;overflow:hidden;min-width:0}
+.trip-management-workspace>.trip-management-workspace-header{flex:none;display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:12px 18px;background:#fff;border-bottom:1px solid #dce5ee}
+.trip-management-workspace-header h2{margin:0;font-size:18px;font-weight:650;color:#0b2341}
+.trip-management-workspace-header p{margin:4px 0 0;font-size:12px;color:#64748b;line-height:1.5}
+.trip-management-workspace-header .trip-management-eyebrow{margin:0 0 3px;font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#527591}
+.trip-management-context{display:flex;flex-wrap:wrap;gap:6px 18px;margin-top:9px;font-size:11px;color:#64748b;overflow-wrap:anywhere}
+.trip-management-context strong{color:#284963;font-weight:600}
+.trip-management-header-actions{display:flex;align-items:center;gap:8px;flex:none}
+.trip-management-workspace .trip-management-header-actions>button[aria-label="Close workspace"]{width:40px;min-height:40px;border:1px solid #dce5ee;border-radius:9px;background:#f8fafc;cursor:pointer}
+.trip-management-workspace-content.trip-management-content{flex:1;min-height:0;min-width:0;overflow:auto;overscroll-behavior:contain;padding:16px 20px;background:#f8fafc}
+.trip-management-workspace :is(button,a,input,select,textarea):focus-visible{outline:2px solid #7eacd1;outline-offset:2px}
+.trip-management-workspace :is(input,select,textarea){max-width:100%}
+.trip-management-workspace .spreadsheet-viewport{max-height:calc(95dvh - 290px)}
+.trip-management-workspace .trip-management-master{min-width:0}
+.trip-management-workspace .trip-management-master>[data-unsaved]{min-width:0}
+.trip-management-empty{padding:32px;text-align:center;color:#64748b;font-size:13px}
+@media(max-width:800px){.trip-management-workspace .spreadsheet-viewport{max-height:calc(95dvh - 320px)}}
+@media(max-width:600px){.trip-management-workspace-backdrop{padding:6px}.trip-management-dialog.trip-management-workspace{width:100%;height:calc(100dvh - 12px);max-height:calc(100dvh - 12px);border-radius:13px}.trip-management-workspace>.trip-management-workspace-header{padding:12px;gap:8px}.trip-management-workspace-header h2{font-size:16px}.trip-management-workspace-content.trip-management-content{padding:12px}.trip-management-context{gap:5px 10px}.trip-management-workspace .spreadsheet-viewport{max-height:calc(100dvh - 340px)}}
+
+
+/* Spreadsheet menus use the existing document-level portal. */
+body:has(.trip-management-workspace) [role=menu]{z-index:2600!important}
+body:has(.trip-management-workspace) .al-modal-backdrop:not(.trip-management-backdrop){z-index:2500}
+
+
+body:has(.trip-management-workspace)>div:has(>[role=menu]){z-index:2500!important}
+
+.trip-management-workspace-header>div:first-child{min-width:0}
+.trip-management-workspace .trip-management-header-actions>.trip-gallery-export{display:inline-flex;align-items:center;justify-content:center;gap:7px;width:auto;height:auto;min-height:40px;padding:8px 12px;border-radius:8px;background:#0b2341;color:#fff;font-size:12px;font-weight:600;white-space:nowrap}
+.trip-gallery-export:disabled{opacity:.65;cursor:wait}
+.trip-gallery-export-status{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;padding:10px 12px;margin-bottom:14px;border-radius:9px;background:#eaf2f9;color:#284963;font-size:12px;overflow-wrap:anywhere}
+.trip-gallery-export-status progress{max-width:180px;accent-color:#1d5f94}
+.trip-gallery-export-status button{text-decoration:underline;min-height:36px}
+.trip-gallery-export-status p{flex-basis:100%;margin:0}
+.trip-gallery-export-status [role=alert]{color:#9f303b}
+@media(max-width:600px){.trip-management-workspace .trip-management-header-actions>.trip-gallery-export{padding:8px;max-width:130px;font-size:11px;white-space:normal}.trip-gallery-export svg{flex:none}.trip-gallery-export-status progress{width:100%;max-width:none}}
+.trip-management-dialog.trip-management-workspace.trip-gallery-dialog{width:min(94vw,850px);height:auto;max-height:min(84dvh,800px)}
+.trip-gallery-dialog .trip-management-workspace-header{padding:12px 16px;gap:10px;align-items:center}.trip-gallery-dialog .trip-management-eyebrow{display:none}.trip-gallery-dialog .trip-management-context{margin-top:4px;font-size:11px;gap:8px}
+.trip-gallery-dialog .trip-management-workspace-content{padding:12px 16px;background:white;overflow-anchor:none}
+.trip-gallery-tools{display:flex;align-items:center;gap:8px}.trip-gallery-tools>label{display:flex;align-items:center;gap:8px;flex:1;min-width:0;padding:0 10px;border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc;color:#64748b}.trip-gallery-tools input{min-height:36px;width:100%;min-width:0;font-size:12px;background:transparent;border:0}.trip-gallery-tools>button{display:grid;place-items:center;width:38px;min-height:38px;border-radius:7px;color:#526579}.trip-gallery-tools>button:hover{background:#edf3f8}
+.trip-gallery-count{font-size:11px;color:#64748b;margin:8px 0 12px}.trip-gallery-error{color:#a13939;font-size:12px;margin:8px 0}.trip-gallery-empty{font-size:13px;color:#64748b;text-align:center;padding:28px 0}
+.trip-gallery-group{margin:0 0 16px;min-width:0}.trip-gallery-group h3{font-size:12px;font-weight:650;color:#102a4c;padding:8px 0;border-bottom:1px solid #e2e8f0;overflow-wrap:anywhere}.trip-gallery-group h3 span{display:block;color:#64748b;font-size:11px;font-weight:400;margin-top:2px}
+.trip-gallery-image{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid #edf1f5;min-width:0}
+.trip-gallery-thumbnail{width:56px;height:56px;flex:none;display:grid;place-items:center;overflow:hidden;border-radius:7px;background:#f1f5f9;border:1px solid #e7edf3}.trip-gallery-thumbnail img{width:100%;height:100%;object-fit:cover}
+.trip-gallery-image-info{flex:1;min-width:0;color:#102a4c}.trip-gallery-image-info strong{display:block;font-size:13px;font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.trip-gallery-image-info p{font-size:12px;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin:3px 0}.trip-gallery-image-info small{display:block;font-size:10px;color:#8290a1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.trip-gallery-download{display:inline-flex;align-items:center;justify-content:center;gap:6px;flex:none;min-height:40px;min-width:40px;padding:8px;border-radius:7px;color:#527590;font-size:12px;transition:background-color .15s}.trip-gallery-download svg{flex:none}.trip-gallery-download:hover{background:#edf4fa;color:#236794}.trip-gallery-download:hover span{text-decoration:underline;text-underline-offset:3px}.trip-gallery-download:disabled{opacity:.5}
+.trip-gallery-pagination{display:flex;justify-content:center;align-items:center;gap:12px;font-size:12px;padding-top:4px}.trip-gallery-pagination button{min-height:38px;padding:7px 11px;border:1px solid #e2e8f0;border-radius:7px}.trip-gallery-pagination button:disabled{opacity:.45}
+@media(max-width:600px){.trip-management-dialog.trip-management-workspace.trip-gallery-dialog{height:auto;max-height:calc(90dvh - 12px);width:100%}.trip-gallery-dialog .trip-management-workspace-header{padding:12px}.trip-gallery-dialog .trip-management-workspace-content{padding:10px 12px}.trip-gallery-image{gap:9px}.trip-gallery-download span{display:none}.trip-gallery-download{min-width:40px}.trip-gallery-dialog .trip-management-context{max-width:190px}}
+@media(prefers-reduced-motion:reduce){.trip-gallery-download{transition:none}}

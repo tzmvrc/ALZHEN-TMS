@@ -18,7 +18,8 @@ import type {RoadTrip} from '../../services/road-routing';
 import {assignmentWorkspace,tripText as text,tripAmount as amount,tripStatus as status,type Convoy} from '../../services/trip-workspace-data';
 import DeliveryCargoSummary from '../delivery/DeliveryCargoSummary';
 import TripOperationalTimeline from './TripOperationalTimeline';
-import TripOperationalInspector from './TripOperationalInspector';
+import ConvoyEventDetails from './ConvoyEventDetails';
+import {convoyMilestone} from '../../services/convoy-event-details';
 import {operationalPhases,type OperationalMilestone} from '../../services/operational-timeline';
 import RoadRoutingPanel from './RoadRoutingPanel';
 import type {TripRecordTarget} from './TripDeliveryOperations';
@@ -26,8 +27,8 @@ import {TruckJourneyIllustration} from './home/HomePrimitives';
 import './trip-tracking.css';
 import './trip-operational-workspace.css';
 
-export default function TripTrackingWorkspace({trip,assignments,assignmentsLoading=false,stops,events,origin,destination,progress:_progress,totalCbm,totalQty,onManage,refreshKey,loading=false,operations:initialOperations=null,bookingRows=[],operationsError,onOpenReport}:{
- trip:TripRecord;assignments:TripAssignmentRecord[];assignmentsLoading?:boolean;stops:TripChildRecord[];events:TripEvent[];origin:string;destination:string;progress:number;totalCbm:number;totalQty:number;onManage:(assignmentId?:string)=>void;refreshKey:number;loading?:boolean;operations?:OperationsReportData|null;bookingRows?:Record<string,unknown>[];operationsError?:string|null;onOpenReport:(target:TripRecordTarget)=>void;
+export default function TripTrackingWorkspace({trip,assignments,stops,events,origin,destination,progress:_progress,totalCbm,totalQty,refreshKey,loading=false,operations:initialOperations=null,bookingRows=[],operationsError,onOpenReport}:{
+ trip:TripRecord;assignments:TripAssignmentRecord[];assignmentsLoading?:boolean;stops:TripChildRecord[];events:TripEvent[];origin:string;destination:string;progress:number;totalCbm:number;totalQty:number;refreshKey:number;loading?:boolean;operations?:OperationsReportData|null;bookingRows?:Record<string,unknown>[];operationsError?:string|null;onOpenReport:(target:TripRecordTarget)=>void;
 }){
  const reduced=useReducedMotion();
  const reveal={hidden:{opacity:reduced?1:0,y:reduced?0:8},visible:{opacity:1,y:0,transition:{duration:reduced?0:.24}}};
@@ -41,8 +42,6 @@ export default function TripTrackingWorkspace({trip,assignments,assignmentsLoadi
  const operations=operationSnapshot?.scope===scope&&operationSnapshot.seed===initialOperations?operationSnapshot.data:initialOperations;
  const trucks=(convoy?.assignments??assignments).filter(a=>a.trip_id===tripId),allStops=convoy?.stops??stops;
  const activeTrucks=trucks.filter(a=>!a.unassigned_at),pending=!convoy&&!error;
- const showTruckSelector=trucks.length>0;
- const selectorLoading=!showTruckSelector&&(assignmentsLoading||pending);
  const [selectionSnapshot,setSelectionSnapshot]=useState<{scope:string;id:string}|null>(null);
  const requestedId=query.get('assignment');
  const rememberedId=selectionSnapshot?.scope===scope?selectionSnapshot.id:null;
@@ -54,7 +53,7 @@ export default function TripTrackingWorkspace({trip,assignments,assignmentsLoadi
  const selectedData=useMemo(()=>assignmentWorkspace(selected,convoy,stops,road,bookingRows),[selected,convoy,stops,road,bookingRows]);
 
  const routeTripIds=useMemo(()=>[tripId],[tripId]);
- const select=useCallback((id:string)=>{if(id!==selectedId&&document.getElementById(`trip-${tripId}-pod`)?.querySelector('[data-unsaved="true"]')&&!window.confirm('Discard unsaved POD changes and switch truck assignments?'))return;setQuery(previous=>{const next=new URLSearchParams(previous);next.set('assignment',id);next.delete('stop');next.delete('event');return next;},{replace:true});},[setQuery,selectedId,tripId]);
+ const select=useCallback((id:string)=>{if(id!==selectedId&&document.getElementById(`trip-${tripId}-pod`)?.querySelector('[data-unsaved="true"]')&&!window.confirm('Discard unsaved POD changes and switch truck assignments?'))return;setQuery(previous=>{const next=new URLSearchParams(previous);next.set('assignment',id);return next;},{replace:true});},[setQuery,selectedId,tripId]);
  useEffect(()=>{
   if(!accessToken)return;let current=true,busy=false,queued=false,timer:ReturnType<typeof setTimeout>|undefined;
   const load=async(fresh=false)=>{if(busy){queued=true;return;}busy=true;try{if(fresh)invalidateApiCache(endpoint);const r=await apiGetCached<ApiResponse<Convoy>>(endpoint,accessToken,10000);if(!r.success||!r.data)throw Error();if(current){setSnapshot({scope,data:r.data});setError('');}}catch{if(current)setError('Truck allocation details could not refresh.');}finally{busy=false;if(current&&queued){queued=false;void load(true);}}};
@@ -89,10 +88,20 @@ export default function TripTrackingWorkspace({trip,assignments,assignmentsLoadi
  },[accessToken,tripId,scope,eventRevision,events,initialOperations]);
  const phases=useMemo(()=>operationalPhases({events:sourceEvents,assignmentId:selectedId,trip,data:selectedData,operations,origin,podStates:convoy?.operational_state}),[sourceEvents,selectedId,trip,selectedData,operations,origin,convoy?.operational_state]);
  const eventKey=query.get('event');
+ const [eventAnchor,setEventAnchor]=useState<{scope:string;key:string;milestone:OperationalMilestone}|null>(null);
  const allMilestones=phases.flatMap(phase=>phase.milestones);
  const eventParts=(eventKey??'').split(':');
  const derivedKey=eventParts[0]==='trip_stops'?`${eventParts[1]}:${eventParts[2]==='DELIVERY_ARRIVAL'?'ARRIVED':eventParts[2]}`:eventParts[0]==='loading_reports'?`warehouse:${eventParts[2]}`:eventParts[0]==='backloads'?`BACKLOAD:${eventParts[1]}`:eventParts[0]==='offloads'?`OFFLOAD:${eventParts[1]}`:null;
- const selectedMilestone=allMilestones.find(m=>m.key===eventKey||derivedKey&&m.key===derivedKey)??null;
+ // Resolve the selected destination across the convoy before projecting it onto
+ // the active truck. The URL keeps the original stop identity when trucks switch.
+ const convoyDetails=trucks.map(assignment=>{const data=assignmentWorkspace(assignment,convoy,stops,roads.find(r=>r.assignmentId===assignment.id),bookingRows);return {assignment,data,phases:operationalPhases({events:sourceEvents,assignmentId:assignment.id,trip,data,operations,origin,podStates:convoy?.operational_state})};});
+ const resolvedAnchor=convoyDetails.flatMap(row=>row.phases.flatMap(phase=>phase.milestones)).find(m=>m.key===eventKey||derivedKey&&m.key===derivedKey)??null;
+ // Keep only the selected milestone identity when its source assignment is
+ // removed. Other trucks must still project their own saved event or pending state.
+ useEffect(()=>{if(!resolvedAnchor||!eventKey)return;setEventAnchor(previous=>previous?.scope===scope&&previous.key===eventKey&&previous.milestone.type===resolvedAnchor.type&&previous.milestone.stopId===resolvedAnchor.stopId&&previous.milestone.title===resolvedAnchor.title?previous:{scope,key:eventKey,milestone:resolvedAnchor});},[scope,eventKey,resolvedAnchor]);
+ const anchor=resolvedAnchor??(eventAnchor?.scope===scope&&eventAnchor.key===eventKey?eventAnchor.milestone:null);
+ const matchedMilestone=anchor?convoyMilestone(anchor,allMilestones,selectedId,selectedData.stops,allStops):null;
+ const selectedMilestone=matchedMilestone?{...matchedMilestone,key:allMilestones.find(m=>m.type===matchedMilestone.type&&m.stopId===matchedMilestone.stopId&&(!anchor?.activity||m.title===anchor.title))?.key??matchedMilestone.key}:null;
  const backToRoute=useCallback(()=>setQuery(previous=>{const next=new URLSearchParams(previous);next.delete('event');return next;},{replace:true}),[setQuery]);
  const chooseMilestone=(milestone:OperationalMilestone)=>{setExpanded(false);setQuery(previous=>{const next=new URLSearchParams(previous);next.set('assignment',selectedId);next.set('event',milestone.key);if(milestone.stopId)next.set('stop',milestone.stopId);else next.delete('stop');return next;},{replace:true});};
  const selectedMilestoneKey=selectedMilestone?.key;
@@ -116,12 +125,12 @@ export default function TripTrackingWorkspace({trip,assignments,assignmentsLoadi
    <div className="trip-header-progress"><span>{text(trip.trip_reference,'Delivery progress')}</span><strong>{pending?'Loading progress':`${overallProgress}% complete`}</strong><RoadProgress percent={overallProgress} label="Overall delivery progress"/></div>
   </motion.header>
   {error&&<p role="status" className="trip-empty-note">{error} <button type="button" onClick={()=>setRetry(v=>v+1)}>Retry</button></p>}
-  <section className="trip-operations-workspace" aria-label="Trip operations workspace"><header className="trip-workspace-tools">{(showTruckSelector||selectorLoading)&&<div className="trip-truck-selector">{selectorLoading?<div className="trip-truck-skeleton" role="status" aria-label="Loading truck assignments" aria-busy="true"><span aria-hidden="true"/><span aria-hidden="true"/></div>:<div role="group" aria-label="Selected truck assignment" className="trip-truck-buttons">{trucks.map(a=><button type="button" key={a.id} aria-pressed={selectedId===a.id} onClick={()=>select(a.id)}><Truck size={17} aria-hidden/><span><strong>{truckName(a)}</strong><small>{driverName(a)}{a.unassigned_at?' / Ended':''}</small></span><Truck className="trip-truck-watermark" aria-hidden/></button>)}</div>}</div>}<nav aria-label="Trip management actions"><button type="button" onClick={()=>onManage(selected?.id)}>Manage assignments & cargo</button><button type="button" onClick={()=>onOpenReport('operations')}>Manage reports</button><button type="button" onClick={()=>onOpenReport('records')}>Photos & records</button></nav></header>
-  {!!query.get('assignment')&&!selected&&<p role="alert" className="trip-empty-note">This assignment is unavailable. Choose a truck above.</p>}
+  <section className="trip-operations-workspace" aria-label="Trip operations workspace"><header className="trip-workspace-tools"><nav aria-label="Trip management actions"><button type="button" onClick={()=>onOpenReport('operations')}>Manage reports</button><button type="button" onClick={()=>onOpenReport('records')}>Photos & records</button></nav></header>
+  {!!query.get('assignment')&&!selected&&<p role="alert" className="trip-empty-note">No accessible truck assignment is available.</p>}
   {eventKey&&!selectedMilestone&&!loading&&<p role="status" className="trip-empty-note">This event is unavailable for the selected truck. <button type="button" onClick={backToRoute}>Back to route</button></p>}
   <motion.div variants={reveal} className="trip-journey-grid"><div id={`trip-${tripId}-operations`}>{selected?<TripOperationalTimeline phases={phases} truckLabel={selected?`${truckName(selected)} / ${driverName(selected)}`:undefined} selected={selectedMilestone?.key??null} onSelect={chooseMilestone} onClear={backToRoute} loading={loading||pending} error={eventError||operationsError||operations?.evidence_error||(operations?.evidence_limited?'Attachment indicators cover recent report files. Manage reports includes older files.':undefined)}/>:<p className="trip-empty-note">Select a truck assignment to inspect its saved operations.</p>}</div>
    <section ref={mapPanel} className={`trip-tracking-map trip-monitor-detail${expanded?' is-map-expanded':''}`} aria-label="Route and event workspace" role={expanded?'dialog':undefined} aria-modal={expanded||undefined} tabIndex={-1}><div className="trip-monitor-stack"><div className="trip-route-view" aria-hidden={Boolean(selectedMilestone)} inert={Boolean(selectedMilestone)}><header className="trip-panel-heading"><span className="trip-panel-icon"><MapPinned size={19} aria-hidden="true"/></span><div><h2>Route monitoring</h2><p>{selected?`${truckName(selected)} / ${driverName(selected)}`:'Select an assigned truck'}</p></div><button ref={expandButton} type="button" className="trip-map-expand" aria-label={expanded?'Close expanded map':'Expand route map'} onClick={()=>setExpanded(v=>!v)}>{expanded?<Minimize2 size={17}/>:<Maximize2 size={17}/>}</button></header><div className="trip-map-context"><span className={road?.position&&!warehouseEstimate(road)?'has-gps':''}><span aria-hidden="true"/>{road?roadPositionLabel(road):roadsReady?'Location Unavailable':'Loading GPS...'}</span><span>{(selectedData.progressKnown||convoy?.operational_state)?`${selectedData.completed}/${selectedData.stops.length} stops / ${selectedProgress}%`:'Trip-level stop status'}</span></div>{selected&&!selected.unassigned_at?<RoadRoutingPanel tripIds={routeTripIds} height={420} compact minimal assignmentOnly focusKey={selectedId} onRows={setRoads}/>:<div className="trip-map-empty"><Truck size={30} aria-hidden="true"/><p>{selected?.unassigned_at?'This assignment has ended. Saved history remains available.':'Choose a truck to inspect its route.'}</p></div>}</div>
-   {selectedMilestone&&selected&&<TripOperationalInspector key={`${selectedId}:${selectedMilestone.key}`} milestone={selectedMilestone} assignmentId={selectedId} plate={truckName(selected)} driver={driverName(selected)} onBack={backToRoute} onReviewed={()=>setEventRevision(v=>v+1)} onOpenReport={openReport} operations={operations}/>}
+   {selectedMilestone&&selected&&<ConvoyEventDetails activeAssignmentId={selectedId} onSelectAssignment={select} rows={convoyDetails.map(({assignment,data,phases})=>({assignmentId:assignment.id,plate:truckName(assignment),driver:driverName(assignment),milestone:convoyMilestone(anchor!,phases.flatMap(p=>p.milestones),assignment.id,data.stops,allStops)}))} onBack={backToRoute} onReviewed={()=>setEventRevision(v=>v+1)} onOpenReport={openReport} operations={operations}/>}
    </div></section>
   </motion.div></section>
   <section className="trip-pod-review" id={`trip-${tripId}-pod`}><ReceiptReviewCard key={`${tripId}:${selectedId}`} tripId={tripId} accessToken={accessToken} onRecordsChange={receiveReceipts} inline assignmentId={selectedId} assignments={trucks.map(a=>({id:a.id,label:`${truckName(a)} / ${driverName(a)}`}))} dispatchNumber={text(trip.dispatch_number)} stopLabels={Object.fromEntries(allStops.map(s=>[String(s.id),text(s.delivery_location,`Stop ${s.stop_sequence}`)]))}/></section>

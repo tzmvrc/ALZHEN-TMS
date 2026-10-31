@@ -1,14 +1,16 @@
-import { useEffect, useRef, useState } from "react";
+import { lazy,Suspense,useEffect, useRef, useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../../context/AuthContext";
 import { ApiError, invalidateApiCache } from "../../../services/api.service";
 import { fetchHomeTripDetails, fetchTrips } from "../../../services/trip.service";
 import { subscribeToAdminRealtime } from "../../../services/realtime.service";
-import type { ReportRow } from "../../../services/report.service";
+import { invalidateReportPageCache, type ReportRow } from "../../../services/report.service";
 import HomeCommandCenter from "../../../components/admin/home/HomeCommandCenter";
 import { HomeSkeleton } from "../../../components/admin/home/HomePrimitives";
 import { text as textValue, type HomeSnapshot as OverviewSnapshot } from "../../../components/admin/home/home-dashboard-data";
+
+const ActiveTripsModal=lazy(()=>import("../../../components/admin/home/ActiveTripsModal"));
 
 export default function OverviewView({ onOpenTrip, onMetricNavigate, active = true }: {
   onOpenTrip?: (tripId: string) => void;
@@ -18,6 +20,7 @@ export default function OverviewView({ onOpenTrip, onMetricNavigate, active = tr
 }) {
   const { accessToken, refreshSession, profile } = useAuth();
   const navigate = useNavigate();
+  const [activeTripsOpen,setActiveTripsOpen]=useState(false),[activeTripsRevision,setActiveTripsRevision]=useState(0);
   const [snapshot, setSnapshot] = useState<OverviewSnapshot | null>(null);
   const [loadedKey, setLoadedKey] = useState<string | null>(null);
   const [failure, setFailure] = useState<{
@@ -27,6 +30,7 @@ export default function OverviewView({ onOpenTrip, onMetricNavigate, active = tr
   const [reloadCount, setReloadCount] = useState(0);
   const inactiveChanges = useRef(false);
   const completedRead=useRef<{key:string;at:number}|null>(null);
+  const reportedActiveTotal=useRef<{token:string;version:number;value:number}|null>(null);
   const snapshotRef=useRef(snapshot);snapshotRef.current=snapshot;
   const requestKey = `${accessToken ?? "no-session"}:${reloadCount}`;
 
@@ -39,6 +43,8 @@ export default function OverviewView({ onOpenTrip, onMetricNavigate, active = tr
     if (!active) return;
     if(completedRead.current?.key===requestKey&&Date.now()-completedRead.current.at<60000)return;
     let isCurrent = true;
+    const activeCountVersion=reportedActiveTotal.current?.version;
+    const currentActiveCount=(fallback:number)=>{const report=reportedActiveTotal.current;return report?.token===accessToken&&report.version!==activeCountVersion?report.value:fallback;};
     void (async () => {
       try {
         const [firstPage,inProgressPage,completedPage,plannedPage] = await Promise.all([
@@ -56,7 +62,7 @@ export default function OverviewView({ onOpenTrip, onMetricNavigate, active = tr
           tracks: previous?.tracks ?? [], events: previous?.events ?? [],
           bookingRows: previous?.bookingRows ?? [], eventsUnavailable: false,
           bookingUnavailable: false, bookingLimited: false, detailsLoading: true, planned: plannedPage.pagination.total, total: allTrips.pagination.total,
-          inProgress: inProgressPage.pagination.total,
+          inProgress: currentActiveCount(inProgressPage.pagination.total),
           completed: completedPage.pagination.total, fetchedAt,
         }));
         setLoadedKey(requestKey);
@@ -91,7 +97,7 @@ export default function OverviewView({ onOpenTrip, onMetricNavigate, active = tr
           bookingUnavailable, bookingLimited,
           detailsLoading: false, planned: plannedPage.pagination.total,
           total: allTrips.pagination.total,
-          inProgress: inProgressPage.pagination.total,
+          inProgress: currentActiveCount(inProgressPage.pagination.total),
           completed: completedPage.pagination.total,
           fetchedAt,
         });
@@ -126,11 +132,15 @@ export default function OverviewView({ onOpenTrip, onMetricNavigate, active = tr
       typeof trip.id === "string" && trip.id.length > 0 ? [trip.id] : [],
     );
     const tripIdSet = new Set(tripIds);
+    let modalTimer:ReturnType<typeof setTimeout>|undefined;
+    const scheduleActiveTrips=()=>{clearTimeout(modalTimer);modalTimer=setTimeout(()=>setActiveTripsRevision(value=>value+1),250);};
+    const activeTripTables=new Set(['trips','trip_stops','trip_truck_assignments','trip_truck_crew_members','trip_assignment_stops','trip_events','warehouses','customer_stores','drivers','trucks','profiles']);
     let reloadTimer: number | null = null;
     const scheduleReload = () => {
       if (reloadTimer !== null) window.clearTimeout(reloadTimer);
       reloadTimer = window.setTimeout(() => {
         reloadTimer = null;
+        invalidateApiCache("/trips?");
         setReloadCount((count) => count + 1);
       }, 250);
     };
@@ -162,6 +172,8 @@ export default function OverviewView({ onOpenTrip, onMetricNavigate, active = tr
       );
     };
     const unsubscribe = subscribeToAdminRealtime((event) => {
+      const changed=event.kind==='batch'?event.tables:event.kind==='recovered'?[event.table]:event.kind==='resume'?[]:[event.payload.table];
+      if(active&&(event.kind==='resume'||changed.some(table=>activeTripTables.has(table))))scheduleActiveTrips();
       if (event.kind === "batch") {
         if (!event.tables.some((table) => ["trips", "trip_stops", "warehouses", "customer_stores", "trip_truck_assignments", "trip_events", "trip_images"].includes(table))) return;
         const structural=event.tables.some(table=>['trips','trip_stops','warehouses','customer_stores','trip_truck_assignments'].includes(table));
@@ -187,7 +199,7 @@ export default function OverviewView({ onOpenTrip, onMetricNavigate, active = tr
       scheduleReload();
     }
     return () => {
-      disposed=true;unsubscribe();
+      disposed=true;unsubscribe();clearTimeout(modalTimer);
       if(detailTimer!==null)window.clearTimeout(detailTimer);
       if (reloadTimer !== null) window.clearTimeout(reloadTimer);
     };
@@ -218,7 +230,8 @@ export default function OverviewView({ onOpenTrip, onMetricNavigate, active = tr
 
   if (!snapshot) return null;
   const name = [profile?.first_name, profile?.last_name].filter(Boolean).join(" ") || "Operations team";
-  return <HomeCommandCenter snapshot={snapshot} name={name} refreshing={isLoading} error={error} active={active}
-    onRefresh={() => { invalidateApiCache("/trips"); setReloadCount(count => count + 1); }}
-    onOpenTrip={onOpenTrip} onNavigate={onMetricNavigate}/>;
+  return <><HomeCommandCenter snapshot={snapshot} name={name} refreshing={isLoading} error={error} active={active}
+    onRefresh={() => { invalidateApiCache("/trips"); invalidateReportPageCache("dispatch-monitoring"); setReloadCount(count => count + 1); }}
+    onShowActiveTrips={()=>setActiveTripsOpen(true)} onOpenTrip={onOpenTrip} onNavigate={onMetricNavigate}/>
+    {active&&activeTripsOpen&&accessToken&&<Suspense fallback={null}><ActiveTripsModal key={accessToken} token={accessToken} total={snapshot.inProgress} revision={activeTripsRevision} onTotal={value=>{reportedActiveTotal.current={token:accessToken,version:(reportedActiveTotal.current?.version??0)+1,value};setSnapshot(current=>current&&current.inProgress!==value?{...current,inProgress:value}:current);}} onClose={()=>setActiveTripsOpen(false)} onOpenTrip={id=>{if(onOpenTrip)onOpenTrip(id);else navigate(`/trips/${encodeURIComponent(id)}`);}}/></Suspense>}</>;
 }

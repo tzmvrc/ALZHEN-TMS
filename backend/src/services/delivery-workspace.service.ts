@@ -135,7 +135,7 @@ export async function submitDelivery(actor:DeliveryActor,id:string,key:string,in
   // have since changed; its original request/assignment checks still apply.
   const existing=await db.from('trip_events').select('id').eq('recorded_by',actor.id).eq('delivery_request_id',key).maybeSingle();
   if(existing.error)failure(existing.error);
-  if(!existing.data){const assignment=await deliveryAssignment(actor,id);await validatePodProductSelections(body.ocr_text,id,assignment.trip_id);}
+  if(!existing.data){const assignment=await deliveryAssignment(actor,id);await validatePodProductSelections(body.ocr_text,id,assignment.trip_id,body.stop_id);}
  }
  const {data,error}=await db.rpc(body.replaces_receipt_id?'submit_pod_replacement_v1':'submit_delivery_event_v1',{p_actor:actor.id,p_assignment:id,p_key:key,p_input:input});if(error)failure(error);announce(actor,data);
  if(['BACKLOAD_REPORTED','OFFLOAD_REPORTED','DEMURRAGE_REPORTED'].includes(data.event_type))wakeOperationalEmailWorker();
